@@ -2,10 +2,13 @@
 
 #pragma once
 
+#include "ui/DesignerCanvas.h"
+#include "ui/ProjectTree.h"
+#include "ui/PropertyInspector.h"
+#include "ui/WidgetPalette.h"
+
 #include <visage/app.h>
 #include <visage/graphics.h>
-
-#include <string>
 
 namespace visiform::ui {
 
@@ -16,6 +19,7 @@ public:
 
     void showWindow();
     void draw(visage::Canvas& canvas) override;
+    void resized() override;
 
 private:
     struct PanelBounds {
@@ -23,13 +27,36 @@ private:
         float y;
         float width;
         float height;
+
+        [[nodiscard]] bool isVisible() const
+        {
+            return width > 0.0f && height > 0.0f;
+        }
+    };
+
+    struct WindowLayout {
+        PanelBounds toolbar{};
+        PanelBounds widgetPalette{};
+        PanelBounds designerCanvas{};
+        PanelBounds propertyInspector{};
+        PanelBounds projectTree{};
+        PanelBounds statusBar{};
+        bool showProjectTree = false;
     };
 
     void loadLabelFont();
-    void drawPanel(visage::Canvas& canvas, const PanelBounds& bounds, int color) const;
-    void drawPanelLabel(visage::Canvas& canvas, const PanelBounds& bounds, const char* label) const;
-    [[nodiscard]] bool canDrawLabels() const;
+    void updateLayout();
+    [[nodiscard]] WindowLayout calculateLayout(float windowWidth, float windowHeight) const;
+    void applyLayout(const WindowLayout& layout);
+    void drawToolbar(visage::Canvas& canvas) const;
+    void drawStatusBar(visage::Canvas& canvas) const;
+    [[nodiscard]] bool canDrawText() const;
 
+    WindowLayout layout_{};
+    WidgetPalette widgetPalette_{};
+    DesignerCanvas designerCanvas_{};
+    PropertyInspector propertyInspector_{};
+    ProjectTree projectTree_{};
     visage::Font labelFont_{};
 };
 

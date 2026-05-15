@@ -1,13 +1,21 @@
 #pragma once
 
-#include <string>
+#pragma once
+
+#include <visage/graphics.h>
 
 namespace visiform::ui {
 
-// Placeholder project outline for forms and widgets.
 class ProjectTree {
 public:
-    [[nodiscard]] std::string description() const;
+    void setBounds(float x, float y, float width, float height);
+    void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText) const;
+
+private:
+    float x_{};
+    float y_{};
+    float width_{};
+    float height_{};
 };
 
 } // namespace visiform::ui

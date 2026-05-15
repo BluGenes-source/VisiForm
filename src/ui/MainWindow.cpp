@@ -11,12 +11,14 @@ namespace visiform::ui {
 namespace {
 
 constexpr auto kWindowTitle = "VisiForm - Visage Form Builder";
-constexpr float kToolbarHeight = 56.0f;
-constexpr float kStatusBarHeight = 32.0f;
-constexpr float kLeftPanelWidth = 260.0f;
+constexpr float kToolbarHeight = 42.0f;
+constexpr float kStatusBarHeight = 28.0f;
+constexpr float kLeftPanelWidth = 220.0f;
 constexpr float kRightPanelWidth = 300.0f;
 constexpr float kGap = 8.0f;
-constexpr float kInnerPadding = 16.0f;
+constexpr float kProjectTreeMinHeight = 160.0f;
+constexpr float kProjectTreePreferredHeight = 180.0f;
+constexpr float kPadding = 12.0f;
 
 } // namespace
 
@@ -24,6 +26,7 @@ MainWindow::MainWindow()
 {
     setTitle(kWindowTitle);
     loadLabelFont();
+    updateLayout();
 }
 
 void MainWindow::showWindow()
@@ -31,66 +34,31 @@ void MainWindow::showWindow()
     show(visage::Dimension::logicalPixels(1200), visage::Dimension::logicalPixels(800));
 }
 
+void MainWindow::resized()
+{
+    updateLayout();
+    redraw();
+}
+
 void MainWindow::draw(visage::Canvas& canvas)
 {
-    const float windowWidth = width();
-    const float windowHeight = height();
+    updateLayout();
 
     canvas.setColor(0xff1b1d23);
-    canvas.fill(0, 0, windowWidth, windowHeight);
+    canvas.fill(0, 0, width(), height());
 
-    if (windowWidth <= 0.0f || windowHeight <= 0.0f) {
+    if (width() <= 0.0f || height() <= 0.0f) {
         return;
     }
 
-    const PanelBounds toolbar{ 0.0f, 0.0f, windowWidth, kToolbarHeight };
-    const PanelBounds statusBar{ 0.0f, std::max(0.0f, windowHeight - kStatusBarHeight), windowWidth, kStatusBarHeight };
-
-    const float contentTop = toolbar.height + kGap;
-    const float contentBottom = std::max(contentTop, statusBar.y - kGap);
-    const float contentHeight = std::max(0.0f, contentBottom - contentTop);
-    const float paletteWidth = std::min(kLeftPanelWidth, std::max(180.0f, windowWidth * 0.22f));
-    const float inspectorWidth = std::min(kRightPanelWidth, std::max(220.0f, windowWidth * 0.25f));
-
-    const PanelBounds widgetPalette{ kGap, contentTop, paletteWidth, contentHeight };
-    const PanelBounds propertyInspector{
-        std::max(kGap, windowWidth - inspectorWidth - kGap),
-        contentTop,
-        inspectorWidth,
-        contentHeight
-    };
-
-    const float canvasX = widgetPalette.x + widgetPalette.width + kGap;
-    const float canvasWidth = std::max(0.0f, propertyInspector.x - canvasX - kGap);
-    const PanelBounds designerCanvas{ canvasX, contentTop, canvasWidth, contentHeight };
-
-    drawPanel(canvas, toolbar, 0xff2a2d36);
-    drawPanel(canvas, widgetPalette, 0xff252932);
-    drawPanel(canvas, designerCanvas, 0xff20242c);
-    drawPanel(canvas, propertyInspector, 0xff252932);
-    drawPanel(canvas, statusBar, 0xff2a2d36);
-
-    drawPanelLabel(canvas, toolbar, "Toolbar / Menu Placeholder");
-    drawPanelLabel(canvas, widgetPalette, "Widget Palette");
-    drawPanelLabel(canvas, designerCanvas, "Designer Canvas");
-    drawPanelLabel(canvas, propertyInspector, "Property Inspector");
-    drawPanelLabel(canvas, statusBar, "Status: Ready");
-
-    if (designerCanvas.width > kInnerPadding * 2.0f && designerCanvas.height > 120.0f) {
-        canvas.setColor(0xff353b48);
-        const float gridLeft = designerCanvas.x + kInnerPadding;
-        const float gridTop = designerCanvas.y + 56.0f;
-        const float gridWidth = designerCanvas.width - kInnerPadding * 2.0f;
-        const float gridHeight = designerCanvas.height - 72.0f;
-        canvas.fill(gridLeft, gridTop, gridWidth, gridHeight);
-
-        canvas.setColor(0xff4a5161);
-        canvas.fill(gridLeft + 1.0f, gridTop + 1.0f, gridWidth - 2.0f, gridHeight - 2.0f);
-        canvas.setColor(0xff2b313d);
-        canvas.fill(gridLeft + 2.0f, gridTop + 2.0f, gridWidth - 4.0f, gridHeight - 4.0f);
-
-        // TODO: Replace this painted mock layout with real docked Visage editor widgets.
+    drawToolbar(canvas);
+    widgetPalette_.draw(canvas, labelFont_, canDrawText());
+    designerCanvas_.draw(canvas, labelFont_, canDrawText());
+    propertyInspector_.draw(canvas, labelFont_, canDrawText());
+    if (layout_.showProjectTree) {
+        projectTree_.draw(canvas, labelFont_, canDrawText());
     }
+    drawStatusBar(canvas);
 }
 
 void MainWindow::loadLabelFont()
@@ -108,45 +76,128 @@ void MainWindow::loadLabelFont()
         }
 
         labelFont_ = visage::Font(18.0f, std::string{ fontPath });
-        if (canDrawLabels()) {
+        if (canDrawText()) {
             return;
         }
     }
 }
 
-void MainWindow::drawPanel(visage::Canvas& canvas, const PanelBounds& bounds, int color) const
+void MainWindow::updateLayout()
 {
-    if (bounds.width <= 0.0f || bounds.height <= 0.0f) {
+    applyLayout(calculateLayout(width(), height()));
+}
+
+MainWindow::WindowLayout MainWindow::calculateLayout(float windowWidth, float windowHeight) const
+{
+    WindowLayout layout;
+    if (windowWidth <= 0.0f || windowHeight <= 0.0f) {
+        return layout;
+    }
+
+    layout.toolbar = { 0.0f, 0.0f, windowWidth, kToolbarHeight };
+    layout.statusBar = { 0.0f, std::max(0.0f, windowHeight - kStatusBarHeight), windowWidth, kStatusBarHeight };
+
+    const float contentTop = layout.toolbar.height + kGap;
+    const float contentBottom = std::max(contentTop, layout.statusBar.y - kGap);
+    const float contentHeight = std::max(0.0f, contentBottom - contentTop);
+
+    const float leftWidth = std::min(kLeftPanelWidth, std::max(140.0f, windowWidth * 0.2f));
+    const float rightWidth = std::min(kRightPanelWidth, std::max(220.0f, windowWidth * 0.24f));
+    const float leftX = kGap;
+    const float rightX = std::max(leftX + leftWidth + kGap, windowWidth - rightWidth - kGap);
+
+    float projectTreeHeight = 0.0f;
+    if (contentHeight >= 420.0f) {
+        projectTreeHeight = std::min(kProjectTreePreferredHeight, contentHeight * 0.28f);
+        projectTreeHeight = std::max(projectTreeHeight, kProjectTreeMinHeight);
+    }
+
+    const bool showProjectTree = projectTreeHeight > 0.0f && contentHeight > projectTreeHeight + 120.0f;
+    const float paletteHeight = showProjectTree ? contentHeight - projectTreeHeight - kGap : contentHeight;
+
+    layout.widgetPalette = { leftX, contentTop, leftWidth, std::max(0.0f, paletteHeight) };
+    layout.showProjectTree = showProjectTree;
+    if (showProjectTree) {
+        layout.projectTree = { leftX, contentTop + paletteHeight + kGap, leftWidth, projectTreeHeight };
+    }
+
+    layout.propertyInspector = { rightX, contentTop, rightWidth, contentHeight };
+
+    const float canvasX = layout.widgetPalette.x + layout.widgetPalette.width + kGap;
+    const float canvasRight = layout.propertyInspector.x - kGap;
+    layout.designerCanvas = {
+        canvasX,
+        contentTop,
+        std::max(0.0f, canvasRight - canvasX),
+        contentHeight
+    };
+
+    return layout;
+}
+
+void MainWindow::applyLayout(const WindowLayout& layout)
+{
+    layout_ = layout;
+    widgetPalette_.setBounds(layout_.widgetPalette.x, layout_.widgetPalette.y,
+        layout_.widgetPalette.width, layout_.widgetPalette.height);
+    designerCanvas_.setBounds(layout_.designerCanvas.x, layout_.designerCanvas.y,
+        layout_.designerCanvas.width, layout_.designerCanvas.height);
+    propertyInspector_.setBounds(layout_.propertyInspector.x, layout_.propertyInspector.y,
+        layout_.propertyInspector.width, layout_.propertyInspector.height);
+    projectTree_.setBounds(layout_.projectTree.x, layout_.projectTree.y,
+        layout_.projectTree.width, layout_.projectTree.height);
+}
+
+void MainWindow::drawToolbar(visage::Canvas& canvas) const
+{
+    if (!layout_.toolbar.isVisible()) {
         return;
     }
 
-    canvas.setColor(color);
-    canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+    canvas.setColor(0xff2a2f39);
+    canvas.fill(layout_.toolbar.x, layout_.toolbar.y, layout_.toolbar.width, layout_.toolbar.height);
 
     canvas.setColor(0xff14161b);
-    canvas.fill(bounds.x, bounds.y, bounds.width, 1.0f);
-    canvas.fill(bounds.x, bounds.y + bounds.height - 1.0f, bounds.width, 1.0f);
-    canvas.fill(bounds.x, bounds.y, 1.0f, bounds.height);
-    canvas.fill(bounds.x + bounds.width - 1.0f, bounds.y, 1.0f, bounds.height);
+    canvas.fill(layout_.toolbar.x, layout_.toolbar.y + layout_.toolbar.height - 1.0f, layout_.toolbar.width, 1.0f);
+
+    if (!canDrawText()) {
+        return;
+    }
+
+    canvas.setColor(0xfff3f5f8);
+    canvas.text("File   Edit   View   Generate   Help", labelFont_, visage::Font::kTopLeft,
+        layout_.toolbar.x + kPadding, layout_.toolbar.y + 6.0f,
+        layout_.toolbar.width * 0.55f, layout_.toolbar.height - 10.0f);
+
+    canvas.setColor(0xffcfd6e0);
+    canvas.text("Toolbar / Menu Placeholder", labelFont_, visage::Font::kTopRight,
+        layout_.toolbar.x + layout_.toolbar.width * 0.4f, layout_.toolbar.y + 6.0f,
+        layout_.toolbar.width * 0.58f - kPadding, layout_.toolbar.height - 10.0f);
 }
 
-void MainWindow::drawPanelLabel(visage::Canvas& canvas, const PanelBounds& bounds, const char* label) const
+void MainWindow::drawStatusBar(visage::Canvas& canvas) const
 {
-    if (!canDrawLabels() || bounds.width <= 0.0f || bounds.height <= 0.0f) {
+    if (!layout_.statusBar.isVisible()) {
+        return;
+    }
+
+    canvas.setColor(0xff2a2f39);
+    canvas.fill(layout_.statusBar.x, layout_.statusBar.y, layout_.statusBar.width, layout_.statusBar.height);
+
+    canvas.setColor(0xff14161b);
+    canvas.fill(layout_.statusBar.x, layout_.statusBar.y, layout_.statusBar.width, 1.0f);
+
+    if (!canDrawText()) {
         return;
     }
 
     canvas.setColor(0xfff2f4f8);
-    canvas.text(label,
-        labelFont_,
-        visage::Font::kTopLeft,
-        bounds.x + kInnerPadding,
-        bounds.y + 8.0f,
-        std::max(0.0f, bounds.width - kInnerPadding * 2.0f),
-        std::max(0.0f, bounds.height - 12.0f));
+    canvas.text("Status: Ready", labelFont_, visage::Font::kTopLeft,
+        layout_.statusBar.x + kPadding, layout_.statusBar.y + 4.0f,
+        layout_.statusBar.width - kPadding * 2.0f, layout_.statusBar.height - 6.0f);
 }
 
-bool MainWindow::canDrawLabels() const
+bool MainWindow::canDrawText() const
 {
     return labelFont_.packedFont() != nullptr;
 }
