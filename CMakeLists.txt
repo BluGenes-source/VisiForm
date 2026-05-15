@@ -35,7 +35,26 @@ find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 
 add_executable(VisiForm
+    src/app/App.cpp
     src/app/main.cpp
+    src/ui/MainWindow.cpp
+    src/ui/DesignerCanvas.cpp
+    src/ui/WidgetPalette.cpp
+    src/ui/PropertyInspector.cpp
+    src/ui/ProjectTree.cpp
+    src/model/ProjectDocument.cpp
+    src/model/FormNode.cpp
+    src/model/WidgetNode.cpp
+    src/model/PropertyValue.cpp
+    src/serialization/JsonProjectReader.cpp
+    src/serialization/JsonProjectWriter.cpp
+    src/generator/CodeGenerator.cpp
+    src/generator/VisageCppEmitter.cpp
+    src/generator/CMakeEmitter.cpp
+    src/commands/Command.cpp
+    src/commands/UndoRedoStack.cpp
+    src/utils/FileUtils.cpp
+    src/utils/IdGenerator.cpp
 )
 
 target_include_directories(VisiForm

@@ -1,7 +1,7 @@
-﻿#include <iostream>
+﻿#include "app/App.h"
 
 int main()
 {
-    std::cout << "VisiForm static build skeleton is working.\n";
-    return 0;
+    visiform::App app;
+    return app.run();
 }
