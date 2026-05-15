@@ -39,3 +39,4 @@ Thumbs.db
 
 # App-specific user files
 *.vfb.user.json
+/images
