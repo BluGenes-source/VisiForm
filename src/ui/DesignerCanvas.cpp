@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <sstream>
 #include <string>
 
 namespace visiform::ui {
@@ -71,6 +72,58 @@ std::string widgetLabel(const model::WidgetNode& widget)
     return widget.typeName();
 }
 
+float getNumericProperty(const model::WidgetNode& widget, const std::string& key, float defaultValue)
+{
+    const auto* property = widget.getProperty(key);
+    if (property == nullptr) {
+        return defaultValue;
+    }
+
+    if (property->isFloat()) {
+        return property->asFloat(defaultValue);
+    }
+    if (property->isInt()) {
+        return static_cast<float>(property->asInt(static_cast<int>(defaultValue)));
+    }
+    if (property->isString()) {
+        try {
+            const std::string text = property->asString({});
+            std::size_t parsedCharacters = 0;
+            const float parsedValue = std::stof(text, &parsedCharacters);
+            if (parsedCharacters == text.size()) {
+                return parsedValue;
+            }
+        }
+        catch (...) {
+        }
+    }
+
+    return defaultValue;
+}
+
+std::string getStringProperty(const model::WidgetNode& widget, const std::string& key, const std::string& defaultValue)
+{
+    return widget.getStringProperty(key, defaultValue);
+}
+
+bool getBoolProperty(const model::WidgetNode& widget, const std::string& key, bool defaultValue)
+{
+    return widget.getBoolProperty(key, defaultValue);
+}
+
+float normalizedSliderValue(const model::WidgetNode& widget)
+{
+    const float minimum = getNumericProperty(widget, "min", 0.0f);
+    const float maximum = getNumericProperty(widget, "max", 100.0f);
+    const float value = getNumericProperty(widget, "value", 50.0f);
+    if (maximum <= minimum) {
+        return 0.5f;
+    }
+
+    const float clampedValue = std::clamp(value, minimum, maximum);
+    return std::clamp((clampedValue - minimum) / (maximum - minimum), 0.0f, 1.0f);
+}
+
 int parseColorOrDefault(const std::string& value, int defaultColor)
 {
     if (value.empty() || value.front() != '#') {
@@ -131,7 +184,7 @@ PreviewLayout calculatePreviewLayout(float x, float y, float width, float height
 
 void drawSelectionOutline(visage::Canvas& canvas, const PanelRect& bounds)
 {
-    drawBorder(canvas, { bounds.x - 3.0f, bounds.y - 3.0f, bounds.width + 6.0f, bounds.height + 6.0f }, 0xff2d7ff9, 2.0f);
+    drawBorder(canvas, { bounds.x - 2.0f, bounds.y - 2.0f, bounds.width + 4.0f, bounds.height + 4.0f }, 0xff2d7ff9, 1.5f);
 }
 
 PanelRect handleRect(const PanelRect& bounds, DesignerCanvas::HitRegion region, float handleSize)
@@ -189,12 +242,14 @@ void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, float
     }
 }
 
-void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, int gridSize)
+void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, bool showMinorGrid, int gridSize, int majorGridSize)
 {
     const float scaledGridSize = gridSize * scale;
     if (scaledGridSize < 4.0f) {
         return;
     }
+
+    const float scaledMajorGridSize = majorGridSize * scale;
 
     const float contentTop = bounds.y + std::min(kTitleBarHeight, bounds.height);
     const float contentHeight = bounds.height - std::min(kTitleBarHeight, bounds.height);
@@ -202,12 +257,24 @@ void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, int 
         return;
     }
 
-    canvas.setColor(0xffdfe5ee);
-    for (float x = bounds.x + scaledGridSize; x < bounds.x + bounds.width; x += scaledGridSize) {
-        canvas.fill(x, contentTop, 1.0f, contentHeight);
+    if (showMinorGrid) {
+        canvas.setColor(0xff252a33);
+        for (float x = bounds.x + scaledGridSize; x < bounds.x + bounds.width; x += scaledGridSize) {
+            canvas.fill(x, contentTop, 1.0f, contentHeight);
+        }
+        for (float y = contentTop + scaledGridSize; y < bounds.y + bounds.height; y += scaledGridSize) {
+            canvas.fill(bounds.x, y, bounds.width, 1.0f);
+        }
     }
-    for (float y = contentTop + scaledGridSize; y < bounds.y + bounds.height; y += scaledGridSize) {
-        canvas.fill(bounds.x, y, bounds.width, 1.0f);
+
+    if (scaledMajorGridSize >= scaledGridSize + 1.0f) {
+        canvas.setColor(0xff303744);
+        for (float x = bounds.x + scaledMajorGridSize; x < bounds.x + bounds.width; x += scaledMajorGridSize) {
+            canvas.fill(x, contentTop, 1.0f, contentHeight);
+        }
+        for (float y = contentTop + scaledMajorGridSize; y < bounds.y + bounds.height; y += scaledMajorGridSize) {
+            canvas.fill(bounds.x, y, bounds.width, 1.0f);
+        }
     }
 }
 
@@ -252,7 +319,10 @@ void drawWidget(visage::Canvas& canvas,
     float scale,
     const std::string& selectedWidgetId,
     float handleSize,
-    int gridSize)
+    bool showGrid,
+    bool showMinorGrid,
+    int gridSize,
+    int majorGridSize)
 {
     const float widgetLocalX = parentLocalX + widget.bounds.x;
     const float widgetLocalY = parentLocalY + widget.bounds.y;
@@ -265,54 +335,56 @@ void drawWidget(visage::Canvas& canvas,
 
     switch (widget.type) {
     case model::WidgetType::FormWindow: {
-        canvas.setColor(parseColorOrDefault(widget.getStringProperty("backgroundColor", "#eceff5"), 0xffeceff5));
+        canvas.setColor(parseColorOrDefault(getStringProperty(widget, "backgroundColor", "#f2f4f8"), 0xfff2f4f8));
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawGrid(canvas, bounds, scale, gridSize);
-        canvas.setColor(0xffc0c8d5);
+        if (showGrid) {
+            drawGrid(canvas, bounds, scale, showMinorGrid, gridSize, majorGridSize);
+        }
+        canvas.setColor(0xffc4ccd8);
         canvas.fill(bounds.x, bounds.y, bounds.width, std::min(kTitleBarHeight, bounds.height));
         drawBorder(canvas, bounds, 0xff6c7788);
 
         if (drawText) {
-            canvas.setColor(0xff243041);
-            canvas.text(widget.getStringProperty("title", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.setColor(0xff17212f);
+            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x + 10.0f, bounds.y + 4.0f, std::max(0.0f, bounds.width - 20.0f), 22.0f);
         }
         break;
     }
     case model::WidgetType::Frame:
-        canvas.setColor(parseColorOrDefault(widget.getStringProperty("backgroundColor", "#d9dee8"), 0xffd9dee8));
+        canvas.setColor(parseColorOrDefault(getStringProperty(widget, "backgroundColor", "#e3e8f0"), 0xffe3e8f0));
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         drawBorder(canvas, bounds, 0xff97a3b7);
         if (drawText) {
-            canvas.setColor(0xff243041);
-            canvas.text(widget.getStringProperty("title", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.setColor(0xff182333);
+            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 16.0f), 20.0f);
         }
         break;
     case model::WidgetType::Label:
         if (drawText) {
-            canvas.setColor(0xff1f2530);
-            canvas.text(widget.getStringProperty("text", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.setColor(0xff152233);
+            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x, bounds.y + 2.0f, bounds.width, bounds.height);
         }
         break;
     case model::WidgetType::Button:
-        canvas.setColor(0xffebedf2);
+        canvas.setColor(0xffeef1f6);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xffccd2dc);
+        drawBorder(canvas, bounds, 0xffc2c9d5);
         if (drawText) {
-            canvas.setColor(0xff1f2530);
-            canvas.text(widget.getStringProperty("text", widgetLabel(widget)), font, visage::Font::kCenter,
+            canvas.setColor(0xff101b29);
+            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kCenter,
                 bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
     case model::WidgetType::TextBox:
         canvas.setColor(0xffffffff);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xffb9c2d0);
+        drawBorder(canvas, bounds, 0xffb6c0cf);
         if (drawText) {
-            canvas.setColor(0xff586275);
-            canvas.text(widget.getStringProperty("text", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.setColor(0xff2d3a4d);
+            canvas.text(getStringProperty(widget, "text", ""), font, visage::Font::kTopLeft,
                 bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 12.0f), bounds.height - 8.0f);
         }
         break;
@@ -321,35 +393,53 @@ void drawWidget(visage::Canvas& canvas,
         canvas.setColor(0xffffffff);
         canvas.fill(bounds.x, bounds.y + (bounds.height - boxSize) * 0.5f, boxSize, boxSize);
         drawBorder(canvas, { bounds.x, bounds.y + (bounds.height - boxSize) * 0.5f, boxSize, boxSize }, 0xff8390a4);
+        if (getBoolProperty(widget, "checked", false)) {
+            canvas.setColor(0xff2d7ff9);
+            canvas.fill(bounds.x + 4.0f, bounds.y + (bounds.height - 10.0f) * 0.5f, 10.0f, 10.0f);
+        }
         if (drawText) {
-            canvas.setColor(0xff1f2530);
-            canvas.text(widget.getStringProperty("text", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.setColor(0xff142131);
+            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x + boxSize + 8.0f, bounds.y + 4.0f,
                 std::max(0.0f, bounds.width - boxSize - 8.0f), bounds.height - 6.0f);
         }
         break;
     }
     case model::WidgetType::Slider: {
+        const float normalized = normalizedSliderValue(widget);
         const float trackY = bounds.y + bounds.height * 0.5f - 2.0f;
-        canvas.setColor(0xff98a3b3);
-        canvas.fill(bounds.x + 8.0f, trackY, std::max(0.0f, bounds.width - 16.0f), 4.0f);
+        const float trackLeft = bounds.x + 8.0f;
+        const float trackWidth = std::max(0.0f, bounds.width - 16.0f);
+        const float handleCenterX = trackLeft + trackWidth * normalized;
+        const float handleX = std::clamp(handleCenterX - 6.0f, trackLeft - 6.0f, trackLeft + trackWidth - 6.0f);
+        canvas.setColor(0xff8f9bae);
+        canvas.fill(trackLeft, trackY, trackWidth, 4.0f);
         canvas.setColor(0xff2d7ff9);
-        canvas.fill(bounds.x + bounds.width * 0.55f - 6.0f, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f);
+        canvas.fill(handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f);
+        drawBorder(canvas, { handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f }, 0xff11448f);
+        if (drawText) {
+            canvas.setColor(0xff1e2b3c);
+            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
+                bounds.x, bounds.y - 18.0f, bounds.width, 16.0f);
+        }
         break;
     }
     case model::WidgetType::Image:
-        canvas.setColor(0xffd3dae6);
+        canvas.setColor(0xffd8dfeb);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         drawBorder(canvas, bounds, 0xff98a3b3);
         if (drawText) {
-            canvas.setColor(0xff4e596c);
-            canvas.text("Image", font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+            canvas.setColor(0xff314055);
+            canvas.text(getStringProperty(widget, "source", "Image"), font, visage::Font::kCenter,
+                bounds.x + 6.0f, bounds.y, std::max(0.0f, bounds.width - 12.0f), bounds.height);
         }
         break;
     case model::WidgetType::Spacer:
-        drawBorder(canvas, bounds, 0xff98a3b3);
+        canvas.setColor(0xffeef2f7);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, 0xffb1bbc9);
         if (drawText) {
-            canvas.setColor(0xff4e596c);
+            canvas.setColor(0xff596679);
             canvas.text("Spacer", font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
@@ -364,7 +454,7 @@ void drawWidget(visage::Canvas& canvas,
 
     for (const auto& child : widget.children) {
         drawWidget(canvas, font, drawText, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
-            scale, selectedWidgetId, handleSize, gridSize);
+            scale, selectedWidgetId, handleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
     }
 }
 
@@ -571,7 +661,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas, const visage::Font& font, bool
 
     drawWidget(canvas, font, drawText, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
-        handleSize_, gridSize_);
+        handleSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
 
     if (drawText) {
         canvas.setColor(0xff243041);

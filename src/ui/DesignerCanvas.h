@@ -48,8 +48,11 @@ private:
     float y_{};
     float width_{};
     float height_{};
+    bool showGrid_ = true;
+    bool showMinorGrid_ = true;
     bool snapToGrid_ = true;
     int gridSize_ = 10;
+    int majorGridSize_ = 50;
     float handleSize_ = 8.0f;
     float minimumWidgetSize_ = 20.0f;
 };
