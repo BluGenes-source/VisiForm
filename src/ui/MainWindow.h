@@ -8,6 +8,9 @@
 #include "ui/PropertyInspector.h"
 #include "ui/WidgetPalette.h"
 
+#include <filesystem>
+#include <string>
+
 #include <visage/app.h>
 #include <visage/graphics.h>
 
@@ -22,6 +25,13 @@ public:
     void draw(visage::Canvas& canvas) override;
     void resized() override;
     void mouseDown(const visage::MouseEvent& e) override;
+    bool keyPress(const visage::KeyEvent& e) override;
+
+    bool newProject();
+    bool saveProject();
+    bool saveProjectAs(const std::filesystem::path& path);
+    bool loadProjectFromPath(const std::filesystem::path& path);
+    [[nodiscard]] const std::string& statusMessage() const;
 
 private:
     struct PanelBounds {
@@ -46,6 +56,14 @@ private:
         bool showProjectTree = false;
     };
 
+    enum class ToolbarAction {
+        None,
+        NewProject,
+        OpenSample,
+        SaveProject,
+        SaveProjectAsDebug
+    };
+
     void loadLabelFont();
     void updateLayout();
     [[nodiscard]] WindowLayout calculateLayout(float windowWidth, float windowHeight) const;
@@ -54,10 +72,17 @@ private:
     void drawStatusBar(visage::Canvas& canvas) const;
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;
+    void setOperationStatus(std::string message);
+    [[nodiscard]] ToolbarAction toolbarActionAt(float x, float y) const;
+    [[nodiscard]] std::filesystem::path projectRootPath() const;
+    [[nodiscard]] std::filesystem::path sampleProjectPath() const;
+    [[nodiscard]] std::filesystem::path defaultDebugSavePath() const;
     [[nodiscard]] bool canDrawText() const;
 
     WindowLayout layout_{};
     model::ProjectDocument document_ = model::ProjectDocument::createDefault();
+    std::filesystem::path currentProjectPath_{};
+    std::string statusMessage_{};
     WidgetPalette widgetPalette_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};

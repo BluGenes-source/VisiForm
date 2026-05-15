@@ -1,99 +1,99 @@
 {
-  "schemaVersion": 1,
-  "projectName": "BasicWindowProject",
   "mainFormClassName": "MainWindow",
-  "selectedWidgetId": "button_ok",
+  "projectName": "BasicWindowProject",
   "root": {
-    "id": "form_main",
-    "name": "MainWindow",
-    "type": "FormWindow",
     "bounds": {
-      "x": 0,
-      "y": 0,
-      "width": 900,
-      "height": 600
-    },
-    "properties": {
-      "title": "Basic Window",
-      "backgroundColor": "#202026"
+      "height": 600.0,
+      "width": 900.0,
+      "x": 0.0,
+      "y": 0.0
     },
     "children": [
       {
+        "bounds": {
+          "height": 24.0,
+          "width": 220.0,
+          "x": 32.0,
+          "y": 28.0
+        },
+        "children": [],
         "id": "label_title",
         "name": "titleLabel",
-        "type": "Label",
-        "bounds": {
-          "x": 32,
-          "y": 28,
-          "width": 220,
-          "height": 24
-        },
         "properties": {
           "text": "Welcome to VisiForm"
         },
-        "children": []
+        "type": "Label"
       },
       {
+        "bounds": {
+          "height": 36.0,
+          "width": 260.0,
+          "x": 32.0,
+          "y": 80.0
+        },
+        "children": [],
         "id": "textbox_name",
         "name": "nameTextBox",
-        "type": "TextBox",
-        "bounds": {
-          "x": 32,
-          "y": 80,
-          "width": 260,
-          "height": 36
-        },
         "properties": {
           "text": "Project Name"
         },
-        "children": []
+        "type": "TextBox"
       },
       {
+        "bounds": {
+          "height": 28.0,
+          "width": 240.0,
+          "x": 32.0,
+          "y": 140.0
+        },
+        "children": [],
         "id": "slider_amount",
         "name": "amountSlider",
-        "type": "Slider",
-        "bounds": {
-          "x": 32,
-          "y": 140,
-          "width": 240,
-          "height": 28
-        },
         "properties": {
           "value": 0.5
         },
-        "children": []
+        "type": "Slider"
       },
       {
+        "bounds": {
+          "height": 28.0,
+          "width": 220.0,
+          "x": 32.0,
+          "y": 190.0
+        },
+        "children": [],
         "id": "checkbox_enabled",
         "name": "enabledCheckBox",
-        "type": "CheckBox",
-        "bounds": {
-          "x": 32,
-          "y": 190,
-          "width": 220,
-          "height": 28
-        },
         "properties": {
-          "text": "Enable advanced options",
-          "checked": true
+          "checked": true,
+          "text": "Enable advanced options"
         },
-        "children": []
+        "type": "CheckBox"
       },
       {
+        "bounds": {
+          "height": 40.0,
+          "width": 160.0,
+          "x": 32.0,
+          "y": 250.0
+        },
+        "children": [],
         "id": "button_ok",
         "name": "okButton",
-        "type": "Button",
-        "bounds": {
-          "x": 32,
-          "y": 250,
-          "width": 160,
-          "height": 40
-        },
         "properties": {
           "text": "Create Project"
         },
-        "children": []
+        "type": "Button"
       }
-    ]
-  }
+    ],
+    "id": "form_main",
+    "name": "MainWindow",
+    "properties": {
+      "backgroundColor": "#202026",
+      "title": "Basic Window"
+    },
+    "type": "FormWindow"
+  },
+  "schemaVersion": 1,
+  "selectedWidgetId": "form_main"
 }

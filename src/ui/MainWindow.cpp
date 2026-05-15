@@ -2,8 +2,13 @@
 
 #include "ui/MainWindow.h"
 
+#include "serialization/JsonProjectReader.h"
+#include "serialization/JsonProjectWriter.h"
+#include "utils/FileUtils.h"
+
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -19,6 +24,13 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
+constexpr float kToolbarButtonWidth = 120.0f;
+constexpr float kToolbarButtonHeight = 26.0f;
+
+std::string normalizedPathText(const std::filesystem::path& path)
+{
+    return utils::FileUtils::normalizeSeparators(path.string());
+}
 
 } // namespace
 
@@ -27,6 +39,67 @@ MainWindow::MainWindow()
     setTitle(kWindowTitle);
     loadLabelFont();
     updateLayout();
+}
+
+bool MainWindow::newProject()
+{
+    document_ = model::ProjectDocument::createDefault();
+    currentProjectPath_.clear();
+    document_.clearDirty();
+    setOperationStatus("New project created");
+    redraw();
+    return true;
+}
+
+bool MainWindow::saveProject()
+{
+    const std::filesystem::path savePath = currentProjectPath_.empty() ? defaultDebugSavePath() : currentProjectPath_;
+    return saveProjectAs(savePath);
+}
+
+bool MainWindow::saveProjectAs(const std::filesystem::path& path)
+{
+    serialization::JsonProjectWriter writer;
+    std::string errorMessage;
+    if (!writer.writeToFile(document_, path, errorMessage)) {
+        setOperationStatus("Save failed: " + errorMessage);
+        redraw();
+        return false;
+    }
+
+    currentProjectPath_ = path;
+    document_.clearDirty();
+    setOperationStatus("Project saved: " + normalizedPathText(currentProjectPath_));
+    redraw();
+    return true;
+}
+
+bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
+{
+    serialization::JsonProjectReader reader;
+    std::string errorMessage;
+    auto loadedDocument = reader.readFromFile(path, errorMessage);
+    if (!loadedDocument.has_value()) {
+        setOperationStatus("Load failed: " + errorMessage);
+        redraw();
+        return false;
+    }
+
+    document_ = std::move(*loadedDocument);
+    if (!document_.hasSelection() || document_.selectedWidget() == nullptr) {
+        document_.selectWidget(document_.root.id);
+    }
+
+    currentProjectPath_ = path;
+    document_.clearDirty();
+    setOperationStatus("Project loaded: " + normalizedPathText(currentProjectPath_));
+    redraw();
+    return true;
+}
+
+const std::string& MainWindow::statusMessage() const
+{
+    return statusMessage_;
 }
 
 void MainWindow::showWindow()
@@ -67,6 +140,23 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
+    switch (toolbarActionAt(e.position.x, e.position.y)) {
+    case ToolbarAction::NewProject:
+        newProject();
+        return;
+    case ToolbarAction::OpenSample:
+        loadProjectFromPath(sampleProjectPath());
+        return;
+    case ToolbarAction::SaveProject:
+        saveProject();
+        return;
+    case ToolbarAction::SaveProjectAsDebug:
+        saveProjectAs(defaultDebugSavePath());
+        return;
+    case ToolbarAction::None:
+        break;
+    }
+
     if (layout_.showProjectTree) {
         if (const auto widgetId = projectTree_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
             selectWidget(*widgetId);
@@ -77,6 +167,30 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
         selectWidget(*widgetId);
     }
+}
+
+bool MainWindow::keyPress(const visage::KeyEvent& e)
+{
+    if (!e.isCtrlDown()) {
+        return false;
+    }
+
+    using KeyCode = visage::KeyCode;
+    if (e.isShiftDown() && e.keyCode() == KeyCode::S) {
+        return saveProjectAs(defaultDebugSavePath());
+    }
+
+    if (e.keyCode() == KeyCode::N) {
+        return newProject();
+    }
+    if (e.keyCode() == KeyCode::O) {
+        return loadProjectFromPath(sampleProjectPath());
+    }
+    if (e.keyCode() == KeyCode::S) {
+        return saveProject();
+    }
+
+    return false;
 }
 
 void MainWindow::loadLabelFont()
@@ -182,15 +296,30 @@ void MainWindow::drawToolbar(visage::Canvas& canvas) const
         return;
     }
 
-    canvas.setColor(0xfff3f5f8);
-    canvas.text("File   Edit   View   Generate   Help", labelFont_, visage::Font::kTopLeft,
-        layout_.toolbar.x + kPadding, layout_.toolbar.y + 6.0f,
-        layout_.toolbar.width * 0.55f, layout_.toolbar.height - 10.0f);
+    const auto drawToolbarButton = [&](float x, const char* label, bool accent) {
+        const float y = layout_.toolbar.y + 8.0f;
+        canvas.setColor(accent ? 0xff355382 : 0xff39414e);
+        canvas.fill(x, y, kToolbarButtonWidth, kToolbarButtonHeight);
+        canvas.setColor(0xff14161b);
+        canvas.fill(x, y + kToolbarButtonHeight - 1.0f, kToolbarButtonWidth, 1.0f);
+        canvas.setColor(0xfff3f5f8);
+        canvas.text(label, labelFont_, visage::Font::kCenter, x, y, kToolbarButtonWidth, kToolbarButtonHeight);
+    };
 
-    canvas.setColor(0xffcfd6e0);
-    canvas.text("Toolbar / Menu Placeholder", labelFont_, visage::Font::kTopRight,
-        layout_.toolbar.x + layout_.toolbar.width * 0.4f, layout_.toolbar.y + 6.0f,
-        layout_.toolbar.width * 0.58f - kPadding, layout_.toolbar.height - 10.0f);
+    float buttonX = layout_.toolbar.x + kPadding;
+    drawToolbarButton(buttonX, "New", false);
+    buttonX += kToolbarButtonWidth + 8.0f;
+    drawToolbarButton(buttonX, "Open Sample", false);
+    buttonX += kToolbarButtonWidth + 8.0f;
+    drawToolbarButton(buttonX, "Save", false);
+    buttonX += kToolbarButtonWidth + 8.0f;
+    drawToolbarButton(buttonX, "Save As Debug", true);
+
+    canvas.setColor(0xfff3f5f8);
+    canvas.text("Ctrl+N  New    Ctrl+O  Open Sample    Ctrl+S  Save    Ctrl+Shift+S  Save As Debug",
+        labelFont_, visage::Font::kTopRight,
+        layout_.toolbar.x + layout_.toolbar.width * 0.45f, layout_.toolbar.y + 6.0f,
+        layout_.toolbar.width * 0.53f - kPadding, layout_.toolbar.height - 10.0f);
 }
 
 void MainWindow::drawStatusBar(visage::Canvas& canvas) const
@@ -217,12 +346,17 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
 
 void MainWindow::selectWidget(const std::string& widgetId)
 {
+    statusMessage_.clear();
     document_.selectWidget(widgetId);
     redraw();
 }
 
 std::string MainWindow::statusText() const
 {
+    if (!statusMessage_.empty()) {
+        return statusMessage_;
+    }
+
     const auto* selectedWidget = document_.selectedWidget();
     if (selectedWidget == nullptr) {
         return "Status: Ready";
@@ -230,6 +364,76 @@ std::string MainWindow::statusText() const
 
     const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
     return "Selected: " + displayName + " (" + selectedWidget->id + ")";
+}
+
+void MainWindow::setOperationStatus(std::string message)
+{
+    statusMessage_ = std::move(message);
+}
+
+MainWindow::ToolbarAction MainWindow::toolbarActionAt(float x, float y) const
+{
+    if (!layout_.toolbar.isVisible()) {
+        return ToolbarAction::None;
+    }
+
+    const float top = layout_.toolbar.y + 8.0f;
+    const float bottom = top + kToolbarButtonHeight;
+    if (y < top || y > bottom) {
+        return ToolbarAction::None;
+    }
+
+    float left = layout_.toolbar.x + kPadding;
+    const auto hitButton = [&](float buttonLeft) {
+        return x >= buttonLeft && x <= buttonLeft + kToolbarButtonWidth;
+    };
+
+    if (hitButton(left)) {
+        return ToolbarAction::NewProject;
+    }
+    left += kToolbarButtonWidth + 8.0f;
+    if (hitButton(left)) {
+        return ToolbarAction::OpenSample;
+    }
+    left += kToolbarButtonWidth + 8.0f;
+    if (hitButton(left)) {
+        return ToolbarAction::SaveProject;
+    }
+    left += kToolbarButtonWidth + 8.0f;
+    if (hitButton(left)) {
+        return ToolbarAction::SaveProjectAsDebug;
+    }
+
+    return ToolbarAction::None;
+}
+
+std::filesystem::path MainWindow::projectRootPath() const
+{
+    std::filesystem::path current = std::filesystem::current_path();
+    while (!current.empty()) {
+        if (std::filesystem::exists(current / "CMakeLists.txt")) {
+            return current;
+        }
+
+        const auto parent = current.parent_path();
+        if (parent == current) {
+            break;
+        }
+
+        current = parent;
+    }
+
+    return std::filesystem::current_path();
+}
+
+std::filesystem::path MainWindow::sampleProjectPath() const
+{
+    return projectRootPath() / "templates" / "examples" / "BasicWindow.vfb.json";
+}
+
+std::filesystem::path MainWindow::defaultDebugSavePath() const
+{
+    return projectRootPath() / "Generated" / "debug_saved_project.vfb.json";
 }
 
 bool MainWindow::canDrawText() const
