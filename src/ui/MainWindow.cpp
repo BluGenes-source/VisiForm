@@ -53,12 +53,30 @@ void MainWindow::draw(visage::Canvas& canvas)
 
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
-    designerCanvas_.draw(canvas, labelFont_, canDrawText());
-    propertyInspector_.draw(canvas, labelFont_, canDrawText());
+    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_);
+    propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_.selectedWidget());
     if (layout_.showProjectTree) {
-        projectTree_.draw(canvas, labelFont_, canDrawText());
+        projectTree_.draw(canvas, labelFont_, canDrawText(), document_);
     }
     drawStatusBar(canvas);
+}
+
+void MainWindow::mouseDown(const visage::MouseEvent& e)
+{
+    if (!e.isLeftButton()) {
+        return;
+    }
+
+    if (layout_.showProjectTree) {
+        if (const auto widgetId = projectTree_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
+            selectWidget(*widgetId);
+            return;
+        }
+    }
+
+    if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
+        selectWidget(*widgetId);
+    }
 }
 
 void MainWindow::loadLabelFont()
@@ -192,9 +210,26 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
     }
 
     canvas.setColor(0xfff2f4f8);
-    canvas.text("Status: Ready", labelFont_, visage::Font::kTopLeft,
+    canvas.text(statusText(), labelFont_, visage::Font::kTopLeft,
         layout_.statusBar.x + kPadding, layout_.statusBar.y + 4.0f,
         layout_.statusBar.width - kPadding * 2.0f, layout_.statusBar.height - 6.0f);
+}
+
+void MainWindow::selectWidget(const std::string& widgetId)
+{
+    document_.selectWidget(widgetId);
+    redraw();
+}
+
+std::string MainWindow::statusText() const
+{
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr) {
+        return "Status: Ready";
+    }
+
+    const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
+    return "Selected: " + displayName + " (" + selectedWidget->id + ")";
 }
 
 bool MainWindow::canDrawText() const

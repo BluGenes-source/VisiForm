@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "model/ProjectDocument.h"
 #include "ui/DesignerCanvas.h"
 #include "ui/ProjectTree.h"
 #include "ui/PropertyInspector.h"
@@ -20,6 +21,7 @@ public:
     void showWindow();
     void draw(visage::Canvas& canvas) override;
     void resized() override;
+    void mouseDown(const visage::MouseEvent& e) override;
 
 private:
     struct PanelBounds {
@@ -50,9 +52,12 @@ private:
     void applyLayout(const WindowLayout& layout);
     void drawToolbar(visage::Canvas& canvas) const;
     void drawStatusBar(visage::Canvas& canvas) const;
+    void selectWidget(const std::string& widgetId);
+    [[nodiscard]] std::string statusText() const;
     [[nodiscard]] bool canDrawText() const;
 
     WindowLayout layout_{};
+    model::ProjectDocument document_ = model::ProjectDocument::createDefault();
     WidgetPalette widgetPalette_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};

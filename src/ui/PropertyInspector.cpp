@@ -2,7 +2,11 @@
 
 #include "ui/PropertyInspector.h"
 
-#include <array>
+#include <iomanip>
+#include <set>
+#include <sstream>
+#include <string>
+#include <vector>
 
 namespace visiform::ui {
 namespace {
@@ -10,6 +14,20 @@ namespace {
 constexpr float kHeaderHeight = 34.0f;
 constexpr float kRowHeight = 30.0f;
 constexpr float kPadding = 12.0f;
+
+std::string formatFloat(float value)
+{
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(2) << value;
+    std::string text = stream.str();
+    while (!text.empty() && text.back() == '0') {
+        text.pop_back();
+    }
+    if (!text.empty() && text.back() == '.') {
+        text.pop_back();
+    }
+    return text.empty() ? "0" : text;
+}
 
 } // namespace
 
@@ -21,7 +39,7 @@ void PropertyInspector::setBounds(float x, float y, float width, float height)
     height_ = height;
 }
 
-void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText) const
+void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::WidgetNode* selectedWidget) const
 {
     if (width_ <= 0.0f || height_ <= 0.0f) {
         return;
@@ -45,19 +63,42 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
-    static constexpr std::array<const char*, 8> kRows = {
-        "id: helloButton",
-        "name: helloButton",
-        "type: Button",
-        "x: 40",
-        "y: 40",
-        "width: 160",
-        "height: 40",
-        "text: Click Me"
-    };
+    std::vector<std::string> rows;
+    if (selectedWidget == nullptr) {
+        rows.emplace_back("No selection");
+    }
+    else {
+        rows.push_back("id: " + selectedWidget->id);
+        rows.push_back("name: " + selectedWidget->name);
+        rows.push_back("type: " + selectedWidget->typeName());
+        rows.push_back("x: " + formatFloat(selectedWidget->bounds.x));
+        rows.push_back("y: " + formatFloat(selectedWidget->bounds.y));
+        rows.push_back("width: " + formatFloat(selectedWidget->bounds.width));
+        rows.push_back("height: " + formatFloat(selectedWidget->bounds.height));
+
+        std::set<std::string> drawnProperties;
+        auto addProperty = [&](const std::string& key) {
+            if (const auto* property = selectedWidget->getProperty(key)) {
+                rows.push_back(key + ": " + property->toDisplayString());
+                drawnProperties.insert(key);
+            }
+        };
+
+        addProperty("text");
+        addProperty("title");
+        addProperty("backgroundColor");
+
+        for (const auto& [key, value] : selectedWidget->properties) {
+            if (drawnProperties.contains(key) || value.isEmpty()) {
+                continue;
+            }
+
+            rows.push_back(key + ": " + value.toDisplayString());
+        }
+    }
 
     float rowTop = y_ + kHeaderHeight + 8.0f;
-    for (std::size_t index = 0; index < kRows.size(); ++index) {
+    for (std::size_t index = 0; index < rows.size(); ++index) {
         if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
             break;
         }
@@ -67,7 +108,7 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
 
         if (drawText) {
             canvas.setColor(0xffdde2ea);
-            canvas.text(kRows[index], font, visage::Font::kTopLeft,
+            canvas.text(rows[index], font, visage::Font::kTopLeft,
                 x_ + 18.0f, rowTop + 5.0f, width_ - 30.0f, kRowHeight - 8.0f);
         }
 
