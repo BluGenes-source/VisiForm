@@ -12,6 +12,22 @@ constexpr float kHeaderHeight = 34.0f;
 constexpr float kRowHeight = 32.0f;
 constexpr float kPadding = 12.0f;
 
+struct PaletteEntry {
+    const char* label;
+    model::WidgetType type;
+};
+
+constexpr std::array<PaletteEntry, 8> kPaletteEntries = {{
+    { "Label", model::WidgetType::Label },
+    { "Button", model::WidgetType::Button },
+    { "TextBox", model::WidgetType::TextBox },
+    { "CheckBox", model::WidgetType::CheckBox },
+    { "Slider", model::WidgetType::Slider },
+    { "Frame", model::WidgetType::Frame },
+    { "Image", model::WidgetType::Image },
+    { "Spacer", model::WidgetType::Spacer }
+}};
+
 } // namespace
 
 void WidgetPalette::setBounds(float x, float y, float width, float height)
@@ -20,6 +36,33 @@ void WidgetPalette::setBounds(float x, float y, float width, float height)
     y_ = y;
     width_ = width;
     height_ = height;
+}
+
+bool WidgetPalette::contains(float x, float y) const
+{
+    return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
+}
+
+std::optional<model::WidgetType> WidgetPalette::hitTestWidgetType(float x, float y) const
+{
+    if (!contains(x, y)) {
+        return std::nullopt;
+    }
+
+    float rowTop = y_ + kHeaderHeight + 8.0f;
+    for (const auto& entry : kPaletteEntries) {
+        if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
+            break;
+        }
+
+        if (y >= rowTop && y <= rowTop + kRowHeight && x >= x_ + 8.0f && x <= x_ + width_ - 8.0f) {
+            return entry.type;
+        }
+
+        rowTop += kRowHeight;
+    }
+
+    return std::nullopt;
 }
 
 void WidgetPalette::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText) const
@@ -46,19 +89,8 @@ void WidgetPalette::draw(visage::Canvas& canvas, const visage::Font& font, bool 
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
-    static constexpr std::array<const char*, 8> kWidgetNames = {
-        "Label",
-        "Button",
-        "TextBox",
-        "CheckBox",
-        "Slider",
-        "Frame",
-        "Image",
-        "Spacer"
-    };
-
     float rowTop = y_ + kHeaderHeight + 8.0f;
-    for (std::size_t index = 0; index < kWidgetNames.size(); ++index) {
+    for (std::size_t index = 0; index < kPaletteEntries.size(); ++index) {
         if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
             break;
         }
@@ -71,7 +103,7 @@ void WidgetPalette::draw(visage::Canvas& canvas, const visage::Font& font, bool 
 
         if (drawText) {
             canvas.setColor(0xffdde2ea);
-            canvas.text(kWidgetNames[index], font, visage::Font::kTopLeft,
+            canvas.text(kPaletteEntries[index].label, font, visage::Font::kTopLeft,
                 x_ + 20.0f, rowTop + 6.0f, width_ - 32.0f, kRowHeight - 8.0f);
         }
 

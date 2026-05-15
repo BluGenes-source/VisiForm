@@ -26,10 +26,42 @@ constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
 constexpr float kToolbarButtonWidth = 120.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
+constexpr float kNewWidgetStartX = 40.0f;
+constexpr float kNewWidgetStartY = 40.0f;
+constexpr float kNewWidgetSpacing = 12.0f;
 
 std::string normalizedPathText(const std::filesystem::path& path)
 {
     return utils::FileUtils::normalizeSeparators(path.string());
+}
+
+std::string defaultWidgetName(model::WidgetType type, const std::string& id)
+{
+    const auto underscore = id.find_last_of('_');
+    const std::string suffix = underscore == std::string::npos ? std::string{} : id.substr(underscore + 1);
+
+    switch (type) {
+    case model::WidgetType::Label:
+        return "label" + suffix;
+    case model::WidgetType::Button:
+        return "button" + suffix;
+    case model::WidgetType::TextBox:
+        return "textBox" + suffix;
+    case model::WidgetType::CheckBox:
+        return "checkBox" + suffix;
+    case model::WidgetType::Slider:
+        return "slider" + suffix;
+    case model::WidgetType::Frame:
+        return "frame" + suffix;
+    case model::WidgetType::Image:
+        return "image" + suffix;
+    case model::WidgetType::Spacer:
+        return "spacer" + suffix;
+    case model::WidgetType::FormWindow:
+        return "form" + suffix;
+    }
+
+    return id;
 }
 
 } // namespace
@@ -53,7 +85,9 @@ bool MainWindow::newProject()
 
 bool MainWindow::saveProject()
 {
-    const std::filesystem::path savePath = currentProjectPath_.empty() ? defaultDebugSavePath() : currentProjectPath_;
+    const std::filesystem::path savePath = currentProjectPath_.empty() || isTemplateExamplePath(currentProjectPath_)
+        ? defaultDebugSavePath()
+        : currentProjectPath_;
     return saveProjectAs(savePath);
 }
 
@@ -157,6 +191,11 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         break;
     }
 
+    if (const auto widgetType = widgetPalette_.hitTestWidgetType(e.position.x, e.position.y)) {
+        addWidgetFromPalette(*widgetType);
+        return;
+    }
+
     if (layout_.showProjectTree) {
         if (const auto widgetId = projectTree_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
             selectWidget(*widgetId);
@@ -191,6 +230,120 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
 
     return false;
+}
+
+void MainWindow::addWidgetFromPalette(model::WidgetType type)
+{
+    if (document_.root.type != model::WidgetType::FormWindow) {
+        setOperationStatus("Add widget failed: root form is invalid");
+        redraw();
+        return;
+    }
+
+    model::WidgetNode widget = createDefaultWidget(type);
+    const std::string addedId = widget.id;
+    document_.root.children.push_back(std::move(widget));
+    document_.selectWidget(addedId);
+    document_.markDirty();
+    setOperationStatus("Added widget: " + addedId);
+    redraw();
+}
+
+model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type)
+{
+    const std::string id = idGenerator_.next(type, document_);
+    model::WidgetNode widget{ id, defaultWidgetName(type, id), type, nextDefaultWidgetBounds(type) };
+
+    switch (type) {
+    case model::WidgetType::Label:
+        widget.setProperty("text", "Label");
+        break;
+    case model::WidgetType::Button:
+        widget.setProperty("text", "Button");
+        break;
+    case model::WidgetType::TextBox:
+        widget.setProperty("text", "");
+        break;
+    case model::WidgetType::CheckBox:
+        widget.setProperty("text", "CheckBox");
+        widget.setProperty("checked", false);
+        break;
+    case model::WidgetType::Slider:
+        widget.setProperty("min", 0);
+        widget.setProperty("max", 100);
+        widget.setProperty("value", 50);
+        break;
+    case model::WidgetType::Frame:
+        widget.setProperty("title", "Frame");
+        break;
+    case model::WidgetType::Image:
+        widget.setProperty("source", "");
+        break;
+    case model::WidgetType::Spacer:
+        break;
+    case model::WidgetType::FormWindow:
+        widget.setProperty("title", "FormWindow");
+        break;
+    }
+
+    return widget;
+}
+
+model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type) const
+{
+    float width = 160.0f;
+    float height = 40.0f;
+
+    switch (type) {
+    case model::WidgetType::Label:
+        width = 160.0f;
+        height = 28.0f;
+        break;
+    case model::WidgetType::Button:
+        width = 160.0f;
+        height = 40.0f;
+        break;
+    case model::WidgetType::TextBox:
+        width = 180.0f;
+        height = 32.0f;
+        break;
+    case model::WidgetType::CheckBox:
+        width = 180.0f;
+        height = 28.0f;
+        break;
+    case model::WidgetType::Slider:
+        width = 180.0f;
+        height = 32.0f;
+        break;
+    case model::WidgetType::Frame:
+        width = 220.0f;
+        height = 140.0f;
+        break;
+    case model::WidgetType::Image:
+        width = 160.0f;
+        height = 100.0f;
+        break;
+    case model::WidgetType::Spacer:
+        width = 160.0f;
+        height = 40.0f;
+        break;
+    case model::WidgetType::FormWindow:
+        width = 220.0f;
+        height = 160.0f;
+        break;
+    }
+
+    float nextY = kNewWidgetStartY;
+    for (const auto& child : document_.root.children) {
+        nextY = std::max(nextY, child.bounds.y + child.bounds.height + kNewWidgetSpacing);
+    }
+
+    const float maxY = std::max(kNewWidgetStartY, document_.root.bounds.height - height - kNewWidgetStartY);
+    if (nextY > maxY) {
+        nextY = kNewWidgetStartY;
+    }
+
+    return { kNewWidgetStartX, nextY, width, height };
 }
 
 void MainWindow::loadLabelFont()
@@ -405,6 +558,24 @@ MainWindow::ToolbarAction MainWindow::toolbarActionAt(float x, float y) const
     }
 
     return ToolbarAction::None;
+}
+
+bool MainWindow::isTemplateExamplePath(const std::filesystem::path& path) const
+{
+    if (path.empty()) {
+        return false;
+    }
+
+    const std::filesystem::path root = projectRootPath();
+    const std::filesystem::path examplesRoot = (root / "templates" / "examples").lexically_normal();
+    const std::filesystem::path absolutePath = (path.is_absolute() ? path : root / path).lexically_normal();
+    const std::filesystem::path relativePath = absolutePath.lexically_relative(examplesRoot);
+    if (relativePath.empty()) {
+        return false;
+    }
+
+    const std::string relativeText = relativePath.generic_string();
+    return relativeText == "." || !relativeText.starts_with("..");
 }
 
 std::filesystem::path MainWindow::projectRootPath() const

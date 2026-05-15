@@ -2,13 +2,19 @@
 
 #pragma once
 
+#include "model/WidgetNode.h"
+
 #include <visage/graphics.h>
+
+#include <optional>
 
 namespace visiform::ui {
 
 class WidgetPalette {
 public:
     void setBounds(float x, float y, float width, float height);
+    [[nodiscard]] bool contains(float x, float y) const;
+    [[nodiscard]] std::optional<model::WidgetType> hitTestWidgetType(float x, float y) const;
     void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText) const;
 
 private:
