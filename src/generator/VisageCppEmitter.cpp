@@ -75,6 +75,12 @@ std::string emitStringLiteral(const std::string& value)
     return std::string{"\""} + escapeCppStringLiteral(value) + "\"";
 }
 
+std::string displayTextOrFallback(const visiform::model::WidgetNode& widget, const std::string& key, const std::string& fallback)
+{
+    const std::string value = widget.getStringProperty(key, {});
+    return value.empty() ? fallback : value;
+}
+
 std::string emitColorExpression(const std::string& value, const std::string& defaultColorLiteral)
 {
     if (value.size() == 7 && value.front() == '#') {
@@ -142,9 +148,9 @@ void emitWidgetDraw(std::ostringstream& stream,
         break;
     case visiform::model::WidgetType::Label:
         stream << indent << "if (drawText) {\n";
-        stream << indent << "    canvas.setColor(0xff1F2530);\n";
-        stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("text", widgetLabel(widget)))
-               << ", labelFont_, visage::Font::kTopLeft, " << xExpr << ", " << yExpr << " + 2.0f, " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "    canvas.setColor(0xffEEF3FA);\n";
+        stream << indent << "    canvas.text(" << emitStringLiteral(displayTextOrFallback(widget, "text", "Label"))
+               << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 4.0f, " << yExpr << " + 3.0f, " << widthExpr << " - 4.0f, " << heightExpr << " - 4.0f);\n";
         stream << indent << "}\n";
         break;
     case visiform::model::WidgetType::Button:
@@ -177,9 +183,9 @@ void emitWidgetDraw(std::ostringstream& stream,
             stream << indent << "canvas.fill(" << xExpr << " + 4.0f, " << yExpr << " + (" << heightExpr << " - 10.0f) * 0.5f, 10.0f, 10.0f);\n";
         }
         stream << indent << "if (drawText) {\n";
-        stream << indent << "    canvas.setColor(0xff1F2530);\n";
-        stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("text", widgetLabel(widget)))
-               << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 26.0f, " << yExpr << " + 4.0f, " << widthExpr << " - 26.0f, " << heightExpr << " - 6.0f);\n";
+        stream << indent << "    canvas.setColor(0xffEEF3FA);\n";
+        stream << indent << "    canvas.text(" << emitStringLiteral(displayTextOrFallback(widget, "text", "CheckBox"))
+               << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 26.0f, " << yExpr << " + 4.0f, " << widthExpr << " - 30.0f, " << heightExpr << " - 6.0f);\n";
         stream << indent << "}\n";
         break;
     case visiform::model::WidgetType::Slider: {

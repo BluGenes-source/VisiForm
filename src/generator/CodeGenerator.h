@@ -1,7 +1,5 @@
 #pragma once
 
-#pragma once
-
 #include "generator/CMakeEmitter.h"
 #include "generator/VisageCppEmitter.h"
 #include "model/ProjectDocument.h"

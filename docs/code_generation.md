@@ -15,6 +15,13 @@ The generator overwrites the files it owns inside that folder.
 The export currently writes:
 
 - `Generated/ExportedVisageProject/CMakeLists.txt`
+- `Generated/ExportedVisageProject/CMakePresets.json`
+- `Generated/ExportedVisageProject/README.md`
+- `Generated/ExportedVisageProject/.gitignore`
+- `Generated/ExportedVisageProject/scripts/configure_static_debug.cmd`
+- `Generated/ExportedVisageProject/scripts/build_static_debug.cmd`
+- `Generated/ExportedVisageProject/scripts/configure_static_release.cmd`
+- `Generated/ExportedVisageProject/scripts/build_static_release.cmd`
 - `Generated/ExportedVisageProject/src/main.cpp`
 - `Generated/ExportedVisageProject/src/MainWindow.h`
 - `Generated/ExportedVisageProject/src/MainWindow.cpp`
@@ -28,6 +35,25 @@ The generated project includes:
 - `FetchContent` for `visage`
 - the same core Visage options currently used by `VisiForm`
 - static MSVC runtime settings for Debug and Release
+- generated `CMakePresets.json` presets for static Debug and Release builds
+- helper `.cmd` scripts that call those presets
+
+## Generated presets
+
+The exported project currently includes these configure presets:
+
+- `vs2022-x64-static-debug`
+- `vs2022-x64-static-release`
+
+And these build presets:
+
+- `build-static-debug`
+- `build-static-release`
+
+The generated presets use `Ninja` and keep the static MSVC runtime strategy:
+
+- `MultiThreadedDebug` for Debug
+- `MultiThreaded` for Release
 
 ## Widget mappings
 
@@ -49,6 +75,7 @@ Rendering is currently a static preview of the form and widget tree.
 
 The generator may overwrite files inside `Generated/ExportedVisageProject`.
 It does not intentionally overwrite files outside that export folder.
+It only writes known generated files inside that folder and refuses to write paths outside the requested export directory.
 
 ## Current limitations
 
@@ -72,9 +99,28 @@ Example workflow after export:
 2. Configure with CMake
 3. Build with your preferred generator and toolchain
 
-Example:
+Example using presets:
 
-- `cmake -S . -B build -G Ninja`
-- `cmake --build build`
+- `cmake --preset vs2022-x64-static-debug`
+- `cmake --build --preset build-static-debug`
+- `cmake --preset vs2022-x64-static-release`
+- `cmake --build --preset build-static-release`
 
-If your environment requires vcpkg or other toolchain settings later, the generated `CMakeLists.txt` includes a `TODO` note for future improvements.
+You can also use the generated helper scripts:
+
+- `scripts\configure_static_debug.cmd`
+- `scripts\build_static_debug.cmd`
+- `scripts\configure_static_release.cmd`
+- `scripts\build_static_release.cmd`
+
+Visual Studio workflow:
+
+- `File > Open > Folder`
+- choose `Generated/ExportedVisageProject`
+
+## Future improvements
+
+- Pin the exported Visage dependency to a known-good commit
+- Generate safer user-edit regions inside generated files
+- Generate event handler stubs and wiring
+- Add richer export packaging as generated features expand

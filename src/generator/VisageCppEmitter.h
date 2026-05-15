@@ -1,7 +1,5 @@
 #pragma once
 
-#pragma once
-
 #include "model/ProjectDocument.h"
 
 #include <string>

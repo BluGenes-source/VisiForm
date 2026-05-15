@@ -106,6 +106,12 @@ std::string getStringProperty(const model::WidgetNode& widget, const std::string
     return widget.getStringProperty(key, defaultValue);
 }
 
+std::string getDisplayTextOrFallback(const model::WidgetNode& widget, const std::string& key, const std::string& fallback)
+{
+    const std::string value = getStringProperty(widget, key, {});
+    return value.empty() ? fallback : value;
+}
+
 bool getBoolProperty(const model::WidgetNode& widget, const std::string& key, bool defaultValue)
 {
     return widget.getBoolProperty(key, defaultValue);
@@ -363,9 +369,9 @@ void drawWidget(visage::Canvas& canvas,
         break;
     case model::WidgetType::Label:
         if (drawText) {
-            canvas.setColor(0xff152233);
-            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
-                bounds.x, bounds.y + 2.0f, bounds.width, bounds.height);
+            canvas.setColor(0xffeef3fa);
+            canvas.text(getDisplayTextOrFallback(widget, "text", "Label"), font, visage::Font::kTopLeft,
+                bounds.x + 4.0f, bounds.y + 3.0f, std::max(0.0f, bounds.width - 4.0f), bounds.height - 4.0f);
         }
         break;
     case model::WidgetType::Button:
@@ -398,10 +404,10 @@ void drawWidget(visage::Canvas& canvas,
             canvas.fill(bounds.x + 4.0f, bounds.y + (bounds.height - 10.0f) * 0.5f, 10.0f, 10.0f);
         }
         if (drawText) {
-            canvas.setColor(0xff142131);
-            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.setColor(0xffeef3fa);
+            canvas.text(getDisplayTextOrFallback(widget, "text", "CheckBox"), font, visage::Font::kTopLeft,
                 bounds.x + boxSize + 8.0f, bounds.y + 4.0f,
-                std::max(0.0f, bounds.width - boxSize - 8.0f), bounds.height - 6.0f);
+                std::max(0.0f, bounds.width - boxSize - 12.0f), bounds.height - 6.0f);
         }
         break;
     }

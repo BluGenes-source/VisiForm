@@ -113,7 +113,7 @@ bool MainWindow::exportGeneratedCode()
         return false;
     }
 
-    setOperationStatus("Code exported: Generated/ExportedVisageProject");
+    setOperationStatus("Code exported: Generated/ExportedVisageProject (with CMake presets)");
     redraw();
     return true;
 }
