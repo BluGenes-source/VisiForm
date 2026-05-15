@@ -2,6 +2,7 @@
 
 #include "ui/MainWindow.h"
 
+#include "commands/Command.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
 #include "utils/FileUtils.h"
@@ -11,6 +12,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 
 namespace visiform::ui {
@@ -25,8 +27,9 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kToolbarButtonWidth = 120.0f;
+constexpr float kToolbarButtonWidth = 132.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
+constexpr float kToolbarButtonSpacing = 8.0f;
 constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
@@ -89,8 +92,10 @@ MainWindow::MainWindow()
 
 bool MainWindow::newProject()
 {
+    cancelInspectorEdit();
     document_ = model::ProjectDocument::createDefault();
     currentProjectPath_.clear();
+    undoRedo_.clear();
     document_.clearDirty();
     setOperationStatus("New project created");
     redraw();
@@ -124,6 +129,7 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 
 bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 {
+    cancelInspectorEdit();
     serialization::JsonProjectReader reader;
     std::string errorMessage;
     auto loadedDocument = reader.readFromFile(path, errorMessage);
@@ -139,6 +145,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     }
 
     currentProjectPath_ = path;
+    undoRedo_.clear();
     document_.clearDirty();
     setOperationStatus("Project loaded: " + normalizedPathText(currentProjectPath_));
     redraw();
@@ -189,6 +196,8 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
+    requestKeyboardFocus();
+
     switch (toolbarActionAt(e.position.x, e.position.y)) {
     case ToolbarAction::NewProject:
         newProject();
@@ -201,6 +210,18 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::SaveProjectAsDebug:
         saveProjectAs(defaultDebugSavePath());
+        return;
+    case ToolbarAction::DuplicateWidget:
+        duplicateSelectedWidget();
+        return;
+    case ToolbarAction::DeleteWidget:
+        deleteSelectedWidget();
+        return;
+    case ToolbarAction::UndoAction:
+        undo();
+        return;
+    case ToolbarAction::RedoAction:
+        redo();
         return;
     case ToolbarAction::None:
         break;
@@ -299,8 +320,19 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         return;
     }
 
-    const auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
+    auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
     if (canvasInteraction_.changed && widget != nullptr) {
+        const model::Rect finalBounds = widget->bounds;
+        widget->bounds = canvasInteraction_.originalBounds;
+        if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
+            undoRedo_.executeCommand(std::make_unique<commands::MoveWidgetCommand>(
+                document_, widget->id, canvasInteraction_.originalBounds, finalBounds));
+        }
+        else {
+            undoRedo_.executeCommand(std::make_unique<commands::ResizeWidgetCommand>(
+                document_, widget->id, canvasInteraction_.originalBounds, finalBounds));
+        }
+
         document_.markDirty();
         const std::string displayName = widget->name.empty() ? widget->id : widget->name;
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
@@ -318,6 +350,16 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 bool MainWindow::keyPress(const visage::KeyEvent& e)
 {
     using KeyCode = visage::KeyCode;
+    if (propertyInspector_.isEditing()) {
+        return false;
+    }
+
+    if (e.keyCode() == KeyCode::Delete) {
+        setOperationStatus("Delete shortcut received");
+        deleteSelectedWidget();
+        return true;
+    }
+
     if (!e.isCtrlDown()) {
         return false;
     }
@@ -334,6 +376,24 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
     if (e.keyCode() == KeyCode::S) {
         return saveProject();
+    }
+    if (e.keyCode() == KeyCode::D) {
+        setOperationStatus("Duplicate shortcut received");
+        duplicateSelectedWidget();
+        return true;
+    }
+    if (e.keyCode() == KeyCode::Z) {
+        if (e.isShiftDown()) {
+            redo();
+        }
+        else {
+            undo();
+        }
+        return true;
+    }
+    if (e.keyCode() == KeyCode::Y) {
+        redo();
+        return true;
     }
 
     return false;
@@ -359,11 +419,112 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
 
     model::WidgetNode widget = createDefaultWidget(type);
     const std::string addedId = widget.id;
-    document_.root.children.push_back(std::move(widget));
-    document_.selectWidget(addedId);
+    undoRedo_.executeCommand(std::make_unique<commands::AddWidgetCommand>(document_, document_.root.id, std::move(widget), addedId));
     document_.markDirty();
     setOperationStatus("Added widget: " + addedId);
     redraw();
+}
+
+void MainWindow::deleteSelectedWidget()
+{
+    cancelInspectorEdit();
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(selectedWidget->id)) {
+        setOperationStatus("Cannot delete root form");
+        redraw();
+        return;
+    }
+
+    const std::string widgetId = selectedWidget->id;
+    const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
+    if (!document_.removeWidgetById(widgetId)) {
+        setOperationStatus("Delete failed: " + widgetId);
+        redraw();
+        return;
+    }
+
+    // TODO: Reconnect delete to `DeleteWidgetCommand` after the direct flow is verified stable.
+    undoRedo_.clear();
+    document_.selectWidget(document_.root.id);
+    document_.markDirty();
+    setOperationStatus("Deleted widget: " + displayName + " (" + widgetId + ")");
+    redraw();
+}
+
+void MainWindow::duplicateSelectedWidget()
+{
+    cancelInspectorEdit();
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(selectedWidget->id)) {
+        setOperationStatus("Cannot duplicate root form");
+        redraw();
+        return;
+    }
+
+    const std::string selectedId = selectedWidget->id;
+
+    auto* duplicate = document_.duplicateWidgetById(selectedId, idGenerator_);
+    if (duplicate == nullptr) {
+        setOperationStatus("Duplicate failed: " + selectedId);
+        redraw();
+        return;
+    }
+
+    const std::string duplicateId = duplicate->id;
+    const std::string displayName = duplicate->name.empty() ? duplicate->id : duplicate->name;
+
+    // TODO: Reconnect duplicate to `AddWidgetCommand` or a dedicated duplicate command after the direct flow is verified stable.
+    undoRedo_.clear();
+    document_.selectWidget(duplicateId);
+    document_.markDirty();
+    setOperationStatus("Duplicated widget: " + displayName + " (" + duplicateId + ")");
+    redraw();
+}
+
+void MainWindow::undo()
+{
+    if (!undoRedo_.canUndo()) {
+        return;
+    }
+
+    const std::string description = undoRedo_.undoDescription();
+    undoRedo_.undo();
+    document_.markDirty();
+    setOperationStatus("Undo: " + description);
+    redraw();
+}
+
+void MainWindow::redo()
+{
+    if (!undoRedo_.canRedo()) {
+        return;
+    }
+
+    const std::string description = undoRedo_.redoDescription();
+    undoRedo_.redo();
+    document_.markDirty();
+    setOperationStatus("Redo: " + description);
+    redraw();
+}
+
+bool MainWindow::canUndo() const
+{
+    return undoRedo_.canUndo();
+}
+
+bool MainWindow::canRedo() const
+{
+    return undoRedo_.canRedo();
 }
 
 model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type)
@@ -752,30 +913,15 @@ void MainWindow::drawToolbar(visage::Canvas& canvas) const
         return;
     }
 
-    const auto drawToolbarButton = [&](float x, const char* label, bool accent) {
-        const float y = layout_.toolbar.y + 8.0f;
-        canvas.setColor(accent ? 0xff355382 : 0xff39414e);
-        canvas.fill(x, y, kToolbarButtonWidth, kToolbarButtonHeight);
+    for (const auto& button : toolbarButtons()) {
+        canvas.setColor(button.accent ? 0xff355382 : 0xff39414e);
+        canvas.fill(button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
         canvas.setColor(0xff14161b);
-        canvas.fill(x, y + kToolbarButtonHeight - 1.0f, kToolbarButtonWidth, 1.0f);
+        canvas.fill(button.bounds.x, button.bounds.y + button.bounds.height - 1.0f, button.bounds.width, 1.0f);
         canvas.setColor(0xfff3f5f8);
-        canvas.text(label, labelFont_, visage::Font::kCenter, x, y, kToolbarButtonWidth, kToolbarButtonHeight);
-    };
-
-    float buttonX = layout_.toolbar.x + kPadding;
-    drawToolbarButton(buttonX, "New", false);
-    buttonX += kToolbarButtonWidth + 8.0f;
-    drawToolbarButton(buttonX, "Open Sample", false);
-    buttonX += kToolbarButtonWidth + 8.0f;
-    drawToolbarButton(buttonX, "Save", false);
-    buttonX += kToolbarButtonWidth + 8.0f;
-    drawToolbarButton(buttonX, "Save As Debug", true);
-
-    canvas.setColor(0xfff3f5f8);
-    canvas.text("Ctrl+N  New    Ctrl+O  Open Sample    Ctrl+S  Save    Ctrl+Shift+S  Save As Debug",
-        labelFont_, visage::Font::kTopRight,
-        layout_.toolbar.x + layout_.toolbar.width * 0.45f, layout_.toolbar.y + 6.0f,
-        layout_.toolbar.width * 0.53f - kPadding, layout_.toolbar.height - 10.0f);
+        canvas.text(button.label, labelFont_, visage::Font::kCenter,
+            button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
+    }
 }
 
 void MainWindow::drawStatusBar(visage::Canvas& canvas) const
@@ -830,38 +976,40 @@ void MainWindow::setOperationStatus(std::string message)
 
 MainWindow::ToolbarAction MainWindow::toolbarActionAt(float x, float y) const
 {
-    if (!layout_.toolbar.isVisible()) {
-        return ToolbarAction::None;
-    }
-
-    const float top = layout_.toolbar.y + 8.0f;
-    const float bottom = top + kToolbarButtonHeight;
-    if (y < top || y > bottom) {
-        return ToolbarAction::None;
-    }
-
-    float left = layout_.toolbar.x + kPadding;
-    const auto hitButton = [&](float buttonLeft) {
-        return x >= buttonLeft && x <= buttonLeft + kToolbarButtonWidth;
-    };
-
-    if (hitButton(left)) {
-        return ToolbarAction::NewProject;
-    }
-    left += kToolbarButtonWidth + 8.0f;
-    if (hitButton(left)) {
-        return ToolbarAction::OpenSample;
-    }
-    left += kToolbarButtonWidth + 8.0f;
-    if (hitButton(left)) {
-        return ToolbarAction::SaveProject;
-    }
-    left += kToolbarButtonWidth + 8.0f;
-    if (hitButton(left)) {
-        return ToolbarAction::SaveProjectAsDebug;
+    for (const auto& button : toolbarButtons()) {
+        if (x >= button.bounds.x && x <= button.bounds.x + button.bounds.width
+            && y >= button.bounds.y && y <= button.bounds.y + button.bounds.height) {
+            return button.action;
+        }
     }
 
     return ToolbarAction::None;
+}
+
+std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
+{
+    std::vector<ToolbarButton> buttons;
+    if (!layout_.toolbar.isVisible()) {
+        return buttons;
+    }
+
+    const float top = layout_.toolbar.y + 8.0f;
+    float left = layout_.toolbar.x + kPadding;
+    const auto addButton = [&](ToolbarAction action, std::string label, bool accent = false) {
+        buttons.push_back(ToolbarButton{ action, std::move(label), { left, top, kToolbarButtonWidth, kToolbarButtonHeight }, accent });
+        left += kToolbarButtonWidth + kToolbarButtonSpacing;
+    };
+
+    addButton(ToolbarAction::NewProject, "New");
+    addButton(ToolbarAction::OpenSample, "Open Sample");
+    addButton(ToolbarAction::SaveProject, "Save");
+    addButton(ToolbarAction::SaveProjectAsDebug, "Save As Debug", true);
+    addButton(ToolbarAction::DeleteWidget, "Delete");
+    addButton(ToolbarAction::DuplicateWidget, "Duplicate");
+    addButton(ToolbarAction::UndoAction, canUndo() ? "Undo" : "Undo");
+    addButton(ToolbarAction::RedoAction, canRedo() ? "Redo" : "Redo");
+
+    return buttons;
 }
 
 bool MainWindow::isTemplateExamplePath(const std::filesystem::path& path) const
@@ -963,6 +1111,7 @@ bool MainWindow::commitInspectorEdit()
 
     propertyInspector_.clearEditing();
     propertyEditor_.setVisible(false);
+    requestKeyboardFocus();
     redraw();
     return true;
 }
@@ -971,6 +1120,7 @@ void MainWindow::cancelInspectorEdit()
 {
     propertyInspector_.cancelEditing();
     propertyEditor_.setVisible(false);
+    requestKeyboardFocus();
     redraw();
 }
 

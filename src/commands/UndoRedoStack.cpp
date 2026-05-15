@@ -1,15 +1,17 @@
 #include "commands/UndoRedoStack.h"
 
+#include "commands/UndoRedoStack.h"
+
 namespace visiform::commands {
 
-void UndoRedoStack::execute(const std::shared_ptr<Command>& command)
+void UndoRedoStack::executeCommand(std::unique_ptr<Command> command)
 {
     if (!command) {
         return;
     }
 
     command->execute();
-    undoStack_.push_back(command);
+    undoStack_.push_back(std::move(command));
     redoStack_.clear();
 }
 
@@ -19,7 +21,7 @@ void UndoRedoStack::undo()
         return;
     }
 
-    auto command = undoStack_.back();
+    auto command = std::move(undoStack_.back());
     undoStack_.pop_back();
     command->undo();
     redoStack_.push_back(std::move(command));
@@ -31,10 +33,16 @@ void UndoRedoStack::redo()
         return;
     }
 
-    auto command = redoStack_.back();
+    auto command = std::move(redoStack_.back());
     redoStack_.pop_back();
     command->execute();
     undoStack_.push_back(std::move(command));
+}
+
+void UndoRedoStack::clear()
+{
+    undoStack_.clear();
+    redoStack_.clear();
 }
 
 bool UndoRedoStack::canUndo() const
@@ -45,6 +53,16 @@ bool UndoRedoStack::canUndo() const
 bool UndoRedoStack::canRedo() const
 {
     return !redoStack_.empty();
+}
+
+std::string UndoRedoStack::undoDescription() const
+{
+    return canUndo() ? undoStack_.back()->description() : std::string{};
+}
+
+std::string UndoRedoStack::redoDescription() const
+{
+    return canRedo() ? redoStack_.back()->description() : std::string{};
 }
 
 } // namespace visiform::commands

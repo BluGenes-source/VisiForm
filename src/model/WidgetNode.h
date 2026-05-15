@@ -9,6 +9,10 @@
 #include <string>
 #include <vector>
 
+namespace visiform::utils {
+class IdGenerator;
+}
+
 namespace visiform::model {
 
 enum class WidgetType {
@@ -61,12 +65,15 @@ public:
 
     [[nodiscard]] WidgetNode* findById(const std::string& searchId);
     [[nodiscard]] const WidgetNode* findById(const std::string& searchId) const;
+    [[nodiscard]] WidgetNode* findParentOf(const std::string& childId);
+    [[nodiscard]] const WidgetNode* findParentOf(const std::string& childId) const;
+    bool removeWidgetById(const std::string& searchId);
+    bool addChildToParent(const std::string& parentId, WidgetNode widget);
 
     [[nodiscard]] WidgetNode* hitTest(float x, float y);
     [[nodiscard]] const WidgetNode* hitTest(float x, float y) const;
 
 private:
-    [[nodiscard]] const WidgetNode* hitTestImpl(float x, float y) const;
 };
 
 } // namespace visiform::model

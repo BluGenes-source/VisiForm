@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "commands/UndoRedoStack.h"
 #include "model/ProjectDocument.h"
 #include "ui/DesignerCanvas.h"
 #include "ui/ProjectTree.h"
@@ -11,6 +12,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include <visage/app.h>
 #include <visage/graphics.h>
@@ -37,6 +39,12 @@ public:
     bool saveProject();
     bool saveProjectAs(const std::filesystem::path& path);
     bool loadProjectFromPath(const std::filesystem::path& path);
+    void deleteSelectedWidget();
+    void duplicateSelectedWidget();
+    void undo();
+    void redo();
+    [[nodiscard]] bool canUndo() const;
+    [[nodiscard]] bool canRedo() const;
     [[nodiscard]] const std::string& statusMessage() const;
 
 private:
@@ -67,7 +75,11 @@ private:
         NewProject,
         OpenSample,
         SaveProject,
-        SaveProjectAsDebug
+        SaveProjectAsDebug,
+        DuplicateWidget,
+        DeleteWidget,
+        UndoAction,
+        RedoAction
     };
 
     struct CanvasInteractionState {
@@ -83,6 +95,13 @@ private:
         model::Rect originalBounds{};
         DesignerCanvas::FormPoint dragStart{};
         bool changed = false;
+    };
+
+    struct ToolbarButton {
+        ToolbarAction action = ToolbarAction::None;
+        std::string label{};
+        PanelBounds bounds{};
+        bool accent = false;
     };
 
     void loadLabelFont();
@@ -101,6 +120,7 @@ private:
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;
     void setOperationStatus(std::string message);
+    [[nodiscard]] std::vector<ToolbarButton> toolbarButtons() const;
     [[nodiscard]] ToolbarAction toolbarActionAt(float x, float y) const;
     [[nodiscard]] bool isTemplateExamplePath(const std::filesystem::path& path) const;
     [[nodiscard]] std::filesystem::path projectRootPath() const;
@@ -119,6 +139,7 @@ private:
     std::filesystem::path currentProjectPath_{};
     std::string statusMessage_{};
     CanvasInteractionState canvasInteraction_{};
+    commands::UndoRedoStack undoRedo_{};
     utils::IdGenerator idGenerator_{};
     WidgetPalette widgetPalette_{};
     DesignerCanvas designerCanvas_{};

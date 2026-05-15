@@ -2,6 +2,7 @@
 
 #include "model/WidgetNode.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace visiform::model {
@@ -185,6 +186,63 @@ const WidgetNode* WidgetNode::findById(const std::string& searchId) const
     }
 
     return nullptr;
+}
+
+WidgetNode* WidgetNode::findParentOf(const std::string& childId)
+{
+    return const_cast<WidgetNode*>(std::as_const(*this).findParentOf(childId));
+}
+
+const WidgetNode* WidgetNode::findParentOf(const std::string& childId) const
+{
+    for (const auto& child : children) {
+        if (child.id == childId) {
+            return this;
+        }
+        if (const auto* match = child.findParentOf(childId)) {
+            return match;
+        }
+    }
+
+    return nullptr;
+}
+
+bool WidgetNode::removeWidgetById(const std::string& searchId)
+{
+    const auto iterator = std::find_if(children.begin(), children.end(),
+        [&](const WidgetNode& child) { return child.id == searchId; });
+    if (iterator != children.end()) {
+        children.erase(iterator);
+        return true;
+    }
+
+    for (auto& child : children) {
+        if (child.removeWidgetById(searchId)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool WidgetNode::addChildToParent(const std::string& parentId, WidgetNode widget)
+{
+    if (id == parentId) {
+        children.push_back(std::move(widget));
+        return true;
+    }
+
+    for (auto& child : children) {
+        if (child.id == parentId) {
+            child.children.push_back(std::move(widget));
+            return true;
+        }
+        if (child.addChildToParent(parentId, widget)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 WidgetNode* WidgetNode::hitTest(float x, float y)

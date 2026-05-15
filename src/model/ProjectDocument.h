@@ -6,6 +6,10 @@
 
 #include <string>
 
+namespace visiform::utils {
+class IdGenerator;
+}
+
 namespace visiform::model {
 
 class ProjectDocument {
@@ -30,6 +34,13 @@ public:
 
     [[nodiscard]] WidgetNode* findWidgetById(const std::string& id);
     [[nodiscard]] const WidgetNode* findWidgetById(const std::string& id) const;
+    [[nodiscard]] WidgetNode* findParentOf(const std::string& childId);
+    [[nodiscard]] const WidgetNode* findParentOf(const std::string& childId) const;
+    bool removeWidgetById(const std::string& id);
+    [[nodiscard]] bool isRootWidgetId(const std::string& id) const;
+    bool addChildToRoot(WidgetNode widget);
+    bool addChildToParent(const std::string& parentId, WidgetNode widget);
+    [[nodiscard]] WidgetNode* duplicateWidgetById(const std::string& id, utils::IdGenerator& idGenerator);
 
     void selectWidget(const std::string& id);
     void clearSelection();
