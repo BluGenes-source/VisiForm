@@ -1,0 +1,58 @@
+﻿{
+  "version": 5,
+  "configurePresets": [
+    {
+      "name": "vs2022-x64-static-debug",
+      "displayName": "VS2022 x64 Static Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/vs2022-x64-static-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": {
+          "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+          "type": "FILEPATH"
+        },
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "VCPKG_HOST_TRIPLET": "x64-windows",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug",
+        "CMAKE_MAKE_PROGRAM": "C:/Users/Herb/AppData/Local/Microsoft/WinGet/Links/ninja.exe"
+      }
+    },
+    {
+      "name": "vs2022-x64-static-release",
+      "displayName": "VS2022 x64 Static Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/vs2022-x64-static-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": {
+          "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+          "type": "FILEPATH"
+        },
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "VCPKG_HOST_TRIPLET": "x64-windows",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+        "CMAKE_MAKE_PROGRAM": "C:/Users/Herb/AppData/Local/Microsoft/WinGet/Links/ninja.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-static-debug",
+      "configurePreset": "vs2022-x64-static-debug"
+    },
+    {
+      "name": "build-static-release",
+      "configurePreset": "vs2022-x64-static-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test-static-debug",
+      "configurePreset": "vs2022-x64-static-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

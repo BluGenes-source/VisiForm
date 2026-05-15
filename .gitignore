@@ -1,0 +1,41 @@
+# Build output
+/build/
+/out/
+/.vs/
+
+# Visual Studio
+*.user
+*.suo
+*.vcxproj.user
+*.VC.db
+*.opendb
+ipch/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# vcpkg
+/vcpkg_installed/
+
+# Generated files
+/Generated/
+/generated/
+/GeneratedProject/
+
+# Logs
+*.log
+/logs/
+
+# Temporary files
+*.tmp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# App-specific user files
+*.vfb.user.json
