@@ -2,19 +2,257 @@
 
 #include "serialization/JsonProjectReader.h"
 
+#include "utils/FileUtils.h"
+
 #include <nlohmann/json.hpp>
 
+#include <sstream>
+
 namespace visiform::serialization {
+namespace {
 
-model::ProjectDocument JsonProjectReader::readFromString(const std::string& content) const
+bool requireObject(const nlohmann::json& json, const char* fieldName, std::string& errorMessage)
 {
-    const auto json = nlohmann::json::parse(content.empty() ? "{}" : content);
+    if (!json.is_object()) {
+        errorMessage = std::string(fieldName) + " must be a JSON object.";
+        return false;
+    }
 
-    model::ProjectDocument document = model::ProjectDocument::createDefault();
-    document.projectName = json.value("projectName", document.projectName);
-    document.mainFormClassName = json.value("mainFormClassName", document.mainFormClassName);
+    return true;
+}
 
-    return document;
+bool tryReadString(const nlohmann::json& json, const char* fieldName, std::string& value, std::string& errorMessage)
+{
+    const auto iterator = json.find(fieldName);
+    if (iterator == json.end() || !iterator->is_string()) {
+        errorMessage = std::string("Missing or invalid string field: ") + fieldName;
+        return false;
+    }
+
+    value = iterator->get<std::string>();
+    return true;
+}
+
+bool tryReadInt(const nlohmann::json& json, const char* fieldName, int& value, std::string& errorMessage)
+{
+    const auto iterator = json.find(fieldName);
+    if (iterator == json.end() || !iterator->is_number_integer()) {
+        errorMessage = std::string("Missing or invalid integer field: ") + fieldName;
+        return false;
+    }
+
+    value = iterator->get<int>();
+    return true;
+}
+
+bool tryReadFloat(const nlohmann::json& json, const char* fieldName, float& value, std::string& errorMessage)
+{
+    const auto iterator = json.find(fieldName);
+    if (iterator == json.end() || !iterator->is_number()) {
+        errorMessage = std::string("Missing or invalid numeric field: ") + fieldName;
+        return false;
+    }
+
+    value = iterator->get<float>();
+    return true;
+}
+
+bool parsePropertyValue(const nlohmann::json& jsonValue, model::PropertyValue& propertyValue, std::string& errorMessage)
+{
+    if (jsonValue.is_null()) {
+        propertyValue = model::PropertyValue{};
+        return true;
+    }
+    if (jsonValue.is_boolean()) {
+        propertyValue = model::PropertyValue{ jsonValue.get<bool>() };
+        return true;
+    }
+    if (jsonValue.is_number_integer()) {
+        propertyValue = model::PropertyValue{ jsonValue.get<int>() };
+        return true;
+    }
+    if (jsonValue.is_number_float()) {
+        propertyValue = model::PropertyValue{ jsonValue.get<float>() };
+        return true;
+    }
+    if (jsonValue.is_string()) {
+        propertyValue = model::PropertyValue{ jsonValue.get<std::string>() };
+        return true;
+    }
+
+    errorMessage = "Unsupported property value type. Expected null, boolean, integer, float, or string.";
+    return false;
+}
+
+bool parseRect(const nlohmann::json& json, model::Rect& rect, std::string& errorMessage)
+{
+    if (!requireObject(json, "bounds", errorMessage)) {
+        return false;
+    }
+
+    if (!tryReadFloat(json, "x", rect.x, errorMessage)
+        || !tryReadFloat(json, "y", rect.y, errorMessage)
+        || !tryReadFloat(json, "width", rect.width, errorMessage)
+        || !tryReadFloat(json, "height", rect.height, errorMessage)) {
+        return false;
+    }
+
+    if (!rect.isValid()) {
+        errorMessage = "Widget bounds must have positive width and height.";
+        return false;
+    }
+
+    return true;
+}
+
+bool parseProperties(const nlohmann::json& json, std::map<std::string, model::PropertyValue>& properties, std::string& errorMessage)
+{
+    properties.clear();
+    if (json.is_null()) {
+        return true;
+    }
+
+    if (!json.is_object()) {
+        errorMessage = "Widget properties must be a JSON object.";
+        return false;
+    }
+
+    for (const auto& [key, value] : json.items()) {
+        model::PropertyValue propertyValue;
+        if (!parsePropertyValue(value, propertyValue, errorMessage)) {
+            errorMessage = "Invalid property '" + key + "': " + errorMessage;
+            return false;
+        }
+
+        properties.insert_or_assign(key, std::move(propertyValue));
+    }
+
+    return true;
+}
+
+bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::string& errorMessage)
+{
+    if (!requireObject(json, "root", errorMessage)) {
+        return false;
+    }
+
+    std::string typeString;
+    if (!tryReadString(json, "id", widget.id, errorMessage)
+        || !tryReadString(json, "name", widget.name, errorMessage)
+        || !tryReadString(json, "type", typeString, errorMessage)) {
+        return false;
+    }
+
+    const auto widgetType = model::widgetTypeFromString(typeString);
+    if (!widgetType.has_value()) {
+        errorMessage = "Unsupported widget type: " + typeString;
+        return false;
+    }
+    widget.type = *widgetType;
+
+    const auto boundsIterator = json.find("bounds");
+    if (boundsIterator == json.end()) {
+        errorMessage = "Missing required widget field: bounds";
+        return false;
+    }
+    if (!parseRect(*boundsIterator, widget.bounds, errorMessage)) {
+        return false;
+    }
+
+    const auto propertiesIterator = json.find("properties");
+    if (propertiesIterator != json.end() && !parseProperties(*propertiesIterator, widget.properties, errorMessage)) {
+        return false;
+    }
+    if (propertiesIterator == json.end()) {
+        widget.properties.clear();
+    }
+
+    const auto childrenIterator = json.find("children");
+    if (childrenIterator == json.end() || !childrenIterator->is_array()) {
+        errorMessage = "Missing or invalid widget field: children";
+        return false;
+    }
+
+    widget.children.clear();
+    for (const auto& childJson : *childrenIterator) {
+        model::WidgetNode child;
+        if (!parseWidget(childJson, child, errorMessage)) {
+            return false;
+        }
+
+        widget.children.push_back(std::move(child));
+    }
+
+    return true;
+}
+
+} // namespace
+
+std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const std::string& jsonText, std::string& errorMessage) const
+{
+    errorMessage.clear();
+
+    try {
+        const auto json = nlohmann::json::parse(jsonText.empty() ? "{}" : jsonText);
+        if (!json.is_object()) {
+            errorMessage = "Project file must contain a JSON object.";
+            return std::nullopt;
+        }
+
+        model::ProjectDocument document;
+        if (!tryReadInt(json, "schemaVersion", document.schemaVersion, errorMessage)) {
+            return std::nullopt;
+        }
+        if (document.schemaVersion != 1) {
+            errorMessage = "Unsupported schemaVersion: " + std::to_string(document.schemaVersion);
+            return std::nullopt;
+        }
+
+        if (!tryReadString(json, "projectName", document.projectName, errorMessage)
+            || !tryReadString(json, "mainFormClassName", document.mainFormClassName, errorMessage)) {
+            return std::nullopt;
+        }
+
+        const auto rootIterator = json.find("root");
+        if (rootIterator == json.end()) {
+            errorMessage = "Missing required field: root";
+            return std::nullopt;
+        }
+        if (!parseWidget(*rootIterator, document.root, errorMessage)) {
+            return std::nullopt;
+        }
+
+        const auto selectedWidgetIterator = json.find("selectedWidgetId");
+        if (selectedWidgetIterator != json.end()) {
+            if (!selectedWidgetIterator->is_string()) {
+                errorMessage = "selectedWidgetId must be a string when present.";
+                return std::nullopt;
+            }
+
+            document.selectedWidgetId = selectedWidgetIterator->get<std::string>();
+        }
+
+        if (document.selectedWidgetId.empty() || document.findWidgetById(document.selectedWidgetId) == nullptr) {
+            document.selectedWidgetId = document.root.id;
+        }
+
+        document.clearDirty();
+        return document;
+    }
+    catch (const nlohmann::json::exception& exception) {
+        errorMessage = std::string("Failed to parse project JSON: ") + exception.what();
+        return std::nullopt;
+    }
+}
+
+std::optional<model::ProjectDocument> JsonProjectReader::readFromFile(const std::filesystem::path& path, std::string& errorMessage) const
+{
+    std::string jsonText;
+    if (!utils::FileUtils::readTextFile(path, jsonText, errorMessage)) {
+        return std::nullopt;
+    }
+
+    return readFromString(jsonText, errorMessage);
 }
 
 } // namespace visiform::serialization

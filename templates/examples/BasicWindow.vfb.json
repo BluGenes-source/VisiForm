@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "projectName": "BasicWindowProject",
+  "mainFormClassName": "MainWindow",
+  "selectedWidgetId": "button_ok",
+  "root": {
+    "id": "form_main",
+    "name": "MainWindow",
+    "type": "FormWindow",
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 900,
+      "height": 600
+    },
+    "properties": {
+      "title": "Basic Window",
+      "backgroundColor": "#202026"
+    },
+    "children": [
+      {
+        "id": "label_title",
+        "name": "titleLabel",
+        "type": "Label",
+        "bounds": {
+          "x": 32,
+          "y": 28,
+          "width": 220,
+          "height": 24
+        },
+        "properties": {
+          "text": "Welcome to VisiForm"
+        },
+        "children": []
+      },
+      {
+        "id": "textbox_name",
+        "name": "nameTextBox",
+        "type": "TextBox",
+        "bounds": {
+          "x": 32,
+          "y": 80,
+          "width": 260,
+          "height": 36
+        },
+        "properties": {
+          "text": "Project Name"
+        },
+        "children": []
+      },
+      {
+        "id": "slider_amount",
+        "name": "amountSlider",
+        "type": "Slider",
+        "bounds": {
+          "x": 32,
+          "y": 140,
+          "width": 240,
+          "height": 28
+        },
+        "properties": {
+          "value": 0.5
+        },
+        "children": []
+      },
+      {
+        "id": "checkbox_enabled",
+        "name": "enabledCheckBox",
+        "type": "CheckBox",
+        "bounds": {
+          "x": 32,
+          "y": 190,
+          "width": 220,
+          "height": 28
+        },
+        "properties": {
+          "text": "Enable advanced options",
+          "checked": true
+        },
+        "children": []
+      },
+      {
+        "id": "button_ok",
+        "name": "okButton",
+        "type": "Button",
+        "bounds": {
+          "x": 32,
+          "y": 250,
+          "width": 160,
+          "height": 40
+        },
+        "properties": {
+          "text": "Create Project"
+        },
+        "children": []
+      }
+    ]
+  }
+}
