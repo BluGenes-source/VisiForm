@@ -1,25 +1,30 @@
 #include "model/FormNode.h"
 
+#include "model/FormNode.h"
+
+#include <utility>
+
 namespace visiform::model {
 
-FormNode::FormNode(std::string name)
-    : name_(std::move(name))
+FormNode::FormNode(std::string classNameValue, WidgetNode rootWidgetValue)
+    : className(std::move(classNameValue))
+    , rootWidget(std::move(rootWidgetValue))
 {
-}
-
-void FormNode::addWidget(WidgetNode widget)
-{
-    widgets_.push_back(std::move(widget));
 }
 
 const std::string& FormNode::name() const
 {
-    return name_;
+    return className;
 }
 
-const std::vector<WidgetNode>& FormNode::widgets() const
+WidgetNode* FormNode::findWidgetById(const std::string& id)
 {
-    return widgets_;
+    return rootWidget.findById(id);
+}
+
+const WidgetNode* FormNode::findWidgetById(const std::string& id) const
+{
+    return rootWidget.findById(id);
 }
 
 } // namespace visiform::model

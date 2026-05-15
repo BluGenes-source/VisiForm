@@ -1,30 +1,41 @@
 #pragma once
 
+#pragma once
+
 #include "model/FormNode.h"
 
 #include <string>
-#include <vector>
 
 namespace visiform::model {
 
-// Placeholder project document for `.vfb.json` projects.
 class ProjectDocument {
 public:
-    explicit ProjectDocument(std::string name = {});
+    int schemaVersion = 1;
+    std::string projectName{};
+    std::string mainFormClassName{};
+    WidgetNode root{};
+    std::string selectedWidgetId{};
+    bool dirty = false;
 
     static constexpr const char* projectFileExtension()
     {
         return ".vfb.json";
     }
 
-    void addForm(FormNode form);
+    [[nodiscard]] static ProjectDocument createDefault();
 
     [[nodiscard]] const std::string& name() const;
-    [[nodiscard]] const std::vector<FormNode>& forms() const;
+    [[nodiscard]] WidgetNode* selectedWidget();
+    [[nodiscard]] const WidgetNode* selectedWidget() const;
 
-private:
-    std::string name_{};
-    std::vector<FormNode> forms_{};
+    [[nodiscard]] WidgetNode* findWidgetById(const std::string& id);
+    [[nodiscard]] const WidgetNode* findWidgetById(const std::string& id) const;
+
+    void selectWidget(const std::string& id);
+    void clearSelection();
+    [[nodiscard]] bool hasSelection() const;
+    void markDirty();
+    void clearDirty();
 };
 
 } // namespace visiform::model

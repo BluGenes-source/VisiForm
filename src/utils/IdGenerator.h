@@ -1,17 +1,26 @@
 #pragma once
 
+#pragma once
+
+#include "model/WidgetNode.h"
+
 #include <cstdint>
+#include <map>
 #include <string>
+
+namespace visiform::model {
+class ProjectDocument;
+}
 
 namespace visiform::utils {
 
-// Placeholder identifier generator for forms and widgets.
 class IdGenerator {
 public:
-    [[nodiscard]] std::string next(const std::string& prefix);
+    [[nodiscard]] std::string next(model::WidgetType widgetType, const model::ProjectDocument& document);
+    [[nodiscard]] static std::string prefixForType(model::WidgetType widgetType);
 
 private:
-    std::uint64_t nextValue_{1};
+    std::map<model::WidgetType, std::uint64_t> nextValues_{};
 };
 
 } // namespace visiform::utils

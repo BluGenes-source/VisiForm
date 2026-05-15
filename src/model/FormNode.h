@@ -1,25 +1,24 @@
 #pragma once
 
+#pragma once
+
 #include "model/WidgetNode.h"
 
 #include <string>
-#include <vector>
 
 namespace visiform::model {
 
-// Placeholder form node that owns a flat list of widgets.
 class FormNode {
 public:
-    explicit FormNode(std::string name = {});
+    FormNode() = default;
+    explicit FormNode(std::string className, WidgetNode rootWidget = {});
 
-    void addWidget(WidgetNode widget);
+    std::string className{};
+    WidgetNode rootWidget{};
 
     [[nodiscard]] const std::string& name() const;
-    [[nodiscard]] const std::vector<WidgetNode>& widgets() const;
-
-private:
-    std::string name_{};
-    std::vector<WidgetNode> widgets_{};
+    [[nodiscard]] WidgetNode* findWidgetById(const std::string& id);
+    [[nodiscard]] const WidgetNode* findWidgetById(const std::string& id) const;
 };
 
 } // namespace visiform::model
