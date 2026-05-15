@@ -3,6 +3,7 @@
 #include "ui/PropertyInspector.h"
 
 #include <iomanip>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -14,6 +15,12 @@ namespace {
 constexpr float kHeaderHeight = 34.0f;
 constexpr float kRowHeight = 30.0f;
 constexpr float kPadding = 12.0f;
+constexpr float kLabelColumnWidth = 104.0f;
+
+struct RowLayout {
+    PropertyInspector::PropertyRow row;
+    float top = 0.0f;
+};
 
 std::string formatFloat(float value)
 {
@@ -29,6 +36,45 @@ std::string formatFloat(float value)
     return text.empty() ? "0" : text;
 }
 
+std::string propertyValueText(const model::PropertyValue& value)
+{
+    return value.toDisplayString();
+}
+
+PropertyInspector::PropertyEditKind editKindForProperty(const model::PropertyValue& value)
+{
+    if (value.isBool()) {
+        return PropertyInspector::PropertyEditKind::Bool;
+    }
+    if (value.isInt()) {
+        return PropertyInspector::PropertyEditKind::Integer;
+    }
+    if (value.isFloat()) {
+        return PropertyInspector::PropertyEditKind::Float;
+    }
+    if (value.isString() || value.isEmpty()) {
+        return PropertyInspector::PropertyEditKind::Text;
+    }
+
+    return PropertyInspector::PropertyEditKind::ReadOnly;
+}
+
+std::vector<RowLayout> buildRowLayouts(float top, float height, const std::vector<PropertyInspector::PropertyRow>& rows)
+{
+    std::vector<RowLayout> layouts;
+    float rowTop = top;
+    for (const auto& row : rows) {
+        if (rowTop + kRowHeight > height - 8.0f) {
+            break;
+        }
+
+        layouts.push_back({ row, rowTop });
+        rowTop += kRowHeight;
+    }
+
+    return layouts;
+}
+
 } // namespace
 
 void PropertyInspector::setBounds(float x, float y, float width, float height)
@@ -37,6 +83,169 @@ void PropertyInspector::setBounds(float x, float y, float width, float height)
     y_ = y;
     width_ = width;
     height_ = height;
+}
+
+bool PropertyInspector::contains(float x, float y) const
+{
+    return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
+}
+
+std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const model::WidgetNode* selectedWidget) const
+{
+    std::vector<PropertyRow> rows;
+    if (selectedWidget == nullptr) {
+        return rows;
+    }
+
+    rows.push_back({ "id", "id", selectedWidget->id, PropertyEditKind::ReadOnly });
+    rows.push_back({ "type", "type", selectedWidget->typeName(), PropertyEditKind::ReadOnly });
+    rows.push_back({ "name", "name", selectedWidget->name, PropertyEditKind::Text });
+    rows.push_back({ "x", "x", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
+    rows.push_back({ "y", "y", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
+    rows.push_back({ "width", "width", formatFloat(selectedWidget->bounds.width), PropertyEditKind::Float });
+    rows.push_back({ "height", "height", formatFloat(selectedWidget->bounds.height), PropertyEditKind::Float });
+
+    std::set<std::string> drawnKeys;
+    for (const auto& row : rows) {
+        drawnKeys.insert(row.key);
+    }
+
+    const auto addWidgetProperty = [&](const std::string& key) {
+        if (const auto* property = selectedWidget->getProperty(key)) {
+            rows.push_back({ key, key, propertyValueText(*property), editKindForProperty(*property) });
+            drawnKeys.insert(key);
+        }
+    };
+
+    switch (selectedWidget->type) {
+    case model::WidgetType::Label:
+    case model::WidgetType::Button:
+    case model::WidgetType::TextBox:
+        addWidgetProperty("text");
+        break;
+    case model::WidgetType::CheckBox:
+        addWidgetProperty("text");
+        addWidgetProperty("checked");
+        break;
+    case model::WidgetType::Slider:
+        addWidgetProperty("min");
+        addWidgetProperty("max");
+        addWidgetProperty("value");
+        break;
+    case model::WidgetType::Frame:
+        addWidgetProperty("title");
+        addWidgetProperty("backgroundColor");
+        break;
+    case model::WidgetType::Image:
+        addWidgetProperty("source");
+        break;
+    case model::WidgetType::Spacer:
+        break;
+    case model::WidgetType::FormWindow:
+        addWidgetProperty("title");
+        addWidgetProperty("backgroundColor");
+        break;
+    }
+
+    for (const auto& [key, value] : selectedWidget->properties) {
+        if (drawnKeys.contains(key)) {
+            continue;
+        }
+
+        rows.push_back({ key, key, propertyValueText(value), editKindForProperty(value) });
+    }
+
+    return rows;
+}
+
+std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::WidgetNode* selectedWidget, float x, float y) const
+{
+    if (!contains(x, y)) {
+        return std::nullopt;
+    }
+
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(selectedWidget));
+    for (const auto& layout : layouts) {
+        if (y >= layout.top && y <= layout.top + kRowHeight) {
+            return layout.row;
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool PropertyInspector::beginEditing(const model::WidgetNode* selectedWidget, const std::string& key)
+{
+    const auto rows = buildRows(selectedWidget);
+    for (const auto& row : rows) {
+        if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool) {
+            activeKey_ = key;
+            activeEditKind_ = row.editKind;
+            editBuffer_ = row.displayValue;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const model::WidgetNode* selectedWidget) const
+{
+    if (!isEditing()) {
+        return std::nullopt;
+    }
+
+    const auto rows = buildRows(selectedWidget);
+    for (const auto& row : rows) {
+        if (row.key == activeKey_) {
+            return row;
+        }
+    }
+
+    return std::nullopt;
+}
+
+void PropertyInspector::clearEditing()
+{
+    activeKey_.clear();
+    activeEditKind_ = PropertyEditKind::ReadOnly;
+}
+
+void PropertyInspector::cancelEditing()
+{
+    clearEditing();
+}
+
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::WidgetNode* selectedWidget) const
+{
+    const auto active = activeRow(selectedWidget);
+    if (!active.has_value()) {
+        return std::nullopt;
+    }
+
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(selectedWidget));
+    for (const auto& layout : layouts) {
+        if (layout.row.key == active->key) {
+            const float valueLeft = x_ + kLabelColumnWidth;
+            return ValueCellBounds{ valueLeft + 2.0f, layout.top + 2.0f, width_ - kLabelColumnWidth - 24.0f, kRowHeight - 6.0f };
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<PropertyInspector::PendingEdit> PropertyInspector::buildPendingEdit(const std::string& valueText) const
+{
+    if (!isEditing()) {
+        return std::nullopt;
+    }
+
+    return PendingEdit{ activeKey_, valueText, activeEditKind_ };
+}
+
+bool PropertyInspector::isEditing() const
+{
+    return !activeKey_.empty();
 }
 
 void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::WidgetNode* selectedWidget) const
@@ -63,56 +272,53 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
-    std::vector<std::string> rows;
     if (selectedWidget == nullptr) {
-        rows.emplace_back("No selection");
-    }
-    else {
-        rows.push_back("id: " + selectedWidget->id);
-        rows.push_back("name: " + selectedWidget->name);
-        rows.push_back("type: " + selectedWidget->typeName());
-        rows.push_back("x: " + formatFloat(selectedWidget->bounds.x));
-        rows.push_back("y: " + formatFloat(selectedWidget->bounds.y));
-        rows.push_back("width: " + formatFloat(selectedWidget->bounds.width));
-        rows.push_back("height: " + formatFloat(selectedWidget->bounds.height));
-
-        std::set<std::string> drawnProperties;
-        auto addProperty = [&](const std::string& key) {
-            if (const auto* property = selectedWidget->getProperty(key)) {
-                rows.push_back(key + ": " + property->toDisplayString());
-                drawnProperties.insert(key);
-            }
-        };
-
-        addProperty("text");
-        addProperty("title");
-        addProperty("backgroundColor");
-
-        for (const auto& [key, value] : selectedWidget->properties) {
-            if (drawnProperties.contains(key) || value.isEmpty()) {
-                continue;
-            }
-
-            rows.push_back(key + ": " + value.toDisplayString());
+        if (drawText) {
+            canvas.setColor(0xffdde2ea);
+            canvas.text("No selection", font, visage::Font::kTopLeft,
+                x_ + 18.0f, y_ + kHeaderHeight + 12.0f, width_ - 30.0f, kRowHeight - 8.0f);
         }
+        return;
     }
 
-    float rowTop = y_ + kHeaderHeight + 8.0f;
-    for (std::size_t index = 0; index < rows.size(); ++index) {
-        if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
-            break;
-        }
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(selectedWidget));
+    for (std::size_t index = 0; index < layouts.size(); ++index) {
+        const auto& row = layouts[index].row;
+        const float rowTop = layouts[index].top;
 
         canvas.setColor(index % 2 == 0 ? 0xff2b313d : 0xff262c37);
         canvas.fill(x_ + 8.0f, rowTop, width_ - 16.0f, kRowHeight - 2.0f);
 
-        if (drawText) {
-            canvas.setColor(0xffdde2ea);
-            canvas.text(rows[index], font, visage::Font::kTopLeft,
-                x_ + 18.0f, rowTop + 5.0f, width_ - 30.0f, kRowHeight - 8.0f);
+        const float labelLeft = x_ + 18.0f;
+        const float valueLeft = x_ + kLabelColumnWidth;
+        const float valueWidth = width_ - kLabelColumnWidth - 20.0f;
+        const bool isReadOnly = row.editKind == PropertyEditKind::ReadOnly;
+        const bool isActive = isEditing() && row.key == activeKey_;
+
+        canvas.setColor(isActive ? 0xff2f476d : (isReadOnly ? 0xff303541 : 0xff39414f));
+        canvas.fill(valueLeft, rowTop + 2.0f, valueWidth, kRowHeight - 6.0f);
+        if (isActive) {
+            canvas.setColor(0xff92b9ff);
+            canvas.fill(valueLeft, rowTop + kRowHeight - 4.0f, valueWidth, 2.0f);
         }
 
-        rowTop += kRowHeight;
+        if (drawText) {
+            canvas.setColor(0xffc7cfda);
+            canvas.text(row.label, font, visage::Font::kTopLeft,
+                labelLeft, rowTop + 5.0f, kLabelColumnWidth - 24.0f, kRowHeight - 8.0f);
+
+            canvas.setColor(isReadOnly ? 0xffb3bcc9 : 0xffeef2f8);
+            if (!isActive) {
+                canvas.text(row.displayValue, font, visage::Font::kTopLeft,
+                    valueLeft + 8.0f, rowTop + 5.0f, valueWidth - 12.0f, kRowHeight - 8.0f);
+            }
+
+            if (isActive) {
+                canvas.setColor(0xff92b9ff);
+                canvas.text("Enter=Apply  Esc=Cancel", font, visage::Font::kTopLeft,
+                    valueLeft + 8.0f, rowTop + kRowHeight - 2.0f, valueWidth - 12.0f, 16.0f);
+            }
+        }
     }
 }
 

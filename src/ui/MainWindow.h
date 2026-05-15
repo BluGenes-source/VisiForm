@@ -14,6 +14,7 @@
 
 #include <visage/app.h>
 #include <visage/graphics.h>
+#include <visage/widgets.h>
 
 namespace visiform::ui {
 
@@ -29,6 +30,8 @@ public:
     void mouseDrag(const visage::MouseEvent& e) override;
     void mouseUp(const visage::MouseEvent& e) override;
     bool keyPress(const visage::KeyEvent& e) override;
+    bool receivesTextInput() override;
+    void textInput(const std::string& text) override;
 
     bool newProject();
     bool saveProject();
@@ -91,6 +94,10 @@ private:
     void addWidgetFromPalette(model::WidgetType type);
     [[nodiscard]] model::WidgetNode createDefaultWidget(model::WidgetType type);
     [[nodiscard]] model::Rect nextDefaultWidgetBounds(model::WidgetType type) const;
+    bool setSelectedWidgetName(const std::string& name);
+    bool setSelectedWidgetBounds(float x, float y, float width, float height);
+    bool setSelectedWidgetProperty(const std::string& key, model::PropertyValue value);
+    bool setSelectedWidgetPropertyFromString(const std::string& key, const std::string& valueText);
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;
     void setOperationStatus(std::string message);
@@ -99,6 +106,11 @@ private:
     [[nodiscard]] std::filesystem::path projectRootPath() const;
     [[nodiscard]] std::filesystem::path sampleProjectPath() const;
     [[nodiscard]] std::filesystem::path defaultDebugSavePath() const;
+    [[nodiscard]] static std::string trimWhitespace(const std::string& value);
+    bool beginInspectorEdit(const PropertyInspector::PropertyRow& row);
+    bool commitInspectorEdit();
+    void cancelInspectorEdit();
+    void updatePropertyEditorBounds();
     void clearCanvasInteraction();
     [[nodiscard]] bool canDrawText() const;
 
@@ -112,6 +124,7 @@ private:
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};
     ProjectTree projectTree_{};
+    visage::TextEditor propertyEditor_{ "propertyEditor" };
     visage::Font labelFont_{};
 };
 

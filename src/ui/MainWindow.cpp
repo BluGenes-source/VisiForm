@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -70,6 +71,19 @@ MainWindow::MainWindow()
 {
     setTitle(kWindowTitle);
     loadLabelFont();
+    propertyEditor_.setTextFieldEntry();
+    propertyEditor_.setMargin(8.0f, 0.0f);
+    if (canDrawText()) {
+        propertyEditor_.setFont(labelFont_);
+    }
+    propertyEditor_.setVisible(false);
+    propertyEditor_.onEnterKey() = [this] {
+        commitInspectorEdit();
+    };
+    propertyEditor_.onEscapeKey() = [this] {
+        cancelInspectorEdit();
+    };
+    addChild(&propertyEditor_);
     updateLayout();
 }
 
@@ -144,6 +158,7 @@ void MainWindow::showWindow()
 void MainWindow::resized()
 {
     updateLayout();
+    updatePropertyEditorBounds();
     redraw();
 }
 
@@ -192,7 +207,28 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (const auto widgetType = widgetPalette_.hitTestWidgetType(e.position.x, e.position.y)) {
+        cancelInspectorEdit();
         addWidgetFromPalette(*widgetType);
+        return;
+    }
+
+    if (propertyInspector_.isEditing()) {
+        // Clicking another row or leaving the inspector attempts to commit the current edit.
+        // If validation fails, editing stays active and the click is consumed.
+        if (!commitInspectorEdit()) {
+            return;
+        }
+    }
+
+    if (const auto row = propertyInspector_.hitTestRow(document_.selectedWidget(), e.position.x, e.position.y)) {
+        if (row->editKind == PropertyInspector::PropertyEditKind::Bool) {
+            const bool currentValue = document_.selectedWidget() != nullptr
+                && document_.selectedWidget()->getBoolProperty(row->key, false);
+            setSelectedWidgetProperty(row->key, !currentValue);
+        }
+        else if (row->editKind != PropertyInspector::PropertyEditKind::ReadOnly) {
+            beginInspectorEdit(*row);
+        }
         return;
     }
 
@@ -281,11 +317,11 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 
 bool MainWindow::keyPress(const visage::KeyEvent& e)
 {
+    using KeyCode = visage::KeyCode;
     if (!e.isCtrlDown()) {
         return false;
     }
 
-    using KeyCode = visage::KeyCode;
     if (e.isShiftDown() && e.keyCode() == KeyCode::S) {
         return saveProjectAs(defaultDebugSavePath());
     }
@@ -301,6 +337,16 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
 
     return false;
+}
+
+bool MainWindow::receivesTextInput()
+{
+    return false;
+}
+
+void MainWindow::textInput(const std::string& text)
+{
+    (void)text;
 }
 
 void MainWindow::addWidgetFromPalette(model::WidgetType type)
@@ -417,6 +463,191 @@ model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type) const
     return { kNewWidgetStartX, nextY, width, height };
 }
 
+bool MainWindow::setSelectedWidgetName(const std::string& name)
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return false;
+    }
+
+    const std::string trimmedName = trimWhitespace(name);
+    if (trimmedName.empty()) {
+        setOperationStatus("Invalid value for name");
+        redraw();
+        return false;
+    }
+
+    widget->name = trimmedName;
+    document_.markDirty();
+    setOperationStatus("Widget renamed: " + trimmedName);
+    updatePropertyEditorBounds();
+    redraw();
+    return true;
+}
+
+bool MainWindow::setSelectedWidgetBounds(float x, float y, float width, float height)
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return false;
+    }
+
+    if (x < 0.0f || y < 0.0f || width < 20.0f || height < 20.0f) {
+        setOperationStatus("Invalid bounds for selected widget");
+        redraw();
+        return false;
+    }
+
+    widget->bounds = { x, y, width, height };
+    document_.markDirty();
+    updatePropertyEditorBounds();
+    redraw();
+    return true;
+}
+
+bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::PropertyValue value)
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return false;
+    }
+
+    widget->setProperty(key, std::move(value));
+    document_.markDirty();
+    setOperationStatus("Property changed: " + key);
+    updatePropertyEditorBounds();
+    redraw();
+    return true;
+}
+
+bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, const std::string& valueText)
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return false;
+    }
+
+    const std::string trimmedValue = trimWhitespace(valueText);
+    auto parseFloat = [](const std::string& text, float& output) -> bool {
+        try {
+            std::size_t parsedCharacters = 0;
+            output = std::stof(text, &parsedCharacters);
+            return parsedCharacters == text.size();
+        }
+        catch (...) {
+            return false;
+        }
+    };
+    auto parseInt = [](const std::string& text, int& output) -> bool {
+        try {
+            std::size_t parsedCharacters = 0;
+            output = std::stoi(text, &parsedCharacters);
+            return parsedCharacters == text.size();
+        }
+        catch (...) {
+            return false;
+        }
+    };
+    auto parseBool = [](const std::string& text, bool& output) -> bool {
+        std::string normalized = text;
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+            [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (normalized == "true" || normalized == "1" || normalized == "yes" || normalized == "on") {
+            output = true;
+            return true;
+        }
+        if (normalized == "false" || normalized == "0" || normalized == "no" || normalized == "off") {
+            output = false;
+            return true;
+        }
+
+        return false;
+    };
+
+    if (key == "name") {
+        return setSelectedWidgetName(trimmedValue);
+    }
+
+    if (key == "x" || key == "y" || key == "width" || key == "height") {
+        float numericValue = 0.0f;
+        if (!parseFloat(trimmedValue, numericValue)) {
+            setOperationStatus("Invalid value for " + key);
+            redraw();
+            return false;
+        }
+
+        float x = widget->bounds.x;
+        float y = widget->bounds.y;
+        float width = widget->bounds.width;
+        float height = widget->bounds.height;
+        if (key == "x") {
+            x = numericValue;
+        }
+        else if (key == "y") {
+            y = numericValue;
+        }
+        else if (key == "width") {
+            width = numericValue;
+        }
+        else {
+            height = numericValue;
+        }
+
+        if (!setSelectedWidgetBounds(x, y, width, height)) {
+            setOperationStatus("Invalid value for " + key);
+            redraw();
+            return false;
+        }
+
+        setOperationStatus("Property changed: " + key);
+        redraw();
+        return true;
+    }
+
+    if (const auto* existingProperty = widget->getProperty(key)) {
+        if (existingProperty->isBool()) {
+            bool parsedValue = false;
+            if (!parseBool(trimmedValue, parsedValue)) {
+                setOperationStatus("Invalid value for " + key);
+                redraw();
+                return false;
+            }
+
+            return setSelectedWidgetProperty(key, parsedValue);
+        }
+        if (existingProperty->isInt()) {
+            int parsedValue = 0;
+            if (!parseInt(trimmedValue, parsedValue)) {
+                setOperationStatus("Invalid value for " + key);
+                redraw();
+                return false;
+            }
+
+            return setSelectedWidgetProperty(key, parsedValue);
+        }
+        if (existingProperty->isFloat()) {
+            float parsedValue = 0.0f;
+            if (!parseFloat(trimmedValue, parsedValue)) {
+                setOperationStatus("Invalid value for " + key);
+                redraw();
+                return false;
+            }
+
+            return setSelectedWidgetProperty(key, parsedValue);
+        }
+    }
+
+    return setSelectedWidgetProperty(key, trimmedValue);
+}
+
 void MainWindow::loadLabelFont()
 {
     static constexpr std::array<const char*, 3> kFontCandidates = {
@@ -502,6 +733,7 @@ void MainWindow::applyLayout(const WindowLayout& layout)
         layout_.propertyInspector.width, layout_.propertyInspector.height);
     projectTree_.setBounds(layout_.projectTree.x, layout_.projectTree.y,
         layout_.projectTree.width, layout_.projectTree.height);
+    updatePropertyEditorBounds();
 }
 
 void MainWindow::drawToolbar(visage::Canvas& canvas) const
@@ -571,6 +803,7 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
 void MainWindow::selectWidget(const std::string& widgetId)
 {
     statusMessage_.clear();
+    cancelInspectorEdit();
     document_.selectWidget(widgetId);
     redraw();
 }
@@ -676,6 +909,85 @@ std::filesystem::path MainWindow::sampleProjectPath() const
 std::filesystem::path MainWindow::defaultDebugSavePath() const
 {
     return projectRootPath() / "Generated" / "debug_saved_project.vfb.json";
+}
+
+std::string MainWindow::trimWhitespace(const std::string& value)
+{
+    const auto first = std::find_if_not(value.begin(), value.end(),
+        [](unsigned char character) { return std::isspace(character) != 0; });
+    if (first == value.end()) {
+        return {};
+    }
+
+    const auto last = std::find_if_not(value.rbegin(), value.rend(),
+        [](unsigned char character) { return std::isspace(character) != 0; }).base();
+    return std::string(first, last);
+}
+
+bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
+{
+    if (row.editKind == PropertyInspector::PropertyEditKind::ReadOnly
+        || row.editKind == PropertyInspector::PropertyEditKind::Bool) {
+        return false;
+    }
+
+    if (!propertyInspector_.beginEditing(document_.selectedWidget(), row.key)) {
+        return false;
+    }
+
+    propertyEditor_.setText(row.displayValue);
+    updatePropertyEditorBounds();
+    propertyEditor_.setVisible(true);
+    propertyEditor_.selectAll();
+    propertyEditor_.requestKeyboardFocus();
+    redraw();
+    return true;
+}
+
+bool MainWindow::commitInspectorEdit()
+{
+    if (!propertyInspector_.isEditing()) {
+        return true;
+    }
+
+    const auto pendingEdit = propertyInspector_.buildPendingEdit(propertyEditor_.text().toUtf8());
+    if (!pendingEdit.has_value()) {
+        cancelInspectorEdit();
+        return true;
+    }
+
+    if (!setSelectedWidgetPropertyFromString(pendingEdit->key, pendingEdit->valueText)) {
+        propertyEditor_.requestKeyboardFocus();
+        return false;
+    }
+
+    propertyInspector_.clearEditing();
+    propertyEditor_.setVisible(false);
+    redraw();
+    return true;
+}
+
+void MainWindow::cancelInspectorEdit()
+{
+    propertyInspector_.cancelEditing();
+    propertyEditor_.setVisible(false);
+    redraw();
+}
+
+void MainWindow::updatePropertyEditorBounds()
+{
+    if (!propertyInspector_.isEditing()) {
+        propertyEditor_.setVisible(false);
+        return;
+    }
+
+    const auto bounds = propertyInspector_.activeEditorBounds(document_.selectedWidget());
+    if (!bounds.has_value()) {
+        propertyEditor_.setVisible(false);
+        return;
+    }
+
+    propertyEditor_.setBounds(bounds->x, bounds->y, bounds->width, bounds->height);
 }
 
 void MainWindow::clearCanvasInteraction()
