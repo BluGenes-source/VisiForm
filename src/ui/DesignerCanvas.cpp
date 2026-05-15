@@ -3,6 +3,8 @@
 #include "ui/DesignerCanvas.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -36,6 +38,11 @@ struct PreviewLayout {
     PanelRect preview{};
     PanelRect form{};
     float scale = 1.0f;
+};
+
+struct WidgetScreenInfo {
+    const model::WidgetNode* widget = nullptr;
+    PanelRect bounds{};
 };
 
 void drawBorder(visage::Canvas& canvas, const PanelRect& bounds, int color, float thickness = 1.0f)
@@ -127,6 +134,113 @@ void drawSelectionOutline(visage::Canvas& canvas, const PanelRect& bounds)
     drawBorder(canvas, { bounds.x - 3.0f, bounds.y - 3.0f, bounds.width + 6.0f, bounds.height + 6.0f }, 0xff2d7ff9, 2.0f);
 }
 
+PanelRect handleRect(const PanelRect& bounds, DesignerCanvas::HitRegion region, float handleSize)
+{
+    const float halfHandle = handleSize * 0.5f;
+    switch (region) {
+    case DesignerCanvas::HitRegion::TopLeftHandle:
+        return { bounds.x - halfHandle, bounds.y - halfHandle, handleSize, handleSize };
+    case DesignerCanvas::HitRegion::TopRightHandle:
+        return { bounds.x + bounds.width - halfHandle, bounds.y - halfHandle, handleSize, handleSize };
+    case DesignerCanvas::HitRegion::BottomLeftHandle:
+        return { bounds.x - halfHandle, bounds.y + bounds.height - halfHandle, handleSize, handleSize };
+    case DesignerCanvas::HitRegion::BottomRightHandle:
+        return { bounds.x + bounds.width - halfHandle, bounds.y + bounds.height - halfHandle, handleSize, handleSize };
+    case DesignerCanvas::HitRegion::None:
+    case DesignerCanvas::HitRegion::Body:
+        return {};
+    }
+
+    return {};
+}
+
+DesignerCanvas::HitRegion hitHandle(const PanelRect& bounds, float x, float y, float handleSize)
+{
+    constexpr std::array<DesignerCanvas::HitRegion, 4> kHandles = {
+        DesignerCanvas::HitRegion::TopLeftHandle,
+        DesignerCanvas::HitRegion::TopRightHandle,
+        DesignerCanvas::HitRegion::BottomLeftHandle,
+        DesignerCanvas::HitRegion::BottomRightHandle
+    };
+
+    for (DesignerCanvas::HitRegion handle : kHandles) {
+        if (handleRect(bounds, handle, handleSize).contains(x, y)) {
+            return handle;
+        }
+    }
+
+    return DesignerCanvas::HitRegion::None;
+}
+
+void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, float handleSize)
+{
+    constexpr std::array<DesignerCanvas::HitRegion, 4> kHandles = {
+        DesignerCanvas::HitRegion::TopLeftHandle,
+        DesignerCanvas::HitRegion::TopRightHandle,
+        DesignerCanvas::HitRegion::BottomLeftHandle,
+        DesignerCanvas::HitRegion::BottomRightHandle
+    };
+
+    for (DesignerCanvas::HitRegion handle : kHandles) {
+        const PanelRect handleBounds = handleRect(bounds, handle, handleSize);
+        canvas.setColor(0xffffffff);
+        canvas.fill(handleBounds.x, handleBounds.y, handleBounds.width, handleBounds.height);
+        drawBorder(canvas, handleBounds, 0xff2d7ff9);
+    }
+}
+
+void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, int gridSize)
+{
+    const float scaledGridSize = gridSize * scale;
+    if (scaledGridSize < 4.0f) {
+        return;
+    }
+
+    const float contentTop = bounds.y + std::min(kTitleBarHeight, bounds.height);
+    const float contentHeight = bounds.height - std::min(kTitleBarHeight, bounds.height);
+    if (contentHeight <= 0.0f) {
+        return;
+    }
+
+    canvas.setColor(0xffdfe5ee);
+    for (float x = bounds.x + scaledGridSize; x < bounds.x + bounds.width; x += scaledGridSize) {
+        canvas.fill(x, contentTop, 1.0f, contentHeight);
+    }
+    for (float y = contentTop + scaledGridSize; y < bounds.y + bounds.height; y += scaledGridSize) {
+        canvas.fill(bounds.x, y, bounds.width, 1.0f);
+    }
+}
+
+std::optional<WidgetScreenInfo> findWidgetScreenInfo(const model::WidgetNode& widget,
+    const std::string& widgetId,
+    float formScreenX,
+    float formScreenY,
+    float parentLocalX,
+    float parentLocalY,
+    float scale)
+{
+    const float widgetLocalX = parentLocalX + widget.bounds.x;
+    const float widgetLocalY = parentLocalY + widget.bounds.y;
+    const PanelRect bounds{
+        formScreenX + widgetLocalX * scale,
+        formScreenY + widgetLocalY * scale,
+        std::max(1.0f, widget.bounds.width * scale),
+        std::max(1.0f, widget.bounds.height * scale)
+    };
+
+    if (widget.id == widgetId) {
+        return WidgetScreenInfo{ &widget, bounds };
+    }
+
+    for (const auto& child : widget.children) {
+        if (auto match = findWidgetScreenInfo(child, widgetId, formScreenX, formScreenY, widgetLocalX, widgetLocalY, scale)) {
+            return match;
+        }
+    }
+
+    return std::nullopt;
+}
+
 void drawWidget(visage::Canvas& canvas,
     const visage::Font& font,
     bool drawText,
@@ -136,7 +250,9 @@ void drawWidget(visage::Canvas& canvas,
     float parentLocalX,
     float parentLocalY,
     float scale,
-    const std::string& selectedWidgetId)
+    const std::string& selectedWidgetId,
+    float handleSize,
+    int gridSize)
 {
     const float widgetLocalX = parentLocalX + widget.bounds.x;
     const float widgetLocalY = parentLocalY + widget.bounds.y;
@@ -151,6 +267,7 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::FormWindow: {
         canvas.setColor(parseColorOrDefault(widget.getStringProperty("backgroundColor", "#eceff5"), 0xffeceff5));
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawGrid(canvas, bounds, scale, gridSize);
         canvas.setColor(0xffc0c8d5);
         canvas.fill(bounds.x, bounds.y, bounds.width, std::min(kTitleBarHeight, bounds.height));
         drawBorder(canvas, bounds, 0xff6c7788);
@@ -168,7 +285,7 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, bounds, 0xff97a3b7);
         if (drawText) {
             canvas.setColor(0xff243041);
-            canvas.text(widgetLabel(widget), font, visage::Font::kTopLeft,
+            canvas.text(widget.getStringProperty("title", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 16.0f), 20.0f);
         }
         break;
@@ -207,7 +324,8 @@ void drawWidget(visage::Canvas& canvas,
         if (drawText) {
             canvas.setColor(0xff1f2530);
             canvas.text(widget.getStringProperty("text", widgetLabel(widget)), font, visage::Font::kTopLeft,
-                bounds.x + boxSize + 8.0f, bounds.y + 4.0f, std::max(0.0f, bounds.width - boxSize - 8.0f), bounds.height - 6.0f);
+                bounds.x + boxSize + 8.0f, bounds.y + 4.0f,
+                std::max(0.0f, bounds.width - boxSize - 8.0f), bounds.height - 6.0f);
         }
         break;
     }
@@ -239,10 +357,14 @@ void drawWidget(visage::Canvas& canvas,
 
     if (widget.id == selectedWidgetId) {
         drawSelectionOutline(canvas, bounds);
+        if (widget.type != model::WidgetType::FormWindow) {
+            drawSelectionHandles(canvas, bounds, handleSize);
+        }
     }
 
     for (const auto& child : widget.children) {
-        drawWidget(canvas, font, drawText, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY, scale, selectedWidgetId);
+        drawWidget(canvas, font, drawText, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
+            scale, selectedWidgetId, handleSize, gridSize);
     }
 }
 
@@ -261,7 +383,7 @@ bool DesignerCanvas::contains(float x, float y) const
     return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
 }
 
-std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const
+std::optional<DesignerCanvas::FormPoint> DesignerCanvas::toFormPoint(const model::ProjectDocument& document, float x, float y) const
 {
     if (!contains(x, y) || !document.root.bounds.isValid()) {
         return std::nullopt;
@@ -272,17 +394,140 @@ std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectD
         return std::nullopt;
     }
 
-    const float localX = (x - previewLayout.form.x) / previewLayout.scale + document.root.bounds.x;
-    const float localY = (y - previewLayout.form.y) / previewLayout.scale + document.root.bounds.y;
-    if (const auto* hitWidget = document.root.hitTest(localX, localY)) {
+    return FormPoint{
+        (x - previewLayout.form.x) / previewLayout.scale + document.root.bounds.x,
+        (y - previewLayout.form.y) / previewLayout.scale + document.root.bounds.y
+    };
+}
+
+std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const
+{
+    const auto point = toFormPoint(document, x, y);
+    if (!point.has_value()) {
+        return std::nullopt;
+    }
+
+    if (const auto* hitWidget = document.root.hitTest(point->x, point->y)) {
         return hitWidget->id;
     }
 
-    if (document.root.bounds.contains(localX, localY)) {
+    if (document.root.bounds.contains(point->x, point->y)) {
         return document.root.id;
     }
 
     return std::nullopt;
+}
+
+std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction(const model::ProjectDocument& document,
+    float x,
+    float y,
+    const std::string& selectedWidgetId) const
+{
+    const auto hitWidgetId = hitTestWidgetId(document, x, y);
+    if (!hitWidgetId.has_value()) {
+        return std::nullopt;
+    }
+
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    if (!previewLayout.form.isValid()) {
+        return std::nullopt;
+    }
+
+    const auto widgetInfo = findWidgetScreenInfo(document.root, *hitWidgetId, previewLayout.form.x, previewLayout.form.y,
+        -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale);
+    if (!widgetInfo.has_value()) {
+        return std::nullopt;
+    }
+
+    InteractionHit hit{ *hitWidgetId, HitRegion::Body };
+    if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id) {
+        const HitRegion handle = hitHandle(widgetInfo->bounds, x, y, handleSize_);
+        if (handle != HitRegion::None) {
+            hit.region = handle;
+            return hit;
+        }
+    }
+
+    if (widgetInfo->bounds.contains(x, y)) {
+        return hit;
+    }
+
+    return std::nullopt;
+}
+
+float DesignerCanvas::snap(float value) const
+{
+    if (!snapToGrid_ || gridSize_ <= 1) {
+        return value;
+    }
+
+    return std::round(value / static_cast<float>(gridSize_)) * static_cast<float>(gridSize_);
+}
+
+model::Rect DesignerCanvas::moveBounds(const model::Rect& originalBounds, const FormPoint& dragStart, const FormPoint& currentPoint) const
+{
+    model::Rect updated = originalBounds;
+    updated.x = originalBounds.x + (currentPoint.x - dragStart.x);
+    updated.y = originalBounds.y + (currentPoint.y - dragStart.y);
+    updated.x = snap(updated.x);
+    updated.y = snap(updated.y);
+    return updated;
+}
+
+model::Rect DesignerCanvas::resizeBounds(const model::Rect& originalBounds,
+    HitRegion region,
+    const FormPoint& dragStart,
+    const FormPoint& currentPoint) const
+{
+    float left = originalBounds.x;
+    float top = originalBounds.y;
+    float right = originalBounds.x + originalBounds.width;
+    float bottom = originalBounds.y + originalBounds.height;
+
+    const float deltaX = currentPoint.x - dragStart.x;
+    const float deltaY = currentPoint.y - dragStart.y;
+
+    switch (region) {
+    case HitRegion::TopLeftHandle:
+        left = snap(left + deltaX);
+        top = snap(top + deltaY);
+        break;
+    case HitRegion::TopRightHandle:
+        right = snap(right + deltaX);
+        top = snap(top + deltaY);
+        break;
+    case HitRegion::BottomLeftHandle:
+        left = snap(left + deltaX);
+        bottom = snap(bottom + deltaY);
+        break;
+    case HitRegion::BottomRightHandle:
+        right = snap(right + deltaX);
+        bottom = snap(bottom + deltaY);
+        break;
+    case HitRegion::None:
+    case HitRegion::Body:
+        return originalBounds;
+    }
+
+    if (right - left < minimumWidgetSize_) {
+        if (region == HitRegion::TopLeftHandle || region == HitRegion::BottomLeftHandle) {
+            left = right - minimumWidgetSize_;
+        }
+        else {
+            right = left + minimumWidgetSize_;
+        }
+    }
+
+    if (bottom - top < minimumWidgetSize_) {
+        if (region == HitRegion::TopLeftHandle || region == HitRegion::TopRightHandle) {
+            top = bottom - minimumWidgetSize_;
+        }
+        else {
+            bottom = top + minimumWidgetSize_;
+        }
+    }
+
+    return { left, top, std::max(minimumWidgetSize_, right - left), std::max(minimumWidgetSize_, bottom - top) };
 }
 
 void DesignerCanvas::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document) const
@@ -325,7 +570,8 @@ void DesignerCanvas::draw(visage::Canvas& canvas, const visage::Font& font, bool
     }
 
     drawWidget(canvas, font, drawText, document.root, previewLayout.form.x, previewLayout.form.y,
-        -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId);
+        -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
+        handleSize_, gridSize_);
 
     if (drawText) {
         canvas.setColor(0xff243041);

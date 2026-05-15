@@ -204,8 +204,79 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
+        const bool wasSelected = document_.selectedWidgetId == *widgetId;
         selectWidget(*widgetId);
+
+        if (wasSelected && *widgetId != document_.root.id) {
+            const auto interactionHit = designerCanvas_.hitTestInteraction(document_, e.position.x, e.position.y, document_.selectedWidgetId);
+            const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y);
+            auto* widget = document_.findWidgetById(*widgetId);
+            if (interactionHit.has_value() && dragStart.has_value() && widget != nullptr) {
+                canvasInteraction_.widgetId = *widgetId;
+                canvasInteraction_.region = interactionHit->region;
+                canvasInteraction_.originalBounds = widget->bounds;
+                canvasInteraction_.dragStart = *dragStart;
+                canvasInteraction_.changed = false;
+                canvasInteraction_.mode = interactionHit->region == DesignerCanvas::HitRegion::Body
+                    ? CanvasInteractionState::Mode::Move
+                    : CanvasInteractionState::Mode::Resize;
+            }
+        }
+        else {
+            clearCanvasInteraction();
+        }
     }
+}
+
+void MainWindow::mouseDrag(const visage::MouseEvent& e)
+{
+    if (canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        return;
+    }
+
+    auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
+    const auto currentPoint = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y);
+    if (widget == nullptr || currentPoint == std::nullopt) {
+        return;
+    }
+
+    model::Rect updatedBounds = canvasInteraction_.originalBounds;
+    if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
+        updatedBounds = designerCanvas_.moveBounds(canvasInteraction_.originalBounds, canvasInteraction_.dragStart, *currentPoint);
+    }
+    else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize) {
+        updatedBounds = designerCanvas_.resizeBounds(canvasInteraction_.originalBounds, canvasInteraction_.region,
+            canvasInteraction_.dragStart, *currentPoint);
+    }
+
+    if (updatedBounds.x != widget->bounds.x || updatedBounds.y != widget->bounds.y
+        || updatedBounds.width != widget->bounds.width || updatedBounds.height != widget->bounds.height) {
+        widget->bounds = updatedBounds;
+        canvasInteraction_.changed = true;
+        redraw();
+    }
+}
+
+void MainWindow::mouseUp(const visage::MouseEvent& e)
+{
+    if (!e.isLeftButton() || canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        return;
+    }
+
+    const auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
+    if (canvasInteraction_.changed && widget != nullptr) {
+        document_.markDirty();
+        const std::string displayName = widget->name.empty() ? widget->id : widget->name;
+        if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
+            setOperationStatus("Moved widget: " + displayName + " (" + widget->id + ")");
+        }
+        else {
+            setOperationStatus("Resized widget: " + displayName + " (" + widget->id + ")");
+        }
+    }
+
+    clearCanvasInteraction();
+    redraw();
 }
 
 bool MainWindow::keyPress(const visage::KeyEvent& e)
@@ -605,6 +676,11 @@ std::filesystem::path MainWindow::sampleProjectPath() const
 std::filesystem::path MainWindow::defaultDebugSavePath() const
 {
     return projectRootPath() / "Generated" / "debug_saved_project.vfb.json";
+}
+
+void MainWindow::clearCanvasInteraction()
+{
+    canvasInteraction_ = {};
 }
 
 bool MainWindow::canDrawText() const

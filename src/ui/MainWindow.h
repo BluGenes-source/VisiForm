@@ -26,6 +26,8 @@ public:
     void draw(visage::Canvas& canvas) override;
     void resized() override;
     void mouseDown(const visage::MouseEvent& e) override;
+    void mouseDrag(const visage::MouseEvent& e) override;
+    void mouseUp(const visage::MouseEvent& e) override;
     bool keyPress(const visage::KeyEvent& e) override;
 
     bool newProject();
@@ -65,6 +67,21 @@ private:
         SaveProjectAsDebug
     };
 
+    struct CanvasInteractionState {
+        enum class Mode {
+            None,
+            Move,
+            Resize
+        };
+
+        Mode mode = Mode::None;
+        DesignerCanvas::HitRegion region = DesignerCanvas::HitRegion::None;
+        std::string widgetId{};
+        model::Rect originalBounds{};
+        DesignerCanvas::FormPoint dragStart{};
+        bool changed = false;
+    };
+
     void loadLabelFont();
     void updateLayout();
     [[nodiscard]] WindowLayout calculateLayout(float windowWidth, float windowHeight) const;
@@ -82,12 +99,14 @@ private:
     [[nodiscard]] std::filesystem::path projectRootPath() const;
     [[nodiscard]] std::filesystem::path sampleProjectPath() const;
     [[nodiscard]] std::filesystem::path defaultDebugSavePath() const;
+    void clearCanvasInteraction();
     [[nodiscard]] bool canDrawText() const;
 
     WindowLayout layout_{};
     model::ProjectDocument document_ = model::ProjectDocument::createDefault();
     std::filesystem::path currentProjectPath_{};
     std::string statusMessage_{};
+    CanvasInteractionState canvasInteraction_{};
     utils::IdGenerator idGenerator_{};
     WidgetPalette widgetPalette_{};
     DesignerCanvas designerCanvas_{};
