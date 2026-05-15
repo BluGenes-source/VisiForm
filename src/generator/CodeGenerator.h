@@ -1,17 +1,22 @@
 #pragma once
 
+#pragma once
+
 #include "generator/CMakeEmitter.h"
 #include "generator/VisageCppEmitter.h"
 #include "model/ProjectDocument.h"
 
+#include <filesystem>
 #include <string>
 
 namespace visiform::generator {
 
-// Placeholder coordinator for future project code generation.
 class CodeGenerator {
 public:
-    [[nodiscard]] std::string generateSummary(const model::ProjectDocument& document) const;
+    [[nodiscard]] bool generateProject(
+        const model::ProjectDocument& document,
+        const std::filesystem::path& outputDirectory,
+        std::string& errorMessage) const;
 
 private:
     VisageCppEmitter visageCppEmitter_{};

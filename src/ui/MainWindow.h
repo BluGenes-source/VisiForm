@@ -3,6 +3,7 @@
 #pragma once
 
 #include "commands/UndoRedoStack.h"
+#include "generator/CodeGenerator.h"
 #include "model/ProjectDocument.h"
 #include "ui/DesignerCanvas.h"
 #include "ui/ProjectTree.h"
@@ -39,6 +40,7 @@ public:
     bool saveProject();
     bool saveProjectAs(const std::filesystem::path& path);
     bool loadProjectFromPath(const std::filesystem::path& path);
+    bool exportGeneratedCode();
     void deleteSelectedWidget();
     void duplicateSelectedWidget();
     void undo();
@@ -76,6 +78,7 @@ private:
         OpenSample,
         SaveProject,
         SaveProjectAsDebug,
+        ExportCode,
         DuplicateWidget,
         DeleteWidget,
         UndoAction,

@@ -27,7 +27,7 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kToolbarButtonWidth = 132.0f;
+constexpr float kToolbarButtonWidth = 98.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
 constexpr float kToolbarButtonSpacing = 8.0f;
 constexpr float kNewWidgetStartX = 40.0f;
@@ -98,6 +98,22 @@ bool MainWindow::newProject()
     undoRedo_.clear();
     document_.clearDirty();
     setOperationStatus("New project created");
+    redraw();
+    return true;
+}
+
+bool MainWindow::exportGeneratedCode()
+{
+    generator::CodeGenerator codeGenerator;
+    std::string errorMessage;
+    const std::filesystem::path outputPath = projectRootPath() / "Generated" / "ExportedVisageProject";
+    if (!codeGenerator.generateProject(document_, outputPath, errorMessage)) {
+        setOperationStatus("Code export failed: " + errorMessage);
+        redraw();
+        return false;
+    }
+
+    setOperationStatus("Code exported: Generated/ExportedVisageProject");
     redraw();
     return true;
 }
@@ -210,6 +226,9 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::SaveProjectAsDebug:
         saveProjectAs(defaultDebugSavePath());
+        return;
+    case ToolbarAction::ExportCode:
+        exportGeneratedCode();
         return;
     case ToolbarAction::DuplicateWidget:
         duplicateSelectedWidget();
@@ -1001,13 +1020,14 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     };
 
     addButton(ToolbarAction::NewProject, "New");
-    addButton(ToolbarAction::OpenSample, "Open Sample");
+    addButton(ToolbarAction::OpenSample, "Open");
     addButton(ToolbarAction::SaveProject, "Save");
-    addButton(ToolbarAction::SaveProjectAsDebug, "Save As Debug", true);
+    addButton(ToolbarAction::SaveProjectAsDebug, "Save As", true);
+    addButton(ToolbarAction::ExportCode, "Export");
     addButton(ToolbarAction::DeleteWidget, "Delete");
     addButton(ToolbarAction::DuplicateWidget, "Duplicate");
-    addButton(ToolbarAction::UndoAction, canUndo() ? "Undo" : "Undo");
-    addButton(ToolbarAction::RedoAction, canRedo() ? "Redo" : "Redo");
+    addButton(ToolbarAction::UndoAction, "Undo");
+    addButton(ToolbarAction::RedoAction, "Redo");
 
     return buttons;
 }

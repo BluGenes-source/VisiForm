@@ -1,15 +1,22 @@
 #pragma once
 
+#pragma once
+
 #include "model/ProjectDocument.h"
 
 #include <string>
 
 namespace visiform::generator {
 
-// Placeholder emitter for future Visage C++ output.
 class VisageCppEmitter {
 public:
-    [[nodiscard]] std::string emit(const model::ProjectDocument& document) const;
+    struct EmittedSources {
+        std::string mainCpp;
+        std::string mainWindowHeader;
+        std::string mainWindowCpp;
+    };
+
+    [[nodiscard]] EmittedSources emitProjectSources(const model::ProjectDocument& document) const;
 };
 
 } // namespace visiform::generator
