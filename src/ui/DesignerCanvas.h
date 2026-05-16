@@ -33,6 +33,14 @@ public:
     };
 
     void setBounds(float x, float y, float width, float height);
+    void setShowGrid(bool showGrid);
+    void setSnapToGrid(bool snapToGrid);
+    void setGridSize(int gridSize);
+    void setMajorGridSize(int majorGridSize);
+    [[nodiscard]] bool showGrid() const;
+    [[nodiscard]] bool snapToGrid() const;
+    [[nodiscard]] int gridSize() const;
+    [[nodiscard]] int majorGridSize() const;
     [[nodiscard]] bool contains(float x, float y) const;
     [[nodiscard]] std::optional<std::string> hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] std::optional<InteractionHit> hitTestInteraction(const model::ProjectDocument& document, float x, float y, const std::string& selectedWidgetId) const;

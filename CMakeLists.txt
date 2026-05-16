@@ -55,6 +55,7 @@ add_executable(VisiForm
     src/commands/UndoRedoStack.cpp
     src/utils/FileUtils.cpp
     src/utils/IdGenerator.cpp
+    src/utils/AppSettings.cpp
     src/utils/NativeFileDialogs.cpp
     src/utils/RecentFiles.cpp
 )

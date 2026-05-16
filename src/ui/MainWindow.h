@@ -9,8 +9,8 @@
 #include "ui/ProjectTree.h"
 #include "ui/PropertyInspector.h"
 #include "ui/WidgetPalette.h"
+#include "utils/AppSettings.h"
 #include "utils/IdGenerator.h"
-#include "utils/RecentFiles.h"
 
 #include <filesystem>
 #include <string>
@@ -79,15 +79,23 @@ private:
         None,
         NewProject,
         OpenProject,
+        SaveProject,
         SaveProjectAsDialog,
         OpenSample,
-        SaveProject,
         SaveProjectAsDebug,
         ExportCode,
+        ToggleGrid,
+        ToggleSnap,
         DuplicateWidget,
         DeleteWidget,
         UndoAction,
         RedoAction
+    };
+
+    enum class UnsavedChangesResult {
+        Save,
+        DontSave,
+        Cancel
     };
 
     struct CanvasInteractionState {
@@ -116,10 +124,18 @@ private:
     void updateLayout();
     [[nodiscard]] WindowLayout calculateLayout(float windowWidth, float windowHeight) const;
     void applyLayout(const WindowLayout& layout);
+    void updateWindowTitle();
     void drawToolbar(visage::Canvas& canvas) const;
     void drawStatusBar(visage::Canvas& canvas) const;
     bool openSampleProject();
     bool saveDebugProject();
+    UnsavedChangesResult promptForUnsavedChanges();
+    bool confirmSaveIfDirty();
+    void loadAppSettings();
+    void saveAppSettings();
+    void applyCanvasSettings();
+    void toggleGrid();
+    void toggleSnapToGrid();
     void addWidgetFromPalette(model::WidgetType type);
     [[nodiscard]] model::WidgetNode createDefaultWidget(model::WidgetType type);
     [[nodiscard]] model::Rect nextDefaultWidgetBounds(model::WidgetType type) const;
@@ -139,7 +155,6 @@ private:
     void addRecentFile(const std::filesystem::path& path);
     void removeRecentFile(const std::filesystem::path& path);
     bool openRecentFile(const std::filesystem::path& path);
-    void loadRecentFiles();
     [[nodiscard]] static std::string trimWhitespace(const std::string& value);
     bool beginInspectorEdit(const PropertyInspector::PropertyRow& row);
     bool commitInspectorEdit();
@@ -155,7 +170,7 @@ private:
     CanvasInteractionState canvasInteraction_{};
     commands::UndoRedoStack undoRedo_{};
     utils::IdGenerator idGenerator_{};
-    utils::RecentFiles recentFiles_{};
+    utils::AppSettings settings_{};
     WidgetPalette widgetPalette_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};

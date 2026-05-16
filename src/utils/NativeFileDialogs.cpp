@@ -1,5 +1,7 @@
 #include "utils/NativeFileDialogs.h"
 
+#include "utils/NativeFileDialogs.h"
+
 #include "utils/FileUtils.h"
 
 #include <array>
@@ -34,7 +36,9 @@ std::filesystem::path normalizeProjectSavePath(std::filesystem::path path)
     return std::filesystem::path{ path.native() + std::wstring{ L".vfb.json" } };
 }
 
-std::optional<std::filesystem::path> showProjectDialog(bool saveDialog, const std::filesystem::path& suggestedPath)
+std::optional<std::filesystem::path> showProjectDialog(bool saveDialog,
+    const std::filesystem::path& suggestedPath,
+    const std::filesystem::path& initialDirectory)
 {
     std::vector<wchar_t> buffer(4096, L'\0');
     const std::wstring initialFileName = suggestedPath.filename().native();
@@ -50,7 +54,8 @@ std::optional<std::filesystem::path> showProjectDialog(bool saveDialog, const st
     dialog.nFilterIndex = 1;
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
-    dialog.lpstrInitialDir = suggestedPath.parent_path().empty() ? nullptr : suggestedPath.parent_path().c_str();
+    const std::filesystem::path dialogDirectory = !suggestedPath.parent_path().empty() ? suggestedPath.parent_path() : initialDirectory;
+    dialog.lpstrInitialDir = dialogDirectory.empty() ? nullptr : dialogDirectory.c_str();
     dialog.Flags = OFN_EXPLORER | OFN_HIDEREADONLY | OFN_PATHMUSTEXIST;
     if (saveDialog) {
         dialog.Flags |= OFN_OVERWRITEPROMPT;
@@ -71,14 +76,15 @@ std::optional<std::filesystem::path> showProjectDialog(bool saveDialog, const st
 
 } // namespace
 
-std::optional<std::filesystem::path> showOpenProjectDialog()
+std::optional<std::filesystem::path> showOpenProjectDialog(const std::filesystem::path& initialDirectory)
 {
-    return showProjectDialog(false, {});
+    return showProjectDialog(false, {}, initialDirectory);
 }
 
-std::optional<std::filesystem::path> showSaveProjectDialog(const std::filesystem::path& suggestedPath)
+std::optional<std::filesystem::path> showSaveProjectDialog(const std::filesystem::path& suggestedPath,
+    const std::filesystem::path& initialDirectory)
 {
-    return showProjectDialog(true, suggestedPath);
+    return showProjectDialog(true, suggestedPath, initialDirectory);
 }
 
 } // namespace visiform::utils

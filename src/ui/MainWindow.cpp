@@ -5,6 +5,7 @@
 #include "commands/Command.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
+#include "utils/AppSettings.h"
 #include "utils/FileUtils.h"
 #include "utils/NativeFileDialogs.h"
 
@@ -15,6 +16,11 @@
 #include <fstream>
 #include <memory>
 #include <string>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
 namespace visiform::ui {
 namespace {
@@ -28,9 +34,9 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kToolbarButtonWidth = 90.0f;
+constexpr float kToolbarButtonWidth = 72.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
-constexpr float kToolbarButtonSpacing = 6.0f;
+constexpr float kToolbarButtonSpacing = 4.0f;
 constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
@@ -98,14 +104,18 @@ MainWindow::MainWindow()
         cancelInspectorEdit();
     };
     addChild(&propertyEditor_);
-    loadRecentFiles();
+    loadAppSettings();
+    applyCanvasSettings();
     updateLayout();
 }
 
 bool MainWindow::newProject()
 {
+    if (!confirmSaveIfDirty()) {
+        return false;
+    }
+
     cancelInspectorEdit();
-    // TODO: Add an unsaved-changes prompt before replacing a dirty document.
     document_ = model::ProjectDocument::createDefault();
     currentProjectPath_.clear();
     undoRedo_.clear();
@@ -117,8 +127,11 @@ bool MainWindow::newProject()
 
 bool MainWindow::openProjectDialog()
 {
-    // TODO: Add an unsaved-changes prompt before opening another project.
-    const auto selectedPath = utils::showOpenProjectDialog();
+    if (!confirmSaveIfDirty()) {
+        return false;
+    }
+
+    const auto selectedPath = utils::showOpenProjectDialog(settings_.lastProjectDirectory);
     if (!selectedPath.has_value()) {
         setOperationStatus("Open cancelled");
         redraw();
@@ -139,6 +152,8 @@ bool MainWindow::exportGeneratedCode()
         return false;
     }
 
+    settings_.lastExportDirectory = outputPath;
+    saveAppSettings();
     setOperationStatus("Code exported: Generated/ExportedVisageProject (with CMake presets)");
     redraw();
     return true;
@@ -158,7 +173,7 @@ bool MainWindow::saveProjectAsDialog()
     const std::filesystem::path suggestedPath = currentProjectPath_.empty() || isTemplateExamplePath(currentProjectPath_)
         ? projectRootPath() / "Generated" / suggestedProjectPath(document_, {})
         : currentProjectPath_;
-    const auto selectedPath = utils::showSaveProjectDialog(suggestedPath);
+    const auto selectedPath = utils::showSaveProjectDialog(suggestedPath, settings_.lastProjectDirectory);
     if (!selectedPath.has_value()) {
         setOperationStatus("Save cancelled");
         redraw();
@@ -180,6 +195,7 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 
     currentProjectPath_ = path;
     document_.clearDirty();
+    settings_.lastProjectDirectory = currentProjectPath_.parent_path();
     addRecentFile(currentProjectPath_);
     setOperationStatus("Project saved: " + normalizedPathText(currentProjectPath_));
     redraw();
@@ -189,7 +205,6 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 {
     cancelInspectorEdit();
-    // TODO: Add an unsaved-changes prompt before loading another project.
     serialization::JsonProjectReader reader;
     std::string errorMessage;
     auto loadedDocument = reader.readFromFile(path, errorMessage);
@@ -207,6 +222,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     currentProjectPath_ = path;
     undoRedo_.clear();
     document_.clearDirty();
+    settings_.lastProjectDirectory = currentProjectPath_.parent_path();
     addRecentFile(currentProjectPath_);
     setOperationStatus("Project loaded: " + normalizedPathText(currentProjectPath_));
     redraw();
@@ -215,6 +231,10 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 
 bool MainWindow::openSampleProject()
 {
+    if (!confirmSaveIfDirty()) {
+        return false;
+    }
+
     return loadProjectFromPath(sampleProjectPath());
 }
 
@@ -254,6 +274,7 @@ void MainWindow::resized()
 
 void MainWindow::draw(visage::Canvas& canvas)
 {
+    updateWindowTitle();
     updateLayout();
 
     canvas.setColor(0xff1b1d23);
@@ -303,6 +324,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     case ToolbarAction::ExportCode:
         exportGeneratedCode();
         return;
+    case ToolbarAction::ToggleGrid:
+        toggleGrid();
+        return;
+    case ToolbarAction::ToggleSnap:
+        toggleSnapToGrid();
+        return;
     case ToolbarAction::DuplicateWidget:
         duplicateSelectedWidget();
         return;
@@ -351,7 +378,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             return;
         }
         if (const auto recentFileIndex = projectTree_.hitTestRecentFileIndex(document_, e.position.x, e.position.y)) {
-            openRecentFile(recentFiles_.paths()[*recentFileIndex]);
+            openRecentFile(settings_.recentFiles[*recentFileIndex]);
             return;
         }
     }
@@ -451,7 +478,6 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
 
     if (e.keyCode() == KeyCode::Delete) {
-        setOperationStatus("Delete shortcut received");
         deleteSelectedWidget();
         return true;
     }
@@ -474,7 +500,6 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
         return saveProject();
     }
     if (e.keyCode() == KeyCode::D) {
-        setOperationStatus("Duplicate shortcut received");
         duplicateSelectedWidget();
         return true;
     }
@@ -993,6 +1018,11 @@ void MainWindow::applyLayout(const WindowLayout& layout)
     updatePropertyEditorBounds();
 }
 
+void MainWindow::updateWindowTitle()
+{
+    setTitle(document_.dirty ? "VisiForm - Visage Form Builder *" : kWindowTitle);
+}
+
 void MainWindow::drawToolbar(visage::Canvas& canvas) const
 {
     if (!layout_.toolbar.isVisible()) {
@@ -1058,11 +1088,11 @@ std::string MainWindow::statusText() const
 
     const auto* selectedWidget = document_.selectedWidget();
     if (selectedWidget == nullptr) {
-        return "Status: Ready";
+        return document_.dirty ? "Status: Modified" : "Status: Ready";
     }
 
     const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
-    return "Selected: " + displayName + " (" + selectedWidget->id + ")";
+    return std::string(document_.dirty ? "Modified - " : "") + "Selected: " + displayName + " (" + selectedWidget->id + ")";
 }
 
 void MainWindow::setOperationStatus(std::string message)
@@ -1099,12 +1129,14 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::NewProject, "New");
     addButton(ToolbarAction::OpenProject, "Open");
     addButton(ToolbarAction::SaveProject, "Save");
-    addButton(ToolbarAction::SaveProjectAsDialog, "Save As", true);
+    addButton(ToolbarAction::SaveProjectAsDialog, "SaveAs", true);
     addButton(ToolbarAction::OpenSample, "Sample");
-    addButton(ToolbarAction::SaveProjectAsDebug, "Debug Save");
+    addButton(ToolbarAction::SaveProjectAsDebug, "DbgSave");
     addButton(ToolbarAction::ExportCode, "Export");
+    addButton(ToolbarAction::ToggleGrid, "Grid", designerCanvas_.showGrid());
+    addButton(ToolbarAction::ToggleSnap, "Snap", designerCanvas_.snapToGrid());
     addButton(ToolbarAction::DeleteWidget, "Delete");
-    addButton(ToolbarAction::DuplicateWidget, "Duplicate");
+    addButton(ToolbarAction::DuplicateWidget, "Dup");
     addButton(ToolbarAction::UndoAction, "Undo");
     addButton(ToolbarAction::RedoAction, "Redo");
 
@@ -1158,26 +1190,103 @@ std::filesystem::path MainWindow::defaultDebugSavePath() const
     return projectRootPath() / "Generated" / "debug_saved_project.vfb.json";
 }
 
-void MainWindow::addRecentFile(const std::filesystem::path& path)
+MainWindow::UnsavedChangesResult MainWindow::promptForUnsavedChanges()
+{
+    const int response = MessageBoxW(
+        nullptr,
+        L"The current project has unsaved changes. Save before continuing?",
+        L"VisiForm - Unsaved Changes",
+        MB_ICONWARNING | MB_YESNOCANCEL);
+
+    switch (response) {
+    case IDYES:
+        return UnsavedChangesResult::Save;
+    case IDNO:
+        return UnsavedChangesResult::DontSave;
+    case IDCANCEL:
+    default:
+        return UnsavedChangesResult::Cancel;
+    }
+}
+
+bool MainWindow::confirmSaveIfDirty()
+{
+    if (!document_.dirty) {
+        return true;
+    }
+
+    switch (promptForUnsavedChanges()) {
+    case UnsavedChangesResult::Save:
+        return saveProject();
+    case UnsavedChangesResult::DontSave:
+        return true;
+    case UnsavedChangesResult::Cancel:
+    default:
+        setOperationStatus("Operation cancelled");
+        redraw();
+        return false;
+    }
+}
+
+void MainWindow::loadAppSettings()
 {
     std::string errorMessage;
-    if (!recentFiles_.addPath(path, errorMessage)) {
-        return;
-    }
-    projectTree_.setRecentFiles(recentFiles_.paths());
+    settings_ = utils::AppSettings::load(errorMessage);
+    projectTree_.setRecentFiles(settings_.recentFiles);
+}
+
+void MainWindow::saveAppSettings()
+{
+    settings_.removeMissingRecentFiles();
+    projectTree_.setRecentFiles(settings_.recentFiles);
+    std::string errorMessage;
+    settings_.save(errorMessage);
+}
+
+void MainWindow::applyCanvasSettings()
+{
+    designerCanvas_.setShowGrid(settings_.showGrid);
+    designerCanvas_.setSnapToGrid(settings_.snapToGrid);
+    designerCanvas_.setGridSize(settings_.gridSize);
+    designerCanvas_.setMajorGridSize(settings_.majorGridSize);
+}
+
+void MainWindow::toggleGrid()
+{
+    settings_.showGrid = !designerCanvas_.showGrid();
+    applyCanvasSettings();
+    saveAppSettings();
+    setOperationStatus(std::string{"Grid: "} + (settings_.showGrid ? "On" : "Off"));
+    redraw();
+}
+
+void MainWindow::toggleSnapToGrid()
+{
+    settings_.snapToGrid = !designerCanvas_.snapToGrid();
+    applyCanvasSettings();
+    saveAppSettings();
+    setOperationStatus(std::string{"Snap: "} + (settings_.snapToGrid ? "On" : "Off"));
+    redraw();
+}
+
+void MainWindow::addRecentFile(const std::filesystem::path& path)
+{
+    settings_.addRecentFile(path);
+    saveAppSettings();
 }
 
 void MainWindow::removeRecentFile(const std::filesystem::path& path)
 {
-    std::string errorMessage;
-    if (!recentFiles_.removePath(path, errorMessage)) {
-        return;
-    }
-    projectTree_.setRecentFiles(recentFiles_.paths());
+    settings_.removeRecentFile(path);
+    saveAppSettings();
 }
 
 bool MainWindow::openRecentFile(const std::filesystem::path& path)
 {
+    if (!confirmSaveIfDirty()) {
+        return false;
+    }
+
     if (!std::filesystem::exists(path)) {
         removeRecentFile(path);
         setOperationStatus("Recent file is missing: " + normalizedPathText(path));
@@ -1186,15 +1295,6 @@ bool MainWindow::openRecentFile(const std::filesystem::path& path)
     }
 
     return loadProjectFromPath(path);
-}
-
-void MainWindow::loadRecentFiles()
-{
-    std::string errorMessage;
-    if (!recentFiles_.load(errorMessage)) {
-        return;
-    }
-    projectTree_.setRecentFiles(recentFiles_.paths());
 }
 
 std::string MainWindow::trimWhitespace(const std::string& value)

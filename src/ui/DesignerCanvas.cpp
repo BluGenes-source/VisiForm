@@ -474,6 +474,46 @@ void DesignerCanvas::setBounds(float x, float y, float width, float height)
     height_ = height;
 }
 
+void DesignerCanvas::setShowGrid(bool showGrid)
+{
+    showGrid_ = showGrid;
+}
+
+void DesignerCanvas::setSnapToGrid(bool snapToGrid)
+{
+    snapToGrid_ = snapToGrid;
+}
+
+void DesignerCanvas::setGridSize(int gridSize)
+{
+    gridSize_ = std::max(1, gridSize);
+}
+
+void DesignerCanvas::setMajorGridSize(int majorGridSize)
+{
+    majorGridSize_ = std::max(1, majorGridSize);
+}
+
+bool DesignerCanvas::showGrid() const
+{
+    return showGrid_;
+}
+
+bool DesignerCanvas::snapToGrid() const
+{
+    return snapToGrid_;
+}
+
+int DesignerCanvas::gridSize() const
+{
+    return gridSize_;
+}
+
+int DesignerCanvas::majorGridSize() const
+{
+    return majorGridSize_;
+}
+
 bool DesignerCanvas::contains(float x, float y) const
 {
     return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
