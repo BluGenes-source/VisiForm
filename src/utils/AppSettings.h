@@ -13,6 +13,7 @@ public:
     std::filesystem::path lastExportDirectory{};
     bool showGrid = true;
     bool snapToGrid = true;
+    bool smartGuidesEnabled = true;
     int gridSize = 10;
     int majorGridSize = 50;
 

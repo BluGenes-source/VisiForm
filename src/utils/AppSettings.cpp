@@ -59,6 +59,9 @@ AppSettings AppSettings::load(std::string& errorMessage)
         if (const auto iterator = json.find("snapToGrid"); iterator != json.end() && iterator->is_boolean()) {
             settings.snapToGrid = iterator->get<bool>();
         }
+        if (const auto iterator = json.find("smartGuidesEnabled"); iterator != json.end() && iterator->is_boolean()) {
+            settings.smartGuidesEnabled = iterator->get<bool>();
+        }
         if (const auto iterator = json.find("gridSize"); iterator != json.end() && iterator->is_number_integer()) {
             settings.gridSize = std::max(1, iterator->get<int>());
         }
@@ -93,6 +96,7 @@ bool AppSettings::save(std::string& errorMessage) const
     json["lastExportDirectory"] = lastExportDirectory.empty() ? std::string{} : FileUtils::normalizeSeparators(lastExportDirectory.string());
     json["showGrid"] = showGrid;
     json["snapToGrid"] = snapToGrid;
+    json["smartGuidesEnabled"] = smartGuidesEnabled;
     json["gridSize"] = gridSize;
     json["majorGridSize"] = majorGridSize;
 

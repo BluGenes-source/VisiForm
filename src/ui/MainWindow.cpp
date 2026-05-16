@@ -17,6 +17,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
@@ -46,6 +47,7 @@ constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
 constexpr float kLayoutMargin = 20.0f;
 constexpr float kMarqueeDragThreshold = 4.0f;
+constexpr float kSmartGuideSnapThreshold = 6.0f;
 
 std::string normalizedPathText(const std::filesystem::path& path)
 {
@@ -86,6 +88,8 @@ std::string widgetDisplayName(const model::WidgetNode& widget)
     return widget.name.empty() ? widget.id : widget.name;
 }
 
+float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value);
+
 std::vector<model::WidgetNode*> selectedNonRootWidgets(model::ProjectDocument& document)
 {
     std::vector<model::WidgetNode*> widgets;
@@ -123,6 +127,182 @@ SelectionBoundsInfo calculateSelectionBounds(const std::vector<model::WidgetNode
     }
 
     return bounds;
+}
+
+SelectionBoundsInfo calculateSelectionBounds(const std::vector<model::Rect>& widgets)
+{
+    SelectionBoundsInfo bounds{};
+    if (widgets.empty()) {
+        return bounds;
+    }
+
+    bounds.left = widgets.front().x;
+    bounds.top = widgets.front().y;
+    bounds.right = widgets.front().x + widgets.front().width;
+    bounds.bottom = widgets.front().y + widgets.front().height;
+    for (const auto& widget : widgets) {
+        bounds.left = std::min(bounds.left, widget.x);
+        bounds.top = std::min(bounds.top, widget.y);
+        bounds.right = std::max(bounds.right, widget.x + widget.width);
+        bounds.bottom = std::max(bounds.bottom, widget.y + widget.height);
+    }
+
+    return bounds;
+}
+
+struct AxisGuideMatch {
+    float snappedPosition = 0.0f;
+    float distance = std::numeric_limits<float>::max();
+    DesignerCanvas::SmartGuide guide{};
+    bool matched = false;
+};
+
+struct MoveSnapResult {
+    float dx = 0.0f;
+    float dy = 0.0f;
+    bool usedGuideX = false;
+    bool usedGuideY = false;
+    std::vector<DesignerCanvas::SmartGuide> guides{};
+};
+
+struct WidgetAlignmentTargets {
+    float left = 0.0f;
+    float right = 0.0f;
+    float centerX = 0.0f;
+    float top = 0.0f;
+    float bottom = 0.0f;
+    float centerY = 0.0f;
+};
+
+void considerGuideMatch(AxisGuideMatch& bestMatch,
+    float currentPosition,
+    float targetPosition,
+    DesignerCanvas::GuideOrientation orientation,
+    const char* reason)
+{
+    const float distance = std::fabs(targetPosition - currentPosition);
+    if (distance > kSmartGuideSnapThreshold || distance >= bestMatch.distance) {
+        return;
+    }
+
+    bestMatch.matched = true;
+    bestMatch.distance = distance;
+    bestMatch.snappedPosition = targetPosition;
+    bestMatch.guide = { orientation, targetPosition, reason };
+}
+
+WidgetAlignmentTargets alignmentTargetsForRect(const model::Rect& rect)
+{
+    return {
+        rect.x,
+        rect.x + rect.width,
+        rect.x + rect.width * 0.5f,
+        rect.y,
+        rect.y + rect.height,
+        rect.y + rect.height * 0.5f
+    };
+}
+
+void collectAlignmentTargetRects(const model::WidgetNode& widget,
+    float parentX,
+    float parentY,
+    const model::ProjectDocument& document,
+    std::vector<model::Rect>& rects)
+{
+    const float absoluteX = parentX + widget.bounds.x;
+    const float absoluteY = parentY + widget.bounds.y;
+    const model::Rect absoluteBounds{ absoluteX, absoluteY, widget.bounds.width, widget.bounds.height };
+
+    if (!document.isSelected(widget.id) && widget.type != model::WidgetType::FormWindow) {
+        rects.push_back(absoluteBounds);
+    }
+
+    for (const auto& child : widget.children) {
+        collectAlignmentTargetRects(child, absoluteX, absoluteY, document, rects);
+    }
+}
+
+MoveSnapResult applyMoveSnapping(const DesignerCanvas& designerCanvas,
+    const model::ProjectDocument& document,
+    const model::Rect& movingBounds,
+    float rawDx,
+    float rawDy,
+    bool smartGuidesEnabled)
+{
+    MoveSnapResult result{ rawDx, rawDy, false, false, {} };
+    const model::Rect movedBounds{ movingBounds.x + rawDx, movingBounds.y + rawDy, movingBounds.width, movingBounds.height };
+
+    AxisGuideMatch bestVertical{};
+    AxisGuideMatch bestHorizontal{};
+    if (smartGuidesEnabled) {
+        const WidgetAlignmentTargets movingTargets = alignmentTargetsForRect(movedBounds);
+        const model::Rect rootRect{ 0.0f, 0.0f, document.root.bounds.width, document.root.bounds.height };
+
+        const auto considerRect = [&](const model::Rect& rect) {
+            const WidgetAlignmentTargets targets = alignmentTargetsForRect(rect);
+            considerGuideMatch(bestVertical, movingTargets.left, targets.left, DesignerCanvas::GuideOrientation::Vertical, "left");
+            considerGuideMatch(bestVertical, movingTargets.right, targets.right, DesignerCanvas::GuideOrientation::Vertical, "right");
+            considerGuideMatch(bestVertical, movingTargets.centerX, targets.centerX, DesignerCanvas::GuideOrientation::Vertical, "center-x");
+            considerGuideMatch(bestHorizontal, movingTargets.top, targets.top, DesignerCanvas::GuideOrientation::Horizontal, "top");
+            considerGuideMatch(bestHorizontal, movingTargets.bottom, targets.bottom, DesignerCanvas::GuideOrientation::Horizontal, "bottom");
+            considerGuideMatch(bestHorizontal, movingTargets.centerY, targets.centerY, DesignerCanvas::GuideOrientation::Horizontal, "center-y");
+        };
+
+        considerRect(rootRect);
+        considerGuideMatch(bestVertical, movingTargets.left, kLayoutMargin, DesignerCanvas::GuideOrientation::Vertical, "margin-left");
+        considerGuideMatch(bestVertical, movingTargets.right, document.root.bounds.width - kLayoutMargin, DesignerCanvas::GuideOrientation::Vertical, "margin-right");
+        considerGuideMatch(bestVertical, movingTargets.centerX, document.root.bounds.width * 0.5f, DesignerCanvas::GuideOrientation::Vertical, "root-center-x");
+        considerGuideMatch(bestHorizontal, movingTargets.top, kLayoutMargin, DesignerCanvas::GuideOrientation::Horizontal, "margin-top");
+        considerGuideMatch(bestHorizontal, movingTargets.bottom, document.root.bounds.height - kLayoutMargin, DesignerCanvas::GuideOrientation::Horizontal, "margin-bottom");
+        considerGuideMatch(bestHorizontal, movingTargets.centerY, document.root.bounds.height * 0.5f, DesignerCanvas::GuideOrientation::Horizontal, "root-center-y");
+
+        std::vector<model::Rect> widgetRects;
+        collectAlignmentTargetRects(document.root, 0.0f, 0.0f, document, widgetRects);
+        for (const auto& rect : widgetRects) {
+            considerRect(rect);
+        }
+
+        if (bestVertical.matched) {
+            const WidgetAlignmentTargets originalTargets = alignmentTargetsForRect(movingBounds);
+            if (bestVertical.guide.reason == "right" || bestVertical.guide.reason == "margin-right") {
+                result.dx = bestVertical.snappedPosition - originalTargets.right;
+            }
+            else if (bestVertical.guide.reason == "center-x" || bestVertical.guide.reason == "root-center-x") {
+                result.dx = bestVertical.snappedPosition - originalTargets.centerX;
+            }
+            else {
+                result.dx = bestVertical.snappedPosition - originalTargets.left;
+            }
+            result.usedGuideX = true;
+            result.guides.push_back(bestVertical.guide);
+        }
+
+        if (bestHorizontal.matched) {
+            const WidgetAlignmentTargets originalTargets = alignmentTargetsForRect(movingBounds);
+            if (bestHorizontal.guide.reason == "bottom" || bestHorizontal.guide.reason == "margin-bottom") {
+                result.dy = bestHorizontal.snappedPosition - originalTargets.bottom;
+            }
+            else if (bestHorizontal.guide.reason == "center-y" || bestHorizontal.guide.reason == "root-center-y") {
+                result.dy = bestHorizontal.snappedPosition - originalTargets.centerY;
+            }
+            else {
+                result.dy = bestHorizontal.snappedPosition - originalTargets.top;
+            }
+            result.usedGuideY = true;
+            result.guides.push_back(bestHorizontal.guide);
+        }
+    }
+
+    if (designerCanvas.snapToGrid()) {
+        if (!result.usedGuideX) {
+            result.dx = snapToCanvasGrid(designerCanvas, movingBounds.x + rawDx) - movingBounds.x;
+        }
+        if (!result.usedGuideY) {
+            result.dy = snapToCanvasGrid(designerCanvas, movingBounds.y + rawDy) - movingBounds.y;
+        }
+    }
+
+    return result;
 }
 
 float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value)
@@ -447,7 +627,7 @@ void MainWindow::draw(visage::Canvas& canvas)
 
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
-    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, marqueeRect);
+    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, marqueeRect, canvasInteraction_.smartGuides);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_.selectedWidget(), document_.selectedWidgetIds().size());
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
@@ -526,6 +706,9 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::DistributeVertically:
         distributeSelectedVertically();
+        return;
+    case ToolbarAction::ToggleSmartGuides:
+        toggleSmartGuides();
         return;
     case ToolbarAction::BringForward:
         bringSelectedForward();
@@ -695,10 +878,30 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 
     model::Rect updatedBounds = canvasInteraction_.originalBounds;
     if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
+        const float rawDx = currentPoint->x - canvasInteraction_.dragStart.x;
+        const float rawDy = currentPoint->y - canvasInteraction_.dragStart.y;
+        model::Rect movingBounds = canvasInteraction_.originalBounds;
         if (canvasInteraction_.selectionBounds.size() > 1) {
-            updatedBounds = designerCanvas_.moveBounds(canvasInteraction_.originalBounds, canvasInteraction_.dragStart, *currentPoint);
-            const float deltaX = updatedBounds.x - canvasInteraction_.originalBounds.x;
-            const float deltaY = updatedBounds.y - canvasInteraction_.originalBounds.y;
+            std::vector<model::Rect> originalBounds;
+            originalBounds.reserve(canvasInteraction_.selectionBounds.size());
+            for (const auto& snapshot : canvasInteraction_.selectionBounds) {
+                originalBounds.push_back(snapshot.originalBounds);
+            }
+            const SelectionBoundsInfo selectionBounds = calculateSelectionBounds(originalBounds);
+            movingBounds = {
+                selectionBounds.left,
+                selectionBounds.top,
+                selectionBounds.right - selectionBounds.left,
+                selectionBounds.bottom - selectionBounds.top
+            };
+        }
+        const MoveSnapResult snapResult = applyMoveSnapping(designerCanvas_, document_, movingBounds, rawDx, rawDy, settings_.smartGuidesEnabled);
+        canvasInteraction_.smartGuides = snapResult.guides;
+        canvasInteraction_.smartGuideSnapUsed = snapResult.usedGuideX || snapResult.usedGuideY;
+
+        if (canvasInteraction_.selectionBounds.size() > 1) {
+            const float deltaX = snapResult.dx;
+            const float deltaY = snapResult.dy;
             bool anyChanged = false;
             for (const auto& snapshot : canvasInteraction_.selectionBounds) {
                 auto* selectedWidget = document_.findWidgetById(snapshot.widgetId);
@@ -724,9 +927,13 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
             return;
         }
 
-        updatedBounds = designerCanvas_.moveBounds(canvasInteraction_.originalBounds, canvasInteraction_.dragStart, *currentPoint);
+        updatedBounds = canvasInteraction_.originalBounds;
+        updatedBounds.x = canvasInteraction_.originalBounds.x + snapResult.dx;
+        updatedBounds.y = canvasInteraction_.originalBounds.y + snapResult.dy;
     }
     else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize) {
+        canvasInteraction_.smartGuides.clear();
+        canvasInteraction_.smartGuideSnapUsed = false;
         updatedBounds = designerCanvas_.resizeBounds(canvasInteraction_.originalBounds, canvasInteraction_.region,
             canvasInteraction_.dragStart, *currentPoint);
     }
@@ -777,7 +984,9 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move && canvasInteraction_.selectionBounds.size() > 1) {
             undoRedo_.clear();
             document_.markDirty();
-            setOperationStatus("Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets");
+            setOperationStatus(canvasInteraction_.smartGuideSnapUsed
+                ? "Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets with smart guide snap"
+                : "Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets");
             clearCanvasInteraction();
             redraw();
             return;
@@ -797,7 +1006,9 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         document_.markDirty();
         const std::string displayName = widget->name.empty() ? widget->id : widget->name;
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
-            setOperationStatus("Moved widget: " + displayName + " (" + widget->id + ")");
+            setOperationStatus(canvasInteraction_.smartGuideSnapUsed
+                ? "Moved widget: " + displayName + " (" + widget->id + ") with smart guide snap"
+                : "Moved widget: " + displayName + " (" + widget->id + ")");
         }
         else {
             setOperationStatus("Resized widget: " + displayName + " (" + widget->id + ")");
@@ -898,6 +1109,14 @@ void MainWindow::toggleMultiSelectMode()
 {
     multiSelectMode_ = !multiSelectMode_;
     setOperationStatus(std::string{"Multi-select: "} + (multiSelectMode_ ? "On" : "Off"));
+    redraw();
+}
+
+void MainWindow::toggleSmartGuides()
+{
+    settings_.smartGuidesEnabled = !settings_.smartGuidesEnabled;
+    saveAppSettings();
+    setOperationStatus(std::string{"Smart guides: "} + (settings_.smartGuidesEnabled ? "On" : "Off"));
     redraw();
 }
 
@@ -2208,8 +2427,8 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::SaveProjectAsDebug, "Dbg");
     addButton(ToolbarAction::ExportCode, "Exp");
     addButton(ToolbarAction::FitText, "Fit");
-    addButton(ToolbarAction::CopyWidgets, "Copy");
-    addButton(ToolbarAction::PasteWidgets, "Paste");
+    addButton(ToolbarAction::CopyWidgets, "Cp");
+    addButton(ToolbarAction::PasteWidgets, "Pt");
     addButton(ToolbarAction::ToggleMultiSelect, "Multi", multiSelectMode_);
     addButton(ToolbarAction::AlignLeft, "L");
     addButton(ToolbarAction::AlignTop, "T");
@@ -2221,8 +2440,9 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::SameHeight, "H");
     addButton(ToolbarAction::DistributeHorizontally, "DH");
     addButton(ToolbarAction::DistributeVertically, "DV");
-    addButton(ToolbarAction::BringForward, "Front");
-    addButton(ToolbarAction::SendBackward, "Back");
+    addButton(ToolbarAction::ToggleSmartGuides, "Gde", settings_.smartGuidesEnabled);
+    addButton(ToolbarAction::BringForward, "Fr");
+    addButton(ToolbarAction::SendBackward, "Bk");
     addButton(ToolbarAction::ToggleGrid, "Grid", designerCanvas_.showGrid());
     addButton(ToolbarAction::ToggleSnap, "Snap", designerCanvas_.snapToGrid());
     addButton(ToolbarAction::DeleteWidget, "Del");

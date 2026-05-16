@@ -8,6 +8,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace visiform::ui {
 
@@ -39,6 +41,17 @@ public:
         float height = 0.0f;
     };
 
+    enum class GuideOrientation {
+        Vertical,
+        Horizontal
+    };
+
+    struct SmartGuide {
+        GuideOrientation orientation = GuideOrientation::Vertical;
+        float position = 0.0f;
+        std::string reason{};
+    };
+
     void setBounds(float x, float y, float width, float height);
     void setShowGrid(bool showGrid);
     void setSnapToGrid(bool snapToGrid);
@@ -58,7 +71,8 @@ public:
         const visage::Font& font,
         bool drawText,
         const model::ProjectDocument& document,
-        const std::optional<SelectionRect>& marqueeRect = std::nullopt) const;
+        const std::optional<SelectionRect>& marqueeRect = std::nullopt,
+        const std::vector<SmartGuide>& smartGuides = {}) const;
 
 private:
     [[nodiscard]] float snap(float value) const;

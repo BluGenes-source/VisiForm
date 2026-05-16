@@ -207,6 +207,32 @@ Current behavior:
 - `Shift` + arrow moves by the current grid size
 - nudging is disabled while the property inspector is editing text
 
+## Smart guides
+
+The editor can show smart guides while moving a widget or a selected group.
+
+Current behavior:
+
+- toolbar `Gde` toggles smart guides on and off
+- smart guides target root form edges, root centers, and 20-pixel root margins
+- smart guides also target non-selected widget edges and centers
+- single-widget move uses the widget bounds as the moving box
+- group move uses the selected group bounding box as the moving box
+- vertical and horizontal snapping are resolved independently
+- the closest eligible target within the snap threshold is used on each axis
+- guide lines are drawn on top of the form preview while dragging
+
+### Grid snap interaction
+
+- smart guide snapping is checked first on each axis
+- if no smart guide match is found on an axis, grid snap is used on that axis when grid snapping is enabled
+
+### Current limitations
+
+- smart guides apply only during move and group move
+- resize snapping is not implemented yet
+- no guide labels or distance measurements yet
+
 ## Z-order convention
 
 Current child ordering rules:

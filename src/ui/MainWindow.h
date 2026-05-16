@@ -99,6 +99,7 @@ private:
         SameHeight,
         DistributeHorizontally,
         DistributeVertically,
+        ToggleSmartGuides,
         BringForward,
         SendBackward,
         ToggleGrid,
@@ -135,6 +136,8 @@ private:
         DesignerCanvas::FormPoint dragStart{};
         DesignerCanvas::FormPoint currentPoint{};
         std::vector<SelectionBoundsSnapshot> selectionBounds{};
+        std::vector<DesignerCanvas::SmartGuide> smartGuides{};
+        bool smartGuideSnapUsed = false;
         bool changed = false;
     };
 
@@ -163,6 +166,7 @@ private:
     void copySelectedWidgets();
     void pasteWidgets();
     void toggleMultiSelectMode();
+    void toggleSmartGuides();
     [[nodiscard]] bool isMultiSelectModeEnabled() const;
     void handleWidgetClicked(const std::string& widgetId, bool additiveSelection);
     void alignSelectedLeft();

@@ -749,7 +749,8 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     const visage::Font& font,
     bool drawText,
     const model::ProjectDocument& document,
-    const std::optional<SelectionRect>& marqueeRect) const
+    const std::optional<SelectionRect>& marqueeRect,
+    const std::vector<SmartGuide>& smartGuides) const
 {
     if (width_ <= 0.0f || height_ <= 0.0f) {
         return;
@@ -799,6 +800,18 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
         canvas.fill(screenRect.x, screenRect.y + screenRect.height - 1.0f, screenRect.width, 1.0f);
         canvas.fill(screenRect.x, screenRect.y, 1.0f, screenRect.height);
         canvas.fill(screenRect.x + screenRect.width - 1.0f, screenRect.y, 1.0f, screenRect.height);
+    }
+
+    for (const auto& guide : smartGuides) {
+        canvas.setColor(0xffff6b2c);
+        if (guide.orientation == GuideOrientation::Vertical) {
+            const float x = previewLayout.form.x + guide.position * previewLayout.scale;
+            canvas.fill(x, previewLayout.form.y, 1.0f, previewLayout.form.height);
+        }
+        else {
+            const float y = previewLayout.form.y + guide.position * previewLayout.scale;
+            canvas.fill(previewLayout.form.x, y, previewLayout.form.width, 1.0f);
+        }
     }
 
     if (drawText) {
