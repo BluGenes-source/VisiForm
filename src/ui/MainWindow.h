@@ -86,6 +86,12 @@ private:
         SaveProjectAsDebug,
         ExportCode,
         FitText,
+        AlignLeft,
+        AlignTop,
+        SameWidth,
+        SameHeight,
+        BringForward,
+        SendBackward,
         ToggleGrid,
         ToggleSnap,
         DuplicateWidget,
@@ -137,6 +143,12 @@ private:
     void saveAppSettings();
     void applyCanvasSettings();
     void fitSelectedWidgetToText();
+    void alignSelectedLeft();
+    void alignSelectedTop();
+    void makeSelectedSameWidth();
+    void makeSelectedSameHeight();
+    void bringSelectedForward();
+    void sendSelectedBackward();
     void toggleGrid();
     void toggleSnapToGrid();
     bool normalizeWidgetBoundsForEditor();

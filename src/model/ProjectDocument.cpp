@@ -6,9 +6,75 @@
 
 #include <functional>
 #include <set>
+#include <type_traits>
 
 namespace visiform::model {
 namespace {
+
+template <typename ParentType>
+using SiblingPointer = std::conditional_t<
+    std::is_const_v<ParentType>,
+    const typename std::remove_const_t<ParentType>::value_type*,
+    typename ParentType::value_type*>;
+
+template <typename ParentType>
+SiblingPointer<ParentType> findPreviousSiblingInParent(ParentType* parent, const std::string& id)
+{
+    if (parent == nullptr) {
+        return nullptr;
+    }
+
+    for (std::size_t index = 0; index < parent->size(); ++index) {
+        if ((*parent)[index].id == id) {
+            if (index == 0) {
+                return nullptr;
+            }
+
+            return &(*parent)[index - 1];
+        }
+    }
+
+    return nullptr;
+}
+
+template <typename ParentType>
+bool reorderWithinParent(ParentType* parent, const std::string& id, bool forward)
+{
+    if (parent == nullptr) {
+        return false;
+    }
+
+    for (std::size_t index = 0; index < parent->size(); ++index) {
+        if ((*parent)[index].id != id) {
+            continue;
+        }
+
+        // Z-order convention:
+        // - children[0] is backmost
+        // - children.back() is frontmost
+        // Toolbar actions use Front/Back semantics, so move the selected widget
+        // all the way to the end or beginning of the child vector.
+        if (forward) {
+            if (index + 1 >= parent->size()) {
+                return false;
+            }
+            auto widget = std::move((*parent)[index]);
+            parent->erase(parent->begin() + static_cast<std::ptrdiff_t>(index));
+            parent->push_back(std::move(widget));
+            return true;
+        }
+
+        if (index == 0) {
+            return false;
+        }
+        auto widget = std::move((*parent)[index]);
+        parent->erase(parent->begin() + static_cast<std::ptrdiff_t>(index));
+        parent->insert(parent->begin(), std::move(widget));
+        return true;
+    }
+
+    return false;
+}
 
 std::string duplicateNameFor(const WidgetNode& widget, const std::string& id)
 {
@@ -139,6 +205,46 @@ const WidgetNode* ProjectDocument::findParentOf(const std::string& childId) cons
     }
 
     return root.findParentOf(childId);
+}
+
+WidgetNode* ProjectDocument::previousSiblingOf(const std::string& id)
+{
+    WidgetNode* parent = findParentOf(id);
+    if (parent == nullptr) {
+        return nullptr;
+    }
+
+    return findPreviousSiblingInParent(&parent->children, id);
+}
+
+const WidgetNode* ProjectDocument::previousSiblingOf(const std::string& id) const
+{
+    const WidgetNode* parent = findParentOf(id);
+    if (parent == nullptr) {
+        return nullptr;
+    }
+
+    return findPreviousSiblingInParent(&parent->children, id);
+}
+
+bool ProjectDocument::bringWidgetForward(const std::string& id)
+{
+    WidgetNode* parent = findParentOf(id);
+    if (parent == nullptr) {
+        return false;
+    }
+
+    return reorderWithinParent(&parent->children, id, true);
+}
+
+bool ProjectDocument::sendWidgetBackward(const std::string& id)
+{
+    WidgetNode* parent = findParentOf(id);
+    if (parent == nullptr) {
+        return false;
+    }
+
+    return reorderWithinParent(&parent->children, id, false);
 }
 
 bool ProjectDocument::removeWidgetById(const std::string& id)

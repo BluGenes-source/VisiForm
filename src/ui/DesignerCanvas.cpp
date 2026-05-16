@@ -274,6 +274,10 @@ std::optional<std::string> hitTestWidgetScreenId(const model::WidgetNode& widget
         std::max(1.0f, widget.bounds.height * scale)
     };
 
+    // Z-order convention:
+    // - children[0] is backmost
+    // - children.back() is frontmost
+    // Hit testing walks children from front to back so the topmost overlap wins.
     for (auto iterator = widget.children.rbegin(); iterator != widget.children.rend(); ++iterator) {
         if (auto match = hitTestWidgetScreenId(*iterator, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
                 scale, x, y, smallWidgetHitPadding)) {
@@ -512,6 +516,7 @@ void drawWidget(visage::Canvas& canvas,
         }
     }
 
+    // Draw children from back to front so later children appear on top.
     for (const auto& child : widget.children) {
         drawWidget(canvas, font, drawText, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
             scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);

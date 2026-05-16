@@ -36,12 +36,13 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kToolbarButtonWidth = 72.0f;
+constexpr float kToolbarButtonWidth = 54.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
-constexpr float kToolbarButtonSpacing = 4.0f;
+constexpr float kToolbarButtonSpacing = 2.0f;
 constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
+constexpr float kLayoutMargin = 20.0f;
 
 std::string normalizedPathText(const std::filesystem::path& path)
 {
@@ -75,6 +76,21 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
     }
 
     return id;
+}
+
+std::string widgetDisplayName(const model::WidgetNode& widget)
+{
+    return widget.name.empty() ? widget.id : widget.name;
+}
+
+float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value)
+{
+    if (!designerCanvas.snapToGrid()) {
+        return value;
+    }
+
+    const float grid = static_cast<float>(std::max(1, designerCanvas.gridSize()));
+    return std::round(value / grid) * grid;
 }
 
 std::filesystem::path suggestedProjectPath(const model::ProjectDocument& document, const std::filesystem::path& currentProjectPath)
@@ -337,6 +353,24 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::FitText:
         fitSelectedWidgetToText();
+        return;
+    case ToolbarAction::AlignLeft:
+        alignSelectedLeft();
+        return;
+    case ToolbarAction::AlignTop:
+        alignSelectedTop();
+        return;
+    case ToolbarAction::SameWidth:
+        makeSelectedSameWidth();
+        return;
+    case ToolbarAction::SameHeight:
+        makeSelectedSameHeight();
+        return;
+    case ToolbarAction::BringForward:
+        bringSelectedForward();
+        return;
+    case ToolbarAction::SendBackward:
+        sendSelectedBackward();
         return;
     case ToolbarAction::ToggleGrid:
         toggleGrid();
@@ -862,6 +896,151 @@ void MainWindow::fitSelectedWidgetToText()
     redraw();
 }
 
+void MainWindow::alignSelectedLeft()
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(widget->id)) {
+        setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    widget->bounds.x = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
+    document_.markDirty();
+    setOperationStatus("Aligned left: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::alignSelectedTop()
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(widget->id)) {
+        setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    widget->bounds.y = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
+    document_.markDirty();
+    setOperationStatus("Aligned top: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::makeSelectedSameWidth()
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(widget->id)) {
+        setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
+    const model::WidgetNode* reference = document_.previousSiblingOf(widget->id);
+    const float fallbackWidth = std::max(metrics.minWidth, document_.root.bounds.width - 40.0f);
+    widget->bounds.width = std::max(metrics.minWidth, reference != nullptr ? reference->bounds.width : fallbackWidth);
+    document_.markDirty();
+    setOperationStatus("Same width: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::makeSelectedSameHeight()
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(widget->id)) {
+        setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
+    const model::WidgetNode* reference = document_.previousSiblingOf(widget->id);
+    widget->bounds.height = std::max(metrics.minHeight, reference != nullptr ? reference->bounds.height : metrics.defaultHeight);
+    document_.markDirty();
+    setOperationStatus("Same height: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::bringSelectedForward()
+{
+    const std::string selectedId = document_.selectedWidgetId;
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(widget->id)) {
+        setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    const std::string displayName = widgetDisplayName(*widget);
+    if (!document_.bringWidgetForward(selectedId)) {
+        setOperationStatus("Already in front: " + displayName + " (" + selectedId + ")");
+        redraw();
+        return;
+    }
+
+    document_.selectWidget(selectedId);
+    document_.markDirty();
+    setOperationStatus("Brought forward: " + displayName + " (" + selectedId + ")");
+    redraw();
+}
+
+void MainWindow::sendSelectedBackward()
+{
+    const std::string selectedId = document_.selectedWidgetId;
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+    if (document_.isRootWidgetId(widget->id)) {
+        setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    const std::string displayName = widgetDisplayName(*widget);
+    if (!document_.sendWidgetBackward(selectedId)) {
+        setOperationStatus("Already in back: " + displayName + " (" + selectedId + ")");
+        redraw();
+        return;
+    }
+
+    document_.selectWidget(selectedId);
+    document_.markDirty();
+    setOperationStatus("Sent backward: " + displayName + " (" + selectedId + ")");
+    redraw();
+}
+
 bool MainWindow::setSelectedWidgetName(const std::string& name)
 {
     auto* widget = document_.selectedWidget();
@@ -1274,12 +1453,18 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::SaveProject, "Save");
     addButton(ToolbarAction::SaveProjectAsDialog, "SaveAs", true);
     addButton(ToolbarAction::OpenSample, "Sample");
-    addButton(ToolbarAction::SaveProjectAsDebug, "DbgSave");
-    addButton(ToolbarAction::ExportCode, "Export");
+    addButton(ToolbarAction::SaveProjectAsDebug, "Dbg");
+    addButton(ToolbarAction::ExportCode, "Exp");
     addButton(ToolbarAction::FitText, "Fit");
+    addButton(ToolbarAction::AlignLeft, "AlignL");
+    addButton(ToolbarAction::AlignTop, "AlignT");
+    addButton(ToolbarAction::SameWidth, "SameW");
+    addButton(ToolbarAction::SameHeight, "SameH");
+    addButton(ToolbarAction::BringForward, "Front");
+    addButton(ToolbarAction::SendBackward, "Back");
     addButton(ToolbarAction::ToggleGrid, "Grid", designerCanvas_.showGrid());
     addButton(ToolbarAction::ToggleSnap, "Snap", designerCanvas_.snapToGrid());
-    addButton(ToolbarAction::DeleteWidget, "Delete");
+    addButton(ToolbarAction::DeleteWidget, "Del");
     addButton(ToolbarAction::DuplicateWidget, "Dup");
     addButton(ToolbarAction::UndoAction, "Undo");
     addButton(ToolbarAction::RedoAction, "Redo");

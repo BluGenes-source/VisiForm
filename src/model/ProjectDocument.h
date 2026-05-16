@@ -36,6 +36,10 @@ public:
     [[nodiscard]] const WidgetNode* findWidgetById(const std::string& id) const;
     [[nodiscard]] WidgetNode* findParentOf(const std::string& childId);
     [[nodiscard]] const WidgetNode* findParentOf(const std::string& childId) const;
+    [[nodiscard]] WidgetNode* previousSiblingOf(const std::string& id);
+    [[nodiscard]] const WidgetNode* previousSiblingOf(const std::string& id) const;
+    bool bringWidgetForward(const std::string& id);
+    bool sendWidgetBackward(const std::string& id);
     bool removeWidgetById(const std::string& id);
     [[nodiscard]] bool isRootWidgetId(const std::string& id) const;
     bool addChildToRoot(WidgetNode widget);
