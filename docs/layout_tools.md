@@ -4,6 +4,47 @@
 
 `VisiForm` also supports a basic multi-select foundation for layout operations.
 
+## Box select
+
+You can drag a marquee rectangle across the designer canvas to select widgets.
+
+Current behavior:
+
+- marquee selection starts from empty form space, including the root form background
+- widgets are selected when their bounds intersect the marquee rectangle
+- root `FormWindow` is ignored by marquee selection
+- marquee selection currently replaces the existing selection
+
+## Group move
+
+When multiple widgets are selected, dragging the primary selected widget body moves the selected non-root set together.
+
+Current behavior:
+
+- all selected widgets move by the same delta
+- snap-to-grid is still respected when enabled
+- group resize is not implemented yet
+
+## Copy and paste
+
+The editor now supports an internal widget clipboard.
+
+Available actions:
+
+- toolbar `Copy`
+- toolbar `Paste`
+- `Ctrl+C`
+- `Ctrl+V`
+
+Current behavior:
+
+- copies selected non-root widgets
+- pastes deep copies with new unique ids
+- offsets each paste by an additional `20,20`
+- selects pasted widgets and makes the last pasted widget primary
+- does not use the Windows clipboard yet
+- copies event handler properties as-is for now
+
 ## Multi-select
 
 Current selection options:
@@ -20,6 +61,12 @@ Current notes:
 - `Front` and `Back` still operate on the primary selection only
 - `Duplicate` still duplicates the primary selection only
 - group move and group resize are not implemented yet
+
+Current limitation notes:
+
+- box select currently replaces selection instead of add/toggle marquee modes
+- no Windows clipboard integration yet
+- `Front` and `Back` still operate on the primary selection only
 
 The current input path does not use direct Visage mouse modifier helpers in this project.
 The editor uses the `Multi` toolbar toggle as the reliable fallback and also checks the Windows key state for `Ctrl` and `Shift` during clicks.

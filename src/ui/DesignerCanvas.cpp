@@ -53,6 +53,16 @@ PanelRect expandRect(const PanelRect& rect, float padding)
     return { rect.x - padding, rect.y - padding, rect.width + padding * 2.0f, rect.height + padding * 2.0f };
 }
 
+PanelRect selectionRectToScreenRect(const PreviewLayout& layout, const DesignerCanvas::SelectionRect& rect)
+{
+    return {
+        layout.form.x + rect.x * layout.scale,
+        layout.form.y + rect.y * layout.scale,
+        rect.width * layout.scale,
+        rect.height * layout.scale
+    };
+}
+
 void drawBorder(visage::Canvas& canvas, const PanelRect& bounds, int color, float thickness = 1.0f)
 {
     if (!bounds.isValid() || thickness <= 0.0f) {
@@ -735,7 +745,11 @@ model::Rect DesignerCanvas::resizeBounds(const model::Rect& originalBounds,
     return { left, top, std::max(minimumWidgetSize_, right - left), std::max(minimumWidgetSize_, bottom - top) };
 }
 
-void DesignerCanvas::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document) const
+void DesignerCanvas::draw(visage::Canvas& canvas,
+    const visage::Font& font,
+    bool drawText,
+    const model::ProjectDocument& document,
+    const std::optional<SelectionRect>& marqueeRect) const
 {
     if (width_ <= 0.0f || height_ <= 0.0f) {
         return;
@@ -777,6 +791,15 @@ void DesignerCanvas::draw(visage::Canvas& canvas, const visage::Font& font, bool
     drawWidget(canvas, font, drawText, document, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
         resizeHandleVisualSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
+
+    if (marqueeRect.has_value()) {
+        const PanelRect screenRect = selectionRectToScreenRect(previewLayout, *marqueeRect);
+        canvas.setColor(0xff6fa9ff);
+        canvas.fill(screenRect.x, screenRect.y, screenRect.width, 1.0f);
+        canvas.fill(screenRect.x, screenRect.y + screenRect.height - 1.0f, screenRect.width, 1.0f);
+        canvas.fill(screenRect.x, screenRect.y, 1.0f, screenRect.height);
+        canvas.fill(screenRect.x + screenRect.width - 1.0f, screenRect.y, 1.0f, screenRect.height);
+    }
 
     if (drawText) {
         canvas.setColor(0xff243041);

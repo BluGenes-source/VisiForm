@@ -86,6 +86,8 @@ private:
         SaveProjectAsDebug,
         ExportCode,
         FitText,
+        CopyWidgets,
+        PasteWidgets,
         ToggleMultiSelect,
         AlignLeft,
         AlignTop,
@@ -111,7 +113,13 @@ private:
         enum class Mode {
             None,
             Move,
-            Resize
+            Resize,
+            MarqueeSelect
+        };
+
+        struct SelectionBoundsSnapshot {
+            std::string widgetId{};
+            model::Rect originalBounds{};
         };
 
         Mode mode = Mode::None;
@@ -119,6 +127,8 @@ private:
         std::string widgetId{};
         model::Rect originalBounds{};
         DesignerCanvas::FormPoint dragStart{};
+        DesignerCanvas::FormPoint currentPoint{};
+        std::vector<SelectionBoundsSnapshot> selectionBounds{};
         bool changed = false;
     };
 
@@ -144,6 +154,8 @@ private:
     void saveAppSettings();
     void applyCanvasSettings();
     void fitSelectedWidgetToText();
+    void copySelectedWidgets();
+    void pasteWidgets();
     void toggleMultiSelectMode();
     [[nodiscard]] bool isMultiSelectModeEnabled() const;
     void handleWidgetClicked(const std::string& widgetId, bool additiveSelection);
@@ -201,6 +213,8 @@ private:
     visage::Font labelFont_{};
     bool autoSizeTextWidgets_ = true;
     bool multiSelectMode_ = false;
+    std::vector<model::WidgetNode> clipboardWidgets_{};
+    int pasteCount_ = 0;
 };
 
 } // namespace visiform::ui

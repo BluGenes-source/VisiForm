@@ -14,9 +14,11 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <string>
 
 #ifndef NOMINMAX
@@ -43,6 +45,7 @@ constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
 constexpr float kLayoutMargin = 20.0f;
+constexpr float kMarqueeDragThreshold = 4.0f;
 
 std::string normalizedPathText(const std::filesystem::path& path)
 {
@@ -91,6 +94,90 @@ float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value)
 
     const float grid = static_cast<float>(std::max(1, designerCanvas.gridSize()));
     return std::round(value / grid) * grid;
+}
+
+DesignerCanvas::SelectionRect normalizedSelectionRect(const DesignerCanvas::FormPoint& start, const DesignerCanvas::FormPoint& end)
+{
+    const float left = std::min(start.x, end.x);
+    const float top = std::min(start.y, end.y);
+    return { left, top, std::fabs(end.x - start.x), std::fabs(end.y - start.y) };
+}
+
+bool rectsIntersect(const model::Rect& widgetBounds, const DesignerCanvas::SelectionRect& selectionRect)
+{
+    const float widgetRight = widgetBounds.x + widgetBounds.width;
+    const float widgetBottom = widgetBounds.y + widgetBounds.height;
+    const float selectionRight = selectionRect.x + selectionRect.width;
+    const float selectionBottom = selectionRect.y + selectionRect.height;
+
+    return widgetBounds.x <= selectionRight && widgetRight >= selectionRect.x
+        && widgetBounds.y <= selectionBottom && widgetBottom >= selectionRect.y;
+}
+
+void collectIntersectingWidgetIds(const model::WidgetNode& widget,
+    float parentX,
+    float parentY,
+    const DesignerCanvas::SelectionRect& selectionRect,
+    std::vector<std::string>& widgetIds)
+{
+    const float absoluteX = parentX + widget.bounds.x;
+    const float absoluteY = parentY + widget.bounds.y;
+    const model::Rect absoluteBounds{ absoluteX, absoluteY, widget.bounds.width, widget.bounds.height };
+
+    if (widget.type != model::WidgetType::FormWindow && rectsIntersect(absoluteBounds, selectionRect)) {
+        widgetIds.push_back(widget.id);
+    }
+
+    for (const auto& child : widget.children) {
+        collectIntersectingWidgetIds(child, absoluteX, absoluteY, selectionRect, widgetIds);
+    }
+}
+
+bool isMeaningfulMarquee(const DesignerCanvas::SelectionRect& rect)
+{
+    return rect.width >= kMarqueeDragThreshold || rect.height >= kMarqueeDragThreshold;
+}
+
+std::vector<std::string> topLevelSelectedNonRootIds(const model::ProjectDocument& document)
+{
+    std::vector<std::string> result;
+    for (const auto& id : document.selectedWidgetIds()) {
+        if (document.isRootWidgetId(id)) {
+            continue;
+        }
+
+        bool parentSelected = false;
+        const model::WidgetNode* parent = document.findParentOf(id);
+        while (parent != nullptr) {
+            if (document.isSelected(parent->id)) {
+                parentSelected = true;
+                break;
+            }
+            parent = document.findParentOf(parent->id);
+        }
+
+        if (!parentSelected) {
+            result.push_back(id);
+        }
+    }
+    return result;
+}
+
+void assignNewIdsRecursive(model::WidgetNode& widget,
+    model::ProjectDocument& document,
+    utils::IdGenerator& idGenerator,
+    std::set<std::string>& generatedIds)
+{
+    std::string newId;
+    do {
+        newId = idGenerator.next(widget.type, document);
+    } while (generatedIds.contains(newId));
+
+    generatedIds.insert(newId);
+    widget.id = newId;
+    for (auto& child : widget.children) {
+        assignNewIdsRecursive(child, document, idGenerator, generatedIds);
+    }
 }
 
 std::filesystem::path suggestedProjectPath(const model::ProjectDocument& document, const std::filesystem::path& currentProjectPath)
@@ -314,9 +401,14 @@ void MainWindow::draw(visage::Canvas& canvas)
         return;
     }
 
+    std::optional<DesignerCanvas::SelectionRect> marqueeRect;
+    if (canvasInteraction_.mode == CanvasInteractionState::Mode::MarqueeSelect) {
+        marqueeRect = normalizedSelectionRect(canvasInteraction_.dragStart, canvasInteraction_.currentPoint);
+    }
+
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
-    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_);
+    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, marqueeRect);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_.selectedWidget(), document_.selectedWidgetIds().size());
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
@@ -356,6 +448,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::FitText:
         fitSelectedWidgetToText();
+        return;
+    case ToolbarAction::CopyWidgets:
+        copySelectedWidgets();
+        return;
+    case ToolbarAction::PasteWidgets:
+        pasteWidgets();
         return;
     case ToolbarAction::ToggleMultiSelect:
         toggleMultiSelectMode();
@@ -441,16 +539,33 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
-        // TODO: Replace Win32 key-state probing if the Visage mouse input layer later exposes reliable modifier state.
-        const bool additiveSelection = multiSelectMode_
-            || (GetKeyState(VK_CONTROL) & 0x8000) != 0
-            || (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-        const bool wasSelected = document_.selectedWidgetId == *widgetId && !document_.hasMultiSelection();
-        handleWidgetClicked(*widgetId, additiveSelection);
-
-        if (additiveSelection) {
-            clearCanvasInteraction();
+        if (*widgetId == document_.root.id) {
+            if (const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y)) {
+                clearCanvasInteraction();
+                canvasInteraction_.mode = CanvasInteractionState::Mode::MarqueeSelect;
+                canvasInteraction_.dragStart = *dragStart;
+                canvasInteraction_.currentPoint = *dragStart;
+                canvasInteraction_.changed = false;
+                redraw();
+            }
             return;
+        }
+
+        // TODO: Replace Win32 key-state probing if the Visage mouse input layer later exposes reliable modifier state.
+        const bool modifierAdditive = (GetKeyState(VK_CONTROL) & 0x8000) != 0
+            || (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+        const bool additiveSelection = multiSelectMode_ || modifierAdditive;
+        const bool clickedPrimarySelected = document_.selectedWidgetId == *widgetId;
+        const bool keepMultiSelectionForDrag = multiSelectMode_ && clickedPrimarySelected;
+        const bool wasSelected = clickedPrimarySelected;
+
+        if (!keepMultiSelectionForDrag) {
+            handleWidgetClicked(*widgetId, additiveSelection);
+
+            if (additiveSelection) {
+                clearCanvasInteraction();
+                return;
+            }
         }
 
         if (wasSelected && *widgetId != document_.root.id) {
@@ -462,15 +577,39 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 canvasInteraction_.region = interactionHit->region;
                 canvasInteraction_.originalBounds = widget->bounds;
                 canvasInteraction_.dragStart = *dragStart;
+                canvasInteraction_.currentPoint = *dragStart;
+                canvasInteraction_.selectionBounds.clear();
                 canvasInteraction_.changed = false;
                 canvasInteraction_.mode = interactionHit->region == DesignerCanvas::HitRegion::Body
                     ? CanvasInteractionState::Mode::Move
                     : CanvasInteractionState::Mode::Resize;
+
+                if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move && document_.hasMultiSelection()) {
+                    for (const auto& id : document_.selectedWidgetIds()) {
+                        if (document_.isRootWidgetId(id)) {
+                            continue;
+                        }
+                        if (auto* selectedWidget = document_.findWidgetById(id)) {
+                            canvasInteraction_.selectionBounds.push_back({ id, selectedWidget->bounds });
+                        }
+                    }
+                }
             }
         }
         else {
             clearCanvasInteraction();
         }
+
+        return;
+    }
+
+    if (const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y)) {
+        clearCanvasInteraction();
+        canvasInteraction_.mode = CanvasInteractionState::Mode::MarqueeSelect;
+        canvasInteraction_.dragStart = *dragStart;
+        canvasInteraction_.currentPoint = *dragStart;
+        canvasInteraction_.changed = false;
+        redraw();
     }
 }
 
@@ -482,12 +621,52 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 
     auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
     const auto currentPoint = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y);
+    if (canvasInteraction_.mode == CanvasInteractionState::Mode::MarqueeSelect) {
+        if (currentPoint == std::nullopt) {
+            return;
+        }
+
+        canvasInteraction_.currentPoint = *currentPoint;
+        canvasInteraction_.changed = true;
+        redraw();
+        return;
+    }
+
     if (widget == nullptr || currentPoint == std::nullopt) {
         return;
     }
 
     model::Rect updatedBounds = canvasInteraction_.originalBounds;
     if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
+        if (canvasInteraction_.selectionBounds.size() > 1) {
+            updatedBounds = designerCanvas_.moveBounds(canvasInteraction_.originalBounds, canvasInteraction_.dragStart, *currentPoint);
+            const float deltaX = updatedBounds.x - canvasInteraction_.originalBounds.x;
+            const float deltaY = updatedBounds.y - canvasInteraction_.originalBounds.y;
+            bool anyChanged = false;
+            for (const auto& snapshot : canvasInteraction_.selectionBounds) {
+                auto* selectedWidget = document_.findWidgetById(snapshot.widgetId);
+                if (selectedWidget == nullptr) {
+                    continue;
+                }
+
+                const model::Rect newBounds{
+                    snapshot.originalBounds.x + deltaX,
+                    snapshot.originalBounds.y + deltaY,
+                    snapshot.originalBounds.width,
+                    snapshot.originalBounds.height
+                };
+                if (selectedWidget->bounds.x != newBounds.x || selectedWidget->bounds.y != newBounds.y) {
+                    selectedWidget->bounds = newBounds;
+                    anyChanged = true;
+                }
+            }
+            canvasInteraction_.changed = anyChanged;
+            if (anyChanged) {
+                redraw();
+            }
+            return;
+        }
+
         updatedBounds = designerCanvas_.moveBounds(canvasInteraction_.originalBounds, canvasInteraction_.dragStart, *currentPoint);
     }
     else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize) {
@@ -509,8 +688,44 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         return;
     }
 
+    if (canvasInteraction_.mode == CanvasInteractionState::Mode::MarqueeSelect) {
+        const DesignerCanvas::SelectionRect selectionRect = normalizedSelectionRect(canvasInteraction_.dragStart, canvasInteraction_.currentPoint);
+        if (!isMeaningfulMarquee(selectionRect)) {
+            document_.setSelection(document_.root.id);
+            setOperationStatus("Box selected 0 widgets");
+        }
+        else {
+            std::vector<std::string> intersectingIds;
+            collectIntersectingWidgetIds(document_.root, 0.0f, 0.0f, selectionRect, intersectingIds);
+            if (intersectingIds.empty()) {
+                document_.setSelection(document_.root.id);
+                setOperationStatus("Box selected 0 widgets");
+            }
+            else {
+                document_.clearSelection();
+                for (const auto& id : intersectingIds) {
+                    document_.addToSelection(id);
+                }
+                setOperationStatus("Box selected " + std::to_string(intersectingIds.size()) + " widgets");
+            }
+        }
+
+        clearCanvasInteraction();
+        redraw();
+        return;
+    }
+
     auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
     if (canvasInteraction_.changed && widget != nullptr) {
+        if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move && canvasInteraction_.selectionBounds.size() > 1) {
+            undoRedo_.clear();
+            document_.markDirty();
+            setOperationStatus("Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets");
+            clearCanvasInteraction();
+            redraw();
+            return;
+        }
+
         const model::Rect finalBounds = widget->bounds;
         widget->bounds = canvasInteraction_.originalBounds;
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
@@ -567,6 +782,14 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
     if (e.keyCode() == KeyCode::D) {
         duplicateSelectedWidget();
+        return true;
+    }
+    if (e.keyCode() == KeyCode::C) {
+        copySelectedWidgets();
+        return true;
+    }
+    if (e.keyCode() == KeyCode::V) {
+        pasteWidgets();
         return true;
     }
     if (e.keyCode() == KeyCode::Z) {
@@ -996,6 +1219,70 @@ void MainWindow::fitSelectedWidgetToText()
         + ", height " + std::to_string(static_cast<int>(oldHeight))
         + " -> " + std::to_string(static_cast<int>(widget->bounds.height)));
     updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::copySelectedWidgets()
+{
+    const std::vector<std::string> widgetIds = topLevelSelectedNonRootIds(document_);
+    if (widgetIds.empty()) {
+        setOperationStatus("No widgets selected to copy");
+        redraw();
+        return;
+    }
+
+    clipboardWidgets_.clear();
+    clipboardWidgets_.reserve(widgetIds.size());
+    for (const auto& id : widgetIds) {
+        if (const auto* widget = document_.findWidgetById(id)) {
+            clipboardWidgets_.push_back(*widget);
+        }
+    }
+
+    pasteCount_ = 0;
+    setOperationStatus("Copied " + std::to_string(clipboardWidgets_.size()) + " widgets");
+    redraw();
+}
+
+void MainWindow::pasteWidgets()
+{
+    if (clipboardWidgets_.empty()) {
+        setOperationStatus("Clipboard is empty");
+        redraw();
+        return;
+    }
+
+    ++pasteCount_;
+    const float offset = static_cast<float>(pasteCount_ * 20);
+    std::set<std::string> generatedIds;
+    std::vector<std::string> pastedIds;
+    document_.clearSelection();
+
+    for (const auto& copiedWidget : clipboardWidgets_) {
+        model::WidgetNode widget = copiedWidget;
+        assignNewIdsRecursive(widget, document_, idGenerator_, generatedIds);
+        widget.bounds.x += offset;
+        widget.bounds.y += offset;
+
+        const std::string pastedId = widget.id;
+        if (!document_.addChildToRoot(std::move(widget))) {
+            continue;
+        }
+
+        pastedIds.push_back(pastedId);
+        document_.addToSelection(pastedId);
+    }
+
+    if (pastedIds.empty()) {
+        setOperationStatus("Paste failed");
+        redraw();
+        return;
+    }
+
+    normalizeWidgetBoundsForEditor();
+    undoRedo_.clear();
+    document_.markDirty();
+    setOperationStatus("Pasted " + std::to_string(pastedIds.size()) + " widgets");
     redraw();
 }
 
@@ -1643,16 +1930,18 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::NewProject, "New");
     addButton(ToolbarAction::OpenProject, "Open");
     addButton(ToolbarAction::SaveProject, "Save");
-    addButton(ToolbarAction::SaveProjectAsDialog, "SaveAs", true);
-    addButton(ToolbarAction::OpenSample, "Sample");
+    addButton(ToolbarAction::SaveProjectAsDialog, "SAs", true);
+    addButton(ToolbarAction::OpenSample, "Smp");
     addButton(ToolbarAction::SaveProjectAsDebug, "Dbg");
     addButton(ToolbarAction::ExportCode, "Exp");
     addButton(ToolbarAction::FitText, "Fit");
-    addButton(ToolbarAction::ToggleMultiSelect, multiSelectMode_ ? "MultiOn" : "Multi");
-    addButton(ToolbarAction::AlignLeft, "AlignL");
-    addButton(ToolbarAction::AlignTop, "AlignT");
-    addButton(ToolbarAction::SameWidth, "SameW");
-    addButton(ToolbarAction::SameHeight, "SameH");
+    addButton(ToolbarAction::CopyWidgets, "Copy");
+    addButton(ToolbarAction::PasteWidgets, "Paste");
+    addButton(ToolbarAction::ToggleMultiSelect, "Multi", multiSelectMode_);
+    addButton(ToolbarAction::AlignLeft, "L");
+    addButton(ToolbarAction::AlignTop, "T");
+    addButton(ToolbarAction::SameWidth, "W");
+    addButton(ToolbarAction::SameHeight, "H");
     addButton(ToolbarAction::BringForward, "Front");
     addButton(ToolbarAction::SendBackward, "Back");
     addButton(ToolbarAction::ToggleGrid, "Grid", designerCanvas_.showGrid());

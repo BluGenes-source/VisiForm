@@ -32,6 +32,13 @@ public:
         float y = 0.0f;
     };
 
+    struct SelectionRect {
+        float x = 0.0f;
+        float y = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+    };
+
     void setBounds(float x, float y, float width, float height);
     void setShowGrid(bool showGrid);
     void setSnapToGrid(bool snapToGrid);
@@ -47,7 +54,11 @@ public:
     [[nodiscard]] std::optional<FormPoint> toFormPoint(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] model::Rect moveBounds(const model::Rect& originalBounds, const FormPoint& dragStart, const FormPoint& currentPoint) const;
     [[nodiscard]] model::Rect resizeBounds(const model::Rect& originalBounds, HitRegion region, const FormPoint& dragStart, const FormPoint& currentPoint) const;
-    void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document) const;
+    void draw(visage::Canvas& canvas,
+        const visage::Font& font,
+        bool drawText,
+        const model::ProjectDocument& document,
+        const std::optional<SelectionRect>& marqueeRect = std::nullopt) const;
 
 private:
     [[nodiscard]] float snap(float value) const;
