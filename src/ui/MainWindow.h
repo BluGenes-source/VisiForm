@@ -91,8 +91,14 @@ private:
         ToggleMultiSelect,
         AlignLeft,
         AlignTop,
+        AlignRight,
+        AlignBottom,
+        CenterHorizontally,
+        CenterVertically,
         SameWidth,
         SameHeight,
+        DistributeHorizontally,
+        DistributeVertically,
         BringForward,
         SendBackward,
         ToggleGrid,
@@ -161,8 +167,15 @@ private:
     void handleWidgetClicked(const std::string& widgetId, bool additiveSelection);
     void alignSelectedLeft();
     void alignSelectedTop();
+    void alignSelectedRight();
+    void alignSelectedBottom();
+    void centerSelectedHorizontally();
+    void centerSelectedVertically();
     void makeSelectedSameWidth();
     void makeSelectedSameHeight();
+    void distributeSelectedHorizontally();
+    void distributeSelectedVertically();
+    void nudgeSelectedWidgets(float dx, float dy);
     void bringSelectedForward();
     void sendSelectedBackward();
     void toggleGrid();

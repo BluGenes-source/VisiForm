@@ -38,7 +38,7 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kToolbarButtonWidth = 54.0f;
+constexpr float kToolbarButtonWidth = 42.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
 constexpr float kToolbarButtonSpacing = 2.0f;
 constexpr float kNewWidgetStartX = 40.0f;
@@ -84,6 +84,45 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
 std::string widgetDisplayName(const model::WidgetNode& widget)
 {
     return widget.name.empty() ? widget.id : widget.name;
+}
+
+std::vector<model::WidgetNode*> selectedNonRootWidgets(model::ProjectDocument& document)
+{
+    std::vector<model::WidgetNode*> widgets;
+    for (auto* widget : document.selectedWidgets()) {
+        if (widget != nullptr && !document.isRootWidgetId(widget->id)) {
+            widgets.push_back(widget);
+        }
+    }
+    return widgets;
+}
+
+struct SelectionBoundsInfo {
+    float left = 0.0f;
+    float top = 0.0f;
+    float right = 0.0f;
+    float bottom = 0.0f;
+};
+
+SelectionBoundsInfo calculateSelectionBounds(const std::vector<model::WidgetNode*>& widgets)
+{
+    SelectionBoundsInfo bounds{};
+    if (widgets.empty()) {
+        return bounds;
+    }
+
+    bounds.left = widgets.front()->bounds.x;
+    bounds.top = widgets.front()->bounds.y;
+    bounds.right = widgets.front()->bounds.x + widgets.front()->bounds.width;
+    bounds.bottom = widgets.front()->bounds.y + widgets.front()->bounds.height;
+    for (const auto* widget : widgets) {
+        bounds.left = std::min(bounds.left, widget->bounds.x);
+        bounds.top = std::min(bounds.top, widget->bounds.y);
+        bounds.right = std::max(bounds.right, widget->bounds.x + widget->bounds.width);
+        bounds.bottom = std::max(bounds.bottom, widget->bounds.y + widget->bounds.height);
+    }
+
+    return bounds;
 }
 
 float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value)
@@ -464,11 +503,29 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     case ToolbarAction::AlignTop:
         alignSelectedTop();
         return;
+    case ToolbarAction::AlignRight:
+        alignSelectedRight();
+        return;
+    case ToolbarAction::AlignBottom:
+        alignSelectedBottom();
+        return;
+    case ToolbarAction::CenterHorizontally:
+        centerSelectedHorizontally();
+        return;
+    case ToolbarAction::CenterVertically:
+        centerSelectedVertically();
+        return;
     case ToolbarAction::SameWidth:
         makeSelectedSameWidth();
         return;
     case ToolbarAction::SameHeight:
         makeSelectedSameHeight();
+        return;
+    case ToolbarAction::DistributeHorizontally:
+        distributeSelectedHorizontally();
+        return;
+    case ToolbarAction::DistributeVertically:
+        distributeSelectedVertically();
         return;
     case ToolbarAction::BringForward:
         bringSelectedForward();
@@ -760,6 +817,24 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
 
     if (e.keyCode() == KeyCode::Delete) {
         deleteSelectedWidget();
+        return true;
+    }
+
+    if (e.keyCode() == KeyCode::Left || e.keyCode() == KeyCode::Right
+        || e.keyCode() == KeyCode::Up || e.keyCode() == KeyCode::Down) {
+        const float amount = e.isShiftDown() ? static_cast<float>(std::max(1, designerCanvas_.gridSize())) : 1.0f;
+        if (e.keyCode() == KeyCode::Left) {
+            nudgeSelectedWidgets(-amount, 0.0f);
+        }
+        else if (e.keyCode() == KeyCode::Right) {
+            nudgeSelectedWidgets(amount, 0.0f);
+        }
+        else if (e.keyCode() == KeyCode::Up) {
+            nudgeSelectedWidgets(0.0f, -amount);
+        }
+        else {
+            nudgeSelectedWidgets(0.0f, amount);
+        }
         return true;
     }
 
@@ -1330,7 +1405,7 @@ void MainWindow::alignSelectedLeft()
 
 void MainWindow::alignSelectedTop()
 {
-    auto selectedWidgets = document_.selectedWidgets();
+    auto selectedWidgets = selectedNonRootWidgets(document_);
     if (selectedWidgets.empty()) {
         setOperationStatus("No widget selected");
         redraw();
@@ -1370,11 +1445,135 @@ void MainWindow::alignSelectedTop()
     redraw();
 }
 
+void MainWindow::alignSelectedRight()
+{
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.empty()) {
+        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        float targetRight = selectedWidgets.front()->bounds.x + selectedWidgets.front()->bounds.width;
+        for (const auto* selected : selectedWidgets) {
+            targetRight = std::max(targetRight, selected->bounds.x + selected->bounds.width);
+        }
+        for (auto* selected : selectedWidgets) {
+            selected->bounds.x = snapToCanvasGrid(designerCanvas_, targetRight - selected->bounds.width);
+        }
+        document_.markDirty();
+        setOperationStatus("Aligned right: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    auto* widget = selectedWidgets.front();
+    widget->bounds.x = snapToCanvasGrid(designerCanvas_, document_.root.bounds.width - kLayoutMargin - widget->bounds.width);
+    document_.markDirty();
+    setOperationStatus("Aligned right: 1 widget(s)");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::alignSelectedBottom()
+{
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.empty()) {
+        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        float targetBottom = selectedWidgets.front()->bounds.y + selectedWidgets.front()->bounds.height;
+        for (const auto* selected : selectedWidgets) {
+            targetBottom = std::max(targetBottom, selected->bounds.y + selected->bounds.height);
+        }
+        for (auto* selected : selectedWidgets) {
+            selected->bounds.y = snapToCanvasGrid(designerCanvas_, targetBottom - selected->bounds.height);
+        }
+        document_.markDirty();
+        setOperationStatus("Aligned bottom: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    auto* widget = selectedWidgets.front();
+    widget->bounds.y = snapToCanvasGrid(designerCanvas_, document_.root.bounds.height - kLayoutMargin - widget->bounds.height);
+    document_.markDirty();
+    setOperationStatus("Aligned bottom: 1 widget(s)");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::centerSelectedHorizontally()
+{
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.empty()) {
+        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        const SelectionBoundsInfo bounds = calculateSelectionBounds(selectedWidgets);
+        const float centerX = (bounds.left + bounds.right) * 0.5f;
+        for (auto* selected : selectedWidgets) {
+            selected->bounds.x = snapToCanvasGrid(designerCanvas_, centerX - selected->bounds.width * 0.5f);
+        }
+        document_.markDirty();
+        setOperationStatus("Centered horizontally: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    auto* widget = selectedWidgets.front();
+    widget->bounds.x = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.width - widget->bounds.width) * 0.5f);
+    document_.markDirty();
+    setOperationStatus("Centered horizontally: 1 widget(s)");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::centerSelectedVertically()
+{
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.empty()) {
+        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        const SelectionBoundsInfo bounds = calculateSelectionBounds(selectedWidgets);
+        const float centerY = (bounds.top + bounds.bottom) * 0.5f;
+        for (auto* selected : selectedWidgets) {
+            selected->bounds.y = snapToCanvasGrid(designerCanvas_, centerY - selected->bounds.height * 0.5f);
+        }
+        document_.markDirty();
+        setOperationStatus("Centered vertically: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    auto* widget = selectedWidgets.front();
+    widget->bounds.y = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.height - widget->bounds.height) * 0.5f);
+    document_.markDirty();
+    setOperationStatus("Centered vertically: 1 widget(s)");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
 void MainWindow::makeSelectedSameWidth()
 {
-    auto selectedWidgets = document_.selectedWidgets();
+    auto selectedWidgets = selectedNonRootWidgets(document_);
     if (selectedWidgets.empty()) {
-        setOperationStatus("No widget selected");
+        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
         redraw();
         return;
     }
@@ -1413,9 +1612,9 @@ void MainWindow::makeSelectedSameWidth()
 
 void MainWindow::makeSelectedSameHeight()
 {
-    auto selectedWidgets = document_.selectedWidgets();
+    auto selectedWidgets = selectedNonRootWidgets(document_);
     if (selectedWidgets.empty()) {
-        setOperationStatus("No widget selected");
+        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
         redraw();
         return;
     }
@@ -1447,6 +1646,80 @@ void MainWindow::makeSelectedSameHeight()
     widget->bounds.height = std::max(metrics.minHeight, reference != nullptr ? reference->bounds.height : metrics.defaultHeight);
     document_.markDirty();
     setOperationStatus("Same height: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::distributeSelectedHorizontally()
+{
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() < 3) {
+        setOperationStatus("Select at least 3 widgets to distribute horizontally");
+        redraw();
+        return;
+    }
+
+    std::sort(selectedWidgets.begin(), selectedWidgets.end(),
+        [](const model::WidgetNode* left, const model::WidgetNode* right) {
+            return left->bounds.x < right->bounds.x;
+        });
+
+    const float leftX = selectedWidgets.front()->bounds.x;
+    const float rightX = selectedWidgets.back()->bounds.x;
+    const float step = (rightX - leftX) / static_cast<float>(selectedWidgets.size() - 1);
+    for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
+        selectedWidgets[index]->bounds.x = snapToCanvasGrid(designerCanvas_, leftX + step * static_cast<float>(index));
+    }
+
+    document_.markDirty();
+    setOperationStatus("Distributed horizontally: " + std::to_string(selectedWidgets.size()) + " widgets");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::distributeSelectedVertically()
+{
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() < 3) {
+        setOperationStatus("Select at least 3 widgets to distribute vertically");
+        redraw();
+        return;
+    }
+
+    std::sort(selectedWidgets.begin(), selectedWidgets.end(),
+        [](const model::WidgetNode* top, const model::WidgetNode* bottom) {
+            return top->bounds.y < bottom->bounds.y;
+        });
+
+    const float topY = selectedWidgets.front()->bounds.y;
+    const float bottomY = selectedWidgets.back()->bounds.y;
+    const float step = (bottomY - topY) / static_cast<float>(selectedWidgets.size() - 1);
+    for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
+        selectedWidgets[index]->bounds.y = snapToCanvasGrid(designerCanvas_, topY + step * static_cast<float>(index));
+    }
+
+    document_.markDirty();
+    setOperationStatus("Distributed vertically: " + std::to_string(selectedWidgets.size()) + " widgets");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::nudgeSelectedWidgets(float dx, float dy)
+{
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.empty()) {
+        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
+        redraw();
+        return;
+    }
+
+    for (auto* selected : selectedWidgets) {
+        selected->bounds.x += dx;
+        selected->bounds.y += dy;
+    }
+
+    document_.markDirty();
+    setOperationStatus("Nudged " + std::to_string(selectedWidgets.size()) + " widget(s)");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -1940,8 +2213,14 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::ToggleMultiSelect, "Multi", multiSelectMode_);
     addButton(ToolbarAction::AlignLeft, "L");
     addButton(ToolbarAction::AlignTop, "T");
+    addButton(ToolbarAction::AlignRight, "R");
+    addButton(ToolbarAction::AlignBottom, "B");
+    addButton(ToolbarAction::CenterHorizontally, "CH");
+    addButton(ToolbarAction::CenterVertically, "CV");
     addButton(ToolbarAction::SameWidth, "W");
     addButton(ToolbarAction::SameHeight, "H");
+    addButton(ToolbarAction::DistributeHorizontally, "DH");
+    addButton(ToolbarAction::DistributeVertically, "DV");
     addButton(ToolbarAction::BringForward, "Front");
     addButton(ToolbarAction::SendBackward, "Back");
     addButton(ToolbarAction::ToggleGrid, "Grid", designerCanvas_.showGrid());

@@ -84,8 +84,14 @@ Available toolbar actions:
 
 - `Align L`
 - `Align T`
+- `Align R`
+- `Align B`
+- `Center H`
+- `Center V`
 - `Same W`
 - `Same H`
+- `Dist H`
+- `Dist V`
 - `Front`
 - `Back`
 
@@ -111,6 +117,46 @@ Current behavior:
 - snap-to-grid is applied when enabled
 - x, width, and height stay unchanged
 
+## Align Right
+
+Aligns the selected widget set to a shared right edge.
+
+Current behavior:
+
+- single selection aligns to the root form right margin of `20`
+- multi-selection aligns all selected right edges to the current maximum selected right edge
+- snap-to-grid is applied when enabled
+
+## Align Bottom
+
+Aligns the selected widget set to a shared bottom edge.
+
+Current behavior:
+
+- single selection aligns to the root form bottom margin of `20`
+- multi-selection aligns all selected bottom edges to the current maximum selected bottom edge
+- snap-to-grid is applied when enabled
+
+## Center Horizontally
+
+Centers the selected widget set horizontally.
+
+Current behavior:
+
+- single selection centers inside the root form
+- multi-selection aligns each selected widget center to the horizontal center of the selected bounding box
+- snap-to-grid is applied when enabled
+
+## Center Vertically
+
+Centers the selected widget set vertically.
+
+Current behavior:
+
+- single selection centers inside the root form
+- multi-selection aligns each selected widget center to the vertical center of the selected bounding box
+- snap-to-grid is applied when enabled
+
 ## Same Width
 
 Sets the selected widget width using a simple reference strategy.
@@ -130,6 +176,36 @@ Current behavior:
 - if a previous sibling exists, use that sibling height
 - otherwise use the widget default height from shared widget metrics
 - widget-specific minimum height is enforced
+
+## Distribute Horizontally
+
+Distributes at least three selected widgets across their current horizontal range.
+
+Current behavior:
+
+- requires at least three selected non-root widgets
+- keeps the leftmost and rightmost widgets fixed
+- spaces middle widgets evenly by left x position
+
+## Distribute Vertically
+
+Distributes at least three selected widgets across their current vertical range.
+
+Current behavior:
+
+- requires at least three selected non-root widgets
+- keeps the topmost and bottommost widgets fixed
+- spaces middle widgets evenly by top y position
+
+## Nudge
+
+Selected non-root widgets can be nudged with the keyboard.
+
+Current behavior:
+
+- `Left`, `Right`, `Up`, `Down` move by `1` pixel
+- `Shift` + arrow moves by the current grid size
+- nudging is disabled while the property inspector is editing text
 
 ## Z-order convention
 
@@ -156,9 +232,11 @@ This also affects draw order.
 
 - single-selection only
 - no distribution tools yet
+- no smart guides yet
 - no marquee selection yet
 - no full layout manager support yet
 - layout actions currently use direct edits instead of dedicated undo commands
+- no toolbar nudge buttons yet due toolbar space
 
 ## Future work
 
