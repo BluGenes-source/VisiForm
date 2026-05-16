@@ -5,6 +5,7 @@
 #include "utils/IdGenerator.h"
 
 #include <functional>
+#include <algorithm>
 #include <set>
 #include <type_traits>
 
@@ -151,7 +152,7 @@ ProjectDocument ProjectDocument::createDefault()
     helloButton.setProperty("text", "Click Me");
     helloButton.setProperty("onClick", "");
     document.root.children.push_back(std::move(helloButton));
-    document.selectedWidgetId = "button_hello";
+    document.setSelection("button_hello");
 
     return document;
 }
@@ -168,6 +169,30 @@ WidgetNode* ProjectDocument::selectedWidget()
     }
 
     return findWidgetById(selectedWidgetId);
+}
+
+std::vector<WidgetNode*> ProjectDocument::selectedWidgets()
+{
+    std::vector<WidgetNode*> widgets;
+    widgets.reserve(selectedWidgetIds_.size());
+    for (const auto& id : selectedWidgetIds_) {
+        if (auto* widget = findWidgetById(id)) {
+            widgets.push_back(widget);
+        }
+    }
+    return widgets;
+}
+
+std::vector<const WidgetNode*> ProjectDocument::selectedWidgets() const
+{
+    std::vector<const WidgetNode*> widgets;
+    widgets.reserve(selectedWidgetIds_.size());
+    for (const auto& id : selectedWidgetIds_) {
+        if (const auto* widget = findWidgetById(id)) {
+            widgets.push_back(widget);
+        }
+    }
+    return widgets;
 }
 
 const WidgetNode* ProjectDocument::selectedWidget() const
@@ -312,22 +337,96 @@ WidgetNode* ProjectDocument::duplicateWidgetById(const std::string& id, utils::I
 
 void ProjectDocument::selectWidget(const std::string& id)
 {
+    setSelection(id);
+}
+
+void ProjectDocument::setSelection(const std::string& id)
+{
     if (id.empty()) {
         clearSelection();
         return;
     }
 
-    selectedWidgetId = findWidgetById(id) != nullptr ? id : std::string{};
+    if (findWidgetById(id) == nullptr) {
+        clearSelection();
+        return;
+    }
+
+    selectedWidgetIds_.clear();
+    selectedWidgetIds_.push_back(id);
+    syncPrimarySelection();
+}
+
+void ProjectDocument::addToSelection(const std::string& id)
+{
+    if (id.empty() || findWidgetById(id) == nullptr) {
+        return;
+    }
+
+    if (isRootWidgetId(id)) {
+        setSelection(id);
+        return;
+    }
+
+    selectedWidgetIds_.erase(std::remove(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), root.id), selectedWidgetIds_.end());
+    selectedWidgetIds_.erase(std::remove(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), id), selectedWidgetIds_.end());
+    selectedWidgetIds_.push_back(id);
+    syncPrimarySelection();
+}
+
+void ProjectDocument::removeFromSelection(const std::string& id)
+{
+    if (id.empty()) {
+        return;
+    }
+
+    selectedWidgetIds_.erase(std::remove(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), id), selectedWidgetIds_.end());
+    syncPrimarySelection();
+}
+
+void ProjectDocument::toggleSelection(const std::string& id)
+{
+    if (id.empty() || findWidgetById(id) == nullptr) {
+        return;
+    }
+
+    if (isRootWidgetId(id)) {
+        setSelection(id);
+        return;
+    }
+
+    if (isSelected(id)) {
+        removeFromSelection(id);
+        return;
+    }
+
+    addToSelection(id);
+}
+
+bool ProjectDocument::isSelected(const std::string& id) const
+{
+    return std::find(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), id) != selectedWidgetIds_.end();
 }
 
 void ProjectDocument::clearSelection()
 {
+    selectedWidgetIds_.clear();
     selectedWidgetId.clear();
 }
 
 bool ProjectDocument::hasSelection() const
 {
-    return !selectedWidgetId.empty();
+    return !selectedWidgetIds_.empty();
+}
+
+bool ProjectDocument::hasMultiSelection() const
+{
+    return selectedWidgetIds_.size() > 1;
+}
+
+const std::vector<std::string>& ProjectDocument::selectedWidgetIds() const
+{
+    return selectedWidgetIds_;
 }
 
 void ProjectDocument::markDirty()
@@ -338,6 +437,26 @@ void ProjectDocument::markDirty()
 void ProjectDocument::clearDirty()
 {
     dirty = false;
+}
+
+void ProjectDocument::syncPrimarySelection()
+{
+    selectedWidgetIds_.erase(std::remove_if(selectedWidgetIds_.begin(), selectedWidgetIds_.end(),
+        [this](const std::string& id) { return findWidgetById(id) == nullptr; }), selectedWidgetIds_.end());
+
+    if (selectedWidgetIds_.empty()) {
+        selectedWidgetId.clear();
+        return;
+    }
+
+    if (selectedWidgetIds_.size() > 1) {
+        selectedWidgetIds_.erase(std::remove(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), root.id), selectedWidgetIds_.end());
+        if (selectedWidgetIds_.empty()) {
+            selectedWidgetIds_.push_back(root.id);
+        }
+    }
+
+    selectedWidgetId = selectedWidgetIds_.back();
 }
 
 } // namespace visiform::model

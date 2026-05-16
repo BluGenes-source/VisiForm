@@ -2,6 +2,28 @@
 
 `VisiForm` now includes basic single-selection layout tools for the currently selected widget.
 
+`VisiForm` also supports a basic multi-select foundation for layout operations.
+
+## Multi-select
+
+Current selection options:
+
+- normal click selects one widget
+- toolbar `Multi` mode lets click toggle widgets into and out of the selection
+- primary selection is the last selected widget
+
+Current notes:
+
+- primary selection shows resize handles
+- secondary selections show lighter outlines
+- Property Inspector continues editing the primary widget only
+- `Front` and `Back` still operate on the primary selection only
+- `Duplicate` still duplicates the primary selection only
+- group move and group resize are not implemented yet
+
+The current input path does not use direct Visage mouse modifier helpers in this project.
+The editor uses the `Multi` toolbar toggle as the reliable fallback and also checks the Windows key state for `Ctrl` and `Shift` during clicks.
+
 ## Toolbar tools
 
 Available toolbar actions:

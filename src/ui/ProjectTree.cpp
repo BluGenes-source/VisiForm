@@ -156,11 +156,12 @@ void ProjectTree::drawPanel(visage::Canvas& canvas, const visage::Font& font, bo
             break;
         }
 
-        const bool isSelected = document.selectedWidgetId == row.widgetId;
-        canvas.setColor(isSelected ? 0xff355382 : 0xff252b36);
+        const bool isPrimarySelected = document.selectedWidgetId == row.widgetId;
+        const bool isSecondarySelected = document.isSelected(row.widgetId) && !isPrimarySelected;
+        canvas.setColor(isPrimarySelected ? 0xff355382 : (isSecondarySelected ? 0xff2d4668 : 0xff252b36));
         canvas.fill(x_ + 8.0f, rowTop, width_ - 16.0f, kRowHeight - 2.0f);
 
-        canvas.setColor(isSelected ? 0xfff8fbff : 0xffdde2ea);
+        canvas.setColor(isPrimarySelected ? 0xfff8fbff : (isSecondarySelected ? 0xffd9ebff : 0xffdde2ea));
         canvas.text(row.label, font, visage::Font::kTopLeft,
             x_ + 16.0f + row.depth * 16.0f, rowTop + 4.0f,
             width_ - 28.0f - row.depth * 16.0f, kRowHeight - 6.0f);

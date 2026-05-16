@@ -235,8 +235,11 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 
     document_ = std::move(*loadedDocument);
     const bool normalized = normalizeWidgetBoundsForEditor();
-    if (!document_.hasSelection() || document_.selectedWidget() == nullptr) {
-        document_.selectWidget(document_.root.id);
+    if (!document_.selectedWidgetId.empty() && document_.findWidgetById(document_.selectedWidgetId) != nullptr) {
+        document_.setSelection(document_.selectedWidgetId);
+    }
+    else {
+        document_.setSelection(document_.root.id);
     }
 
     currentProjectPath_ = path;
@@ -314,7 +317,7 @@ void MainWindow::draw(visage::Canvas& canvas)
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
     designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_);
-    propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_.selectedWidget());
+    propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_.selectedWidget(), document_.selectedWidgetIds().size());
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
     }
@@ -353,6 +356,9 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::FitText:
         fitSelectedWidgetToText();
+        return;
+    case ToolbarAction::ToggleMultiSelect:
+        toggleMultiSelectMode();
         return;
     case ToolbarAction::AlignLeft:
         alignSelectedLeft();
@@ -421,8 +427,11 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (layout_.showProjectTree) {
+        const bool additiveSelection = multiSelectMode_
+            || (GetKeyState(VK_CONTROL) & 0x8000) != 0
+            || (GetKeyState(VK_SHIFT) & 0x8000) != 0;
         if (const auto widgetId = projectTree_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
-            selectWidget(*widgetId);
+            handleWidgetClicked(*widgetId, additiveSelection);
             return;
         }
         if (const auto recentFileIndex = projectTree_.hitTestRecentFileIndex(document_, e.position.x, e.position.y)) {
@@ -432,8 +441,17 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
-        const bool wasSelected = document_.selectedWidgetId == *widgetId;
-        selectWidget(*widgetId);
+        // TODO: Replace Win32 key-state probing if the Visage mouse input layer later exposes reliable modifier state.
+        const bool additiveSelection = multiSelectMode_
+            || (GetKeyState(VK_CONTROL) & 0x8000) != 0
+            || (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+        const bool wasSelected = document_.selectedWidgetId == *widgetId && !document_.hasMultiSelection();
+        handleWidgetClicked(*widgetId, additiveSelection);
+
+        if (additiveSelection) {
+            clearCanvasInteraction();
+            return;
+        }
 
         if (wasSelected && *widgetId != document_.root.id) {
             const auto interactionHit = designerCanvas_.hitTestInteraction(document_, e.position.x, e.position.y, document_.selectedWidgetId);
@@ -578,6 +596,52 @@ void MainWindow::textInput(const std::string& text)
     (void)text;
 }
 
+void MainWindow::toggleMultiSelectMode()
+{
+    multiSelectMode_ = !multiSelectMode_;
+    setOperationStatus(std::string{"Multi-select: "} + (multiSelectMode_ ? "On" : "Off"));
+    redraw();
+}
+
+bool MainWindow::isMultiSelectModeEnabled() const
+{
+    return multiSelectMode_;
+}
+
+void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveSelection)
+{
+    auto* widget = document_.findWidgetById(widgetId);
+    if (widget == nullptr) {
+        return;
+    }
+
+    clearCanvasInteraction();
+    if (!additiveSelection) {
+        statusMessage_.clear();
+        document_.setSelection(widgetId);
+        redraw();
+        return;
+    }
+
+    const bool wasSelected = document_.isSelected(widgetId);
+    document_.toggleSelection(widgetId);
+    if (document_.hasSelection()) {
+        const auto* primary = document_.selectedWidget();
+        const std::string displayName = primary != nullptr ? widgetDisplayName(*primary) : widgetDisplayName(*widget);
+        setOperationStatus(wasSelected
+            ? "Removed from selection: " + widgetDisplayName(*widget) + " (" + widgetId + ")"
+            : "Added to selection: " + widgetDisplayName(*widget) + " (" + widgetId + ")");
+        if (document_.hasMultiSelection() && primary != nullptr) {
+            setOperationStatus("Selected: " + std::to_string(document_.selectedWidgetIds().size())
+                + " widgets, primary: " + displayName + " (" + primary->id + ")");
+        }
+    }
+    else {
+        setOperationStatus("Removed from selection: " + widgetDisplayName(*widget) + " (" + widgetId + ")");
+    }
+    redraw();
+}
+
 void MainWindow::addWidgetFromPalette(model::WidgetType type)
 {
     if (document_.root.type != model::WidgetType::FormWindow) {
@@ -600,6 +664,42 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
 void MainWindow::deleteSelectedWidget()
 {
     cancelInspectorEdit();
+    if (document_.hasMultiSelection()) {
+        std::vector<std::string> ids = document_.selectedWidgetIds();
+        ids.erase(std::remove_if(ids.begin(), ids.end(), [this](const std::string& id) { return document_.isRootWidgetId(id); }), ids.end());
+        std::sort(ids.begin(), ids.end(), [this](const std::string& left, const std::string& right) {
+            const auto depthOf = [this](const std::string& id) {
+                int depth = 0;
+                const model::WidgetNode* parent = document_.findParentOf(id);
+                while (parent != nullptr) {
+                    ++depth;
+                    parent = document_.findParentOf(parent->id);
+                }
+                return depth;
+            };
+            return depthOf(left) > depthOf(right);
+        });
+
+        int removedCount = 0;
+        for (const auto& id : ids) {
+            if (document_.findWidgetById(id) != nullptr && document_.removeWidgetById(id)) {
+                ++removedCount;
+            }
+        }
+
+        document_.setSelection(document_.root.id);
+        if (removedCount > 0) {
+            undoRedo_.clear();
+            document_.markDirty();
+            setOperationStatus("Deleted " + std::to_string(removedCount) + " widgets");
+        }
+        else {
+            setOperationStatus("No widget selected");
+        }
+        redraw();
+        return;
+    }
+
     const auto* selectedWidget = document_.selectedWidget();
     if (selectedWidget == nullptr) {
         setOperationStatus("No widget selected");
@@ -644,6 +744,7 @@ void MainWindow::duplicateSelectedWidget()
     }
 
     const std::string selectedId = selectedWidget->id;
+    const bool hadMultiSelection = document_.hasMultiSelection();
 
     auto* duplicate = document_.duplicateWidgetById(selectedId, idGenerator_);
     if (duplicate == nullptr) {
@@ -657,9 +758,11 @@ void MainWindow::duplicateSelectedWidget()
 
     // TODO: Reconnect duplicate to `AddWidgetCommand` or a dedicated duplicate command after the direct flow is verified stable.
     undoRedo_.clear();
-    document_.selectWidget(duplicateId);
+    document_.setSelection(duplicateId);
     document_.markDirty();
-    setOperationStatus("Duplicated widget: " + displayName + " (" + duplicateId + ")");
+    setOperationStatus(hadMultiSelection
+        ? "Duplicated primary widget: " + displayName + " (" + duplicateId + ")"
+        : "Duplicated widget: " + displayName + " (" + duplicateId + ")");
     redraw();
 }
 
@@ -898,14 +1001,35 @@ void MainWindow::fitSelectedWidgetToText()
 
 void MainWindow::alignSelectedLeft()
 {
-    auto* widget = document_.selectedWidget();
-    if (widget == nullptr) {
+    auto selectedWidgets = document_.selectedWidgets();
+    if (selectedWidgets.empty()) {
         setOperationStatus("No widget selected");
         redraw();
         return;
     }
+    auto* widget = document_.selectedWidget();
     if (document_.isRootWidgetId(widget->id)) {
         setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        float targetX = selectedWidgets.front()->bounds.x;
+        for (const auto* selected : selectedWidgets) {
+            if (!document_.isRootWidgetId(selected->id)) {
+                targetX = std::min(targetX, selected->bounds.x);
+            }
+        }
+        targetX = snapToCanvasGrid(designerCanvas_, targetX);
+        for (auto* selected : selectedWidgets) {
+            if (!document_.isRootWidgetId(selected->id)) {
+                selected->bounds.x = targetX;
+            }
+        }
+        document_.markDirty();
+        setOperationStatus("Aligned left: " + std::to_string(selectedWidgets.size()) + " widgets");
+        updatePropertyEditorBounds();
         redraw();
         return;
     }
@@ -919,14 +1043,35 @@ void MainWindow::alignSelectedLeft()
 
 void MainWindow::alignSelectedTop()
 {
-    auto* widget = document_.selectedWidget();
-    if (widget == nullptr) {
+    auto selectedWidgets = document_.selectedWidgets();
+    if (selectedWidgets.empty()) {
         setOperationStatus("No widget selected");
         redraw();
         return;
     }
+    auto* widget = document_.selectedWidget();
     if (document_.isRootWidgetId(widget->id)) {
         setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        float targetY = selectedWidgets.front()->bounds.y;
+        for (const auto* selected : selectedWidgets) {
+            if (!document_.isRootWidgetId(selected->id)) {
+                targetY = std::min(targetY, selected->bounds.y);
+            }
+        }
+        targetY = snapToCanvasGrid(designerCanvas_, targetY);
+        for (auto* selected : selectedWidgets) {
+            if (!document_.isRootWidgetId(selected->id)) {
+                selected->bounds.y = targetY;
+            }
+        }
+        document_.markDirty();
+        setOperationStatus("Aligned top: " + std::to_string(selectedWidgets.size()) + " widgets");
+        updatePropertyEditorBounds();
         redraw();
         return;
     }
@@ -940,14 +1085,31 @@ void MainWindow::alignSelectedTop()
 
 void MainWindow::makeSelectedSameWidth()
 {
-    auto* widget = document_.selectedWidget();
-    if (widget == nullptr) {
+    auto selectedWidgets = document_.selectedWidgets();
+    if (selectedWidgets.empty()) {
         setOperationStatus("No widget selected");
         redraw();
         return;
     }
+    auto* widget = document_.selectedWidget();
     if (document_.isRootWidgetId(widget->id)) {
         setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        const float referenceWidth = widget->bounds.width;
+        for (auto* selected : selectedWidgets) {
+            if (selected->id == widget->id || document_.isRootWidgetId(selected->id)) {
+                continue;
+            }
+            const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
+            selected->bounds.width = std::max(metrics.minWidth, referenceWidth);
+        }
+        document_.markDirty();
+        setOperationStatus("Same width: " + std::to_string(selectedWidgets.size()) + " widgets");
+        updatePropertyEditorBounds();
         redraw();
         return;
     }
@@ -964,14 +1126,31 @@ void MainWindow::makeSelectedSameWidth()
 
 void MainWindow::makeSelectedSameHeight()
 {
-    auto* widget = document_.selectedWidget();
-    if (widget == nullptr) {
+    auto selectedWidgets = document_.selectedWidgets();
+    if (selectedWidgets.empty()) {
         setOperationStatus("No widget selected");
         redraw();
         return;
     }
+    auto* widget = document_.selectedWidget();
     if (document_.isRootWidgetId(widget->id)) {
         setOperationStatus("Cannot layout root form");
+        redraw();
+        return;
+    }
+
+    if (selectedWidgets.size() > 1) {
+        const float referenceHeight = widget->bounds.height;
+        for (auto* selected : selectedWidgets) {
+            if (selected->id == widget->id || document_.isRootWidgetId(selected->id)) {
+                continue;
+            }
+            const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
+            selected->bounds.height = std::max(metrics.minHeight, referenceHeight);
+        }
+        document_.markDirty();
+        setOperationStatus("Same height: " + std::to_string(selectedWidgets.size()) + " widgets");
+        updatePropertyEditorBounds();
         redraw();
         return;
     }
@@ -1002,14 +1181,18 @@ void MainWindow::bringSelectedForward()
 
     const std::string displayName = widgetDisplayName(*widget);
     if (!document_.bringWidgetForward(selectedId)) {
-        setOperationStatus("Already in front: " + displayName + " (" + selectedId + ")");
+        setOperationStatus(document_.hasMultiSelection()
+            ? "Already in front: " + displayName + " (" + selectedId + ") - primary only"
+            : "Already in front: " + displayName + " (" + selectedId + ")");
         redraw();
         return;
     }
 
     document_.selectWidget(selectedId);
     document_.markDirty();
-    setOperationStatus("Brought forward: " + displayName + " (" + selectedId + ")");
+    setOperationStatus(document_.hasMultiSelection()
+        ? "Brought forward: " + displayName + " (" + selectedId + ") - primary only"
+        : "Brought forward: " + displayName + " (" + selectedId + ")");
     redraw();
 }
 
@@ -1030,14 +1213,18 @@ void MainWindow::sendSelectedBackward()
 
     const std::string displayName = widgetDisplayName(*widget);
     if (!document_.sendWidgetBackward(selectedId)) {
-        setOperationStatus("Already in back: " + displayName + " (" + selectedId + ")");
+        setOperationStatus(document_.hasMultiSelection()
+            ? "Already in back: " + displayName + " (" + selectedId + ") - primary only"
+            : "Already in back: " + displayName + " (" + selectedId + ")");
         redraw();
         return;
     }
 
     document_.selectWidget(selectedId);
     document_.markDirty();
-    setOperationStatus("Sent backward: " + displayName + " (" + selectedId + ")");
+    setOperationStatus(document_.hasMultiSelection()
+        ? "Sent backward: " + displayName + " (" + selectedId + ") - primary only"
+        : "Sent backward: " + displayName + " (" + selectedId + ")");
     redraw();
 }
 
@@ -1414,6 +1601,11 @@ std::string MainWindow::statusText() const
     }
 
     const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
+    if (document_.hasMultiSelection()) {
+        return std::string(document_.dirty ? "Modified - " : "") + "Selected: "
+            + std::to_string(document_.selectedWidgetIds().size()) + " widgets, primary: "
+            + displayName + " (" + selectedWidget->id + ")";
+    }
     return std::string(document_.dirty ? "Modified - " : "") + "Selected: " + displayName + " (" + selectedWidget->id + ")";
 }
 
@@ -1456,6 +1648,7 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::SaveProjectAsDebug, "Dbg");
     addButton(ToolbarAction::ExportCode, "Exp");
     addButton(ToolbarAction::FitText, "Fit");
+    addButton(ToolbarAction::ToggleMultiSelect, multiSelectMode_ ? "MultiOn" : "Multi");
     addButton(ToolbarAction::AlignLeft, "AlignL");
     addButton(ToolbarAction::AlignTop, "AlignT");
     addButton(ToolbarAction::SameWidth, "SameW");

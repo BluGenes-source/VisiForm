@@ -299,7 +299,7 @@ bool PropertyInspector::isEditing() const
     return !activeKey_.empty();
 }
 
-void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::WidgetNode* selectedWidget) const
+void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::WidgetNode* selectedWidget, std::size_t selectionCount) const
 {
     if (width_ <= 0.0f || height_ <= 0.0f) {
         return;
@@ -319,7 +319,10 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
 
     if (drawText) {
         canvas.setColor(0xfff3f5f8);
-        canvas.text("Property Inspector", font, visage::Font::kTopLeft,
+        const std::string title = selectionCount > 1
+            ? "Property Inspector - Multi-select: " + std::to_string(selectionCount)
+            : "Property Inspector";
+        canvas.text(title, font, visage::Font::kTopLeft,
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 

@@ -5,6 +5,7 @@
 #include "model/FormNode.h"
 
 #include <string>
+#include <vector>
 
 namespace visiform::utils {
 class IdGenerator;
@@ -31,6 +32,8 @@ public:
     [[nodiscard]] const std::string& name() const;
     [[nodiscard]] WidgetNode* selectedWidget();
     [[nodiscard]] const WidgetNode* selectedWidget() const;
+    [[nodiscard]] std::vector<WidgetNode*> selectedWidgets();
+    [[nodiscard]] std::vector<const WidgetNode*> selectedWidgets() const;
 
     [[nodiscard]] WidgetNode* findWidgetById(const std::string& id);
     [[nodiscard]] const WidgetNode* findWidgetById(const std::string& id) const;
@@ -47,10 +50,22 @@ public:
     [[nodiscard]] WidgetNode* duplicateWidgetById(const std::string& id, utils::IdGenerator& idGenerator);
 
     void selectWidget(const std::string& id);
+    void setSelection(const std::string& id);
+    void addToSelection(const std::string& id);
+    void removeFromSelection(const std::string& id);
+    void toggleSelection(const std::string& id);
+    [[nodiscard]] bool isSelected(const std::string& id) const;
     void clearSelection();
     [[nodiscard]] bool hasSelection() const;
+    [[nodiscard]] bool hasMultiSelection() const;
+    [[nodiscard]] const std::vector<std::string>& selectedWidgetIds() const;
     void markDirty();
     void clearDirty();
+
+private:
+    void syncPrimarySelection();
+
+    std::vector<std::string> selectedWidgetIds_{};
 };
 
 } // namespace visiform::model

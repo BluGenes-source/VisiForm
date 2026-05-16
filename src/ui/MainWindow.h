@@ -86,6 +86,7 @@ private:
         SaveProjectAsDebug,
         ExportCode,
         FitText,
+        ToggleMultiSelect,
         AlignLeft,
         AlignTop,
         SameWidth,
@@ -143,6 +144,9 @@ private:
     void saveAppSettings();
     void applyCanvasSettings();
     void fitSelectedWidgetToText();
+    void toggleMultiSelectMode();
+    [[nodiscard]] bool isMultiSelectModeEnabled() const;
+    void handleWidgetClicked(const std::string& widgetId, bool additiveSelection);
     void alignSelectedLeft();
     void alignSelectedTop();
     void makeSelectedSameWidth();
@@ -196,6 +200,7 @@ private:
     visage::TextEditor propertyEditor_{ "propertyEditor" };
     visage::Font labelFont_{};
     bool autoSizeTextWidgets_ = true;
+    bool multiSelectMode_ = false;
 };
 
 } // namespace visiform::ui

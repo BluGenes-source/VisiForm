@@ -366,6 +366,7 @@ std::optional<WidgetScreenInfo> findWidgetScreenInfo(const model::WidgetNode& wi
 void drawWidget(visage::Canvas& canvas,
     const visage::Font& font,
     bool drawText,
+    const model::ProjectDocument& document,
     const model::WidgetNode& widget,
     float formScreenX,
     float formScreenY,
@@ -509,16 +510,21 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
 
-    if (widget.id == selectedWidgetId) {
-        drawSelectionOutline(canvas, bounds);
-        if (widget.type != model::WidgetType::FormWindow) {
+    if (document.isSelected(widget.id)) {
+        if (widget.id == selectedWidgetId) {
+            drawSelectionOutline(canvas, bounds);
+        }
+        else {
+            drawBorder(canvas, { bounds.x - 1.0f, bounds.y - 1.0f, bounds.width + 2.0f, bounds.height + 2.0f }, 0xff6fa9ff, 1.0f);
+        }
+        if (widget.id == selectedWidgetId && widget.type != model::WidgetType::FormWindow) {
             drawSelectionHandles(canvas, bounds, visualHandleSize);
         }
     }
 
     // Draw children from back to front so later children appear on top.
     for (const auto& child : widget.children) {
-        drawWidget(canvas, font, drawText, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
+        drawWidget(canvas, font, drawText, document, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
             scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
     }
 }
@@ -765,7 +771,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas, const visage::Font& font, bool
         return;
     }
 
-    drawWidget(canvas, font, drawText, document.root, previewLayout.form.x, previewLayout.form.y,
+    drawWidget(canvas, font, drawText, document, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
         resizeHandleVisualSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
 

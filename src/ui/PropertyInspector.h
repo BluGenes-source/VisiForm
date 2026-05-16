@@ -53,7 +53,7 @@ public:
     void clearEditing();
     void cancelEditing();
     [[nodiscard]] bool isEditing() const;
-    void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::WidgetNode* selectedWidget) const;
+    void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::WidgetNode* selectedWidget, std::size_t selectionCount = 0) const;
 
 private:
     [[nodiscard]] std::vector<PropertyRow> buildRows(const model::WidgetNode* selectedWidget) const;
