@@ -41,6 +41,16 @@ std::string propertyValueText(const model::PropertyValue& value)
     return value.toDisplayString();
 }
 
+std::string displayTextOrFallback(const model::WidgetNode* widget, const std::string& key, const std::string& fallback)
+{
+    if (widget == nullptr) {
+        return fallback;
+    }
+
+    const std::string value = widget->getStringProperty(key, {});
+    return value.empty() ? fallback : value;
+}
+
 PropertyInspector::PropertyEditKind editKindForProperty(const model::PropertyValue& value)
 {
     if (value.isBool()) {
@@ -116,6 +126,17 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             drawnKeys.insert(key);
         }
     };
+    const auto addEventProperty = [&](const std::string& key, const std::string& fallback = {}) {
+        if (drawnKeys.contains(key)) {
+            return;
+        }
+
+        const std::string displayValue = fallback.empty()
+            ? displayTextOrFallback(selectedWidget, key, {})
+            : displayTextOrFallback(selectedWidget, key, fallback);
+        rows.push_back({ key, key, displayValue, PropertyEditKind::Text });
+        drawnKeys.insert(key);
+    };
 
     switch (selectedWidget->type) {
     case model::WidgetType::Label:
@@ -145,6 +166,36 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         addWidgetProperty("title");
         addWidgetProperty("backgroundColor");
         break;
+    }
+
+    const std::size_t propertyCountBeforeEvents = rows.size();
+    switch (selectedWidget->type) {
+    case model::WidgetType::Button:
+        addEventProperty("onClick");
+        break;
+    case model::WidgetType::CheckBox:
+        addEventProperty("onToggle");
+        break;
+    case model::WidgetType::Slider:
+        addEventProperty("onChanged");
+        break;
+    case model::WidgetType::TextBox:
+        addEventProperty("onTextChanged");
+        break;
+    case model::WidgetType::FormWindow:
+        addEventProperty("onLoad");
+        addEventProperty("onClose");
+        break;
+    case model::WidgetType::Label:
+    case model::WidgetType::Frame:
+    case model::WidgetType::Image:
+    case model::WidgetType::Spacer:
+        break;
+    }
+
+    if (rows.size() > propertyCountBeforeEvents) {
+        rows.insert(rows.begin() + static_cast<std::ptrdiff_t>(propertyCountBeforeEvents),
+            PropertyRow{ "__section_events", "Events", {}, PropertyEditKind::ReadOnly, true });
     }
 
     for (const auto& [key, value] : selectedWidget->properties) {
@@ -294,6 +345,17 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
         const float valueWidth = width_ - kLabelColumnWidth - 20.0f;
         const bool isReadOnly = row.editKind == PropertyEditKind::ReadOnly;
         const bool isActive = isEditing() && row.key == activeKey_;
+
+        if (row.isSection) {
+            canvas.setColor(0xff253246);
+            canvas.fill(x_ + 8.0f, rowTop, width_ - 16.0f, kRowHeight - 2.0f);
+            if (drawText) {
+                canvas.setColor(0xffa9c7f6);
+                canvas.text(row.label, font, visage::Font::kTopLeft,
+                    labelLeft, rowTop + 5.0f, width_ - 32.0f, kRowHeight - 8.0f);
+            }
+            continue;
+        }
 
         canvas.setColor(isActive ? 0xff2f476d : (isReadOnly ? 0xff303541 : 0xff39414f));
         canvas.fill(valueLeft, rowTop + 2.0f, valueWidth, kRowHeight - 6.0f);

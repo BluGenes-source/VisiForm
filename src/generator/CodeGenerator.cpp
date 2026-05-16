@@ -56,7 +56,10 @@ bool CodeGenerator::generateProject(
         return false;
     }
 
-    const auto emittedSources = visageCppEmitter_.emitProjectSources(document);
+    VisageCppEmitter::EmittedSources emittedSources;
+    if (!visageCppEmitter_.emitProjectSources(document, emittedSources, errorMessage)) {
+        return false;
+    }
     if (!writeGeneratedFile(outputDirectory, "CMakeLists.txt", cmakeEmitter_.emitCMakeLists(document), errorMessage)) {
         return false;
     }

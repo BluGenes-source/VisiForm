@@ -71,6 +71,38 @@ Current generated widget rendering support:
 
 Rendering is currently a static preview of the form and widget tree.
 
+## Generated event handler stubs
+
+Current generated C++ export supports event metadata stored as widget properties.
+
+Supported event properties:
+
+- `Button.onClick`
+- `CheckBox.onToggle`
+- `Slider.onChanged`
+- `TextBox.onTextChanged`
+- `FormWindow.onLoad`
+- `FormWindow.onClose`
+
+When a non-empty handler name is present, the generated project emits:
+
+- a handler declaration in `src/MainWindow.h`
+- a handler definition in `src/MainWindow.cpp`
+- TODO comments near relevant generated widget drawing code
+
+Current generated signatures:
+
+- `onClick` -> `void handlerName()`
+- `onToggle` -> `void handlerName(bool checked)`
+- `onChanged` -> `void handlerName(float value)`
+- `onTextChanged` -> `void handlerName(const std::string& text)`
+- `onLoad` -> `void handlerName()`
+- `onClose` -> `void handlerName()`
+
+Handler names must be valid C++ identifiers.
+If export finds an invalid handler name, export fails cleanly.
+If the same handler name is reused with incompatible signatures, export fails with a conflict error.
+
 ## Overwrite behavior
 
 The generator may overwrite files inside `Generated/ExportedVisageProject`.
@@ -89,7 +121,8 @@ Current export does not yet generate:
 - asset copying for images
 - custom widgets
 
-Button output includes `TODO` comments for future generated event handlers.
+Generated handler stubs exist, but users still implement the actual behavior manually.
+Generated UI event dispatch is still limited to comments and TODO placeholders for now.
 
 ## Building the generated project manually
 

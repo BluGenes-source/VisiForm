@@ -27,6 +27,7 @@ public:
         std::string label;
         std::string displayValue;
         PropertyEditKind editKind = PropertyEditKind::ReadOnly;
+        bool isSection = false;
     };
 
     struct PendingEdit {

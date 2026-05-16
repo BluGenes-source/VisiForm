@@ -73,6 +73,8 @@ ProjectDocument ProjectDocument::createDefault()
     };
     document.root.setProperty("title", "MainWindow");
     document.root.setProperty("backgroundColor", "#202026");
+    document.root.setProperty("onLoad", "");
+    document.root.setProperty("onClose", "");
 
     WidgetNode helloButton{
         "button_hello",
@@ -81,6 +83,7 @@ ProjectDocument ProjectDocument::createDefault()
         Rect{ 40.0f, 40.0f, 160.0f, 40.0f }
     };
     helloButton.setProperty("text", "Click Me");
+    helloButton.setProperty("onClick", "");
     document.root.children.push_back(std::move(helloButton));
     document.selectedWidgetId = "button_hello";
 

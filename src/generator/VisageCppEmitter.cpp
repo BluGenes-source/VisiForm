@@ -1,11 +1,13 @@
 #include "generator/VisageCppEmitter.h"
 
-#include "generator/VisageCppEmitter.h"
+#include "utils/CppIdentifier.h"
 
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
+#include <map>
 #include <sstream>
+#include <vector>
 
 namespace visiform::generator {
 namespace {
@@ -15,32 +17,9 @@ constexpr const char* kGeneratedFileHeader =
     "// This file is generated.\n"
     "// Manual changes may be overwritten.\n\n";
 
-std::string sanitizeCppIdentifier(const std::string& value)
-{
-    std::string sanitized;
-    sanitized.reserve(value.size());
-    for (char character : value) {
-        if (std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_') {
-            sanitized.push_back(character);
-        }
-        else {
-            sanitized.push_back('_');
-        }
-    }
-
-    if (sanitized.empty()) {
-        return "GeneratedIdentifier";
-    }
-    if (std::isdigit(static_cast<unsigned char>(sanitized.front())) != 0) {
-        sanitized.insert(sanitized.begin(), '_');
-    }
-
-    return sanitized;
-}
-
 std::string sanitizeClassName(const std::string& value)
 {
-    std::string sanitized = sanitizeCppIdentifier(value);
+    std::string sanitized = utils::sanitizeCppIdentifier(value);
     if (!sanitized.empty() && std::islower(static_cast<unsigned char>(sanitized.front())) != 0) {
         sanitized.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(sanitized.front())));
     }
@@ -111,6 +90,194 @@ std::string widgetLabel(const visiform::model::WidgetNode& widget)
     return widget.typeName();
 }
 
+enum class HandlerSignature {
+    Void,
+    Bool,
+    Float,
+    String
+};
+
+struct EventBinding {
+    std::string eventKey;
+    std::string handlerName;
+    std::string widgetId;
+    HandlerSignature signature = HandlerSignature::Void;
+};
+
+struct HandlerInfo {
+    std::string handlerName;
+    HandlerSignature signature = HandlerSignature::Void;
+    std::vector<EventBinding> bindings{};
+};
+
+std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
+{
+    switch (type) {
+    case visiform::model::WidgetType::Button:
+        return { "onClick" };
+    case visiform::model::WidgetType::CheckBox:
+        return { "onToggle" };
+    case visiform::model::WidgetType::Slider:
+        return { "onChanged" };
+    case visiform::model::WidgetType::TextBox:
+        return { "onTextChanged" };
+    case visiform::model::WidgetType::FormWindow:
+        return { "onLoad", "onClose" };
+    case visiform::model::WidgetType::Label:
+    case visiform::model::WidgetType::Frame:
+    case visiform::model::WidgetType::Image:
+    case visiform::model::WidgetType::Spacer:
+        return {};
+    }
+
+    return {};
+}
+
+HandlerSignature signatureForEventKey(const std::string& eventKey)
+{
+    if (eventKey == "onToggle") {
+        return HandlerSignature::Bool;
+    }
+    if (eventKey == "onChanged") {
+        return HandlerSignature::Float;
+    }
+    if (eventKey == "onTextChanged") {
+        return HandlerSignature::String;
+    }
+
+    return HandlerSignature::Void;
+}
+
+std::string signatureDescription(HandlerSignature signature)
+{
+    switch (signature) {
+    case HandlerSignature::Void:
+        return "void()";
+    case HandlerSignature::Bool:
+        return "void(bool)";
+    case HandlerSignature::Float:
+        return "void(float)";
+    case HandlerSignature::String:
+        return "void(const std::string&)";
+    }
+
+    return "void()";
+}
+
+std::string handlerDeclaration(const HandlerInfo& handler)
+{
+    switch (handler.signature) {
+    case HandlerSignature::Void:
+        return "void " + handler.handlerName + "();";
+    case HandlerSignature::Bool:
+        return "void " + handler.handlerName + "(bool checked);";
+    case HandlerSignature::Float:
+        return "void " + handler.handlerName + "(float value);";
+    case HandlerSignature::String:
+        return "void " + handler.handlerName + "(const std::string& text);";
+    }
+
+    return "void " + handler.handlerName + "();";
+}
+
+std::string handlerDefinitionSignature(const std::string& className, const HandlerInfo& handler)
+{
+    switch (handler.signature) {
+    case HandlerSignature::Void:
+        return "void " + className + "::" + handler.handlerName + "()";
+    case HandlerSignature::Bool:
+        return "void " + className + "::" + handler.handlerName + "(bool checked)";
+    case HandlerSignature::Float:
+        return "void " + className + "::" + handler.handlerName + "(float value)";
+    case HandlerSignature::String:
+        return "void " + className + "::" + handler.handlerName + "(const std::string& text)";
+    }
+
+    return "void " + className + "::" + handler.handlerName + "()";
+}
+
+std::string handlerTodoLine(const EventBinding& binding)
+{
+    return "// TODO: Implement " + binding.eventKey + " handler for " + binding.widgetId + ".";
+}
+
+std::string handlerReferenceList(const HandlerInfo& handler)
+{
+    std::ostringstream stream;
+    for (std::size_t index = 0; index < handler.bindings.size(); ++index) {
+        if (index > 0) {
+            stream << ", ";
+        }
+        stream << handler.bindings[index].widgetId << "." << handler.bindings[index].eventKey;
+    }
+    return stream.str();
+}
+
+void collectEventBindings(const visiform::model::WidgetNode& widget, std::vector<EventBinding>& bindings, std::string& errorMessage)
+{
+    for (const auto& eventKey : relevantEventKeys(widget.type)) {
+        const std::string handlerName = widget.getStringProperty(eventKey, {});
+        if (handlerName.empty()) {
+            continue;
+        }
+
+        if (!utils::isValidCppIdentifier(handlerName)) {
+            errorMessage = "Invalid event handler name: " + handlerName;
+            return;
+        }
+
+        bindings.push_back(EventBinding{ eventKey, handlerName, widget.id, signatureForEventKey(eventKey) });
+    }
+
+    for (const auto& child : widget.children) {
+        collectEventBindings(child, bindings, errorMessage);
+        if (!errorMessage.empty()) {
+            return;
+        }
+    }
+}
+
+bool collectHandlers(const visiform::model::ProjectDocument& document, std::vector<HandlerInfo>& handlers, std::string& errorMessage)
+{
+    std::vector<EventBinding> bindings;
+    collectEventBindings(document.root, bindings, errorMessage);
+    if (!errorMessage.empty()) {
+        return false;
+    }
+
+    std::map<std::string, std::size_t> handlerIndexByName;
+    for (const auto& binding : bindings) {
+        const auto [iterator, inserted] = handlerIndexByName.emplace(binding.handlerName, handlers.size());
+        if (inserted) {
+            handlers.push_back(HandlerInfo{ binding.handlerName, binding.signature, { binding } });
+            continue;
+        }
+
+        auto& handler = handlers[iterator->second];
+        if (handler.signature != binding.signature) {
+            errorMessage = "Event handler name conflict: " + binding.handlerName + " has multiple signatures";
+            return false;
+        }
+
+        handler.bindings.push_back(binding);
+    }
+
+    return true;
+}
+
+void emitEventComments(std::ostringstream& stream, const std::string& indent, const visiform::model::WidgetNode& widget)
+{
+    for (const auto& eventKey : relevantEventKeys(widget.type)) {
+        const std::string handlerName = widget.getStringProperty(eventKey, {});
+        if (handlerName.empty()) {
+            continue;
+        }
+
+        stream << indent << "// Event: " << eventKey << " -> " << handlerName << "()\n";
+        stream << indent << "// TODO: Connect this handler when generated interactive widgets are implemented.\n";
+    }
+}
+
 void emitWidgetDraw(std::ostringstream& stream,
     const visiform::model::WidgetNode& widget,
     float parentX,
@@ -122,6 +289,7 @@ void emitWidgetDraw(std::ostringstream& stream,
     const std::string yExpr = emitFloat(parentY + widget.bounds.y);
     const std::string widthExpr = emitFloat(widget.bounds.width);
     const std::string heightExpr = emitFloat(widget.bounds.height);
+    emitEventComments(stream, indent, widget);
 
     switch (widget.type) {
     case visiform::model::WidgetType::FormWindow:
@@ -157,7 +325,6 @@ void emitWidgetDraw(std::ostringstream& stream,
         stream << indent << "canvas.setColor(0xffEBEDF2);\n";
         stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
         stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", 0xffCCD2DC);\n";
-        stream << indent << "// TODO: Add button event handler for " << sanitizeCppIdentifier(widget.id) << "\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(0xff1F2530);\n";
         stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("text", widgetLabel(widget)))
@@ -228,9 +395,13 @@ void emitWidgetDraw(std::ostringstream& stream,
 std::string emitMainWindowHeader(const visiform::model::ProjectDocument& document)
 {
     const std::string className = sanitizeClassName(document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
+    std::vector<HandlerInfo> handlers;
+    std::string ignoredError;
+    collectHandlers(document, handlers, ignoredError);
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
     stream << "#pragma once\n\n";
+    stream << "#include <string>\n";
     stream << "#include <visage/app.h>\n";
     stream << "#include <visage/graphics.h>\n\n";
     stream << "class " << className << " : public visage::ApplicationWindow {\n";
@@ -241,6 +412,13 @@ std::string emitMainWindowHeader(const visiform::model::ProjectDocument& documen
     stream << "    void draw(visage::Canvas& canvas) override;\n\n";
     stream << "private:\n";
     stream << "    bool canDrawText() const;\n\n";
+    for (const auto& handler : handlers) {
+        stream << "    // Referenced by: " << handlerReferenceList(handler) << "\n";
+        stream << "    " << handlerDeclaration(handler) << "\n";
+    }
+    if (!handlers.empty()) {
+        stream << "\n";
+    }
     stream << "    visage::Font labelFont_{};\n";
     stream << "};\n";
     return stream.str();
@@ -283,6 +461,9 @@ std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document)
     const std::string windowTitle = document.root.getStringProperty("title", document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
     const float windowWidth = std::max(1000.0f, document.root.bounds.width + 120.0f);
     const float windowHeight = std::max(800.0f, document.root.bounds.height + 120.0f);
+    std::vector<HandlerInfo> handlers;
+    std::string ignoredError;
+    collectHandlers(document, handlers, ignoredError);
 
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
@@ -337,18 +518,42 @@ std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document)
     stream << "{\n";
     stream << "    return labelFont_.packedFont() != nullptr;\n";
     stream << "}\n";
+
+    for (const auto& handler : handlers) {
+        stream << "\n" << handlerDefinitionSignature(className, handler) << "\n";
+        stream << "{\n";
+        if (handler.signature == HandlerSignature::Bool) {
+            stream << "    (void)checked;\n";
+        }
+        else if (handler.signature == HandlerSignature::Float) {
+            stream << "    (void)value;\n";
+        }
+        else if (handler.signature == HandlerSignature::String) {
+            stream << "    (void)text;\n";
+        }
+        stream << "    // References: " << handlerReferenceList(handler) << "\n";
+        stream << "    " << handlerTodoLine(handler.bindings.front()) << "\n";
+        stream << "}\n";
+    }
     return stream.str();
 }
 
 } // namespace
 
-VisageCppEmitter::EmittedSources VisageCppEmitter::emitProjectSources(const model::ProjectDocument& document) const
+bool VisageCppEmitter::emitProjectSources(const model::ProjectDocument& document, EmittedSources& output, std::string& errorMessage) const
 {
-    return {
+    errorMessage.clear();
+    std::vector<HandlerInfo> handlers;
+    if (!collectHandlers(document, handlers, errorMessage)) {
+        return false;
+    }
+
+    output = {
         emitMainCpp(document),
         emitMainWindowHeader(document),
         emitMainWindowCpp(document)
     };
+    return true;
 }
 
 } // namespace visiform::generator

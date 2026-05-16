@@ -6,6 +6,7 @@
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
 #include "utils/AppSettings.h"
+#include "utils/CppIdentifier.h"
 #include "utils/FileUtils.h"
 #include "utils/NativeFileDialogs.h"
 
@@ -856,6 +857,17 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
 
     if (key == "name") {
         return setSelectedWidgetName(trimmedValue);
+    }
+
+    if (key == "onClick" || key == "onToggle" || key == "onChanged"
+        || key == "onTextChanged" || key == "onLoad" || key == "onClose") {
+        if (!trimmedValue.empty() && !utils::isValidCppIdentifier(trimmedValue)) {
+            setOperationStatus("Invalid event handler name");
+            redraw();
+            return false;
+        }
+
+        return setSelectedWidgetProperty(key, trimmedValue);
     }
 
     if (key == "x" || key == "y" || key == "width" || key == "height") {

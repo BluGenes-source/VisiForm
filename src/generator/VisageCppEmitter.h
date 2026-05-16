@@ -14,7 +14,7 @@ public:
         std::string mainWindowCpp;
     };
 
-    [[nodiscard]] EmittedSources emitProjectSources(const model::ProjectDocument& document) const;
+    [[nodiscard]] bool emitProjectSources(const model::ProjectDocument& document, EmittedSources& output, std::string& errorMessage) const;
 };
 
 } // namespace visiform::generator

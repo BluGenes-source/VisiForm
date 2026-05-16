@@ -31,6 +31,8 @@ Each widget node stores:
 - `properties` - object mapping property names to simple JSON values
 - `children` - array of child widget nodes
 
+For this phase, generated event metadata is also stored in `properties` as string values.
+
 ## Widget type strings
 
 Supported `type` values:
@@ -76,6 +78,22 @@ Supported property JSON value types:
 - string -> `std::string`
 
 Objects and arrays are not currently supported as property values.
+
+## Event property keys
+
+Current event handler name properties:
+
+- `onClick`
+- `onToggle`
+- `onChanged`
+- `onTextChanged`
+- `onLoad`
+- `onClose`
+
+These values are stored as strings for now.
+Empty strings mean no handler is assigned.
+
+Future schema versions may move event metadata into a dedicated events object.
 
 ## Example project file
 
