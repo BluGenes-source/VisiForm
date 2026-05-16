@@ -20,6 +20,7 @@
         "id": "label_title",
         "name": "titleLabel",
         "properties": {
+          "hint": "Displays static text.",
           "text": "Welcome to VisiForm"
         },
         "type": "Label"
@@ -35,6 +36,7 @@
         "id": "textbox_name",
         "name": "nameTextBox",
         "properties": {
+          "hint": "Allows text entry.",
           "text": "Project Name"
         },
         "type": "TextBox"
@@ -50,6 +52,7 @@
         "id": "slider_amount",
         "name": "amountSlider",
         "properties": {
+          "hint": "Adjusts a numeric value.",
           "value": 0.5
         },
         "type": "Slider"
@@ -66,6 +69,7 @@
         "name": "enabledCheckBox",
         "properties": {
           "checked": true,
+          "hint": "Toggles an option on or off.",
           "text": "Enable advanced options"
         },
         "type": "CheckBox"
@@ -81,6 +85,7 @@
         "id": "button_ok",
         "name": "okButton",
         "properties": {
+          "hint": "Runs an action when clicked.",
           "text": "Create Project"
         },
         "type": "Button"
@@ -90,6 +95,7 @@
     "name": "MainWindow",
     "properties": {
       "backgroundColor": "#202026",
+      "hint": "Main form window.",
       "title": "Basic Window"
     },
     "type": "FormWindow"

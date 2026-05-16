@@ -43,6 +43,14 @@ Non-empty handler names must be valid C++ identifiers:
 
 Blank event properties are allowed and mean no generated handler stub is emitted.
 
+## Common editor help property
+
+All widgets can also use a common string property:
+
+- `hint`
+
+This help text is used by the editor for status-bar hints and property inspector editing.
+
 ## Current limitations
 
 - Event metadata is edited through the property inspector only

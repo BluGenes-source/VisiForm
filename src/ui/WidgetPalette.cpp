@@ -14,18 +14,19 @@ constexpr float kPadding = 12.0f;
 
 struct PaletteEntry {
     const char* label;
+    const char* hint;
     model::WidgetType type;
 };
 
 constexpr std::array<PaletteEntry, 8> kPaletteEntries = {{
-    { "Label", model::WidgetType::Label },
-    { "Button", model::WidgetType::Button },
-    { "TextBox", model::WidgetType::TextBox },
-    { "CheckBox", model::WidgetType::CheckBox },
-    { "Slider", model::WidgetType::Slider },
-    { "Frame", model::WidgetType::Frame },
-    { "Image", model::WidgetType::Image },
-    { "Spacer", model::WidgetType::Spacer }
+    { "Label", "Add static text to the form", model::WidgetType::Label },
+    { "Button", "Add a clickable button", model::WidgetType::Button },
+    { "TextBox", "Add a text input field", model::WidgetType::TextBox },
+    { "CheckBox", "Add a checkable option", model::WidgetType::CheckBox },
+    { "Slider", "Add a numeric slider control", model::WidgetType::Slider },
+    { "Frame", "Add a visual group frame", model::WidgetType::Frame },
+    { "Image", "Add an image placeholder", model::WidgetType::Image },
+    { "Spacer", "Add spacing or a layout placeholder", model::WidgetType::Spacer }
 }};
 
 } // namespace
@@ -57,6 +58,28 @@ std::optional<model::WidgetType> WidgetPalette::hitTestWidgetType(float x, float
 
         if (y >= rowTop && y <= rowTop + kRowHeight && x >= x_ + 8.0f && x <= x_ + width_ - 8.0f) {
             return entry.type;
+        }
+
+        rowTop += kRowHeight;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::string> WidgetPalette::hitTestHint(float x, float y) const
+{
+    if (!contains(x, y)) {
+        return std::nullopt;
+    }
+
+    float rowTop = y_ + kHeaderHeight + 8.0f;
+    for (const auto& entry : kPaletteEntries) {
+        if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
+            break;
+        }
+
+        if (y >= rowTop && y <= rowTop + kRowHeight && x >= x_ + 8.0f && x <= x_ + width_ - 8.0f) {
+            return std::string{ entry.hint };
         }
 
         rowTop += kRowHeight;

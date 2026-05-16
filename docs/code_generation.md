@@ -90,6 +90,14 @@ When a non-empty handler name is present, the generated project emits:
 - a handler definition in `src/MainWindow.cpp`
 - TODO comments near relevant generated widget drawing code
 
+## Generated hint comments
+
+When a widget has a non-empty `hint` property, export also emits a nearby comment in generated drawing code:
+
+- `// Hint: ...`
+
+This is editor help text only. Generated runtime tooltip behavior is not implemented yet.
+
 ## User code preservation
 
 Generated handler bodies in `src/MainWindow.cpp` use explicit preservation markers:

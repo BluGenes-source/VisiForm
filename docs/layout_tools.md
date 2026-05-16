@@ -97,6 +97,8 @@ Available toolbar actions:
 
 The current toolbar uses compact labels to fit the existing editor layout.
 
+Toolbar and palette entries now surface short status-bar hints on hover to make the compact labels easier to understand.
+
 ## Align Left
 
 Moves the selected non-root widget to the left editor margin.

@@ -110,6 +110,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     rows.push_back({ "id", "id", selectedWidget->id, PropertyEditKind::ReadOnly });
     rows.push_back({ "type", "type", selectedWidget->typeName(), PropertyEditKind::ReadOnly });
     rows.push_back({ "name", "name", selectedWidget->name, PropertyEditKind::Text });
+    rows.push_back({ "hint", "hint", selectedWidget->getStringProperty("hint", {}), PropertyEditKind::Text });
     rows.push_back({ "x", "x", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
     rows.push_back({ "y", "y", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
     rows.push_back({ "width", "width", formatFloat(selectedWidget->bounds.width), PropertyEditKind::Float });

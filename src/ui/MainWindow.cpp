@@ -90,6 +90,32 @@ std::string widgetDisplayName(const model::WidgetNode& widget)
 
 float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value);
 
+std::string defaultWidgetHint(model::WidgetType type)
+{
+    switch (type) {
+    case model::WidgetType::Label:
+        return "Displays static text.";
+    case model::WidgetType::Button:
+        return "Runs an action when clicked.";
+    case model::WidgetType::TextBox:
+        return "Allows text entry.";
+    case model::WidgetType::CheckBox:
+        return "Toggles an option on or off.";
+    case model::WidgetType::Slider:
+        return "Adjusts a numeric value.";
+    case model::WidgetType::Frame:
+        return "Groups related controls visually.";
+    case model::WidgetType::Image:
+        return "Displays or reserves space for an image.";
+    case model::WidgetType::Spacer:
+        return "Adds spacing between widgets.";
+    case model::WidgetType::FormWindow:
+        return "Main form window.";
+    }
+
+    return {};
+}
+
 std::vector<model::WidgetNode*> selectedNonRootWidgets(model::ProjectDocument& document)
 {
     std::vector<model::WidgetNode*> widgets;
@@ -853,6 +879,15 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 }
 
+void MainWindow::mouseMove(const visage::MouseEvent& e)
+{
+    if (canvasInteraction_.mode != CanvasInteractionState::Mode::None) {
+        return;
+    }
+
+    updateHoverHint(e.position.x, e.position.y);
+}
+
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
 {
     if (canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
@@ -1355,6 +1390,8 @@ model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type)
         widget.setProperty("title", "FormWindow");
         break;
     }
+
+    widget.setProperty("hint", defaultWidgetHint(type));
 
     return widget;
 }
@@ -2363,6 +2400,7 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
 void MainWindow::selectWidget(const std::string& widgetId)
 {
     statusMessage_.clear();
+    hoverHint_.clear();
     cancelInspectorEdit();
     document_.selectWidget(widgetId);
     redraw();
@@ -2370,6 +2408,10 @@ void MainWindow::selectWidget(const std::string& widgetId)
 
 std::string MainWindow::statusText() const
 {
+    if (!hoverHint_.empty()) {
+        return hoverHint_;
+    }
+
     if (!statusMessage_.empty()) {
         return statusMessage_;
     }
@@ -2380,29 +2422,75 @@ std::string MainWindow::statusText() const
     }
 
     const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
+    const std::string widgetHint = selectedWidget->getStringProperty("hint", {});
     if (document_.hasMultiSelection()) {
-        return std::string(document_.dirty ? "Modified - " : "") + "Selected: "
+        std::string text = std::string(document_.dirty ? "Modified - " : "") + "Selected: "
             + std::to_string(document_.selectedWidgetIds().size()) + " widgets, primary: "
             + displayName + " (" + selectedWidget->id + ")";
+        if (!widgetHint.empty()) {
+            text += " - Hint: " + widgetHint;
+        }
+        return text;
     }
-    return std::string(document_.dirty ? "Modified - " : "") + "Selected: " + displayName + " (" + selectedWidget->id + ")";
+    std::string text = std::string(document_.dirty ? "Modified - " : "") + "Selected: " + displayName + " (" + selectedWidget->id + ")";
+    if (!widgetHint.empty()) {
+        text += " - Hint: " + widgetHint;
+    }
+    return text;
 }
 
 void MainWindow::setOperationStatus(std::string message)
 {
+    hoverHint_.clear();
     statusMessage_ = std::move(message);
 }
 
-MainWindow::ToolbarAction MainWindow::toolbarActionAt(float x, float y) const
+std::optional<MainWindow::ToolbarButton> MainWindow::toolbarButtonAt(float x, float y) const
 {
     for (const auto& button : toolbarButtons()) {
         if (x >= button.bounds.x && x <= button.bounds.x + button.bounds.width
             && y >= button.bounds.y && y <= button.bounds.y + button.bounds.height) {
-            return button.action;
+            return button;
         }
     }
 
+    return std::nullopt;
+}
+
+MainWindow::ToolbarAction MainWindow::toolbarActionAt(float x, float y) const
+{
+    if (const auto button = toolbarButtonAt(x, y)) {
+        return button->action;
+    }
+
     return ToolbarAction::None;
+}
+
+void MainWindow::updateHoverHint(float x, float y)
+{
+    std::string nextHint;
+    if (const auto button = toolbarButtonAt(x, y)) {
+        nextHint = "Hint: " + button->hint;
+    }
+    else if (const auto hint = widgetPalette_.hitTestHint(x, y)) {
+        nextHint = "Hint: " + *hint;
+    }
+    else if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, x, y)) {
+        if (const auto* widget = document_.findWidgetById(*widgetId)) {
+            const std::string hint = widget->getStringProperty("hint", {});
+            if (!hint.empty()) {
+                nextHint = "Hint: " + hint;
+            }
+            else {
+                nextHint = widgetDisplayName(*widget) + " [" + widget->typeName() + "]";
+            }
+        }
+    }
+
+    if (hoverHint_ != nextHint) {
+        hoverHint_ = std::move(nextHint);
+        redraw();
+    }
 }
 
 std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
@@ -2414,41 +2502,41 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
 
     const float top = layout_.toolbar.y + 8.0f;
     float left = layout_.toolbar.x + kPadding;
-    const auto addButton = [&](ToolbarAction action, std::string label, bool accent = false) {
-        buttons.push_back(ToolbarButton{ action, std::move(label), { left, top, kToolbarButtonWidth, kToolbarButtonHeight }, accent });
+    const auto addButton = [&](ToolbarAction action, std::string label, std::string hint, bool accent = false) {
+        buttons.push_back(ToolbarButton{ action, std::move(label), std::move(hint), { left, top, kToolbarButtonWidth, kToolbarButtonHeight }, accent });
         left += kToolbarButtonWidth + kToolbarButtonSpacing;
     };
 
-    addButton(ToolbarAction::NewProject, "New");
-    addButton(ToolbarAction::OpenProject, "Open");
-    addButton(ToolbarAction::SaveProject, "Save");
-    addButton(ToolbarAction::SaveProjectAsDialog, "SAs", true);
-    addButton(ToolbarAction::OpenSample, "Smp");
-    addButton(ToolbarAction::SaveProjectAsDebug, "Dbg");
-    addButton(ToolbarAction::ExportCode, "Exp");
-    addButton(ToolbarAction::FitText, "Fit");
-    addButton(ToolbarAction::CopyWidgets, "Cp");
-    addButton(ToolbarAction::PasteWidgets, "Pt");
-    addButton(ToolbarAction::ToggleMultiSelect, "Multi", multiSelectMode_);
-    addButton(ToolbarAction::AlignLeft, "L");
-    addButton(ToolbarAction::AlignTop, "T");
-    addButton(ToolbarAction::AlignRight, "R");
-    addButton(ToolbarAction::AlignBottom, "B");
-    addButton(ToolbarAction::CenterHorizontally, "CH");
-    addButton(ToolbarAction::CenterVertically, "CV");
-    addButton(ToolbarAction::SameWidth, "W");
-    addButton(ToolbarAction::SameHeight, "H");
-    addButton(ToolbarAction::DistributeHorizontally, "DH");
-    addButton(ToolbarAction::DistributeVertically, "DV");
-    addButton(ToolbarAction::ToggleSmartGuides, "Gde", settings_.smartGuidesEnabled);
-    addButton(ToolbarAction::BringForward, "Fr");
-    addButton(ToolbarAction::SendBackward, "Bk");
-    addButton(ToolbarAction::ToggleGrid, "Grid", designerCanvas_.showGrid());
-    addButton(ToolbarAction::ToggleSnap, "Snap", designerCanvas_.snapToGrid());
-    addButton(ToolbarAction::DeleteWidget, "Del");
-    addButton(ToolbarAction::DuplicateWidget, "Dup");
-    addButton(ToolbarAction::UndoAction, "Undo");
-    addButton(ToolbarAction::RedoAction, "Redo");
+    addButton(ToolbarAction::NewProject, "New", "Create a new VisiForm project");
+    addButton(ToolbarAction::OpenProject, "Open", "Open a .vfb.json project");
+    addButton(ToolbarAction::SaveProject, "Save", "Save the current project");
+    addButton(ToolbarAction::SaveProjectAsDialog, "SAs", "Save the project to a new .vfb.json file", true);
+    addButton(ToolbarAction::OpenSample, "Smp", "Open the sample project");
+    addButton(ToolbarAction::SaveProjectAsDebug, "Dbg", "Save to the debug test project path");
+    addButton(ToolbarAction::ExportCode, "Exp", "Export generated Visage C++ project");
+    addButton(ToolbarAction::FitText, "Fit", "Fit the selected widget to its text");
+    addButton(ToolbarAction::CopyWidgets, "Cp", "Copy selected widgets");
+    addButton(ToolbarAction::PasteWidgets, "Pt", "Paste copied widgets");
+    addButton(ToolbarAction::ToggleMultiSelect, "Multi", "Toggle multi-select mode", multiSelectMode_);
+    addButton(ToolbarAction::AlignLeft, "L", "Align selected widgets left");
+    addButton(ToolbarAction::AlignTop, "T", "Align selected widgets top");
+    addButton(ToolbarAction::AlignRight, "R", "Align selected widgets right");
+    addButton(ToolbarAction::AlignBottom, "B", "Align selected widgets bottom");
+    addButton(ToolbarAction::CenterHorizontally, "CH", "Center selected widgets horizontally");
+    addButton(ToolbarAction::CenterVertically, "CV", "Center selected widgets vertically");
+    addButton(ToolbarAction::SameWidth, "W", "Match selected widget widths");
+    addButton(ToolbarAction::SameHeight, "H", "Match selected widget heights");
+    addButton(ToolbarAction::DistributeHorizontally, "DH", "Distribute selected widgets horizontally");
+    addButton(ToolbarAction::DistributeVertically, "DV", "Distribute selected widgets vertically");
+    addButton(ToolbarAction::ToggleSmartGuides, "Gde", "Toggle smart guides", settings_.smartGuidesEnabled);
+    addButton(ToolbarAction::BringForward, "Fr", "Bring the selected widget forward");
+    addButton(ToolbarAction::SendBackward, "Bk", "Send the selected widget backward");
+    addButton(ToolbarAction::ToggleGrid, "Grid", "Toggle grid visibility", designerCanvas_.showGrid());
+    addButton(ToolbarAction::ToggleSnap, "Snap", "Toggle snap-to-grid", designerCanvas_.snapToGrid());
+    addButton(ToolbarAction::DeleteWidget, "Del", "Delete the selected widget or widgets");
+    addButton(ToolbarAction::DuplicateWidget, "Dup", "Duplicate the primary selected widget");
+    addButton(ToolbarAction::UndoAction, "Undo", "Undo the last command");
+    addButton(ToolbarAction::RedoAction, "Redo", "Redo the last undone command");
 
     return buttons;
 }

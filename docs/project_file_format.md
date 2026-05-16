@@ -32,6 +32,7 @@ Each widget node stores:
 - `children` - array of child widget nodes
 
 For this phase, generated event metadata is also stored in `properties` as string values.
+Widget help text is also stored in `properties` using the common `hint` string key.
 
 ## Widget type strings
 
@@ -94,6 +95,14 @@ These values are stored as strings for now.
 Empty strings mean no handler is assigned.
 
 Future schema versions may move event metadata into a dedicated events object.
+
+## Common widget help property
+
+The editor may store a widget help hint as:
+
+- `hint` - string help text shown by the editor UI
+
+The `hint` property is editor-facing help text. It is preserved by save and load, and may also appear as generated code comments during export.
 
 ## Example project file
 

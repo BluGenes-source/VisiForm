@@ -14,6 +14,7 @@
 #include "utils/IdGenerator.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,7 @@ public:
     void draw(visage::Canvas& canvas) override;
     void resized() override;
     void mouseDown(const visage::MouseEvent& e) override;
+    void mouseMove(const visage::MouseEvent& e) override;
     void mouseDrag(const visage::MouseEvent& e) override;
     void mouseUp(const visage::MouseEvent& e) override;
     bool keyPress(const visage::KeyEvent& e) override;
@@ -144,6 +146,7 @@ private:
     struct ToolbarButton {
         ToolbarAction action = ToolbarAction::None;
         std::string label{};
+        std::string hint{};
         PanelBounds bounds{};
         bool accent = false;
     };
@@ -198,6 +201,7 @@ private:
     [[nodiscard]] std::string statusText() const;
     void setOperationStatus(std::string message);
     [[nodiscard]] std::vector<ToolbarButton> toolbarButtons() const;
+    [[nodiscard]] std::optional<ToolbarButton> toolbarButtonAt(float x, float y) const;
     [[nodiscard]] ToolbarAction toolbarActionAt(float x, float y) const;
     [[nodiscard]] bool isTemplateExamplePath(const std::filesystem::path& path) const;
     [[nodiscard]] std::filesystem::path projectRootPath() const;
@@ -211,6 +215,7 @@ private:
     bool commitInspectorEdit();
     void cancelInspectorEdit();
     void updatePropertyEditorBounds();
+    void updateHoverHint(float x, float y);
     void clearCanvasInteraction();
     [[nodiscard]] bool canDrawText() const;
 
@@ -218,6 +223,7 @@ private:
     model::ProjectDocument document_ = model::ProjectDocument::createDefault();
     std::filesystem::path currentProjectPath_{};
     std::string statusMessage_{};
+    std::string hoverHint_{};
     CanvasInteractionState canvasInteraction_{};
     commands::UndoRedoStack undoRedo_{};
     utils::IdGenerator idGenerator_{};

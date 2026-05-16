@@ -338,6 +338,10 @@ void emitWidgetDraw(std::ostringstream& stream,
     const std::string widthExpr = emitFloat(widget.bounds.width);
     const std::string heightExpr = emitFloat(widget.bounds.height);
     emitEventComments(stream, indent, widget);
+    const std::string widgetHint = widget.getStringProperty("hint", {});
+    if (!widgetHint.empty()) {
+        stream << indent << "// Hint: " << escapeCppStringLiteral(widgetHint) << "\n";
+    }
 
     switch (widget.type) {
     case visiform::model::WidgetType::FormWindow:
