@@ -15,7 +15,7 @@ Current selection options:
 Current notes:
 
 - primary selection shows resize handles
-- secondary selections show lighter outlines
+- secondary selections show red outlines
 - Property Inspector continues editing the primary widget only
 - `Front` and `Back` still operate on the primary selection only
 - `Duplicate` still duplicates the primary selection only
@@ -23,6 +23,13 @@ Current notes:
 
 The current input path does not use direct Visage mouse modifier helpers in this project.
 The editor uses the `Multi` toolbar toggle as the reliable fallback and also checks the Windows key state for `Ctrl` and `Shift` during clicks.
+
+## Multi-select visuals
+
+- single selection keeps the normal blue outline and resize handles
+- primary multi-selection keeps the normal blue outline and resize handles
+- secondary multi-selection uses a red outline
+- only the primary selection shows resize handles
 
 ## Toolbar tools
 

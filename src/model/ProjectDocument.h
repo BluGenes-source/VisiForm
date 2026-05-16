@@ -55,6 +55,8 @@ public:
     void removeFromSelection(const std::string& id);
     void toggleSelection(const std::string& id);
     [[nodiscard]] bool isSelected(const std::string& id) const;
+    [[nodiscard]] bool isPrimarySelected(const std::string& id) const;
+    [[nodiscard]] bool isSecondarySelected(const std::string& id) const;
     void clearSelection();
     [[nodiscard]] bool hasSelection() const;
     [[nodiscard]] bool hasMultiSelection() const;

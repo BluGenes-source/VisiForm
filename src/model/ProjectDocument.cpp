@@ -408,6 +408,16 @@ bool ProjectDocument::isSelected(const std::string& id) const
     return std::find(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), id) != selectedWidgetIds_.end();
 }
 
+bool ProjectDocument::isPrimarySelected(const std::string& id) const
+{
+    return !id.empty() && selectedWidgetId == id;
+}
+
+bool ProjectDocument::isSecondarySelected(const std::string& id) const
+{
+    return isSelected(id) && !isPrimarySelected(id);
+}
+
 void ProjectDocument::clearSelection()
 {
     selectedWidgetIds_.clear();

@@ -200,6 +200,11 @@ void drawSelectionOutline(visage::Canvas& canvas, const PanelRect& bounds)
     drawBorder(canvas, { bounds.x - 2.0f, bounds.y - 2.0f, bounds.width + 4.0f, bounds.height + 4.0f }, 0xff2d7ff9, 1.5f);
 }
 
+void drawSecondarySelectionOutline(visage::Canvas& canvas, const PanelRect& bounds)
+{
+    drawBorder(canvas, { bounds.x - 1.0f, bounds.y - 1.0f, bounds.width + 2.0f, bounds.height + 2.0f }, 0xffd9473f, 1.25f);
+}
+
 PanelRect handleRect(const PanelRect& bounds, DesignerCanvas::HitRegion region, float handleSize)
 {
     const float halfHandle = handleSize * 0.5f;
@@ -510,22 +515,20 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
 
-    if (document.isSelected(widget.id)) {
-        if (widget.id == selectedWidgetId) {
-            drawSelectionOutline(canvas, bounds);
-        }
-        else {
-            drawBorder(canvas, { bounds.x - 1.0f, bounds.y - 1.0f, bounds.width + 2.0f, bounds.height + 2.0f }, 0xff6fa9ff, 1.0f);
-        }
-        if (widget.id == selectedWidgetId && widget.type != model::WidgetType::FormWindow) {
-            drawSelectionHandles(canvas, bounds, visualHandleSize);
-        }
-    }
-
     // Draw children from back to front so later children appear on top.
     for (const auto& child : widget.children) {
         drawWidget(canvas, font, drawText, document, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
             scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
+    }
+
+    if (document.isPrimarySelected(widget.id)) {
+        drawSelectionOutline(canvas, bounds);
+        if (widget.type != model::WidgetType::FormWindow) {
+            drawSelectionHandles(canvas, bounds, visualHandleSize);
+        }
+    }
+    else if (document.isSecondarySelected(widget.id)) {
+        drawSecondarySelectionOutline(canvas, bounds);
     }
 }
 
