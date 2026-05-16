@@ -55,6 +55,8 @@ add_executable(VisiForm
     src/commands/UndoRedoStack.cpp
     src/utils/FileUtils.cpp
     src/utils/IdGenerator.cpp
+    src/utils/NativeFileDialogs.cpp
+    src/utils/RecentFiles.cpp
 )
 
 target_include_directories(VisiForm
@@ -72,4 +74,8 @@ target_link_libraries(VisiForm
 
 if (MSVC)
     target_compile_options(VisiForm PRIVATE /W4 /permissive-)
+endif()
+
+if (WIN32)
+    target_link_libraries(VisiForm PRIVATE comdlg32)
 endif()

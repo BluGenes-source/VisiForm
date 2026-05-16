@@ -1,0 +1,99 @@
+{
+  "mainFormClassName": "MainWindow",
+  "projectName": "BasicWindowProject",
+  "root": {
+    "bounds": {
+      "height": 600.0,
+      "width": 900.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "children": [
+      {
+        "bounds": {
+          "height": 24.0,
+          "width": 220.0,
+          "x": 32.0,
+          "y": 28.0
+        },
+        "children": [],
+        "id": "label_title",
+        "name": "titleLabel",
+        "properties": {
+          "text": "Welcome to VisiForm"
+        },
+        "type": "Label"
+      },
+      {
+        "bounds": {
+          "height": 36.0,
+          "width": 260.0,
+          "x": 32.0,
+          "y": 80.0
+        },
+        "children": [],
+        "id": "textbox_name",
+        "name": "nameTextBox",
+        "properties": {
+          "text": "Project Name"
+        },
+        "type": "TextBox"
+      },
+      {
+        "bounds": {
+          "height": 28.0,
+          "width": 240.0,
+          "x": 32.0,
+          "y": 140.0
+        },
+        "children": [],
+        "id": "slider_amount",
+        "name": "amountSlider",
+        "properties": {
+          "value": 0.5
+        },
+        "type": "Slider"
+      },
+      {
+        "bounds": {
+          "height": 28.0,
+          "width": 220.0,
+          "x": 32.0,
+          "y": 190.0
+        },
+        "children": [],
+        "id": "checkbox_enabled",
+        "name": "enabledCheckBox",
+        "properties": {
+          "checked": true,
+          "text": "Enable advanced options"
+        },
+        "type": "CheckBox"
+      },
+      {
+        "bounds": {
+          "height": 40.0,
+          "width": 160.0,
+          "x": 32.0,
+          "y": 250.0
+        },
+        "children": [],
+        "id": "button_ok",
+        "name": "okButton",
+        "properties": {
+          "text": "Create Project"
+        },
+        "type": "Button"
+      }
+    ],
+    "id": "form_main",
+    "name": "MainWindow",
+    "properties": {
+      "backgroundColor": "#202026",
+      "title": "Basic Window"
+    },
+    "type": "FormWindow"
+  },
+  "schemaVersion": 1,
+  "selectedWidgetId": "form_main"
+}

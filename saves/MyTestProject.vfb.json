@@ -1,0 +1,69 @@
+{
+  "mainFormClassName": "MainWindow",
+  "projectName": "UntitledVisiFormProject",
+  "root": {
+    "bounds": {
+      "height": 600.0,
+      "width": 900.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "children": [
+      {
+        "bounds": {
+          "height": 40.0,
+          "width": 160.0,
+          "x": 160.0,
+          "y": 460.0
+        },
+        "children": [],
+        "id": "button_1",
+        "name": "button1",
+        "properties": {
+          "text": "Button"
+        },
+        "type": "Button"
+      },
+      {
+        "bounds": {
+          "height": 60.0,
+          "width": 210.0,
+          "x": 410.0,
+          "y": 470.0
+        },
+        "children": [],
+        "id": "checkbox_1",
+        "name": "checkBox1",
+        "properties": {
+          "checked": true,
+          "text": "CheckBox"
+        },
+        "type": "CheckBox"
+      },
+      {
+        "bounds": {
+          "height": 32.0,
+          "width": 180.0,
+          "x": 660.0,
+          "y": 370.0
+        },
+        "children": [],
+        "id": "textbox_1",
+        "name": "textBox1",
+        "properties": {
+          "text": ""
+        },
+        "type": "TextBox"
+      }
+    ],
+    "id": "form_main",
+    "name": "MainWindow",
+    "properties": {
+      "backgroundColor": "#202026",
+      "title": "MainWindow"
+    },
+    "type": "FormWindow"
+  },
+  "schemaVersion": 1,
+  "selectedWidgetId": "checkbox_1"
+}

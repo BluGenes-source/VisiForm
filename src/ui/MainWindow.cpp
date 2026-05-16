@@ -6,6 +6,7 @@
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
 #include "utils/FileUtils.h"
+#include "utils/NativeFileDialogs.h"
 
 #include <algorithm>
 #include <array>
@@ -27,9 +28,9 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kToolbarButtonWidth = 98.0f;
+constexpr float kToolbarButtonWidth = 90.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
-constexpr float kToolbarButtonSpacing = 8.0f;
+constexpr float kToolbarButtonSpacing = 6.0f;
 constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
@@ -68,6 +69,16 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
     return id;
 }
 
+std::filesystem::path suggestedProjectPath(const model::ProjectDocument& document, const std::filesystem::path& currentProjectPath)
+{
+    if (!currentProjectPath.empty()) {
+        return currentProjectPath;
+    }
+
+    const std::string projectName = document.projectName.empty() ? std::string{ "UntitledVisiFormProject" } : document.projectName;
+    return std::filesystem::path{ projectName + std::string{ model::ProjectDocument::projectFileExtension() } };
+}
+
 } // namespace
 
 MainWindow::MainWindow()
@@ -87,12 +98,14 @@ MainWindow::MainWindow()
         cancelInspectorEdit();
     };
     addChild(&propertyEditor_);
+    loadRecentFiles();
     updateLayout();
 }
 
 bool MainWindow::newProject()
 {
     cancelInspectorEdit();
+    // TODO: Add an unsaved-changes prompt before replacing a dirty document.
     document_ = model::ProjectDocument::createDefault();
     currentProjectPath_.clear();
     undoRedo_.clear();
@@ -100,6 +113,19 @@ bool MainWindow::newProject()
     setOperationStatus("New project created");
     redraw();
     return true;
+}
+
+bool MainWindow::openProjectDialog()
+{
+    // TODO: Add an unsaved-changes prompt before opening another project.
+    const auto selectedPath = utils::showOpenProjectDialog();
+    if (!selectedPath.has_value()) {
+        setOperationStatus("Open cancelled");
+        redraw();
+        return false;
+    }
+
+    return loadProjectFromPath(*selectedPath);
 }
 
 bool MainWindow::exportGeneratedCode()
@@ -120,10 +146,26 @@ bool MainWindow::exportGeneratedCode()
 
 bool MainWindow::saveProject()
 {
-    const std::filesystem::path savePath = currentProjectPath_.empty() || isTemplateExamplePath(currentProjectPath_)
-        ? defaultDebugSavePath()
+    if (currentProjectPath_.empty() || isTemplateExamplePath(currentProjectPath_)) {
+        return saveProjectAsDialog();
+    }
+
+    return saveProjectAs(currentProjectPath_);
+}
+
+bool MainWindow::saveProjectAsDialog()
+{
+    const std::filesystem::path suggestedPath = currentProjectPath_.empty() || isTemplateExamplePath(currentProjectPath_)
+        ? projectRootPath() / "Generated" / suggestedProjectPath(document_, {})
         : currentProjectPath_;
-    return saveProjectAs(savePath);
+    const auto selectedPath = utils::showSaveProjectDialog(suggestedPath);
+    if (!selectedPath.has_value()) {
+        setOperationStatus("Save cancelled");
+        redraw();
+        return false;
+    }
+
+    return saveProjectAs(*selectedPath);
 }
 
 bool MainWindow::saveProjectAs(const std::filesystem::path& path)
@@ -138,6 +180,7 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 
     currentProjectPath_ = path;
     document_.clearDirty();
+    addRecentFile(currentProjectPath_);
     setOperationStatus("Project saved: " + normalizedPathText(currentProjectPath_));
     redraw();
     return true;
@@ -146,6 +189,7 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 {
     cancelInspectorEdit();
+    // TODO: Add an unsaved-changes prompt before loading another project.
     serialization::JsonProjectReader reader;
     std::string errorMessage;
     auto loadedDocument = reader.readFromFile(path, errorMessage);
@@ -163,7 +207,30 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     currentProjectPath_ = path;
     undoRedo_.clear();
     document_.clearDirty();
+    addRecentFile(currentProjectPath_);
     setOperationStatus("Project loaded: " + normalizedPathText(currentProjectPath_));
+    redraw();
+    return true;
+}
+
+bool MainWindow::openSampleProject()
+{
+    return loadProjectFromPath(sampleProjectPath());
+}
+
+bool MainWindow::saveDebugProject()
+{
+    serialization::JsonProjectWriter writer;
+    std::string errorMessage;
+    const std::filesystem::path debugPath = defaultDebugSavePath();
+    if (!writer.writeToFile(document_, debugPath, errorMessage)) {
+        setOperationStatus("Save failed: " + errorMessage);
+        redraw();
+        return false;
+    }
+
+    document_.clearDirty();
+    setOperationStatus("Project saved: " + normalizedPathText(debugPath));
     redraw();
     return true;
 }
@@ -201,7 +268,7 @@ void MainWindow::draw(visage::Canvas& canvas)
     designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_.selectedWidget());
     if (layout_.showProjectTree) {
-        projectTree_.draw(canvas, labelFont_, canDrawText(), document_);
+        projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
     }
     drawStatusBar(canvas);
 }
@@ -218,14 +285,20 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     case ToolbarAction::NewProject:
         newProject();
         return;
+    case ToolbarAction::OpenProject:
+        openProjectDialog();
+        return;
+    case ToolbarAction::SaveProjectAsDialog:
+        saveProjectAsDialog();
+        return;
     case ToolbarAction::OpenSample:
-        loadProjectFromPath(sampleProjectPath());
+        openSampleProject();
         return;
     case ToolbarAction::SaveProject:
         saveProject();
         return;
     case ToolbarAction::SaveProjectAsDebug:
-        saveProjectAs(defaultDebugSavePath());
+        saveDebugProject();
         return;
     case ToolbarAction::ExportCode:
         exportGeneratedCode();
@@ -275,6 +348,10 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     if (layout_.showProjectTree) {
         if (const auto widgetId = projectTree_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
             selectWidget(*widgetId);
+            return;
+        }
+        if (const auto recentFileIndex = projectTree_.hitTestRecentFileIndex(document_, e.position.x, e.position.y)) {
+            openRecentFile(recentFiles_.paths()[*recentFileIndex]);
             return;
         }
     }
@@ -384,14 +461,14 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
 
     if (e.isShiftDown() && e.keyCode() == KeyCode::S) {
-        return saveProjectAs(defaultDebugSavePath());
+        return saveProjectAsDialog();
     }
 
     if (e.keyCode() == KeyCode::N) {
         return newProject();
     }
     if (e.keyCode() == KeyCode::O) {
-        return loadProjectFromPath(sampleProjectPath());
+        return openProjectDialog();
     }
     if (e.keyCode() == KeyCode::S) {
         return saveProject();
@@ -1020,9 +1097,11 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     };
 
     addButton(ToolbarAction::NewProject, "New");
-    addButton(ToolbarAction::OpenSample, "Open");
+    addButton(ToolbarAction::OpenProject, "Open");
     addButton(ToolbarAction::SaveProject, "Save");
-    addButton(ToolbarAction::SaveProjectAsDebug, "Save As", true);
+    addButton(ToolbarAction::SaveProjectAsDialog, "Save As", true);
+    addButton(ToolbarAction::OpenSample, "Sample");
+    addButton(ToolbarAction::SaveProjectAsDebug, "Debug Save");
     addButton(ToolbarAction::ExportCode, "Export");
     addButton(ToolbarAction::DeleteWidget, "Delete");
     addButton(ToolbarAction::DuplicateWidget, "Duplicate");
@@ -1077,6 +1156,45 @@ std::filesystem::path MainWindow::sampleProjectPath() const
 std::filesystem::path MainWindow::defaultDebugSavePath() const
 {
     return projectRootPath() / "Generated" / "debug_saved_project.vfb.json";
+}
+
+void MainWindow::addRecentFile(const std::filesystem::path& path)
+{
+    std::string errorMessage;
+    if (!recentFiles_.addPath(path, errorMessage)) {
+        return;
+    }
+    projectTree_.setRecentFiles(recentFiles_.paths());
+}
+
+void MainWindow::removeRecentFile(const std::filesystem::path& path)
+{
+    std::string errorMessage;
+    if (!recentFiles_.removePath(path, errorMessage)) {
+        return;
+    }
+    projectTree_.setRecentFiles(recentFiles_.paths());
+}
+
+bool MainWindow::openRecentFile(const std::filesystem::path& path)
+{
+    if (!std::filesystem::exists(path)) {
+        removeRecentFile(path);
+        setOperationStatus("Recent file is missing: " + normalizedPathText(path));
+        redraw();
+        return false;
+    }
+
+    return loadProjectFromPath(path);
+}
+
+void MainWindow::loadRecentFiles()
+{
+    std::string errorMessage;
+    if (!recentFiles_.load(errorMessage)) {
+        return;
+    }
+    projectTree_.setRecentFiles(recentFiles_.paths());
 }
 
 std::string MainWindow::trimWhitespace(const std::string& value)

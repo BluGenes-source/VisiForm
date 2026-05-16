@@ -10,6 +10,7 @@
 #include "ui/PropertyInspector.h"
 #include "ui/WidgetPalette.h"
 #include "utils/IdGenerator.h"
+#include "utils/RecentFiles.h"
 
 #include <filesystem>
 #include <string>
@@ -37,7 +38,9 @@ public:
     void textInput(const std::string& text) override;
 
     bool newProject();
+    bool openProjectDialog();
     bool saveProject();
+    bool saveProjectAsDialog();
     bool saveProjectAs(const std::filesystem::path& path);
     bool loadProjectFromPath(const std::filesystem::path& path);
     bool exportGeneratedCode();
@@ -75,6 +78,8 @@ private:
     enum class ToolbarAction {
         None,
         NewProject,
+        OpenProject,
+        SaveProjectAsDialog,
         OpenSample,
         SaveProject,
         SaveProjectAsDebug,
@@ -113,6 +118,8 @@ private:
     void applyLayout(const WindowLayout& layout);
     void drawToolbar(visage::Canvas& canvas) const;
     void drawStatusBar(visage::Canvas& canvas) const;
+    bool openSampleProject();
+    bool saveDebugProject();
     void addWidgetFromPalette(model::WidgetType type);
     [[nodiscard]] model::WidgetNode createDefaultWidget(model::WidgetType type);
     [[nodiscard]] model::Rect nextDefaultWidgetBounds(model::WidgetType type) const;
@@ -129,6 +136,10 @@ private:
     [[nodiscard]] std::filesystem::path projectRootPath() const;
     [[nodiscard]] std::filesystem::path sampleProjectPath() const;
     [[nodiscard]] std::filesystem::path defaultDebugSavePath() const;
+    void addRecentFile(const std::filesystem::path& path);
+    void removeRecentFile(const std::filesystem::path& path);
+    bool openRecentFile(const std::filesystem::path& path);
+    void loadRecentFiles();
     [[nodiscard]] static std::string trimWhitespace(const std::string& value);
     bool beginInspectorEdit(const PropertyInspector::PropertyRow& row);
     bool commitInspectorEdit();
@@ -144,6 +155,7 @@ private:
     CanvasInteractionState canvasInteraction_{};
     commands::UndoRedoStack undoRedo_{};
     utils::IdGenerator idGenerator_{};
+    utils::RecentFiles recentFiles_{};
     WidgetPalette widgetPalette_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};
