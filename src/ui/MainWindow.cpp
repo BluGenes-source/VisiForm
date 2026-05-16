@@ -5,6 +5,7 @@
 #include "commands/Command.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
+#include "ui/WidgetMetrics.h"
 #include "utils/AppSettings.h"
 #include "utils/CppIdentifier.h"
 #include "utils/FileUtils.h"
@@ -118,6 +119,7 @@ bool MainWindow::newProject()
 
     cancelInspectorEdit();
     document_ = model::ProjectDocument::createDefault();
+    normalizeWidgetBoundsForEditor();
     currentProjectPath_.clear();
     undoRedo_.clear();
     document_.clearDirty();
@@ -216,16 +218,24 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     }
 
     document_ = std::move(*loadedDocument);
+    const bool normalized = normalizeWidgetBoundsForEditor();
     if (!document_.hasSelection() || document_.selectedWidget() == nullptr) {
         document_.selectWidget(document_.root.id);
     }
 
     currentProjectPath_ = path;
     undoRedo_.clear();
-    document_.clearDirty();
+    if (normalized) {
+        document_.markDirty();
+    }
+    else {
+        document_.clearDirty();
+    }
     settings_.lastProjectDirectory = currentProjectPath_.parent_path();
     addRecentFile(currentProjectPath_);
-    setOperationStatus("Project loaded: " + normalizedPathText(currentProjectPath_));
+    setOperationStatus(normalized
+        ? "Project loaded: " + normalizedPathText(currentProjectPath_) + " (bounds normalized for editor readability)"
+        : "Project loaded: " + normalizedPathText(currentProjectPath_));
     redraw();
     return true;
 }
@@ -324,6 +334,9 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::ExportCode:
         exportGeneratedCode();
+        return;
+    case ToolbarAction::FitText:
+        fitSelectedWidgetToText();
         return;
     case ToolbarAction::ToggleGrid:
         toggleGrid();
@@ -541,9 +554,12 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
 
     model::WidgetNode widget = createDefaultWidget(type);
     const std::string addedId = widget.id;
+    const model::Rect widgetBounds = widget.bounds;
     undoRedo_.executeCommand(std::make_unique<commands::AddWidgetCommand>(document_, document_.root.id, std::move(widget), addedId));
+    normalizeWidgetBoundsForEditor();
     document_.markDirty();
-    setOperationStatus("Added widget: " + addedId);
+    setOperationStatus("Added widget: " + addedId + " size " + std::to_string(static_cast<int>(widgetBounds.width))
+        + "x" + std::to_string(static_cast<int>(widgetBounds.height)));
     redraw();
 }
 
@@ -691,47 +707,9 @@ model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type)
 
 model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type) const
 {
-    float width = 160.0f;
-    float height = 40.0f;
-
-    switch (type) {
-    case model::WidgetType::Label:
-        width = 160.0f;
-        height = 28.0f;
-        break;
-    case model::WidgetType::Button:
-        width = 160.0f;
-        height = 40.0f;
-        break;
-    case model::WidgetType::TextBox:
-        width = 180.0f;
-        height = 32.0f;
-        break;
-    case model::WidgetType::CheckBox:
-        width = 180.0f;
-        height = 28.0f;
-        break;
-    case model::WidgetType::Slider:
-        width = 180.0f;
-        height = 32.0f;
-        break;
-    case model::WidgetType::Frame:
-        width = 220.0f;
-        height = 140.0f;
-        break;
-    case model::WidgetType::Image:
-        width = 160.0f;
-        height = 100.0f;
-        break;
-    case model::WidgetType::Spacer:
-        width = 160.0f;
-        height = 40.0f;
-        break;
-    case model::WidgetType::FormWindow:
-        width = 220.0f;
-        height = 160.0f;
-        break;
-    }
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(type);
+    const float width = metrics.defaultWidth;
+    const float height = metrics.defaultHeight;
 
     float nextY = kNewWidgetStartY;
     for (const auto& child : document_.root.children) {
@@ -744,6 +722,144 @@ model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type) const
     }
 
     return { kNewWidgetStartX, nextY, width, height };
+}
+
+bool MainWindow::enforceMinimumBoundsRecursive(model::WidgetNode& widget)
+{
+    bool changed = false;
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget.type);
+    if (widget.bounds.width < metrics.minWidth) {
+        widget.bounds.width = metrics.minWidth;
+        changed = true;
+    }
+    if (widget.bounds.height < metrics.minHeight) {
+        widget.bounds.height = metrics.minHeight;
+        changed = true;
+    }
+
+    for (auto& child : widget.children) {
+        changed = enforceMinimumBoundsRecursive(child) || changed;
+    }
+
+    return changed;
+}
+
+bool MainWindow::normalizeWidgetBoundsForEditor()
+{
+    return enforceMinimumBoundsRecursive(document_.root);
+}
+
+bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const std::string& key, const std::string& valueText)
+{
+    if (!autoSizeTextWidgets_) {
+        return false;
+    }
+
+    float padding = 0.0f;
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget.type);
+    float minimumWidth = metrics.minWidth;
+    float minimumHeight = metrics.minHeight;
+    const float fontSize = defaultDesignerFontSize();
+    const float lineHeight = estimatedLineHeight(fontSize);
+    switch (widget.type) {
+    case model::WidgetType::Label:
+        if (key != "text") {
+            return false;
+        }
+        padding = 40.0f;
+        minimumHeight = std::max(metrics.minHeight, lineHeight + 18.0f);
+        break;
+    case model::WidgetType::Button:
+        if (key != "text") {
+            return false;
+        }
+        padding = 80.0f;
+        minimumHeight = metrics.minHeight;
+        break;
+    case model::WidgetType::TextBox:
+        if (key != "text") {
+            return false;
+        }
+        padding = 70.0f;
+        minimumHeight = metrics.minHeight;
+        break;
+    case model::WidgetType::CheckBox:
+        if (key != "text") {
+            return false;
+        }
+        padding = 16.0f + 12.0f + 70.0f;
+        minimumHeight = std::max(metrics.minHeight, std::max(18.0f + 18.0f, lineHeight + 18.0f));
+        break;
+    case model::WidgetType::Frame:
+        if (key != "title") {
+            return false;
+        }
+        padding = 100.0f;
+        minimumHeight = metrics.minHeight;
+        break;
+    case model::WidgetType::Slider:
+    case model::WidgetType::Image:
+    case model::WidgetType::Spacer:
+    case model::WidgetType::FormWindow:
+        return false;
+    }
+
+    const float desiredWidth = std::max(minimumWidth, estimateDesignerTextWidth(valueText) + padding);
+    const float desiredHeight = std::max(widget.bounds.height, minimumHeight);
+    const bool changed = desiredWidth > widget.bounds.width || desiredHeight > widget.bounds.height;
+    widget.bounds.width = std::max(widget.bounds.width, desiredWidth);
+    widget.bounds.height = desiredHeight;
+    return changed;
+}
+
+void MainWindow::fitSelectedWidgetToText()
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        redraw();
+        return;
+    }
+
+    std::string key;
+    std::string valueText;
+    switch (widget->type) {
+    case model::WidgetType::Label:
+    case model::WidgetType::Button:
+    case model::WidgetType::TextBox:
+    case model::WidgetType::CheckBox:
+        key = "text";
+        valueText = widget->getStringProperty("text", {});
+        break;
+    case model::WidgetType::Frame:
+        key = "title";
+        valueText = widget->getStringProperty("title", {});
+        break;
+    case model::WidgetType::Slider:
+    case model::WidgetType::Image:
+    case model::WidgetType::Spacer:
+    case model::WidgetType::FormWindow:
+        setOperationStatus("Fit text not supported for selected widget");
+        redraw();
+        return;
+    }
+
+    const float oldWidth = widget->bounds.width;
+    const float oldHeight = widget->bounds.height;
+    if (!autoSizeWidgetForTextProperty(*widget, key, valueText)) {
+        setOperationStatus("Fit text: already large enough");
+        redraw();
+        return;
+    }
+
+    document_.markDirty();
+    const std::string displayName = widget->name.empty() ? widget->id : widget->name;
+    setOperationStatus("Fit text: " + displayName + " width " + std::to_string(static_cast<int>(oldWidth))
+        + " -> " + std::to_string(static_cast<int>(widget->bounds.width))
+        + ", height " + std::to_string(static_cast<int>(oldHeight))
+        + " -> " + std::to_string(static_cast<int>(widget->bounds.height)));
+    updatePropertyEditorBounds();
+    redraw();
 }
 
 bool MainWindow::setSelectedWidgetName(const std::string& name)
@@ -779,14 +895,23 @@ bool MainWindow::setSelectedWidgetBounds(float x, float y, float width, float he
         return false;
     }
 
-    if (x < 0.0f || y < 0.0f || width < 20.0f || height < 20.0f) {
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
+    const float clampedWidth = std::max(width, metrics.minWidth);
+    const float clampedHeight = std::max(height, metrics.minHeight);
+    if (x < 0.0f || y < 0.0f) {
         setOperationStatus("Invalid bounds for selected widget");
         redraw();
         return false;
     }
 
-    widget->bounds = { x, y, width, height };
+    widget->bounds = { x, y, clampedWidth, clampedHeight };
     document_.markDirty();
+    if (height < metrics.minHeight && widget->type == model::WidgetType::Label) {
+        setOperationStatus("Height clamped to minimum for Label");
+    }
+    else if (height < metrics.minHeight && widget->type == model::WidgetType::CheckBox) {
+        setOperationStatus("Height clamped to minimum for CheckBox");
+    }
     updatePropertyEditorBounds();
     redraw();
     return true;
@@ -802,8 +927,14 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     }
 
     widget->setProperty(key, std::move(value));
+    const float previousWidth = widget->bounds.width;
+    const bool autoSized = autoSizeWidgetForTextProperty(*widget, key, widget->getStringProperty(key, {}));
     document_.markDirty();
-    setOperationStatus("Property changed: " + key);
+    const std::string displayName = widget->name.empty() ? widget->id : widget->name;
+    setOperationStatus(autoSized
+        ? "Auto-sized " + displayName + ": width " + std::to_string(static_cast<int>(previousWidth))
+            + " -> " + std::to_string(static_cast<int>(widget->bounds.width))
+        : "Property changed: " + key);
     updatePropertyEditorBounds();
     redraw();
     return true;
@@ -1145,6 +1276,7 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::OpenSample, "Sample");
     addButton(ToolbarAction::SaveProjectAsDebug, "DbgSave");
     addButton(ToolbarAction::ExportCode, "Export");
+    addButton(ToolbarAction::FitText, "Fit");
     addButton(ToolbarAction::ToggleGrid, "Grid", designerCanvas_.showGrid());
     addButton(ToolbarAction::ToggleSnap, "Snap", designerCanvas_.snapToGrid());
     addButton(ToolbarAction::DeleteWidget, "Delete");

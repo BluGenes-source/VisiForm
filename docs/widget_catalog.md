@@ -49,3 +49,19 @@ Blank event properties are allowed and mean no generated handler stub is emitted
 - No separate visual event editor yet
 - Generated projects currently emit handler stubs and TODO comments
 - Full generated interactive event dispatch is not implemented yet
+
+## Default editor sizes
+
+Current default editor widget sizes are tuned for readable text:
+
+- `Label` - `180 x 32`
+- `Button` - `180 x 46`
+- `TextBox` - `220 x 36`
+- `CheckBox` - `220 x 32`
+- `Slider` - `220 x 36`
+- `Frame` - `260 x 160`
+- `Image` - `180 x 120`
+- `Spacer` - `160 x 40`
+
+Text-capable widgets may grow wider after text or title edits to keep text readable.
+Automatic growth currently expands width only and does not shrink widgets automatically.

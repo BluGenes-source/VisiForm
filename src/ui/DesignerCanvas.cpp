@@ -2,6 +2,8 @@
 
 #include "ui/DesignerCanvas.h"
 
+#include "ui/WidgetMetrics.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -45,6 +47,11 @@ struct WidgetScreenInfo {
     const model::WidgetNode* widget = nullptr;
     PanelRect bounds{};
 };
+
+PanelRect expandRect(const PanelRect& rect, float padding)
+{
+    return { rect.x - padding, rect.y - padding, rect.width + padding * 2.0f, rect.height + padding * 2.0f };
+}
 
 void drawBorder(visage::Canvas& canvas, const PanelRect& bounds, int color, float thickness = 1.0f)
 {
@@ -231,7 +238,7 @@ DesignerCanvas::HitRegion hitHandle(const PanelRect& bounds, float x, float y, f
     return DesignerCanvas::HitRegion::None;
 }
 
-void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, float handleSize)
+void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, float visualHandleSize)
 {
     constexpr std::array<DesignerCanvas::HitRegion, 4> kHandles = {
         DesignerCanvas::HitRegion::TopLeftHandle,
@@ -241,11 +248,49 @@ void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, float
     };
 
     for (DesignerCanvas::HitRegion handle : kHandles) {
-        const PanelRect handleBounds = handleRect(bounds, handle, handleSize);
+        const PanelRect handleBounds = handleRect(bounds, handle, visualHandleSize);
         canvas.setColor(0xffffffff);
         canvas.fill(handleBounds.x, handleBounds.y, handleBounds.width, handleBounds.height);
         drawBorder(canvas, handleBounds, 0xff2d7ff9);
     }
+}
+
+std::optional<std::string> hitTestWidgetScreenId(const model::WidgetNode& widget,
+    float formScreenX,
+    float formScreenY,
+    float parentLocalX,
+    float parentLocalY,
+    float scale,
+    float x,
+    float y,
+    float smallWidgetHitPadding)
+{
+    const float widgetLocalX = parentLocalX + widget.bounds.x;
+    const float widgetLocalY = parentLocalY + widget.bounds.y;
+    const PanelRect bounds{
+        formScreenX + widgetLocalX * scale,
+        formScreenY + widgetLocalY * scale,
+        std::max(1.0f, widget.bounds.width * scale),
+        std::max(1.0f, widget.bounds.height * scale)
+    };
+
+    for (auto iterator = widget.children.rbegin(); iterator != widget.children.rend(); ++iterator) {
+        if (auto match = hitTestWidgetScreenId(*iterator, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
+                scale, x, y, smallWidgetHitPadding)) {
+            return match;
+        }
+    }
+
+    PanelRect hitBounds = bounds;
+    if (bounds.width < 14.0f || bounds.height < 14.0f) {
+        hitBounds = expandRect(bounds, smallWidgetHitPadding);
+    }
+
+    if (hitBounds.contains(x, y)) {
+        return widget.id;
+    }
+
+    return std::nullopt;
 }
 
 void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, bool showMinorGrid, int gridSize, int majorGridSize)
@@ -324,7 +369,7 @@ void drawWidget(visage::Canvas& canvas,
     float parentLocalY,
     float scale,
     const std::string& selectedWidgetId,
-    float handleSize,
+    float visualHandleSize,
     bool showGrid,
     bool showMinorGrid,
     int gridSize,
@@ -369,9 +414,12 @@ void drawWidget(visage::Canvas& canvas,
         break;
     case model::WidgetType::Label:
         if (drawText) {
+            const float fontSize = defaultDesignerFontSize();
+            const float textTop = bounds.y + (bounds.height - estimatedLineHeight(fontSize)) * 0.5f;
             canvas.setColor(0xffeef3fa);
             canvas.text(getDisplayTextOrFallback(widget, "text", "Label"), font, visage::Font::kTopLeft,
-                bounds.x + 4.0f, bounds.y + 3.0f, std::max(0.0f, bounds.width - 4.0f), bounds.height - 4.0f);
+                bounds.x + 6.0f, textTop,
+                std::max(0.0f, bounds.width - 12.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
     case model::WidgetType::Button:
@@ -391,23 +439,29 @@ void drawWidget(visage::Canvas& canvas,
         if (drawText) {
             canvas.setColor(0xff2d3a4d);
             canvas.text(getStringProperty(widget, "text", ""), font, visage::Font::kTopLeft,
-                bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 12.0f), bounds.height - 8.0f);
+                bounds.x + 8.0f, bounds.y + bounds.height * 0.5f - 10.0f,
+                std::max(0.0f, bounds.width - 16.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
     case model::WidgetType::CheckBox: {
-        const float boxSize = std::min(bounds.height, 18.0f);
+        const float boxSize = 18.0f;
+        const float squareX = bounds.x + 6.0f;
+        const float squareY = bounds.y + (bounds.height - boxSize) * 0.5f;
+        const float textX = squareX + boxSize + 12.0f;
+        const float fontSize = defaultDesignerFontSize();
+        const float textY = bounds.y + bounds.height * 0.5f - estimatedTextBaselineOffset(fontSize);
         canvas.setColor(0xffffffff);
-        canvas.fill(bounds.x, bounds.y + (bounds.height - boxSize) * 0.5f, boxSize, boxSize);
-        drawBorder(canvas, { bounds.x, bounds.y + (bounds.height - boxSize) * 0.5f, boxSize, boxSize }, 0xff8390a4);
+        canvas.fill(squareX, squareY, boxSize, boxSize);
+        drawBorder(canvas, { squareX, squareY, boxSize, boxSize }, 0xff8390a4);
         if (getBoolProperty(widget, "checked", false)) {
             canvas.setColor(0xff2d7ff9);
-            canvas.fill(bounds.x + 4.0f, bounds.y + (bounds.height - 10.0f) * 0.5f, 10.0f, 10.0f);
+            canvas.fill(squareX + 4.0f, squareY + 4.0f, 10.0f, 10.0f);
         }
         if (drawText) {
             canvas.setColor(0xffeef3fa);
             canvas.text(getDisplayTextOrFallback(widget, "text", "CheckBox"), font, visage::Font::kTopLeft,
-                bounds.x + boxSize + 8.0f, bounds.y + 4.0f,
-                std::max(0.0f, bounds.width - boxSize - 12.0f), bounds.height - 6.0f);
+                textX, textY,
+                std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
     }
@@ -454,13 +508,13 @@ void drawWidget(visage::Canvas& canvas,
     if (widget.id == selectedWidgetId) {
         drawSelectionOutline(canvas, bounds);
         if (widget.type != model::WidgetType::FormWindow) {
-            drawSelectionHandles(canvas, bounds, handleSize);
+            drawSelectionHandles(canvas, bounds, visualHandleSize);
         }
     }
 
     for (const auto& child : widget.children) {
         drawWidget(canvas, font, drawText, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
-            scale, selectedWidgetId, handleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
+            scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
     }
 }
 
@@ -538,17 +592,18 @@ std::optional<DesignerCanvas::FormPoint> DesignerCanvas::toFormPoint(const model
 
 std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const
 {
-    const auto point = toFormPoint(document, x, y);
-    if (!point.has_value()) {
+    if (!contains(x, y) || !document.root.bounds.isValid()) {
         return std::nullopt;
     }
 
-    if (const auto* hitWidget = document.root.hitTest(point->x, point->y)) {
-        return hitWidget->id;
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    if (!previewLayout.form.contains(x, y) || previewLayout.scale <= 0.0f) {
+        return std::nullopt;
     }
 
-    if (document.root.bounds.contains(point->x, point->y)) {
-        return document.root.id;
+    if (auto widgetId = hitTestWidgetScreenId(document.root, previewLayout.form.x, previewLayout.form.y,
+            -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, x, y, smallWidgetHitPadding_)) {
+        return widgetId;
     }
 
     return std::nullopt;
@@ -577,7 +632,7 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
 
     InteractionHit hit{ *hitWidgetId, HitRegion::Body };
     if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id) {
-        const HitRegion handle = hitHandle(widgetInfo->bounds, x, y, handleSize_);
+        const HitRegion handle = hitHandle(widgetInfo->bounds, x, y, resizeHandleHitSize_);
         if (handle != HitRegion::None) {
             hit.region = handle;
             return hit;
@@ -707,7 +762,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas, const visage::Font& font, bool
 
     drawWidget(canvas, font, drawText, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
-        handleSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
+        resizeHandleVisualSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
 
     if (drawText) {
         canvas.setColor(0xff243041);

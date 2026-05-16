@@ -1,5 +1,7 @@
 #include "generator/VisageCppEmitter.h"
 
+#include "generator/VisageCppEmitter.h"
+
 #include "utils/CppIdentifier.h"
 
 #include <algorithm>
@@ -7,6 +9,7 @@
 #include <iomanip>
 #include <map>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace visiform::generator {
@@ -109,6 +112,51 @@ struct HandlerInfo {
     HandlerSignature signature = HandlerSignature::Void;
     std::vector<EventBinding> bindings{};
 };
+
+using PreservedUserCodeBlocks = std::unordered_map<std::string, std::string>;
+
+std::string trimNewlines(std::string text)
+{
+    while (!text.empty() && (text.front() == '\r' || text.front() == '\n')) {
+        text.erase(text.begin());
+    }
+    while (!text.empty() && (text.back() == '\r' || text.back() == '\n')) {
+        text.pop_back();
+    }
+    return text;
+}
+
+PreservedUserCodeBlocks extractPreservedUserCodeBlocks(const std::string& existingMainWindowCpp)
+{
+    PreservedUserCodeBlocks blocks;
+    std::size_t searchStart = 0;
+    while (true) {
+        const std::size_t beginMarker = existingMainWindowCpp.find("// USER CODE BEGIN ", searchStart);
+        if (beginMarker == std::string::npos) {
+            break;
+        }
+
+        const std::size_t handlerNameStart = beginMarker + std::string("// USER CODE BEGIN ").size();
+        const std::size_t handlerNameEnd = existingMainWindowCpp.find('\n', handlerNameStart);
+        if (handlerNameEnd == std::string::npos) {
+            break;
+        }
+
+        const std::string handlerName = trimNewlines(existingMainWindowCpp.substr(handlerNameStart, handlerNameEnd - handlerNameStart));
+        const std::string endMarkerText = "// USER CODE END " + handlerName;
+        const std::size_t endMarker = existingMainWindowCpp.find(endMarkerText, handlerNameEnd);
+        if (endMarker == std::string::npos) {
+            searchStart = handlerNameEnd;
+            continue;
+        }
+
+        std::string preservedBody = existingMainWindowCpp.substr(handlerNameEnd + 1, endMarker - (handlerNameEnd + 1));
+        blocks.insert_or_assign(handlerName, trimNewlines(std::move(preservedBody)));
+        searchStart = endMarker + endMarkerText.size();
+    }
+
+    return blocks;
+}
 
 std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
 {
@@ -455,7 +503,7 @@ std::string emitMainCpp(const visiform::model::ProjectDocument& document)
     return stream.str();
 }
 
-std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document)
+std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document, const std::string& existingMainWindowCpp)
 {
     const std::string className = sanitizeClassName(document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
     const std::string windowTitle = document.root.getStringProperty("title", document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
@@ -464,6 +512,7 @@ std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document)
     std::vector<HandlerInfo> handlers;
     std::string ignoredError;
     collectHandlers(document, handlers, ignoredError);
+    const PreservedUserCodeBlocks preservedUserCodeBlocks = extractPreservedUserCodeBlocks(existingMainWindowCpp);
 
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
@@ -522,17 +571,28 @@ std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document)
     for (const auto& handler : handlers) {
         stream << "\n" << handlerDefinitionSignature(className, handler) << "\n";
         stream << "{\n";
-        if (handler.signature == HandlerSignature::Bool) {
-            stream << "    (void)checked;\n";
-        }
-        else if (handler.signature == HandlerSignature::Float) {
-            stream << "    (void)value;\n";
-        }
-        else if (handler.signature == HandlerSignature::String) {
-            stream << "    (void)text;\n";
-        }
         stream << "    // References: " << handlerReferenceList(handler) << "\n";
-        stream << "    " << handlerTodoLine(handler.bindings.front()) << "\n";
+        stream << "    // USER CODE BEGIN " << handler.handlerName << "\n";
+        if (const auto iterator = preservedUserCodeBlocks.find(handler.handlerName); iterator != preservedUserCodeBlocks.end() && !iterator->second.empty()) {
+            std::istringstream preservedStream(iterator->second);
+            std::string preservedLine;
+            while (std::getline(preservedStream, preservedLine)) {
+                stream << "    " << preservedLine << "\n";
+            }
+        }
+        else {
+            if (handler.signature == HandlerSignature::Bool) {
+                stream << "    (void)checked;\n";
+            }
+            else if (handler.signature == HandlerSignature::Float) {
+                stream << "    (void)value;\n";
+            }
+            else if (handler.signature == HandlerSignature::String) {
+                stream << "    (void)text;\n";
+            }
+            stream << "    " << handlerTodoLine(handler.bindings.front()) << "\n";
+        }
+        stream << "    // USER CODE END " << handler.handlerName << "\n";
         stream << "}\n";
     }
     return stream.str();
@@ -540,7 +600,11 @@ std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document)
 
 } // namespace
 
-bool VisageCppEmitter::emitProjectSources(const model::ProjectDocument& document, EmittedSources& output, std::string& errorMessage) const
+bool VisageCppEmitter::emitProjectSources(
+    const model::ProjectDocument& document,
+    const std::string& existingMainWindowCpp,
+    EmittedSources& output,
+    std::string& errorMessage) const
 {
     errorMessage.clear();
     std::vector<HandlerInfo> handlers;
@@ -551,7 +615,7 @@ bool VisageCppEmitter::emitProjectSources(const model::ProjectDocument& document
     output = {
         emitMainCpp(document),
         emitMainWindowHeader(document),
-        emitMainWindowCpp(document)
+        emitMainWindowCpp(document, existingMainWindowCpp)
     };
     return true;
 }

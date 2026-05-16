@@ -61,7 +61,9 @@ private:
     bool snapToGrid_ = true;
     int gridSize_ = 10;
     int majorGridSize_ = 50;
-    float handleSize_ = 8.0f;
+    float resizeHandleVisualSize_ = 10.0f;
+    float resizeHandleHitSize_ = 16.0f;
+    float smallWidgetHitPadding_ = 4.0f;
     float minimumWidgetSize_ = 20.0f;
 };
 

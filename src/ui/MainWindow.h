@@ -8,6 +8,7 @@
 #include "ui/DesignerCanvas.h"
 #include "ui/ProjectTree.h"
 #include "ui/PropertyInspector.h"
+#include "ui/WidgetMetrics.h"
 #include "ui/WidgetPalette.h"
 #include "utils/AppSettings.h"
 #include "utils/IdGenerator.h"
@@ -84,6 +85,7 @@ private:
         OpenSample,
         SaveProjectAsDebug,
         ExportCode,
+        FitText,
         ToggleGrid,
         ToggleSnap,
         DuplicateWidget,
@@ -134,11 +136,15 @@ private:
     void loadAppSettings();
     void saveAppSettings();
     void applyCanvasSettings();
+    void fitSelectedWidgetToText();
     void toggleGrid();
     void toggleSnapToGrid();
+    bool normalizeWidgetBoundsForEditor();
+    bool enforceMinimumBoundsRecursive(model::WidgetNode& widget);
     void addWidgetFromPalette(model::WidgetType type);
     [[nodiscard]] model::WidgetNode createDefaultWidget(model::WidgetType type);
     [[nodiscard]] model::Rect nextDefaultWidgetBounds(model::WidgetType type) const;
+    [[nodiscard]] bool autoSizeWidgetForTextProperty(model::WidgetNode& widget, const std::string& key, const std::string& valueText);
     bool setSelectedWidgetName(const std::string& name);
     bool setSelectedWidgetBounds(float x, float y, float width, float height);
     bool setSelectedWidgetProperty(const std::string& key, model::PropertyValue value);
@@ -177,6 +183,7 @@ private:
     ProjectTree projectTree_{};
     visage::TextEditor propertyEditor_{ "propertyEditor" };
     visage::Font labelFont_{};
+    bool autoSizeTextWidgets_ = true;
 };
 
 } // namespace visiform::ui

@@ -90,6 +90,31 @@ When a non-empty handler name is present, the generated project emits:
 - a handler definition in `src/MainWindow.cpp`
 - TODO comments near relevant generated widget drawing code
 
+## User code preservation
+
+Generated handler bodies in `src/MainWindow.cpp` use explicit preservation markers:
+
+- `// USER CODE BEGIN handlerName`
+- `// USER CODE END handlerName`
+
+During re-export, `VisiForm` reads the existing generated `src/MainWindow.cpp` file and preserves the content inside matching handler markers.
+
+Example:
+
+- `// USER CODE BEGIN handleGenerateCodeClick`
+- `// USER CODE END handleGenerateCodeClick`
+
+Current preservation behavior:
+
+- preserves recognized handler body regions only
+- preserves by handler name
+- overwrites the rest of the generated file
+- removes handlers that are no longer referenced by the current project model
+
+Current limitation:
+
+- orphaned code from removed handlers is not preserved automatically yet
+
 Current generated signatures:
 
 - `onClick` -> `void handlerName()`

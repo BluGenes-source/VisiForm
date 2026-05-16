@@ -56,8 +56,15 @@ bool CodeGenerator::generateProject(
         return false;
     }
 
+    std::string existingMainWindowCpp;
+    std::string readErrorMessage;
+    const std::filesystem::path existingMainWindowCppPath = outputDirectory / "src" / "MainWindow.cpp";
+    if (std::filesystem::exists(existingMainWindowCppPath)) {
+        utils::FileUtils::readTextFile(existingMainWindowCppPath, existingMainWindowCpp, readErrorMessage);
+    }
+
     VisageCppEmitter::EmittedSources emittedSources;
-    if (!visageCppEmitter_.emitProjectSources(document, emittedSources, errorMessage)) {
+    if (!visageCppEmitter_.emitProjectSources(document, existingMainWindowCpp, emittedSources, errorMessage)) {
         return false;
     }
     if (!writeGeneratedFile(outputDirectory, "CMakeLists.txt", cmakeEmitter_.emitCMakeLists(document), errorMessage)) {
