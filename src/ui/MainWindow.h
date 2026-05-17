@@ -47,6 +47,8 @@ public:
     bool saveProjectAs(const std::filesystem::path& path);
     bool loadProjectFromPath(const std::filesystem::path& path);
     bool exportGeneratedCode();
+    // Export helpers
+    [[nodiscard]] std::filesystem::path defaultExportPath() const;
     void deleteSelectedWidget();
     void duplicateSelectedWidget();
     void undo();

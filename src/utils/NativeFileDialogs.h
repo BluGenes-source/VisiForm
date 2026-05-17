@@ -12,4 +12,6 @@ namespace visiform::utils {
     const std::filesystem::path& suggestedPath,
     const std::filesystem::path& initialDirectory = {});
 
+[[nodiscard]] std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::filesystem::path& initialDirectory = {});
+
 } // namespace visiform::utils

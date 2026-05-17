@@ -55,6 +55,7 @@ std::string normalizedPathText(const std::filesystem::path& path)
     return utils::FileUtils::normalizeSeparators(path.string());
 }
 
+
 std::string defaultWidgetName(model::WidgetType type, const std::string& id)
 {
     const auto underscore = id.find_last_of('_');
@@ -469,18 +470,27 @@ bool MainWindow::openProjectDialog()
 
 bool MainWindow::exportGeneratedCode()
 {
-    generator::CodeGenerator codeGenerator;
-    std::string errorMessage;
-    const std::filesystem::path outputPath = projectRootPath() / "Generated" / "ExportedVisageProject";
-    if (!codeGenerator.generateProject(document_, outputPath, errorMessage)) {
-        setOperationStatus("Code export failed: " + errorMessage);
+    // Prefer to prompt the user for an export folder. Use lastExportDirectory as initial folder.
+    const std::filesystem::path initial = !settings_.lastExportDirectory.empty() ? settings_.lastExportDirectory : defaultExportPath();
+    const auto selected = utils::showSelectExportFolderDialog(initial);
+    if (!selected.has_value()) {
+        setOperationStatus("Export cancelled");
         redraw();
         return false;
     }
 
-    settings_.lastExportDirectory = outputPath;
+    // Use CodeGenerator to write files to the chosen folder.
+    std::string errorMessage;
+    generator::CodeGenerator generator;
+    if (!generator.generateProject(document_, *selected, errorMessage)) {
+        setOperationStatus("Export failed: " + errorMessage);
+        redraw();
+        return false;
+    }
+
+    settings_.lastExportDirectory = *selected;
     saveAppSettings();
-    setOperationStatus("Code exported: Generated/ExportedVisageProject (with CMake presets)");
+    setOperationStatus("Code exported: " + normalizedPathText(*selected));
     redraw();
     return true;
 }
@@ -759,6 +769,29 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         // If validation fails, editing stays active and the click is consumed.
         if (!commitInspectorEdit()) {
             return;
+        }
+    }
+
+    // Check callback suggestion hit-test first so suggestion clicks are applied before normal row handling.
+    if (const auto suggestion = propertyInspector_.hitTestSuggestion(document_, e.position.x, e.position.y)) {
+        // Only apply suggestion when we are actively editing an event property.
+        if (propertyInspector_.isEditing()) {
+            const auto active = propertyInspector_.activeRow(document_);
+            if (active.has_value()) {
+                // Attempt to apply the suggestion as a committed edit.
+                if (setSelectedWidgetPropertyFromString(active->key, *suggestion)) {
+                    setOperationStatus("Callback selected: " + *suggestion);
+                    propertyInspector_.clearEditing();
+                    propertyEditor_.setVisible(false);
+                    requestKeyboardFocus();
+                    redraw();
+                }
+                else {
+                    setOperationStatus("Failed to apply callback: " + *suggestion);
+                    redraw();
+                }
+                return;
+            }
         }
     }
 
@@ -2571,6 +2604,11 @@ std::filesystem::path MainWindow::projectRootPath() const
     }
 
     return std::filesystem::current_path();
+}
+
+std::filesystem::path MainWindow::defaultExportPath() const
+{
+    return projectRootPath() / "Generated" / "ExportedVisageProject";
 }
 
 std::filesystem::path MainWindow::sampleProjectPath() const

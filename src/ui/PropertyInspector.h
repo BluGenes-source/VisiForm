@@ -46,6 +46,7 @@ public:
     void setBounds(float x, float y, float width, float height);
     [[nodiscard]] bool contains(float x, float y) const;
     [[nodiscard]] std::optional<PropertyRow> hitTestRow(const model::ProjectDocument& document, float x, float y) const;
+    [[nodiscard]] std::optional<std::string> hitTestSuggestion(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] bool beginEditing(const model::ProjectDocument& document, const std::string& key);
     [[nodiscard]] std::optional<PropertyRow> activeRow(const model::ProjectDocument& document) const;
     [[nodiscard]] std::optional<ValueCellBounds> activeEditorBounds(const model::ProjectDocument& document) const;
@@ -57,6 +58,16 @@ public:
 
 private:
     [[nodiscard]] std::vector<PropertyRow> buildRows(const model::ProjectDocument& document) const;
+
+    struct CallbackSuggestionItem {
+        std::string handlerName;
+        float x = 0.0f;
+        float y = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+    };
+
+    mutable std::vector<CallbackSuggestionItem> suggestions_{};
 
     float x_{};
     float y_{};

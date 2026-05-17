@@ -13,6 +13,9 @@
 #endif
 #include <windows.h>
 #include <commdlg.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <objbase.h>
 
 namespace visiform::utils {
 namespace {
@@ -85,6 +88,50 @@ std::optional<std::filesystem::path> showSaveProjectDialog(const std::filesystem
     const std::filesystem::path& initialDirectory)
 {
     return showProjectDialog(true, suggestedPath, initialDirectory);
+}
+
+std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::filesystem::path& initialDirectory)
+{
+    std::optional<std::filesystem::path> resultPath;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    const bool comInitialized = SUCCEEDED(hr);
+
+    IFileDialog* pfd = nullptr;
+    hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd));
+    if (SUCCEEDED(hr) && pfd != nullptr) {
+        DWORD options = 0;
+        if (SUCCEEDED(pfd->GetOptions(&options))) {
+            pfd->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+        }
+
+        if (!initialDirectory.empty()) {
+            IShellItem* psi = nullptr;
+            if (SUCCEEDED(SHCreateItemFromParsingName(initialDirectory.wstring().c_str(), nullptr, IID_PPV_ARGS(&psi)))) {
+                pfd->SetDefaultFolder(psi);
+                psi->Release();
+            }
+        }
+
+        if (SUCCEEDED(pfd->Show(nullptr))) {
+            IShellItem* psiResult = nullptr;
+            if (SUCCEEDED(pfd->GetResult(&psiResult)) && psiResult != nullptr) {
+                PWSTR pszPath = nullptr;
+                if (SUCCEEDED(psiResult->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)) && pszPath != nullptr) {
+                    resultPath = std::filesystem::path{ pszPath };
+                    CoTaskMemFree(pszPath);
+                }
+                psiResult->Release();
+            }
+        }
+
+        pfd->Release();
+    }
+
+    if (comInitialized) {
+        CoUninitialize();
+    }
+
+    return resultPath;
 }
 
 } // namespace visiform::utils

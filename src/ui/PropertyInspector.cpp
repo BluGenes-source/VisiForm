@@ -11,6 +11,8 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <sstream>
+#include <cmath>
 
 namespace visiform::ui {
 namespace {
@@ -33,6 +35,7 @@ std::string formatFloat(float value)
     while (!text.empty() && text.back() == '0') {
         text.pop_back();
     }
+
     if (!text.empty() && text.back() == '.') {
         text.pop_back();
     }
@@ -255,11 +258,63 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(cons
     if (!contains(x, y)) {
         return std::nullopt;
     }
+    const auto rows = buildRows(document);
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, rows);
+    // Rebuild suggestion hit areas for the active event row if present
+    suggestions_.clear();
+    for (const auto& layout : layouts) {
+        if (layout.row.key.rfind("__suggestions_", 0) == 0) {
+            const float valueLeft = x_ + kLabelColumnWidth;
+            const float valueWidth = width_ - kLabelColumnWidth - 20.0f;
+            const std::string display = layout.row.displayValue;
+            if (!display.empty()) {
+                // split by comma
+                std::vector<std::string> parts;
+                std::istringstream ss(display);
+                std::string token;
+                while (std::getline(ss, token, ',')) {
+                    // trim whitespace
+                    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front()))) token.erase(token.begin());
+                    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back()))) token.pop_back();
+                    if (!token.empty()) parts.push_back(token);
+                }
 
-    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(document));
+                if (!parts.empty()) {
+                    const float itemWidth = std::max(10.0f, valueWidth / static_cast<float>(parts.size()));
+                    for (std::size_t i = 0; i < parts.size(); ++i) {
+                        CallbackSuggestionItem item;
+                        item.handlerName = parts[i];
+                        item.x = valueLeft + itemWidth * static_cast<float>(i);
+                        item.y = layout.top + 2.0f;
+                        item.width = itemWidth;
+                        item.height = kRowHeight - 6.0f;
+                        suggestions_.push_back(item);
+                    }
+                }
+            }
+        }
+    }
     for (const auto& layout : layouts) {
         if (y >= layout.top && y <= layout.top + kRowHeight) {
             return layout.row;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::ProjectDocument& document, float x, float y) const
+{
+    if (!contains(x, y)) {
+        return std::nullopt;
+    }
+
+    // Ensure suggestions_ is up-to-date by calling hitTestRow which rebuilds suggestions_
+    (void)hitTestRow(document, x, y);
+
+    for (const auto& item : suggestions_) {
+        if (x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height) {
+            return item.handlerName;
         }
     }
 
