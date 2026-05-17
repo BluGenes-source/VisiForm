@@ -2,10 +2,12 @@
 
 #include "model/ProjectDocument.h"
 
+#include "model/WidgetRegistry.h"
 #include "utils/IdGenerator.h"
 
 #include <functional>
 #include <algorithm>
+#include <map>
 #include <set>
 #include <type_traits>
 
@@ -94,8 +96,12 @@ std::string duplicateNameFor(const WidgetNode& widget, const std::string& id)
         return "textBox" + suffix;
     case WidgetType::CheckBox:
         return "checkBox" + suffix;
+    case WidgetType::RadioButton:
+        return "radioButton" + suffix;
     case WidgetType::Slider:
         return "slider" + suffix;
+    case WidgetType::ScrollBar:
+        return "scrollBar" + suffix;
     case WidgetType::Frame:
         return "frame" + suffix;
     case WidgetType::Image:
@@ -131,28 +137,18 @@ ProjectDocument ProjectDocument::createDefault()
 {
     ProjectDocument document;
     document.projectName = "UntitledVisiFormProject";
-    document.mainFormClassName = "MainWindow";
-    document.root = WidgetNode{
-        "form_main",
-        "MainWindow",
-        WidgetType::FormWindow,
-        Rect{ 0.0f, 0.0f, 900.0f, 600.0f }
-    };
+    document.mainFormClassName = "AppMainWindow";
+    document.generatedBaseClassName = "MainWindow";
+    document.userSubclassName = "AppMainWindow";
+    document.root = WidgetRegistry::instance().createDefaultWidget(WidgetType::FormWindow, "form_main");
+    document.root.name = "MainWindow";
+    document.root.bounds = Rect{ 0.0f, 0.0f, 900.0f, 600.0f };
     document.root.setProperty("title", "MainWindow");
-    document.root.setProperty("backgroundColor", "#202026");
-    document.root.setProperty("hint", "Main form window.");
-    document.root.setProperty("onLoad", "");
-    document.root.setProperty("onClose", "");
 
-    WidgetNode helloButton{
-        "button_hello",
-        "helloButton",
-        WidgetType::Button,
-        Rect{ 40.0f, 40.0f, 160.0f, 40.0f }
-    };
+    WidgetNode helloButton = WidgetRegistry::instance().createDefaultWidget(WidgetType::Button, "button_hello");
+    helloButton.name = "helloButton";
+    helloButton.bounds = Rect{ 40.0f, 40.0f, 160.0f, 40.0f };
     helloButton.setProperty("text", "Click Me");
-    helloButton.setProperty("hint", "Runs an action when clicked.");
-    helloButton.setProperty("onClick", "");
     document.root.children.push_back(std::move(helloButton));
     document.setSelection("button_hello");
 
@@ -163,6 +159,21 @@ const std::string& ProjectDocument::name() const
 {
     return projectName;
 }
+
+namespace {
+
+void collectRadioButtonsByGroup(WidgetNode& widget, std::map<std::string, std::vector<WidgetNode*>>& groups)
+{
+    if (widget.type == WidgetType::RadioButton) {
+        groups[widget.getStringProperty("group", "default")].push_back(&widget);
+    }
+
+    for (auto& child : widget.children) {
+        collectRadioButtonsByGroup(child, groups);
+    }
+}
+
+} // namespace
 
 WidgetNode* ProjectDocument::selectedWidget()
 {
@@ -418,6 +429,55 @@ bool ProjectDocument::isPrimarySelected(const std::string& id) const
 bool ProjectDocument::isSecondarySelected(const std::string& id) const
 {
     return isSelected(id) && !isPrimarySelected(id);
+}
+
+bool ProjectDocument::selectRadioButtonInGroup(const std::string& id)
+{
+    WidgetNode* selectedRadio = findWidgetById(id);
+    if (selectedRadio == nullptr || selectedRadio->type != WidgetType::RadioButton) {
+        return false;
+    }
+
+    const std::string group = selectedRadio->getStringProperty("group", "default");
+    bool changed = false;
+    std::map<std::string, std::vector<WidgetNode*>> groups;
+    collectRadioButtonsByGroup(root, groups);
+    if (const auto iterator = groups.find(group); iterator != groups.end()) {
+        for (auto* radio : iterator->second) {
+            const bool shouldBeSelected = radio->id == id;
+            if (radio->getBoolProperty("selected", false) != shouldBeSelected) {
+                radio->setProperty("selected", shouldBeSelected);
+                changed = true;
+            }
+        }
+    }
+
+    return changed;
+}
+
+bool ProjectDocument::normalizeRadioGroups()
+{
+    std::map<std::string, std::vector<WidgetNode*>> groups;
+    collectRadioButtonsByGroup(root, groups);
+
+    bool changed = false;
+    for (auto& [groupName, radios] : groups) {
+        (void)groupName;
+        bool foundSelected = false;
+        for (auto* radio : radios) {
+            const bool isSelected = radio->getBoolProperty("selected", false);
+            if (isSelected && !foundSelected) {
+                foundSelected = true;
+                continue;
+            }
+            if (isSelected) {
+                radio->setProperty("selected", false);
+                changed = true;
+            }
+        }
+    }
+
+    return changed;
 }
 
 void ProjectDocument::clearSelection()

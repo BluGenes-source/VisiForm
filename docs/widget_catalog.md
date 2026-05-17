@@ -10,9 +10,24 @@ Current widget types:
 - `Button`
 - `TextBox`
 - `CheckBox`
+- `RadioButton`
 - `Slider`
+- `ScrollBar`
 - `Image`
 - `Spacer`
+
+## Widget registry
+
+Built-in widgets are currently described through an internal `WidgetRegistry`.
+
+The registry stores:
+
+- palette display names
+- default hints
+- default and minimum sizes
+- editable properties
+- event properties
+- event signature kinds used by export callback hooks and suggestions
 
 ## Event metadata
 
@@ -27,7 +42,11 @@ Supported event properties:
   - `onClick`
 - `CheckBox`
   - `onToggle`
+- `RadioButton`
+  - `onSelected`
 - `Slider`
+  - `onChanged`
+- `ScrollBar`
   - `onChanged`
 - `TextBox`
   - `onTextChanged`
@@ -54,6 +73,7 @@ This help text is used by the editor for status-bar hints and property inspector
 ## Current limitations
 
 - Event metadata is edited through the property inspector only
+- Event fields currently show simple existing-callback suggestions instead of a full dropdown editor
 - No separate visual event editor yet
 - Generated projects currently emit handler stubs and TODO comments
 - Full generated interactive event dispatch is not implemented yet
@@ -66,10 +86,41 @@ Current default editor widget sizes are tuned for readable text:
 - `Button` - `180 x 46`
 - `TextBox` - `220 x 36`
 - `CheckBox` - `220 x 32`
+- `RadioButton` - `280 x 52`
 - `Slider` - `220 x 36`
+- `ScrollBar` - `240 x 36`
 - `Frame` - `260 x 160`
 - `Image` - `180 x 120`
 - `Spacer` - `160 x 40`
 
 Text-capable widgets may grow wider after text or title edits to keep text readable.
 Automatic growth currently expands width only and does not shrink widgets automatically.
+
+## RadioButton notes
+
+Current `RadioButton` properties:
+
+- `text`
+- `selected`
+- `group`
+- `hint`
+- `onSelected`
+
+Current behavior:
+
+- `selected = true` clears other `RadioButton` widgets in the same `group`
+- `selected = false` does not automatically select another widget
+
+## ScrollBar notes
+
+Current `ScrollBar` properties:
+
+- `orientation`
+- `min`
+- `max`
+- `value`
+- `pageSize`
+- `hint`
+- `onChanged`
+
+Current editor rendering uses arrow-button regions, a track, and a thumb so it looks like a scrollbar instead of a slider.

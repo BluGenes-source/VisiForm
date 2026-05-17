@@ -42,8 +42,12 @@ std::string IdGenerator::prefixForType(model::WidgetType widgetType)
         return "textbox_";
     case model::WidgetType::CheckBox:
         return "checkbox_";
+    case model::WidgetType::RadioButton:
+        return "radiobutton_";
     case model::WidgetType::Slider:
         return "slider_";
+    case model::WidgetType::ScrollBar:
+        return "scrollbar_";
     case model::WidgetType::Image:
         return "image_";
     case model::WidgetType::Spacer:

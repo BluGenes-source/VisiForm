@@ -15,6 +15,8 @@ Top-level fields:
 - `schemaVersion` - integer schema identifier
 - `projectName` - project display name
 - `mainFormClassName` - generated C++ class name for the main form
+- `generatedBaseClassName` - generated base window class name
+- `userSubclassName` - generated user subclass name
 - `selectedWidgetId` - currently selected widget id
 - `root` - root `WidgetNode`
 
@@ -44,7 +46,9 @@ Supported `type` values:
 - `Button`
 - `TextBox`
 - `CheckBox`
+- `RadioButton`
 - `Slider`
+- `ScrollBar`
 - `Image`
 - `Spacer`
 
@@ -86,6 +90,7 @@ Current event handler name properties:
 
 - `onClick`
 - `onToggle`
+- `onSelected`
 - `onChanged`
 - `onTextChanged`
 - `onLoad`
@@ -96,6 +101,9 @@ Empty strings mean no handler is assigned.
 
 Future schema versions may move event metadata into a dedicated events object.
 
+For compatibility, older files may contain only `mainFormClassName`.
+Current files may also store `generatedBaseClassName` and `userSubclassName`.
+
 ## Common widget help property
 
 The editor may store a widget help hint as:
@@ -103,6 +111,35 @@ The editor may store a widget help hint as:
 - `hint` - string help text shown by the editor UI
 
 The `hint` property is editor-facing help text. It is preserved by save and load, and may also appear as generated code comments during export.
+
+Current export naming rule:
+
+- `generatedBaseClassName` is effectively fixed to `MainWindow`
+- `userSubclassName` is the editable user subclass name used by export
+
+## RadioButton properties
+
+Common `RadioButton` properties include:
+
+- `text`
+- `selected`
+- `group`
+- `hint`
+- `onSelected`
+
+Widgets in the same `group` are normalized so only one selected radio button remains true.
+
+## ScrollBar properties
+
+Common `ScrollBar` properties include:
+
+- `orientation` - `Horizontal` or `Vertical`
+- `min`
+- `max`
+- `value`
+- `pageSize`
+- `hint`
+- `onChanged`
 
 ## Example project file
 

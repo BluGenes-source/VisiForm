@@ -89,6 +89,46 @@
           "text": "Create Project"
         },
         "type": "Button"
+      },
+      {
+        "bounds": {
+          "height": 52.0,
+          "width": 260.0,
+          "x": 320.0,
+          "y": 80.0
+        },
+        "children": [],
+        "id": "radiobutton_mode",
+        "name": "modeRadioButton",
+        "properties": {
+          "group": "mode",
+          "hint": "Selects one option from a group.",
+          "onSelected": "",
+          "selected": true,
+          "text": "Use advanced mode"
+        },
+        "type": "RadioButton"
+      },
+      {
+        "bounds": {
+          "height": 36.0,
+          "width": 240.0,
+          "x": 320.0,
+          "y": 160.0
+        },
+        "children": [],
+        "id": "scrollbar_preview",
+        "name": "previewScrollBar",
+        "properties": {
+          "hint": "Scrolls through a range of values.",
+          "max": 100,
+          "min": 0,
+          "onChanged": "",
+          "orientation": "Horizontal",
+          "pageSize": 10,
+          "value": 25
+        },
+        "type": "ScrollBar"
       }
     ],
     "id": "form_main",
@@ -100,6 +140,8 @@
     },
     "type": "FormWindow"
   },
+  "generatedBaseClassName": "MainWindow",
   "schemaVersion": 1,
+  "userSubclassName": "AppMainWindow",
   "selectedWidgetId": "form_main"
 }

@@ -212,6 +212,25 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
             || !tryReadString(json, "mainFormClassName", document.mainFormClassName, errorMessage)) {
             return std::nullopt;
         }
+        document.generatedBaseClassName = "MainWindow";
+        document.userSubclassName = (document.mainFormClassName.empty() || document.mainFormClassName == "MainWindow")
+            ? "AppMainWindow"
+            : document.mainFormClassName;
+        if (const auto iterator = json.find("userSubclassName"); iterator != json.end()) {
+            if (!iterator->is_string()) {
+                errorMessage = "userSubclassName must be a string when present.";
+                return std::nullopt;
+            }
+            document.userSubclassName = iterator->get<std::string>();
+        }
+        if (const auto iterator = json.find("generatedBaseClassName"); iterator != json.end()) {
+            if (!iterator->is_string()) {
+                errorMessage = "generatedBaseClassName must be a string when present.";
+                return std::nullopt;
+            }
+            (void)iterator;
+        }
+        document.mainFormClassName = document.userSubclassName;
 
         const auto rootIterator = json.find("root");
         if (rootIterator == json.end()) {

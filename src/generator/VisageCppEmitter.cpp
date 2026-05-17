@@ -26,7 +26,23 @@ std::string sanitizeClassName(const std::string& value)
     if (!sanitized.empty() && std::islower(static_cast<unsigned char>(sanitized.front())) != 0) {
         sanitized.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(sanitized.front())));
     }
+
     return sanitized;
+}
+
+std::string generatedBaseClassName(const visiform::model::ProjectDocument& document)
+{
+    (void)document;
+    return "MainWindow";
+}
+
+std::string userSubclassName(const visiform::model::ProjectDocument& document)
+{
+    const std::string fallback = document.userSubclassName.empty()
+        ? (document.mainFormClassName.empty() ? "AppMainWindow" : document.mainFormClassName)
+        : document.userSubclassName;
+    const std::string sanitized = sanitizeClassName(fallback);
+    return sanitized.empty() || sanitized == "MainWindow" ? "AppMainWindow" : sanitized;
 }
 
 std::string escapeCppStringLiteral(const std::string& value)
@@ -165,7 +181,10 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
         return { "onClick" };
     case visiform::model::WidgetType::CheckBox:
         return { "onToggle" };
+    case visiform::model::WidgetType::RadioButton:
+        return { "onSelected" };
     case visiform::model::WidgetType::Slider:
+    case visiform::model::WidgetType::ScrollBar:
         return { "onChanged" };
     case visiform::model::WidgetType::TextBox:
         return { "onTextChanged" };
@@ -184,6 +203,9 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
 HandlerSignature signatureForEventKey(const std::string& eventKey)
 {
     if (eventKey == "onToggle") {
+        return HandlerSignature::Bool;
+    }
+    if (eventKey == "onSelected") {
         return HandlerSignature::Bool;
     }
     if (eventKey == "onChanged") {
@@ -407,6 +429,20 @@ void emitWidgetDraw(std::ostringstream& stream,
                << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 26.0f, " << yExpr << " + 4.0f, " << widthExpr << " - 30.0f, " << heightExpr << " - 6.0f);\n";
         stream << indent << "}\n";
         break;
+    case visiform::model::WidgetType::RadioButton:
+        stream << indent << "canvas.setColor(0xffffffff);\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << " + (" << heightExpr << " - 18.0f) * 0.5f, 18.0f, 18.0f);\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << " + (" << heightExpr << " - 18.0f) * 0.5f, 18.0f, 18.0f, 0xff8390A4);\n";
+        if (widget.getBoolProperty("selected", false)) {
+            stream << indent << "canvas.setColor(0xff2D7FF9);\n";
+            stream << indent << "canvas.fill(" << xExpr << " + 5.0f, " << yExpr << " + (" << heightExpr << " - 8.0f) * 0.5f, 8.0f, 8.0f);\n";
+        }
+        stream << indent << "if (drawText) {\n";
+        stream << indent << "    canvas.setColor(0xffEEF3FA);\n";
+        stream << indent << "    canvas.text(" << emitStringLiteral(displayTextOrFallback(widget, "text", "Radio Button"))
+               << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 26.0f, " << yExpr << " + 4.0f, " << widthExpr << " - 30.0f, " << heightExpr << " - 6.0f);\n";
+        stream << indent << "}\n";
+        break;
     case visiform::model::WidgetType::Slider: {
         const float minValue = widget.getFloatProperty("min", 0.0f);
         const float maxValue = widget.getFloatProperty("max", 100.0f);
@@ -418,6 +454,53 @@ void emitWidgetDraw(std::ostringstream& stream,
         stream << indent << "canvas.setColor(0xff2D7FF9);\n";
         stream << indent << "canvas.fill(" << xExpr << " + 8.0f + (" << widthExpr << " - 28.0f) * " << emitFloat(normalized)
                << ", " << yExpr << " + " << heightExpr << " * 0.5f - 8.0f, 12.0f, 16.0f);\n";
+        break;
+    }
+    case visiform::model::WidgetType::ScrollBar: {
+        const bool vertical = widget.getStringProperty("orientation", "Horizontal") == "Vertical";
+        const float minValue = widget.getFloatProperty("min", 0.0f);
+        const float maxValue = std::max(minValue + 1.0f, widget.getFloatProperty("max", 100.0f));
+        const float currentValue = std::clamp(widget.getFloatProperty("value", 0.0f), minValue, maxValue);
+        const float pageSize = std::max(1.0f, widget.getFloatProperty("pageSize", 10.0f));
+        const float normalized = std::clamp((currentValue - minValue) / (maxValue - minValue), 0.0f, 1.0f);
+        const float thumbFactor = std::clamp(pageSize / (maxValue - minValue + pageSize), 0.18f, 0.55f);
+        stream << indent << "canvas.setColor(0xffD7DEE8);\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", 0xff7D899C);\n";
+        if (vertical) {
+            stream << indent << "const float arrowSize = std::min(" << widthExpr << ", 20.0f);\n";
+            stream << indent << "const float trackTop = " << yExpr << " + arrowSize;\n";
+            stream << indent << "const float trackHeight = std::max(0.0f, " << heightExpr << " - arrowSize * 2.0f);\n";
+            stream << indent << "const float thumbHeight = std::clamp(trackHeight * " << emitFloat(thumbFactor) << ", 18.0f, std::max(18.0f, trackHeight));\n";
+            stream << indent << "const float thumbY = trackTop + std::max(0.0f, trackHeight - thumbHeight) * " << emitFloat(normalized) << ";\n";
+            stream << indent << "canvas.setColor(0xffEEF2F8);\n";
+            stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", arrowSize);\n";
+            stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << " + " << heightExpr << " - arrowSize, " << widthExpr << ", arrowSize);\n";
+            stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", arrowSize, 0xff7D899C);\n";
+            stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << " + " << heightExpr << " - arrowSize, " << widthExpr << ", arrowSize, 0xff7D899C);\n";
+            stream << indent << "canvas.setColor(0xffC8D0DC);\n";
+            stream << indent << "canvas.fill(" << xExpr << " + 2.0f, trackTop, " << widthExpr << " - 4.0f, trackHeight);\n";
+            stream << indent << "canvas.setColor(0xff6A788D);\n";
+            stream << indent << "canvas.fill(" << xExpr << " + 4.0f, thumbY, " << widthExpr << " - 8.0f, thumbHeight);\n";
+            stream << indent << "drawBorder(canvas, " << xExpr << " + 4.0f, thumbY, " << widthExpr << " - 8.0f, thumbHeight, 0xff485669);\n";
+        }
+        else {
+            stream << indent << "const float arrowSize = std::min(" << heightExpr << ", 20.0f);\n";
+            stream << indent << "const float trackLeft = " << xExpr << " + arrowSize;\n";
+            stream << indent << "const float trackWidth = std::max(0.0f, " << widthExpr << " - arrowSize * 2.0f);\n";
+            stream << indent << "const float thumbWidth = std::clamp(trackWidth * " << emitFloat(thumbFactor) << ", 18.0f, std::max(18.0f, trackWidth));\n";
+            stream << indent << "const float thumbX = trackLeft + std::max(0.0f, trackWidth - thumbWidth) * " << emitFloat(normalized) << ";\n";
+            stream << indent << "canvas.setColor(0xffEEF2F8);\n";
+            stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", arrowSize, " << heightExpr << ");\n";
+            stream << indent << "canvas.fill(" << xExpr << " + " << widthExpr << " - arrowSize, " << yExpr << ", arrowSize, " << heightExpr << ");\n";
+            stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", arrowSize, " << heightExpr << ", 0xff7D899C);\n";
+            stream << indent << "drawBorder(canvas, " << xExpr << " + " << widthExpr << " - arrowSize, " << yExpr << ", arrowSize, " << heightExpr << ", 0xff7D899C);\n";
+            stream << indent << "canvas.setColor(0xffC8D0DC);\n";
+            stream << indent << "canvas.fill(trackLeft, " << yExpr << " + 2.0f, trackWidth, " << heightExpr << " - 4.0f);\n";
+            stream << indent << "canvas.setColor(0xff6A788D);\n";
+            stream << indent << "canvas.fill(thumbX, " << yExpr << " + 4.0f, thumbWidth, " << heightExpr << " - 8.0f);\n";
+            stream << indent << "drawBorder(canvas, thumbX, " << yExpr << " + 4.0f, thumbWidth, " << heightExpr << " - 8.0f, 0xff485669);\n";
+        }
         break;
     }
     case visiform::model::WidgetType::Image:
@@ -444,9 +527,9 @@ void emitWidgetDraw(std::ostringstream& stream,
     }
 }
 
-std::string emitMainWindowHeader(const visiform::model::ProjectDocument& document)
+std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& document)
 {
-    const std::string className = sanitizeClassName(document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
+    const std::string className = generatedBaseClassName(document);
     std::vector<HandlerInfo> handlers;
     std::string ignoredError;
     collectHandlers(document, handlers, ignoredError);
@@ -462,15 +545,20 @@ std::string emitMainWindowHeader(const visiform::model::ProjectDocument& documen
     stream << "    ~" << className << "() override = default;\n\n";
     stream << "    void showWindow();\n";
     stream << "    void draw(visage::Canvas& canvas) override;\n\n";
-    stream << "private:\n";
-    stream << "    bool canDrawText() const;\n\n";
+    stream << "protected:\n";
     for (const auto& handler : handlers) {
         stream << "    // Referenced by: " << handlerReferenceList(handler) << "\n";
-        stream << "    " << handlerDeclaration(handler) << "\n";
+        std::string declaration = handlerDeclaration(handler);
+        if (!declaration.empty() && declaration.back() == ';') {
+            declaration.pop_back();
+        }
+        stream << "    virtual " << declaration << ";\n";
     }
     if (!handlers.empty()) {
         stream << "\n";
     }
+    stream << "private:\n";
+    stream << "    bool canDrawText() const;\n\n";
     stream << "    visage::Font labelFont_{};\n";
     stream << "};\n";
     return stream.str();
@@ -478,10 +566,10 @@ std::string emitMainWindowHeader(const visiform::model::ProjectDocument& documen
 
 std::string emitMainCpp(const visiform::model::ProjectDocument& document)
 {
-    const std::string className = sanitizeClassName(document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
+    const std::string className = userSubclassName(document);
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
-    stream << "#include \"MainWindow.h\"\n\n";
+    stream << "#include \"" << className << ".h\"\n\n";
     stream << "#include <exception>\n";
     stream << "#include <iostream>\n\n";
     stream << "int main()\n";
@@ -507,20 +595,19 @@ std::string emitMainCpp(const visiform::model::ProjectDocument& document)
     return stream.str();
 }
 
-std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document, const std::string& existingMainWindowCpp)
+std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& document)
 {
-    const std::string className = sanitizeClassName(document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
-    const std::string windowTitle = document.root.getStringProperty("title", document.mainFormClassName.empty() ? "MainWindow" : document.mainFormClassName);
+    const std::string className = generatedBaseClassName(document);
+    const std::string windowTitle = document.root.getStringProperty("title", userSubclassName(document));
     const float windowWidth = std::max(1000.0f, document.root.bounds.width + 120.0f);
     const float windowHeight = std::max(800.0f, document.root.bounds.height + 120.0f);
     std::vector<HandlerInfo> handlers;
     std::string ignoredError;
     collectHandlers(document, handlers, ignoredError);
-    const PreservedUserCodeBlocks preservedUserCodeBlocks = extractPreservedUserCodeBlocks(existingMainWindowCpp);
 
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
-    stream << "#include \"MainWindow.h\"\n\n";
+    stream << "#include \"" << className << ".h\"\n\n";
     stream << "#include <array>\n";
     stream << "#include <fstream>\n";
     stream << "#include <string>\n\n";
@@ -576,6 +663,68 @@ std::string emitMainWindowCpp(const visiform::model::ProjectDocument& document, 
         stream << "\n" << handlerDefinitionSignature(className, handler) << "\n";
         stream << "{\n";
         stream << "    // References: " << handlerReferenceList(handler) << "\n";
+        if (handler.signature == HandlerSignature::Bool) {
+            stream << "    (void)checked;\n";
+        }
+        else if (handler.signature == HandlerSignature::Float) {
+            stream << "    (void)value;\n";
+        }
+        else if (handler.signature == HandlerSignature::String) {
+            stream << "    (void)text;\n";
+        }
+        stream << "    // Default generated event hook.\n";
+        stream << "}\n";
+    }
+    return stream.str();
+}
+
+std::string emitUserSubclassHeader(const visiform::model::ProjectDocument& document)
+{
+    const std::string baseClass = generatedBaseClassName(document);
+    const std::string userClass = userSubclassName(document);
+    std::vector<HandlerInfo> handlers;
+    std::string ignoredError;
+    collectHandlers(document, handlers, ignoredError);
+
+    std::ostringstream stream;
+    stream << kGeneratedFileHeader;
+    stream << "#pragma once\n\n";
+    stream << "#include \"" << baseClass << ".h\"\n\n";
+    stream << "class " << userClass << " : public " << baseClass << " {\n";
+    stream << "public:\n";
+    stream << "    " << userClass << "();\n";
+    stream << "    ~" << userClass << "() override = default;\n";
+    if (!handlers.empty()) {
+        stream << "\nprotected:\n";
+        for (const auto& handler : handlers) {
+            std::string declaration = handlerDeclaration(handler);
+            if (!declaration.empty() && declaration.back() == ';') {
+                declaration.pop_back();
+            }
+            stream << "    " << declaration << " override;\n";
+        }
+    }
+    stream << "};\n";
+    return stream.str();
+}
+
+std::string emitUserSubclassCpp(const visiform::model::ProjectDocument& document, const std::string& existingUserCpp)
+{
+    const std::string userClass = userSubclassName(document);
+    std::vector<HandlerInfo> handlers;
+    std::string ignoredError;
+    collectHandlers(document, handlers, ignoredError);
+    const PreservedUserCodeBlocks preservedUserCodeBlocks = extractPreservedUserCodeBlocks(existingUserCpp);
+
+    std::ostringstream stream;
+    stream << kGeneratedFileHeader;
+    stream << "#include \"" << userClass << ".h\"\n\n";
+    stream << userClass << "::" << userClass << "() = default;\n";
+
+    for (const auto& handler : handlers) {
+        stream << "\n" << handlerDefinitionSignature(userClass, handler) << "\n";
+        stream << "{\n";
+        stream << "    // References: " << handlerReferenceList(handler) << "\n";
         stream << "    // USER CODE BEGIN " << handler.handlerName << "\n";
         if (const auto iterator = preservedUserCodeBlocks.find(handler.handlerName); iterator != preservedUserCodeBlocks.end() && !iterator->second.empty()) {
             std::istringstream preservedStream(iterator->second);
@@ -618,8 +767,14 @@ bool VisageCppEmitter::emitProjectSources(
 
     output = {
         emitMainCpp(document),
-        emitMainWindowHeader(document),
-        emitMainWindowCpp(document, existingMainWindowCpp)
+        "MainWindow.h",
+        emitGeneratedBaseHeader(document),
+        "MainWindow.cpp",
+        emitGeneratedBaseCpp(document),
+        userSubclassName(document) + ".h",
+        emitUserSubclassHeader(document),
+        userSubclassName(document) + ".cpp",
+        emitUserSubclassCpp(document, existingMainWindowCpp)
     };
     return true;
 }

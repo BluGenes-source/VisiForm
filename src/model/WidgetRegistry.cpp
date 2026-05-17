@@ -1,0 +1,303 @@
+#include "model/WidgetRegistry.h"
+
+#include <algorithm>
+
+namespace visiform::model {
+namespace {
+
+std::vector<WidgetPropertyDefinition> commonTextProperties()
+{
+    return {
+        { "hint", "hint", PropertyValue{}, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+}
+
+WidgetDefinition makeFormWindowDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::FormWindow;
+    definition.typeName = "FormWindow";
+    definition.displayName = "Form Window";
+    definition.paletteGroup = "Root";
+    definition.defaultNamePrefix = "form";
+    definition.defaultHint = "Main form window.";
+    definition.size = { 900.0f, 600.0f, 300.0f, 200.0f };
+    definition.properties = {
+        { "title", "title", "MainWindow", PropertyEditKind::Text, true, "Window title text." },
+        { "backgroundColor", "backgroundColor", "#202026", PropertyEditKind::Color, true, "Form background color." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    definition.events = {
+        { "onLoad", "onLoad", "void", "Called when the form loads." },
+        { "onClose", "onClose", "void", "Called when the form closes." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeFrameDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Frame;
+    definition.typeName = "Frame";
+    definition.displayName = "Frame";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "frame";
+    definition.defaultHint = "Groups related controls visually.";
+    definition.size = { 300.0f, 180.0f, 180.0f, 120.0f };
+    definition.properties = {
+        { "title", "title", "Frame", PropertyEditKind::Text, true, "Frame caption text." },
+        { "backgroundColor", "backgroundColor", "#D9DEE8", PropertyEditKind::Color, true, "Frame background color." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeLabelDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Label;
+    definition.typeName = "Label";
+    definition.displayName = "Label";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "label";
+    definition.defaultHint = "Displays static text.";
+    definition.size = { 260.0f, 64.0f, 140.0f, 58.0f };
+    definition.properties = {
+        { "text", "text", "Label", PropertyEditKind::Text, true, "Displayed label text." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeButtonDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Button;
+    definition.typeName = "Button";
+    definition.displayName = "Button";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "button";
+    definition.defaultHint = "Runs an action when clicked.";
+    definition.size = { 260.0f, 56.0f, 140.0f, 52.0f };
+    definition.properties = {
+        { "text", "text", "Button", PropertyEditKind::Text, true, "Button label text." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    definition.events = {
+        { "onClick", "onClick", "void", "Called when the button is clicked." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeTextBoxDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::TextBox;
+    definition.typeName = "TextBox";
+    definition.displayName = "Text Box";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "textBox";
+    definition.defaultHint = "Allows text entry.";
+    definition.size = { 260.0f, 48.0f, 160.0f, 44.0f };
+    definition.properties = {
+        { "text", "text", "", PropertyEditKind::Text, true, "Text box contents." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    definition.events = {
+        { "onTextChanged", "onTextChanged", "string", "Called when the text changes." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeCheckBoxDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::CheckBox;
+    definition.typeName = "CheckBox";
+    definition.displayName = "Check Box";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "checkBox";
+    definition.defaultHint = "Toggles an option on or off.";
+    definition.size = { 300.0f, 68.0f, 200.0f, 62.0f };
+    definition.properties = {
+        { "text", "text", "CheckBox", PropertyEditKind::Text, true, "Check box label text." },
+        { "checked", "checked", false, PropertyEditKind::Bool, true, "Initial checked state." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    definition.events = {
+        { "onToggle", "onToggle", "bool", "Called when the check box toggles." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeRadioButtonDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::RadioButton;
+    definition.typeName = "RadioButton";
+    definition.displayName = "Radio Button";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "radioButton";
+    definition.defaultHint = "Selects one option from a group.";
+    definition.size = { 280.0f, 52.0f, 180.0f, 48.0f };
+    definition.properties = {
+        { "text", "text", "Radio Button", PropertyEditKind::Text, true, "Radio button label text." },
+        { "selected", "selected", false, PropertyEditKind::Bool, true, "Initial selected state." },
+        { "group", "group", "default", PropertyEditKind::Text, true, "Logical radio group name." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    definition.events = {
+        { "onSelected", "onSelected", "bool", "Called when the radio button is selected." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeSliderDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Slider;
+    definition.typeName = "Slider";
+    definition.displayName = "Slider";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "slider";
+    definition.defaultHint = "Adjusts a numeric value.";
+    definition.size = { 240.0f, 44.0f, 120.0f, 40.0f };
+    definition.properties = {
+        { "min", "min", 0, PropertyEditKind::Integer, true, "Minimum slider value." },
+        { "max", "max", 100, PropertyEditKind::Integer, true, "Maximum slider value." },
+        { "value", "value", 50, PropertyEditKind::Integer, true, "Current slider value." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    definition.events = {
+        { "onChanged", "onChanged", "float", "Called when the slider value changes." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeScrollBarDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::ScrollBar;
+    definition.typeName = "ScrollBar";
+    definition.displayName = "Scroll Bar";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "scrollBar";
+    definition.defaultHint = "Scrolls through a range of values.";
+    definition.size = { 240.0f, 36.0f, 100.0f, 28.0f };
+    definition.properties = {
+        { "orientation", "orientation", "Horizontal", PropertyEditKind::Text, true, "Scroll bar orientation: Horizontal or Vertical." },
+        { "min", "min", 0, PropertyEditKind::Integer, true, "Minimum scroll value." },
+        { "max", "max", 100, PropertyEditKind::Integer, true, "Maximum scroll value." },
+        { "value", "value", 0, PropertyEditKind::Integer, true, "Current scroll value." },
+        { "pageSize", "pageSize", 10, PropertyEditKind::Integer, true, "Visible page size for the thumb." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    definition.events = {
+        { "onChanged", "onChanged", "float", "Called when the scroll value changes." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeImageDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Image;
+    definition.typeName = "Image";
+    definition.displayName = "Image";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "image";
+    definition.defaultHint = "Displays or reserves space for an image.";
+    definition.size = { 200.0f, 140.0f, 100.0f, 80.0f };
+    definition.properties = {
+        { "source", "source", "", PropertyEditKind::FilePath, true, "Image source path." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeSpacerDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Spacer;
+    definition.typeName = "Spacer";
+    definition.displayName = "Spacer";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "spacer";
+    definition.defaultHint = "Adds spacing between widgets.";
+    definition.size = { 180.0f, 50.0f, 40.0f, 30.0f };
+    definition.properties = {
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    return definition;
+}
+
+std::string defaultNameFromId(const WidgetDefinition& definition, const std::string& id)
+{
+    const auto underscore = id.find_last_of('_');
+    const std::string suffix = underscore == std::string::npos ? std::string{} : id.substr(underscore + 1);
+    return definition.defaultNamePrefix + suffix;
+}
+
+} // namespace
+
+WidgetRegistry::WidgetRegistry()
+    : definitions_{
+        makeFormWindowDefinition(),
+        makeFrameDefinition(),
+        makeLabelDefinition(),
+        makeButtonDefinition(),
+        makeTextBoxDefinition(),
+        makeCheckBoxDefinition(),
+        makeRadioButtonDefinition(),
+        makeSliderDefinition(),
+        makeScrollBarDefinition(),
+        makeImageDefinition(),
+        makeSpacerDefinition() }
+{
+}
+
+const WidgetRegistry& WidgetRegistry::instance()
+{
+    static const WidgetRegistry registry;
+    return registry;
+}
+
+const WidgetDefinition* WidgetRegistry::find(WidgetType type) const
+{
+    const auto iterator = std::find_if(definitions_.begin(), definitions_.end(),
+        [type](const WidgetDefinition& definition) { return definition.type == type; });
+    return iterator == definitions_.end() ? nullptr : &*iterator;
+}
+
+const WidgetDefinition* WidgetRegistry::findByTypeName(const std::string& typeName) const
+{
+    const auto iterator = std::find_if(definitions_.begin(), definitions_.end(),
+        [&typeName](const WidgetDefinition& definition) { return definition.typeName == typeName; });
+    return iterator == definitions_.end() ? nullptr : &*iterator;
+}
+
+const std::vector<WidgetDefinition>& WidgetRegistry::definitions() const
+{
+    return definitions_;
+}
+
+WidgetNode WidgetRegistry::createDefaultWidget(WidgetType type, const std::string& id) const
+{
+    if (const WidgetDefinition* definition = find(type)) {
+        WidgetNode widget{ id, defaultNameFromId(*definition, id), type,
+            Rect{ 0.0f, 0.0f, definition->size.defaultWidth, definition->size.defaultHeight } };
+        for (const auto& property : definition->properties) {
+            widget.setProperty(property.key, property.defaultValue);
+        }
+        for (const auto& event : definition->events) {
+            if (widget.getProperty(event.key) == nullptr) {
+                widget.setProperty(event.key, "");
+            }
+        }
+        return widget;
+    }
+
+    return WidgetNode{ id, id, type };
+}
+
+} // namespace visiform::model

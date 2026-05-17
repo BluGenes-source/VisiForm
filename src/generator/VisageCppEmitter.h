@@ -10,8 +10,14 @@ class VisageCppEmitter {
 public:
     struct EmittedSources {
         std::string mainCpp;
-        std::string mainWindowHeader;
-        std::string mainWindowCpp;
+        std::string generatedBaseHeaderFilename;
+        std::string generatedBaseHeader;
+        std::string generatedBaseCppFilename;
+        std::string generatedBaseCpp;
+        std::string userSubclassHeaderFilename;
+        std::string userSubclassHeader;
+        std::string userSubclassCppFilename;
+        std::string userSubclassCpp;
     };
 
     [[nodiscard]] bool emitProjectSources(

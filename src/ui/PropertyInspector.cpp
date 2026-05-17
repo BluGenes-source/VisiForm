@@ -2,11 +2,14 @@
 
 #include "ui/PropertyInspector.h"
 
+#include "model/WidgetRegistry.h"
+
 #include <iomanip>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <map>
 #include <vector>
 
 namespace visiform::ui {
@@ -69,6 +72,79 @@ PropertyInspector::PropertyEditKind editKindForProperty(const model::PropertyVal
     return PropertyInspector::PropertyEditKind::ReadOnly;
 }
 
+const model::WidgetEventDefinition* findEventDefinition(model::WidgetType type, const std::string& key)
+{
+    if (const auto* definition = model::WidgetRegistry::instance().find(type)) {
+        for (const auto& event : definition->events) {
+            if (event.key == key) {
+                return &event;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+void collectMatchingHandlers(const model::WidgetNode& widget,
+    const std::string& signatureKind,
+    std::set<std::string>& handlerNames)
+{
+    if (const auto* definition = model::WidgetRegistry::instance().find(widget.type)) {
+        for (const auto& event : definition->events) {
+            if (event.handlerSignatureKind != signatureKind) {
+                continue;
+            }
+
+            const std::string handlerName = widget.getStringProperty(event.key, {});
+            if (!handlerName.empty()) {
+                handlerNames.insert(handlerName);
+            }
+        }
+    }
+
+    for (const auto& child : widget.children) {
+        collectMatchingHandlers(child, signatureKind, handlerNames);
+    }
+}
+
+std::string joinSuggestions(const std::set<std::string>& handlerNames)
+{
+    std::ostringstream stream;
+    bool first = true;
+    for (const auto& name : handlerNames) {
+        if (!first) {
+            stream << ", ";
+        }
+        first = false;
+        stream << name;
+    }
+    return stream.str();
+}
+
+PropertyInspector::PropertyEditKind editKindForDefinition(model::PropertyEditKind editKind, bool editable)
+{
+    if (!editable) {
+        return PropertyInspector::PropertyEditKind::ReadOnly;
+    }
+
+    switch (editKind) {
+    case model::PropertyEditKind::Text:
+    case model::PropertyEditKind::Color:
+    case model::PropertyEditKind::FilePath:
+        return PropertyInspector::PropertyEditKind::Text;
+    case model::PropertyEditKind::Integer:
+        return PropertyInspector::PropertyEditKind::Integer;
+    case model::PropertyEditKind::Float:
+        return PropertyInspector::PropertyEditKind::Float;
+    case model::PropertyEditKind::Bool:
+        return PropertyInspector::PropertyEditKind::Bool;
+    case model::PropertyEditKind::ReadOnly:
+        return PropertyInspector::PropertyEditKind::ReadOnly;
+    }
+
+    return PropertyInspector::PropertyEditKind::ReadOnly;
+}
+
 std::vector<RowLayout> buildRowLayouts(float top, float height, const std::vector<PropertyInspector::PropertyRow>& rows)
 {
     std::vector<RowLayout> layouts;
@@ -100,9 +176,10 @@ bool PropertyInspector::contains(float x, float y) const
     return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
 }
 
-std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const model::WidgetNode* selectedWidget) const
+std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const model::ProjectDocument& document) const
 {
     std::vector<PropertyRow> rows;
+    const model::WidgetNode* selectedWidget = document.selectedWidget();
     if (selectedWidget == nullptr) {
         return rows;
     }
@@ -110,7 +187,10 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     rows.push_back({ "id", "id", selectedWidget->id, PropertyEditKind::ReadOnly });
     rows.push_back({ "type", "type", selectedWidget->typeName(), PropertyEditKind::ReadOnly });
     rows.push_back({ "name", "name", selectedWidget->name, PropertyEditKind::Text });
-    rows.push_back({ "hint", "hint", selectedWidget->getStringProperty("hint", {}), PropertyEditKind::Text });
+    if (selectedWidget->type == model::WidgetType::FormWindow) {
+        rows.push_back({ "generatedBaseClassName", "generatedBaseClassName", "MainWindow", PropertyEditKind::ReadOnly });
+        rows.push_back({ "userSubclassName", "userSubclassName", document.userSubclassName, PropertyEditKind::Text });
+    }
     rows.push_back({ "x", "x", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
     rows.push_back({ "y", "y", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
     rows.push_back({ "width", "width", formatFloat(selectedWidget->bounds.width), PropertyEditKind::Float });
@@ -121,13 +201,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         drawnKeys.insert(row.key);
     }
 
-    const auto addWidgetProperty = [&](const std::string& key) {
-        if (const auto* property = selectedWidget->getProperty(key)) {
-            rows.push_back({ key, key, propertyValueText(*property), editKindForProperty(*property) });
-            drawnKeys.insert(key);
-        }
-    };
-    const auto addEventProperty = [&](const std::string& key, const std::string& fallback = {}) {
+    const auto addEventProperty = [&](const std::string& key, const std::string& label, const std::string& fallback = {}) {
         if (drawnKeys.contains(key)) {
             return;
         }
@@ -135,68 +209,34 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         const std::string displayValue = fallback.empty()
             ? displayTextOrFallback(selectedWidget, key, {})
             : displayTextOrFallback(selectedWidget, key, fallback);
-        rows.push_back({ key, key, displayValue, PropertyEditKind::Text });
+        rows.push_back({ key, label, displayValue, PropertyEditKind::Text });
         drawnKeys.insert(key);
     };
 
-    switch (selectedWidget->type) {
-    case model::WidgetType::Label:
-    case model::WidgetType::Button:
-    case model::WidgetType::TextBox:
-        addWidgetProperty("text");
-        break;
-    case model::WidgetType::CheckBox:
-        addWidgetProperty("text");
-        addWidgetProperty("checked");
-        break;
-    case model::WidgetType::Slider:
-        addWidgetProperty("min");
-        addWidgetProperty("max");
-        addWidgetProperty("value");
-        break;
-    case model::WidgetType::Frame:
-        addWidgetProperty("title");
-        addWidgetProperty("backgroundColor");
-        break;
-    case model::WidgetType::Image:
-        addWidgetProperty("source");
-        break;
-    case model::WidgetType::Spacer:
-        break;
-    case model::WidgetType::FormWindow:
-        addWidgetProperty("title");
-        addWidgetProperty("backgroundColor");
-        break;
-    }
+    if (const auto* definition = model::WidgetRegistry::instance().find(selectedWidget->type)) {
+        for (const auto& property : definition->properties) {
+            const auto* propertyValue = selectedWidget->getProperty(property.key);
+            const std::string displayValue = propertyValue != nullptr ? propertyValueText(*propertyValue) : property.defaultValue.toDisplayString();
+            rows.push_back({ property.key, property.label, displayValue, editKindForDefinition(property.editKind, property.editable) });
+            drawnKeys.insert(property.key);
+        }
 
-    const std::size_t propertyCountBeforeEvents = rows.size();
-    switch (selectedWidget->type) {
-    case model::WidgetType::Button:
-        addEventProperty("onClick");
-        break;
-    case model::WidgetType::CheckBox:
-        addEventProperty("onToggle");
-        break;
-    case model::WidgetType::Slider:
-        addEventProperty("onChanged");
-        break;
-    case model::WidgetType::TextBox:
-        addEventProperty("onTextChanged");
-        break;
-    case model::WidgetType::FormWindow:
-        addEventProperty("onLoad");
-        addEventProperty("onClose");
-        break;
-    case model::WidgetType::Label:
-    case model::WidgetType::Frame:
-    case model::WidgetType::Image:
-    case model::WidgetType::Spacer:
-        break;
-    }
+        const std::size_t propertyCountBeforeEvents = rows.size();
+        for (const auto& event : definition->events) {
+            addEventProperty(event.key, event.label);
+            if (activeKey_ == event.key) {
+                std::set<std::string> handlerNames;
+                collectMatchingHandlers(document.root, event.handlerSignatureKind, handlerNames);
+                if (!handlerNames.empty()) {
+                    rows.push_back({ "__suggestions_" + event.key, "Existing", joinSuggestions(handlerNames), PropertyEditKind::ReadOnly });
+                }
+            }
+        }
 
-    if (rows.size() > propertyCountBeforeEvents) {
-        rows.insert(rows.begin() + static_cast<std::ptrdiff_t>(propertyCountBeforeEvents),
-            PropertyRow{ "__section_events", "Events", {}, PropertyEditKind::ReadOnly, true });
+        if (rows.size() > propertyCountBeforeEvents) {
+            rows.insert(rows.begin() + static_cast<std::ptrdiff_t>(propertyCountBeforeEvents),
+                PropertyRow{ "__section_events", "Events", {}, PropertyEditKind::ReadOnly, true });
+        }
     }
 
     for (const auto& [key, value] : selectedWidget->properties) {
@@ -210,13 +250,13 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     return rows;
 }
 
-std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::WidgetNode* selectedWidget, float x, float y) const
+std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::ProjectDocument& document, float x, float y) const
 {
     if (!contains(x, y)) {
         return std::nullopt;
     }
 
-    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(selectedWidget));
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(document));
     for (const auto& layout : layouts) {
         if (y >= layout.top && y <= layout.top + kRowHeight) {
             return layout.row;
@@ -226,9 +266,9 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(cons
     return std::nullopt;
 }
 
-bool PropertyInspector::beginEditing(const model::WidgetNode* selectedWidget, const std::string& key)
+bool PropertyInspector::beginEditing(const model::ProjectDocument& document, const std::string& key)
 {
-    const auto rows = buildRows(selectedWidget);
+    const auto rows = buildRows(document);
     for (const auto& row : rows) {
         if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool) {
             activeKey_ = key;
@@ -241,13 +281,13 @@ bool PropertyInspector::beginEditing(const model::WidgetNode* selectedWidget, co
     return false;
 }
 
-std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const model::WidgetNode* selectedWidget) const
+std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const model::ProjectDocument& document) const
 {
     if (!isEditing()) {
         return std::nullopt;
     }
 
-    const auto rows = buildRows(selectedWidget);
+    const auto rows = buildRows(document);
     for (const auto& row : rows) {
         if (row.key == activeKey_) {
             return row;
@@ -268,14 +308,14 @@ void PropertyInspector::cancelEditing()
     clearEditing();
 }
 
-std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::WidgetNode* selectedWidget) const
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::ProjectDocument& document) const
 {
-    const auto active = activeRow(selectedWidget);
+    const auto active = activeRow(document);
     if (!active.has_value()) {
         return std::nullopt;
     }
 
-    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(selectedWidget));
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(document));
     for (const auto& layout : layouts) {
         if (layout.row.key == active->key) {
             const float valueLeft = x_ + kLabelColumnWidth;
@@ -300,8 +340,9 @@ bool PropertyInspector::isEditing() const
     return !activeKey_.empty();
 }
 
-void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::WidgetNode* selectedWidget, std::size_t selectionCount) const
+void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document, std::size_t selectionCount) const
 {
+    const model::WidgetNode* selectedWidget = document.selectedWidget();
     if (width_ <= 0.0f || height_ <= 0.0f) {
         return;
     }
@@ -336,7 +377,7 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
         return;
     }
 
-    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(selectedWidget));
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(document));
     for (std::size_t index = 0; index < layouts.size(); ++index) {
         const auto& row = layouts[index].row;
         const float rowTop = layouts[index].top;

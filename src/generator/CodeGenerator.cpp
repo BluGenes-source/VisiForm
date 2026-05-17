@@ -3,6 +3,7 @@
 #include "utils/FileUtils.h"
 
 #include <array>
+#include <cctype>
 
 namespace visiform::generator {
 namespace {
@@ -18,6 +19,25 @@ bool isPathInsideOutputDirectory(const std::filesystem::path& outputDirectory, c
 
     const std::string relativeText = relative.generic_string();
     return relativeText == "." || !relativeText.starts_with("..");
+}
+
+std::string sanitizeClassName(const std::string& value)
+{
+    std::string sanitized;
+    sanitized.reserve(value.size());
+    for (char character : value) {
+        if (std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_') {
+            sanitized.push_back(character);
+        }
+    }
+
+    if (sanitized.empty()) {
+        return "AppMainWindow";
+    }
+    if (std::isdigit(static_cast<unsigned char>(sanitized.front())) != 0) {
+        sanitized.insert(sanitized.begin(), '_');
+    }
+    return sanitized == "MainWindow" ? std::string{"AppMainWindow"} : sanitized;
 }
 
 bool writeGeneratedFile(const std::filesystem::path& outputDirectory,
@@ -58,7 +78,8 @@ bool CodeGenerator::generateProject(
 
     std::string existingMainWindowCpp;
     std::string readErrorMessage;
-    const std::filesystem::path existingMainWindowCppPath = outputDirectory / "src" / "MainWindow.cpp";
+    const std::string userSubclassName = sanitizeClassName(document.userSubclassName.empty() ? document.mainFormClassName : document.userSubclassName);
+    const std::filesystem::path existingMainWindowCppPath = outputDirectory / "src" / (userSubclassName + ".cpp");
     if (std::filesystem::exists(existingMainWindowCppPath)) {
         utils::FileUtils::readTextFile(existingMainWindowCppPath, existingMainWindowCpp, readErrorMessage);
     }
@@ -98,10 +119,16 @@ bool CodeGenerator::generateProject(
     if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / "main.cpp", emittedSources.mainCpp, errorMessage)) {
         return false;
     }
-    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / "MainWindow.h", emittedSources.mainWindowHeader, errorMessage)) {
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / emittedSources.generatedBaseHeaderFilename, emittedSources.generatedBaseHeader, errorMessage)) {
         return false;
     }
-    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / "MainWindow.cpp", emittedSources.mainWindowCpp, errorMessage)) {
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / emittedSources.generatedBaseCppFilename, emittedSources.generatedBaseCpp, errorMessage)) {
+        return false;
+    }
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / emittedSources.userSubclassHeaderFilename, emittedSources.userSubclassHeader, errorMessage)) {
+        return false;
+    }
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / emittedSources.userSubclassCppFilename, emittedSources.userSubclassCpp, errorMessage)) {
         return false;
     }
 

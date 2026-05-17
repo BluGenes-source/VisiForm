@@ -147,6 +147,18 @@ float normalizedSliderValue(const model::WidgetNode& widget)
     return std::clamp((clampedValue - minimum) / (maximum - minimum), 0.0f, 1.0f);
 }
 
+float normalizedRangeValue(const model::WidgetNode& widget, const std::string& valueKey = "value")
+{
+    const float minimum = getNumericProperty(widget, "min", 0.0f);
+    const float maximum = getNumericProperty(widget, "max", 100.0f);
+    const float value = getNumericProperty(widget, valueKey, minimum);
+    if (maximum <= minimum) {
+        return 0.0f;
+    }
+
+    return std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
+}
+
 int parseColorOrDefault(const std::string& value, int defaultColor)
 {
     if (value.empty() || value.front() != '#') {
@@ -485,6 +497,28 @@ void drawWidget(visage::Canvas& canvas,
         }
         break;
     }
+    case model::WidgetType::RadioButton: {
+        const float boxSize = 18.0f;
+        const float outerX = bounds.x + 6.0f;
+        const float outerY = bounds.y + (bounds.height - boxSize) * 0.5f;
+        const float textX = outerX + boxSize + 12.0f;
+        const float fontSize = defaultDesignerFontSize();
+        const float textY = bounds.y + bounds.height * 0.5f - estimatedTextBaselineOffset(fontSize);
+        canvas.setColor(0xffffffff);
+        canvas.fill(outerX, outerY, boxSize, boxSize);
+        drawBorder(canvas, { outerX, outerY, boxSize, boxSize }, 0xff8390a4);
+        if (getBoolProperty(widget, "selected", false)) {
+            canvas.setColor(0xff2d7ff9);
+            canvas.fill(outerX + 5.0f, outerY + 5.0f, 8.0f, 8.0f);
+        }
+        if (drawText) {
+            canvas.setColor(0xffeef3fa);
+            canvas.text(getDisplayTextOrFallback(widget, "text", "Radio Button"), font, visage::Font::kTopLeft,
+                textX, textY,
+                std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+        }
+        break;
+    }
     case model::WidgetType::Slider: {
         const float normalized = normalizedSliderValue(widget);
         const float trackY = bounds.y + bounds.height * 0.5f - 2.0f;
@@ -501,6 +535,57 @@ void drawWidget(visage::Canvas& canvas,
             canvas.setColor(0xff1e2b3c);
             canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x, bounds.y - 18.0f, bounds.width, 16.0f);
+        }
+        break;
+    }
+    case model::WidgetType::ScrollBar: {
+        const bool vertical = getStringProperty(widget, "orientation", "Horizontal") == "Vertical";
+        const float pageSize = std::max(1.0f, getNumericProperty(widget, "pageSize", 10.0f));
+        const float minimum = getNumericProperty(widget, "min", 0.0f);
+        const float maximum = std::max(minimum + 1.0f, getNumericProperty(widget, "max", 100.0f));
+        const float value = std::clamp(getNumericProperty(widget, "value", minimum), minimum, maximum);
+        const float normalized = std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
+        const float thumbFactor = std::clamp(pageSize / (maximum - minimum + pageSize), 0.18f, 0.55f);
+        const float arrowSize = vertical ? std::min(bounds.width, 20.0f) : std::min(bounds.height, 20.0f);
+        canvas.setColor(0xffd7dee8);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, 0xff7d899c);
+        canvas.setColor(0xffb8c2d0);
+        if (vertical) {
+            const float trackTop = bounds.y + arrowSize;
+            const float trackHeight = std::max(0.0f, bounds.height - arrowSize * 2.0f);
+            const float thumbHeight = std::clamp(trackHeight * thumbFactor, 18.0f, std::max(18.0f, trackHeight));
+            const float thumbY = trackTop + std::max(0.0f, trackHeight - thumbHeight) * normalized;
+            canvas.setColor(0xffeef2f8);
+            canvas.fill(bounds.x, bounds.y, bounds.width, arrowSize);
+            canvas.fill(bounds.x, bounds.y + bounds.height - arrowSize, bounds.width, arrowSize);
+            drawBorder(canvas, { bounds.x, bounds.y, bounds.width, arrowSize }, 0xff7d899c);
+            drawBorder(canvas, { bounds.x, bounds.y + bounds.height - arrowSize, bounds.width, arrowSize }, 0xff7d899c);
+            canvas.setColor(0xffc8d0dc);
+            canvas.fill(bounds.x + 2.0f, trackTop, bounds.width - 4.0f, trackHeight);
+            canvas.setColor(0xff6a788d);
+            canvas.fill(bounds.x + 4.0f, thumbY, std::max(0.0f, bounds.width - 8.0f), thumbHeight);
+            drawBorder(canvas, { bounds.x + 4.0f, thumbY, std::max(0.0f, bounds.width - 8.0f), thumbHeight }, 0xff485669);
+            canvas.fill(bounds.x + bounds.width * 0.5f - 3.0f, bounds.y + 6.0f, 6.0f, 3.0f);
+            canvas.fill(bounds.x + bounds.width * 0.5f - 3.0f, bounds.y + bounds.height - 9.0f, 6.0f, 3.0f);
+        }
+        else {
+            const float trackLeft = bounds.x + arrowSize;
+            const float trackWidth = std::max(0.0f, bounds.width - arrowSize * 2.0f);
+            const float thumbWidth = std::clamp(trackWidth * thumbFactor, 18.0f, std::max(18.0f, trackWidth));
+            const float thumbX = trackLeft + std::max(0.0f, trackWidth - thumbWidth) * normalized;
+            canvas.setColor(0xffeef2f8);
+            canvas.fill(bounds.x, bounds.y, arrowSize, bounds.height);
+            canvas.fill(bounds.x + bounds.width - arrowSize, bounds.y, arrowSize, bounds.height);
+            drawBorder(canvas, { bounds.x, bounds.y, arrowSize, bounds.height }, 0xff7d899c);
+            drawBorder(canvas, { bounds.x + bounds.width - arrowSize, bounds.y, arrowSize, bounds.height }, 0xff7d899c);
+            canvas.setColor(0xffc8d0dc);
+            canvas.fill(trackLeft, bounds.y + 2.0f, trackWidth, bounds.height - 4.0f);
+            canvas.setColor(0xff6a788d);
+            canvas.fill(thumbX, bounds.y + 4.0f, thumbWidth, std::max(0.0f, bounds.height - 8.0f));
+            drawBorder(canvas, { thumbX, bounds.y + 4.0f, thumbWidth, std::max(0.0f, bounds.height - 8.0f) }, 0xff485669);
+            canvas.fill(bounds.x + 6.0f, bounds.y + bounds.height * 0.5f - 3.0f, 3.0f, 6.0f);
+            canvas.fill(bounds.x + bounds.width - 9.0f, bounds.y + bounds.height * 0.5f - 3.0f, 3.0f, 6.0f);
         }
         break;
     }

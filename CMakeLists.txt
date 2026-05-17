@@ -45,6 +45,8 @@ add_executable(VisiForm
     src/ui/ProjectTree.cpp
     src/model/ProjectDocument.cpp
     src/model/FormNode.cpp
+    src/model/WidgetDefinition.cpp
+    src/model/WidgetRegistry.cpp
     src/model/WidgetNode.cpp
     src/model/PropertyValue.cpp
     src/serialization/JsonProjectReader.cpp

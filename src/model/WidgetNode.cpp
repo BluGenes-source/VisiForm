@@ -16,7 +16,9 @@ const std::string& widgetTypeName(WidgetType type)
     static const std::string button = "Button";
     static const std::string textBox = "TextBox";
     static const std::string checkBox = "CheckBox";
+    static const std::string radioButton = "RadioButton";
     static const std::string slider = "Slider";
+    static const std::string scrollBar = "ScrollBar";
     static const std::string image = "Image";
     static const std::string spacer = "Spacer";
 
@@ -33,8 +35,12 @@ const std::string& widgetTypeName(WidgetType type)
         return textBox;
     case WidgetType::CheckBox:
         return checkBox;
+    case WidgetType::RadioButton:
+        return radioButton;
     case WidgetType::Slider:
         return slider;
+    case WidgetType::ScrollBar:
+        return scrollBar;
     case WidgetType::Image:
         return image;
     case WidgetType::Spacer:
@@ -71,8 +77,14 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     if (value == "CheckBox") {
         return WidgetType::CheckBox;
     }
+    if (value == "RadioButton") {
+        return WidgetType::RadioButton;
+    }
     if (value == "Slider") {
         return WidgetType::Slider;
+    }
+    if (value == "ScrollBar") {
+        return WidgetType::ScrollBar;
     }
     if (value == "Image") {
         return WidgetType::Image;

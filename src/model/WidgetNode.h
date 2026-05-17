@@ -22,7 +22,9 @@ enum class WidgetType {
     Button,
     TextBox,
     CheckBox,
+    RadioButton,
     Slider,
+    ScrollBar,
     Image,
     Spacer
 };

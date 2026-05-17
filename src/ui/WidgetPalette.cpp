@@ -2,8 +2,9 @@
 
 #include "ui/WidgetPalette.h"
 
+#include "model/WidgetRegistry.h"
+
 #include <algorithm>
-#include <array>
 
 namespace visiform::ui {
 namespace {
@@ -12,22 +13,17 @@ constexpr float kHeaderHeight = 34.0f;
 constexpr float kRowHeight = 32.0f;
 constexpr float kPadding = 12.0f;
 
-struct PaletteEntry {
-    const char* label;
-    const char* hint;
-    model::WidgetType type;
-};
-
-constexpr std::array<PaletteEntry, 8> kPaletteEntries = {{
-    { "Label", "Add static text to the form", model::WidgetType::Label },
-    { "Button", "Add a clickable button", model::WidgetType::Button },
-    { "TextBox", "Add a text input field", model::WidgetType::TextBox },
-    { "CheckBox", "Add a checkable option", model::WidgetType::CheckBox },
-    { "Slider", "Add a numeric slider control", model::WidgetType::Slider },
-    { "Frame", "Add a visual group frame", model::WidgetType::Frame },
-    { "Image", "Add an image placeholder", model::WidgetType::Image },
-    { "Spacer", "Add spacing or a layout placeholder", model::WidgetType::Spacer }
-}};
+std::vector<const model::WidgetDefinition*> paletteEntries()
+{
+    std::vector<const model::WidgetDefinition*> entries;
+    for (const auto& definition : model::WidgetRegistry::instance().definitions()) {
+        if (definition.type == model::WidgetType::FormWindow) {
+            continue;
+        }
+        entries.push_back(&definition);
+    }
+    return entries;
+}
 
 } // namespace
 
@@ -50,14 +46,15 @@ std::optional<model::WidgetType> WidgetPalette::hitTestWidgetType(float x, float
         return std::nullopt;
     }
 
+    const auto entries = paletteEntries();
     float rowTop = y_ + kHeaderHeight + 8.0f;
-    for (const auto& entry : kPaletteEntries) {
+    for (const auto* entry : entries) {
         if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
             break;
         }
 
         if (y >= rowTop && y <= rowTop + kRowHeight && x >= x_ + 8.0f && x <= x_ + width_ - 8.0f) {
-            return entry.type;
+            return entry->type;
         }
 
         rowTop += kRowHeight;
@@ -72,14 +69,15 @@ std::optional<std::string> WidgetPalette::hitTestHint(float x, float y) const
         return std::nullopt;
     }
 
+    const auto entries = paletteEntries();
     float rowTop = y_ + kHeaderHeight + 8.0f;
-    for (const auto& entry : kPaletteEntries) {
+    for (const auto* entry : entries) {
         if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
             break;
         }
 
         if (y >= rowTop && y <= rowTop + kRowHeight && x >= x_ + 8.0f && x <= x_ + width_ - 8.0f) {
-            return std::string{ entry.hint };
+            return entry->defaultHint;
         }
 
         rowTop += kRowHeight;
@@ -112,8 +110,9 @@ void WidgetPalette::draw(visage::Canvas& canvas, const visage::Font& font, bool 
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
+    const auto entries = paletteEntries();
     float rowTop = y_ + kHeaderHeight + 8.0f;
-    for (std::size_t index = 0; index < kPaletteEntries.size(); ++index) {
+    for (std::size_t index = 0; index < entries.size(); ++index) {
         if (rowTop + kRowHeight > y_ + height_ - 8.0f) {
             break;
         }
@@ -126,7 +125,7 @@ void WidgetPalette::draw(visage::Canvas& canvas, const visage::Font& font, bool 
 
         if (drawText) {
             canvas.setColor(0xffdde2ea);
-            canvas.text(kPaletteEntries[index].label, font, visage::Font::kTopLeft,
+            canvas.text(entries[index]->displayName, font, visage::Font::kTopLeft,
                 x_ + 20.0f, rowTop + 6.0f, width_ - 32.0f, kRowHeight - 8.0f);
         }
 

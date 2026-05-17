@@ -18,6 +18,8 @@ public:
     int schemaVersion = 1;
     std::string projectName{};
     std::string mainFormClassName{};
+    std::string generatedBaseClassName{};
+    std::string userSubclassName{};
     WidgetNode root{};
     std::string selectedWidgetId{};
     bool dirty = false;
@@ -57,6 +59,8 @@ public:
     [[nodiscard]] bool isSelected(const std::string& id) const;
     [[nodiscard]] bool isPrimarySelected(const std::string& id) const;
     [[nodiscard]] bool isSecondarySelected(const std::string& id) const;
+    bool selectRadioButtonInGroup(const std::string& id);
+    bool normalizeRadioGroups();
     void clearSelection();
     [[nodiscard]] bool hasSelection() const;
     [[nodiscard]] bool hasMultiSelection() const;

@@ -3,6 +3,7 @@
 #include "ui/MainWindow.h"
 
 #include "commands/Command.h"
+#include "model/WidgetRegistry.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
 #include "ui/WidgetMetrics.h"
@@ -89,32 +90,6 @@ std::string widgetDisplayName(const model::WidgetNode& widget)
 }
 
 float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value);
-
-std::string defaultWidgetHint(model::WidgetType type)
-{
-    switch (type) {
-    case model::WidgetType::Label:
-        return "Displays static text.";
-    case model::WidgetType::Button:
-        return "Runs an action when clicked.";
-    case model::WidgetType::TextBox:
-        return "Allows text entry.";
-    case model::WidgetType::CheckBox:
-        return "Toggles an option on or off.";
-    case model::WidgetType::Slider:
-        return "Adjusts a numeric value.";
-    case model::WidgetType::Frame:
-        return "Groups related controls visually.";
-    case model::WidgetType::Image:
-        return "Displays or reserves space for an image.";
-    case model::WidgetType::Spacer:
-        return "Adds spacing between widgets.";
-    case model::WidgetType::FormWindow:
-        return "Main form window.";
-    }
-
-    return {};
-}
 
 std::vector<model::WidgetNode*> selectedNonRootWidgets(model::ProjectDocument& document)
 {
@@ -566,7 +541,8 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     }
 
     document_ = std::move(*loadedDocument);
-    const bool normalized = normalizeWidgetBoundsForEditor();
+    const bool boundsNormalized = normalizeWidgetBoundsForEditor();
+    const bool radioNormalized = document_.normalizeRadioGroups();
     if (!document_.selectedWidgetId.empty() && document_.findWidgetById(document_.selectedWidgetId) != nullptr) {
         document_.setSelection(document_.selectedWidgetId);
     }
@@ -576,7 +552,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 
     currentProjectPath_ = path;
     undoRedo_.clear();
-    if (normalized) {
+    if (boundsNormalized || radioNormalized) {
         document_.markDirty();
     }
     else {
@@ -584,9 +560,17 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     }
     settings_.lastProjectDirectory = currentProjectPath_.parent_path();
     addRecentFile(currentProjectPath_);
-    setOperationStatus(normalized
-        ? "Project loaded: " + normalizedPathText(currentProjectPath_) + " (bounds normalized for editor readability)"
-        : "Project loaded: " + normalizedPathText(currentProjectPath_));
+    std::string loadStatus = "Project loaded: " + normalizedPathText(currentProjectPath_);
+    if (boundsNormalized && radioNormalized) {
+        loadStatus += " (bounds and radio groups normalized)";
+    }
+    else if (boundsNormalized) {
+        loadStatus += " (bounds normalized for editor readability)";
+    }
+    else if (radioNormalized) {
+        loadStatus += " (radio groups normalized)";
+    }
+    setOperationStatus(loadStatus);
     redraw();
     return true;
 }
@@ -654,7 +638,7 @@ void MainWindow::draw(visage::Canvas& canvas)
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
     designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, marqueeRect, canvasInteraction_.smartGuides);
-    propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_.selectedWidget(), document_.selectedWidgetIds().size());
+    propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, document_.selectedWidgetIds().size());
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
     }
@@ -778,7 +762,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         }
     }
 
-    if (const auto row = propertyInspector_.hitTestRow(document_.selectedWidget(), e.position.x, e.position.y)) {
+    if (const auto row = propertyInspector_.hitTestRow(document_, e.position.x, e.position.y)) {
         if (row->editKind == PropertyInspector::PropertyEditKind::Bool) {
             const bool currentValue = document_.selectedWidget() != nullptr
                 && document_.selectedWidget()->getBoolProperty(row->key, false);
@@ -1307,6 +1291,7 @@ void MainWindow::duplicateSelectedWidget()
 
     const std::string duplicateId = duplicate->id;
     const std::string displayName = duplicate->name.empty() ? duplicate->id : duplicate->name;
+    document_.normalizeRadioGroups();
 
     // TODO: Reconnect duplicate to `AddWidgetCommand` or a dedicated duplicate command after the direct flow is verified stable.
     undoRedo_.clear();
@@ -1357,41 +1342,8 @@ bool MainWindow::canRedo() const
 model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type)
 {
     const std::string id = idGenerator_.next(type, document_);
-    model::WidgetNode widget{ id, defaultWidgetName(type, id), type, nextDefaultWidgetBounds(type) };
-
-    switch (type) {
-    case model::WidgetType::Label:
-        widget.setProperty("text", "Label");
-        break;
-    case model::WidgetType::Button:
-        widget.setProperty("text", "Button");
-        break;
-    case model::WidgetType::TextBox:
-        widget.setProperty("text", "");
-        break;
-    case model::WidgetType::CheckBox:
-        widget.setProperty("text", "CheckBox");
-        widget.setProperty("checked", false);
-        break;
-    case model::WidgetType::Slider:
-        widget.setProperty("min", 0);
-        widget.setProperty("max", 100);
-        widget.setProperty("value", 50);
-        break;
-    case model::WidgetType::Frame:
-        widget.setProperty("title", "Frame");
-        break;
-    case model::WidgetType::Image:
-        widget.setProperty("source", "");
-        break;
-    case model::WidgetType::Spacer:
-        break;
-    case model::WidgetType::FormWindow:
-        widget.setProperty("title", "FormWindow");
-        break;
-    }
-
-    widget.setProperty("hint", defaultWidgetHint(type));
+    model::WidgetNode widget = model::WidgetRegistry::instance().createDefaultWidget(type, id);
+    widget.bounds = nextDefaultWidgetBounds(type);
 
     return widget;
 }
@@ -1475,6 +1427,7 @@ bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const 
         minimumHeight = metrics.minHeight;
         break;
     case model::WidgetType::CheckBox:
+    case model::WidgetType::RadioButton:
         if (key != "text") {
             return false;
         }
@@ -1489,6 +1442,7 @@ bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const 
         minimumHeight = metrics.minHeight;
         break;
     case model::WidgetType::Slider:
+    case model::WidgetType::ScrollBar:
     case model::WidgetType::Image:
     case model::WidgetType::Spacer:
     case model::WidgetType::FormWindow:
@@ -1519,6 +1473,7 @@ void MainWindow::fitSelectedWidgetToText()
     case model::WidgetType::Button:
     case model::WidgetType::TextBox:
     case model::WidgetType::CheckBox:
+    case model::WidgetType::RadioButton:
         key = "text";
         valueText = widget->getStringProperty("text", {});
         break;
@@ -1527,6 +1482,7 @@ void MainWindow::fitSelectedWidgetToText()
         valueText = widget->getStringProperty("title", {});
         break;
     case model::WidgetType::Slider:
+    case model::WidgetType::ScrollBar:
     case model::WidgetType::Image:
     case model::WidgetType::Spacer:
     case model::WidgetType::FormWindow:
@@ -1611,6 +1567,7 @@ void MainWindow::pasteWidgets()
     }
 
     normalizeWidgetBoundsForEditor();
+    document_.normalizeRadioGroups();
     undoRedo_.clear();
     document_.markDirty();
     setOperationStatus("Pasted " + std::to_string(pastedIds.size()) + " widgets");
@@ -2108,7 +2065,15 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
         return false;
     }
 
+    const bool radioSelectedTrue = widget->type == model::WidgetType::RadioButton
+        && key == "selected" && value.isBool() && value.asBool(false);
     widget->setProperty(key, std::move(value));
+    if (widget->type == model::WidgetType::RadioButton && key == "group" && widget->getBoolProperty("selected", false)) {
+        document_.selectRadioButtonInGroup(widget->id);
+    }
+    else if (radioSelectedTrue) {
+        document_.selectRadioButtonInGroup(widget->id);
+    }
     const float previousWidth = widget->bounds.width;
     const bool autoSized = autoSizeWidgetForTextProperty(*widget, key, widget->getStringProperty(key, {}));
     document_.markDirty();
@@ -2172,8 +2137,38 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return setSelectedWidgetName(trimmedValue);
     }
 
+    if (key == "generatedBaseClassName" || key == "userSubclassName") {
+        if (key == "generatedBaseClassName") {
+            setOperationStatus("Generated base class is fixed: MainWindow");
+            redraw();
+            return false;
+        }
+
+        if (trimmedValue.empty() || !utils::isValidCppIdentifier(trimmedValue) || trimmedValue == "MainWindow") {
+            setOperationStatus("Invalid class name");
+            redraw();
+            return false;
+        }
+
+        const std::string otherName = "MainWindow";
+        if (trimmedValue == otherName) {
+            setOperationStatus("Class names must be different");
+            redraw();
+            return false;
+        }
+
+        document_.generatedBaseClassName = "MainWindow";
+        document_.userSubclassName = trimmedValue;
+        document_.mainFormClassName = trimmedValue;
+
+        document_.markDirty();
+        setOperationStatus("User subclass changed: " + trimmedValue);
+        redraw();
+        return true;
+    }
+
     if (key == "onClick" || key == "onToggle" || key == "onChanged"
-        || key == "onTextChanged" || key == "onLoad" || key == "onClose") {
+        || key == "onTextChanged" || key == "onLoad" || key == "onClose" || key == "onSelected") {
         if (!trimmedValue.empty() && !utils::isValidCppIdentifier(trimmedValue)) {
             setOperationStatus("Invalid event handler name");
             redraw();
@@ -2715,7 +2710,7 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
         return false;
     }
 
-    if (!propertyInspector_.beginEditing(document_.selectedWidget(), row.key)) {
+    if (!propertyInspector_.beginEditing(document_, row.key)) {
         return false;
     }
 
@@ -2767,7 +2762,7 @@ void MainWindow::updatePropertyEditorBounds()
         return;
     }
 
-    const auto bounds = propertyInspector_.activeEditorBounds(document_.selectedWidget());
+    const auto bounds = propertyInspector_.activeEditorBounds(document_);
     if (!bounds.has_value()) {
         propertyEditor_.setVisible(false);
         return;
