@@ -242,6 +242,10 @@ private:
     bool exportInProgress_ = false;
     int exportProgressPercent_ = 0;
     std::string exportProgressText_{};
+    bool suggestionAppliedThisClick_ = false;
+
+    // Apply a callback suggestion directly to the selected widget property
+    bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);
     std::vector<model::WidgetNode> clipboardWidgets_{};
     int pasteCount_ = 0;
 };

@@ -43,7 +43,7 @@ WidgetDefinition makeStatusBarDefinition()
     definition.paletteGroup = "Basic";
     definition.defaultNamePrefix = "statusBar";
     definition.defaultHint = "Displays status messages in one or more fields.";
-    definition.size = { 600.0f, 32.0f, 200.0f, 24.0f };
+    definition.size = { 600.0f, 50.0f, 200.0f, 44.0f };
     definition.properties = {
         { "fields", "fields", 1, PropertyEditKind::Integer, true, "Number of status fields (1-4)." },
         { "text0", "text0", "Ready", PropertyEditKind::Text, true, "Text for field 0." },

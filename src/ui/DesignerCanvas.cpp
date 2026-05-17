@@ -478,7 +478,9 @@ void drawWidget(visage::Canvas& canvas,
                 text = std::to_string(static_cast<int>(percent)) + "%";
             }
             if (showText && !text.empty()) {
-                canvas.setColor(0xfff8fbff);
+                // choose text color for contrast: dark on low progress, white on high progress
+                const int textColor = (normalized < 0.5f) ? 0xff182333 : 0xfff8fbff;
+                canvas.setColor(textColor);
                 canvas.text(text, font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
             }
         }

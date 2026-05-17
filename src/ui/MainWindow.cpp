@@ -458,7 +458,9 @@ bool MainWindow::openProjectDialog()
         return false;
     }
 
-    const auto selectedPath = utils::showOpenProjectDialog(settings_.lastProjectDirectory);
+    const std::filesystem::path defaultProjectDir = projectRootPath() / "Generated" / "Projects";
+    const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() ? settings_.lastProjectDirectory : defaultProjectDir;
+    const auto selectedPath = utils::showOpenProjectDialog(initialProjectDir);
     if (!selectedPath.has_value()) {
         setOperationStatus("Open cancelled");
         redraw();
@@ -526,7 +528,9 @@ bool MainWindow::saveProjectAsDialog()
     const std::filesystem::path suggestedPath = currentProjectPath_.empty() || isTemplateExamplePath(currentProjectPath_)
         ? projectRootPath() / "Generated" / suggestedProjectPath(document_, {})
         : currentProjectPath_;
-    const auto selectedPath = utils::showSaveProjectDialog(suggestedPath, settings_.lastProjectDirectory);
+    const std::filesystem::path defaultProjectDir = projectRootPath() / "Generated" / "Projects";
+    const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() ? settings_.lastProjectDirectory : defaultProjectDir;
+    const auto selectedPath = utils::showSaveProjectDialog(suggestedPath, initialProjectDir);
     if (!selectedPath.has_value()) {
         setOperationStatus("Save cancelled");
         redraw();
@@ -781,34 +785,25 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
-    if (propertyInspector_.isEditing()) {
-        // Clicking another row or leaving the inspector attempts to commit the current edit.
-        // If validation fails, editing stays active and the click is consumed.
-        if (!commitInspectorEdit()) {
-            return;
-        }
-    }
-
-    // Check callback suggestion hit-test first so suggestion clicks are applied before normal row handling.
+    // Check callback suggestion hit-test first so suggestion clicks are applied before committing edits.
     if (const auto suggestion = propertyInspector_.hitTestSuggestion(document_, e.position.x, e.position.y)) {
         // Only apply suggestion when we are actively editing an event property.
         if (propertyInspector_.isEditing()) {
             const auto active = propertyInspector_.activeRow(document_);
             if (active.has_value()) {
-                // Attempt to apply the suggestion as a committed edit.
-                if (setSelectedWidgetPropertyFromString(active->key, *suggestion)) {
-                    setOperationStatus("Callback selected: " + *suggestion);
-                    propertyInspector_.clearEditing();
-                    propertyEditor_.setVisible(false);
-                    requestKeyboardFocus();
-                    redraw();
-                }
-                else {
-                    setOperationStatus("Failed to apply callback: " + *suggestion);
-                    redraw();
+                if (applySelectedWidgetCallbackProperty(active->key, *suggestion)) {
+                    suggestionAppliedThisClick_ = true;
                 }
                 return;
             }
+        }
+    }
+
+    if (propertyInspector_.isEditing()) {
+        // Clicking another row or leaving the inspector attempts to commit the current edit.
+        // If validation fails, editing stays active and the click is consumed.
+        if (!commitInspectorEdit()) {
+            return;
         }
     }
 
@@ -1018,6 +1013,12 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 void MainWindow::mouseUp(const visage::MouseEvent& e)
 {
     if (!e.isLeftButton() || canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        return;
+    }
+
+    // If a suggestion was applied during mouse down, consume this mouseUp and clear guard.
+    if (suggestionAppliedThisClick_) {
+        suggestionAppliedThisClick_ = false;
         return;
     }
 
@@ -2451,12 +2452,9 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
     canvas.text(statusText(), labelFont_, visage::Font::kTopLeft,
         leftX, layout_.statusBar.y + 4.0f, leftWidth, layout_.statusBar.height - 6.0f);
 
-    // Middle: selection/hover info
+    // Middle: selection info (do not duplicate hints here)
     std::string middleText;
-    if (!hoverHint_.empty()) {
-        middleText = hoverHint_;
-    }
-    else if (document_.hasMultiSelection()) {
+    if (document_.hasMultiSelection()) {
         middleText = "Selected: " + std::to_string(document_.selectedWidgetIds().size()) + " widgets";
     }
     else if (const auto* sel = document_.selectedWidget()) {
@@ -2485,7 +2483,9 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
         canvas.fill(progressBarX, progressBarY, 1.0f, ph);
         canvas.fill(progressBarX + pw - 1.0f, progressBarY, 1.0f, ph);
         const std::string progressText = exportInProgress_ ? (exportProgressText_.empty() ? ("Export " + std::to_string(exportProgressPercent_) + "%") : exportProgressText_) : (exportProgressText_.empty() ? "" : exportProgressText_);
-        canvas.setColor(0xfff2f4f8);
+        // choose text color based on percent for contrast
+        const int progressTextColor = (exportProgressPercent_ < 50) ? 0xff182333 : 0xfff8fbff;
+        canvas.setColor(progressTextColor);
         canvas.text(progressText, labelFont_, visage::Font::kCenter, progressBarX, progressBarY - 2.0f, pw, ph + 4.0f);
     }
 }
@@ -2856,6 +2856,22 @@ void MainWindow::cancelInspectorEdit()
     propertyEditor_.setVisible(false);
     requestKeyboardFocus();
     redraw();
+}
+
+bool MainWindow::applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName)
+{
+    if (!setSelectedWidgetPropertyFromString(propertyKey, callbackName)) {
+        setOperationStatus(std::string("Failed to apply callback: ") + callbackName);
+        redraw();
+        return false;
+    }
+
+    propertyInspector_.clearEditing();
+    propertyEditor_.setVisible(false);
+    requestKeyboardFocus();
+    setOperationStatus(std::string("Callback selected: ") + callbackName);
+    redraw();
+    return true;
 }
 
 void MainWindow::updatePropertyEditorBounds()
