@@ -34,6 +34,48 @@ WidgetDefinition makeFormWindowDefinition()
     return definition;
 }
 
+WidgetDefinition makeStatusBarDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::StatusBar;
+    definition.typeName = "StatusBar";
+    definition.displayName = "Status Bar";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "statusBar";
+    definition.defaultHint = "Displays status messages in one or more fields.";
+    definition.size = { 600.0f, 32.0f, 200.0f, 24.0f };
+    definition.properties = {
+        { "fields", "fields", 1, PropertyEditKind::Integer, true, "Number of status fields (1-4)." },
+        { "text0", "text0", "Ready", PropertyEditKind::Text, true, "Text for field 0." },
+        { "text1", "text1", "", PropertyEditKind::Text, true, "Text for field 1." },
+        { "text2", "text2", "", PropertyEditKind::Text, true, "Text for field 2." },
+        { "fieldWidths", "fieldWidths", "1", PropertyEditKind::Text, true, "Relative field widths e.g. \"1,2,1\"." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeProgressBarDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::ProgressBar;
+    definition.typeName = "ProgressBar";
+    definition.displayName = "Progress Bar";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "progressBar";
+    definition.defaultHint = "Displays task progress.";
+    definition.size = { 240.0f, 32.0f, 100.0f, 24.0f };
+    definition.properties = {
+        { "min", "min", 0, PropertyEditKind::Integer, true, "Minimum value." },
+        { "max", "max", 100, PropertyEditKind::Integer, true, "Maximum value." },
+        { "value", "value", 25, PropertyEditKind::Integer, true, "Current value." },
+        { "showText", "showText", true, PropertyEditKind::Bool, true, "Show text overlay." },
+        { "text", "text", "", PropertyEditKind::Text, true, "Optional text to display." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    return definition;
+}
+
 WidgetDefinition makeFrameDefinition()
 {
     WidgetDefinition definition;
@@ -251,6 +293,8 @@ WidgetRegistry::WidgetRegistry()
         makeRadioButtonDefinition(),
         makeSliderDefinition(),
         makeScrollBarDefinition(),
+        makeStatusBarDefinition(),
+        makeProgressBarDefinition(),
         makeImageDefinition(),
         makeSpacerDefinition() }
 {

@@ -238,6 +238,10 @@ private:
     visage::Font labelFont_{};
     bool autoSizeTextWidgets_ = true;
     bool multiSelectMode_ = false;
+    // Export progress state
+    bool exportInProgress_ = false;
+    int exportProgressPercent_ = 0;
+    std::string exportProgressText_{};
     std::vector<model::WidgetNode> clipboardWidgets_{};
     int pasteCount_ = 0;
 };

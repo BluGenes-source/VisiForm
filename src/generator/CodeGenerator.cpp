@@ -68,12 +68,17 @@ bool writeGeneratedFile(const std::filesystem::path& outputDirectory,
 bool CodeGenerator::generateProject(
     const model::ProjectDocument& document,
     const std::filesystem::path& outputDirectory,
-    std::string& errorMessage) const
+    std::string& errorMessage,
+    ProgressCallback progressCallback) const
 {
     errorMessage.clear();
 
     if (!utils::FileUtils::ensureDirectoryExists(outputDirectory, errorMessage)) {
         return false;
+    }
+
+    if (progressCallback) {
+        progressCallback(0, "Preparing export");
     }
 
     std::string existingMainWindowCpp;
@@ -85,11 +90,20 @@ bool CodeGenerator::generateProject(
     }
 
     VisageCppEmitter::EmittedSources emittedSources;
+    if (progressCallback) {
+        progressCallback(20, "Validating document");
+    }
     if (!visageCppEmitter_.emitProjectSources(document, existingMainWindowCpp, emittedSources, errorMessage)) {
         return false;
     }
+    if (progressCallback) {
+        progressCallback(40, "Generating sources");
+    }
     if (!writeGeneratedFile(outputDirectory, "CMakeLists.txt", cmakeEmitter_.emitCMakeLists(document), errorMessage)) {
         return false;
+    }
+    if (progressCallback) {
+        progressCallback(60, "Writing CMake files");
     }
     if (!writeGeneratedFile(outputDirectory, "CMakePresets.json", cmakeEmitter_.emitCMakePresets(), errorMessage)) {
         return false;
@@ -119,6 +133,9 @@ bool CodeGenerator::generateProject(
     if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / "main.cpp", emittedSources.mainCpp, errorMessage)) {
         return false;
     }
+    if (progressCallback) {
+        progressCallback(80, "Writing source files");
+    }
     if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / emittedSources.generatedBaseHeaderFilename, emittedSources.generatedBaseHeader, errorMessage)) {
         return false;
     }
@@ -132,6 +149,9 @@ bool CodeGenerator::generateProject(
         return false;
     }
 
+    if (progressCallback) {
+        progressCallback(100, "Export complete");
+    }
     return true;
 }
 

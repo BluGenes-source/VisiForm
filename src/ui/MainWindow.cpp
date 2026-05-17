@@ -479,10 +479,25 @@ bool MainWindow::exportGeneratedCode()
         return false;
     }
 
-    // Use CodeGenerator to write files to the chosen folder.
+    // Run generator with progress callback
+    exportInProgress_ = true;
+    exportProgressPercent_ = 0;
+    exportProgressText_.clear();
+    redraw();
+
     std::string errorMessage;
     generator::CodeGenerator generator;
-    if (!generator.generateProject(document_, *selected, errorMessage)) {
+    const auto progressCallback = [this](int percent, const std::string& message) {
+        exportInProgress_ = true;
+        exportProgressPercent_ = percent;
+        exportProgressText_ = message;
+        setOperationStatus("Export: " + message);
+        redraw();
+    };
+
+    const bool ok = generator.generateProject(document_, *selected, errorMessage, progressCallback);
+    exportInProgress_ = false;
+    if (!ok) {
         setOperationStatus("Export failed: " + errorMessage);
         redraw();
         return false;
@@ -491,6 +506,8 @@ bool MainWindow::exportGeneratedCode()
     settings_.lastExportDirectory = *selected;
     saveAppSettings();
     setOperationStatus("Code exported: " + normalizedPathText(*selected));
+    exportProgressPercent_ = 100;
+    exportProgressText_ = "Export complete";
     redraw();
     return true;
 }
@@ -2420,9 +2437,57 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
     }
 
     canvas.setColor(0xfff2f4f8);
+    // Split status bar into fields: main status, selection info, progress
+    const float totalWidth = layout_.statusBar.width - kPadding * 2.0f;
+    const float rightWidth = 220.0f; // reserved for progress/status details
+    const float middleWidth = 160.0f;
+    const float leftWidth = std::max(0.0f, totalWidth - rightWidth - middleWidth);
+
+    const float leftX = layout_.statusBar.x + kPadding;
+    const float middleX = leftX + leftWidth + 8.0f;
+    const float rightX = middleX + middleWidth + 8.0f;
+
+    // Left: main status text
     canvas.text(statusText(), labelFont_, visage::Font::kTopLeft,
-        layout_.statusBar.x + kPadding, layout_.statusBar.y + 4.0f,
-        layout_.statusBar.width - kPadding * 2.0f, layout_.statusBar.height - 6.0f);
+        leftX, layout_.statusBar.y + 4.0f, leftWidth, layout_.statusBar.height - 6.0f);
+
+    // Middle: selection/hover info
+    std::string middleText;
+    if (!hoverHint_.empty()) {
+        middleText = hoverHint_;
+    }
+    else if (document_.hasMultiSelection()) {
+        middleText = "Selected: " + std::to_string(document_.selectedWidgetIds().size()) + " widgets";
+    }
+    else if (const auto* sel = document_.selectedWidget()) {
+        middleText = widgetDisplayName(*sel) + " (" + sel->id + ")";
+    }
+    canvas.text(middleText, labelFont_, visage::Font::kTopLeft,
+        middleX, layout_.statusBar.y + 4.0f, middleWidth, layout_.statusBar.height - 6.0f);
+
+    // Right: export progress
+    if (exportInProgress_ || exportProgressPercent_ > 0) {
+        const float pw = std::min(rightWidth, totalWidth);
+        const float ph = 12.0f;
+        const float progressBarX = rightX;
+        const float progressBarY = layout_.statusBar.y + (layout_.statusBar.height - ph) * 0.5f;
+        // background
+        canvas.setColor(0xff2b2f36);
+        canvas.fill(progressBarX, progressBarY, pw, ph);
+        // fill
+        const float fillW = pw * (static_cast<float>(exportProgressPercent_) / 100.0f);
+        canvas.setColor(0xff2d7ff9);
+        canvas.fill(progressBarX, progressBarY, fillW, ph);
+        // border (simple) and text
+        canvas.setColor(0xff6c7788);
+        canvas.fill(progressBarX, progressBarY, pw, 1.0f);
+        canvas.fill(progressBarX, progressBarY + ph - 1.0f, pw, 1.0f);
+        canvas.fill(progressBarX, progressBarY, 1.0f, ph);
+        canvas.fill(progressBarX + pw - 1.0f, progressBarY, 1.0f, ph);
+        const std::string progressText = exportInProgress_ ? (exportProgressText_.empty() ? ("Export " + std::to_string(exportProgressPercent_) + "%") : exportProgressText_) : (exportProgressText_.empty() ? "" : exportProgressText_);
+        canvas.setColor(0xfff2f4f8);
+        canvas.text(progressText, labelFont_, visage::Font::kCenter, progressBarX, progressBarY - 2.0f, pw, ph + 4.0f);
+    }
 }
 
 void MainWindow::selectWidget(const std::string& widgetId)

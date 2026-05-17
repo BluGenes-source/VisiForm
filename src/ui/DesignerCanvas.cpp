@@ -434,6 +434,56 @@ void drawWidget(visage::Canvas& canvas,
         }
         break;
     }
+    case model::WidgetType::StatusBar: {
+        // Draw a horizontal status bar divided into fields
+        canvas.setColor(0xff2b2f36);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, 0xff6c7788);
+
+        int fields = static_cast<int>(getNumericProperty(widget, "fields", 1.0f));
+        fields = std::clamp(fields, 1, 4);
+        const float fieldWidth = bounds.width / static_cast<float>(fields);
+        for (int i = 0; i < fields; ++i) {
+            const float fx = bounds.x + fieldWidth * static_cast<float>(i);
+            const float fw = fieldWidth;
+            if (drawText) {
+                const std::string key = std::string("text") + std::to_string(i);
+                const std::string text = getDisplayTextOrFallback(widget, key, i == 0 ? "Ready" : "");
+                canvas.setColor(0xffe6ebf2);
+                canvas.text(text, font, visage::Font::kTopLeft, fx + 6.0f, bounds.y + 4.0f, fw - 12.0f, bounds.height - 8.0f);
+            }
+            if (i + 1 < fields) {
+                canvas.setColor(0xff3a424e);
+                canvas.fill(fx + fw - 1.0f, bounds.y + 4.0f, 1.0f, bounds.height - 8.0f);
+            }
+        }
+        break;
+    }
+    case model::WidgetType::ProgressBar: {
+        // Draw a bordered progress bar with fill based on min/max/value
+        canvas.setColor(0xffeef2f7);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, 0xff97a3b7);
+
+        const float normalized = normalizedRangeValue(widget, "value");
+        const float fillWidth = std::max(0.0f, bounds.width * normalized);
+        canvas.setColor(0xff2d7ff9);
+        canvas.fill(bounds.x, bounds.y, fillWidth, bounds.height);
+
+        if (drawText) {
+            const bool showText = getBoolProperty(widget, "showText", true);
+            std::string text = getDisplayTextOrFallback(widget, "text", {});
+            if (showText && text.empty()) {
+                const float percent = std::round(normalized * 100.0f);
+                text = std::to_string(static_cast<int>(percent)) + "%";
+            }
+            if (showText && !text.empty()) {
+                canvas.setColor(0xfff8fbff);
+                canvas.text(text, font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+            }
+        }
+        break;
+    }
     case model::WidgetType::Frame:
         canvas.setColor(parseColorOrDefault(getStringProperty(widget, "backgroundColor", "#e3e8f0"), 0xffe3e8f0));
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
