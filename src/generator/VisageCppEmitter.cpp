@@ -205,6 +205,8 @@ struct EventBinding {
     std::string eventKey;
     std::string handlerName;
     std::string widgetId;
+    std::string widgetName;
+    std::string widgetType;
     HandlerSignature signature = HandlerSignature::Void;
 };
 
@@ -368,6 +370,52 @@ std::string handlerReferenceList(const HandlerInfo& handler)
     return stream.str();
 }
 
+std::string emitMethodName(const EventBinding& binding)
+{
+    return "emit_" + utils::sanitizeCppIdentifier(binding.widgetId) + "_" + binding.eventKey;
+}
+
+std::string widgetEventLiteral(const EventBinding& binding)
+{
+    return "WidgetEvent{ "
+        + emitStringLiteral(binding.widgetId)
+        + ", " + emitStringLiteral(binding.widgetName)
+        + ", " + emitStringLiteral(binding.widgetType)
+        + " }";
+}
+
+std::string emitMethodDeclaration(const EventBinding& binding)
+{
+    switch (binding.signature) {
+    case HandlerSignature::Void:
+        return "void " + emitMethodName(binding) + "();";
+    case HandlerSignature::Bool:
+        return "void " + emitMethodName(binding) + "(bool value);";
+    case HandlerSignature::Float:
+        return "void " + emitMethodName(binding) + "(float value);";
+    case HandlerSignature::String:
+        return "void " + emitMethodName(binding) + "(const std::string& value);";
+    }
+
+    return "void " + emitMethodName(binding) + "();";
+}
+
+std::string emitMethodDefinitionSignature(const std::string& className, const EventBinding& binding)
+{
+    switch (binding.signature) {
+    case HandlerSignature::Void:
+        return "void " + className + "::" + emitMethodName(binding) + "()";
+    case HandlerSignature::Bool:
+        return "void " + className + "::" + emitMethodName(binding) + "(bool value)";
+    case HandlerSignature::Float:
+        return "void " + className + "::" + emitMethodName(binding) + "(float value)";
+    case HandlerSignature::String:
+        return "void " + className + "::" + emitMethodName(binding) + "(const std::string& value)";
+    }
+
+    return "void " + className + "::" + emitMethodName(binding) + "()";
+}
+
 void collectEventBindings(const visiform::model::WidgetNode& widget, std::vector<EventBinding>& bindings, std::string& errorMessage)
 {
     for (const auto& eventKey : relevantEventKeys(widget.type)) {
@@ -381,7 +429,14 @@ void collectEventBindings(const visiform::model::WidgetNode& widget, std::vector
             return;
         }
 
-        bindings.push_back(EventBinding{ eventKey, handlerName, widget.id, signatureForEventKey(eventKey) });
+        bindings.push_back(EventBinding{
+            eventKey,
+            handlerName,
+            widget.id,
+            widget.name.empty() ? widget.id : widget.name,
+            widget.typeName(),
+            signatureForEventKey(eventKey)
+        });
     }
 
     for (const auto& child : widget.children) {
@@ -659,8 +714,10 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
 {
     const std::string className = generatedBaseClassName(document);
     std::vector<HandlerInfo> handlers;
+    std::vector<EventBinding> bindings;
     std::string ignoredError;
     collectHandlers(document, handlers, ignoredError);
+    collectEventBindings(document.root, bindings, ignoredError);
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
     stream << "#pragma once\n\n";
@@ -688,6 +745,17 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
         stream << "    virtual " << declaration << ";\n";
     }
     if (!handlers.empty()) {
+        stream << "\n";
+    }
+    for (const auto& binding : bindings) {
+        stream << "    // Listener emit helper for " << binding.widgetId << "." << binding.eventKey << "\n";
+        std::string declaration = emitMethodDeclaration(binding);
+        if (!declaration.empty() && declaration.back() == ';') {
+            declaration.pop_back();
+        }
+        stream << "    " << declaration << ";\n";
+    }
+    if (!bindings.empty()) {
         stream << "\n";
     }
     stream << "private:\n";
@@ -735,8 +803,10 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     const float windowWidth = std::max(1000.0f, document.root.bounds.width + 120.0f);
     const float windowHeight = std::max(800.0f, document.root.bounds.height + 120.0f);
     std::vector<HandlerInfo> handlers;
+    std::vector<EventBinding> bindings;
     std::string ignoredError;
     collectHandlers(document, handlers, ignoredError);
+    collectEventBindings(document.root, bindings, ignoredError);
 
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
@@ -807,6 +877,22 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
             stream << "    (void)value;\n";
         }
         stream << "    // Default generated event hook.\n";
+        stream << "}\n";
+    }
+    for (const auto& binding : bindings) {
+        stream << "\n" << emitMethodDefinitionSignature(className, binding) << "\n";
+        stream << "{\n";
+        stream << "    // Sender: " << binding.widgetId << " (" << binding.widgetName << ", " << binding.widgetType << ")\n";
+        switch (binding.signature) {
+        case HandlerSignature::Void:
+            stream << "    " << binding.handlerName << "(" << widgetEventLiteral(binding) << ");\n";
+            break;
+        case HandlerSignature::Bool:
+        case HandlerSignature::Float:
+        case HandlerSignature::String:
+            stream << "    " << binding.handlerName << "(" << widgetEventLiteral(binding) << ", value);\n";
+            break;
+        }
         stream << "}\n";
     }
     return stream.str();

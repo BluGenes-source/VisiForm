@@ -168,6 +168,8 @@ Generated code now emits a lightweight sender-aware event structure:
   - `senderName`
   - `senderType`
 
+This provides a small practical listener/callback foundation similar in spirit to JUCE-style shared listener handlers, without generating a full messaging framework.
+
 Generated handler signatures now use sender-aware forms:
 
 - `onClick` -> `void handlerName(const WidgetEvent& event)`
@@ -178,12 +180,34 @@ Generated handler signatures now use sender-aware forms:
 - `onLoad` -> `void handlerName(const WidgetEvent& event)`
 - `onClose` -> `void handlerName(const WidgetEvent& event)`
 
+The generated base class also emits per-widget helper methods for future interactive dispatch.
+
+Examples:
+
+- `emit_button_1_onClick()`
+- `emit_radioButton_1_onSelected(bool value)`
+
+These emit helpers construct the appropriate sender metadata and forward to the shared handler.
+
 Callback compatibility for suggestion reuse is now grouped by:
 
 - `void_event`
 - `bool_event`
 - `float_event`
 - `string_event`
+
+## Shared callbacks and conflict rules
+
+If multiple widgets use the same callback name with a compatible signature, generated code emits:
+
+- one handler declaration in the base class
+- one handler definition in the base class
+- one user override in the user subclass
+- one emit helper per widget event that forwards distinct sender metadata to the shared handler
+
+This lets one callback handle several widgets and inspect `event.senderId`, `event.senderName`, or `event.senderType` to identify the sender.
+
+If the same callback name is reused with incompatible signatures, export fails with a clear conflict error.
 
 ## Generated hint comments
 
@@ -257,7 +281,7 @@ Current export does not yet generate:
 - custom widgets
 
 Generated handler stubs exist, but users still implement the actual behavior manually.
-Generated UI event dispatch is still limited to comments and TODO placeholders for now.
+Generated UI event dispatch is still partial for now. The generated emit helpers provide a clean foundation for future interactive widget hookup, but the generated app does not yet include a full JUCE-style runtime messaging system.
 
 ## Building the generated project manually
 

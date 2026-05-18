@@ -67,6 +67,17 @@ This is used for:
 - handler conflict detection
 - simple same-signature callback suggestions in the property inspector
 
+Current signature kinds map to the generated listener API payloads:
+
+- `void_event` -> `void handler(const WidgetEvent& event)`
+- `bool_event` -> `void handler(const WidgetEvent& event, bool value)`
+- `float_event` -> `void handler(const WidgetEvent& event, float value)`
+- `string_event` -> `void handler(const WidgetEvent& event, const std::string& value)`
+
+When adding a new widget event, choose the signature kind that matches the value payload the future generated emit helper should forward.
+Widgets may share the same handler name when the signature kind is compatible.
+If the same handler name is reused with incompatible signature kinds, export fails with a conflict error.
+
 ## Current limitations
 
 - no runtime plugin loading yet
