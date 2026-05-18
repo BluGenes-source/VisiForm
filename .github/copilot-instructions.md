@@ -19,6 +19,12 @@ Key rules for automated agents
 - Do not use Start-Process, automate keyboard input, or otherwise interact with the OS in a way that runs the built application.
 - Build only the main project with the `build-static-debug` workflow unless requested otherwise.
 - Always create or update a persistent phase plan file in `docs/agent_plans/` for multi-step changes.
+- Every phase must create or update `docs/agent_plans/phase_N_<name>_plan.md`.
+- The phase plan must be updated as work progresses.
+- Completed checklist items in the phase plan must be marked with checked boxes.
+- The final result summary must be written into the phase plan file before finishing.
+- Do not finish by asking whether to create or update the phase plan; it must already be updated.
+- Always summarize remaining TODOs in the phase plan file.
 - Keep model, serialization, and generator layers free of Visage UI headers; isolate UI-specific code in the `ui/` layer.
 - Generated projects must not be compiled into the main `VisiForm` target.
 - Preserve the generated base class name rule: `MainWindow`.

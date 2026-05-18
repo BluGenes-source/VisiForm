@@ -57,7 +57,9 @@ std::optional<std::filesystem::path> showProjectDialog(bool saveDialog,
     dialog.nFilterIndex = 1;
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
-    const std::filesystem::path dialogDirectory = !suggestedPath.parent_path().empty() ? suggestedPath.parent_path() : initialDirectory;
+    const std::filesystem::path dialogDirectory = !initialDirectory.empty()
+        ? initialDirectory
+        : suggestedPath.parent_path();
     dialog.lpstrInitialDir = dialogDirectory.empty() ? nullptr : dialogDirectory.c_str();
     dialog.Flags = OFN_EXPLORER | OFN_HIDEREADONLY | OFN_PATHMUSTEXIST;
     if (saveDialog) {

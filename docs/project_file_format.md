@@ -49,6 +49,8 @@ Supported `type` values:
 - `RadioButton`
 - `Slider`
 - `ScrollBar`
+- `StatusBar`
+- `ProgressBar`
 - `Image`
 - `Spacer`
 
@@ -99,6 +101,13 @@ Current event handler name properties:
 These values are stored as strings for now.
 Empty strings mean no handler is assigned.
 
+Callback compatibility in the editor and generator now follows sender-aware signature groups:
+
+- `void_event`
+- `bool_event`
+- `float_event`
+- `string_event`
+
 Future schema versions may move event metadata into a dedicated events object.
 
 For compatibility, older files may contain only `mainFormClassName`.
@@ -140,6 +149,38 @@ Common `ScrollBar` properties include:
 - `pageSize`
 - `hint`
 - `onChanged`
+
+## StatusBar properties
+
+Common `StatusBar` properties include:
+
+- `fields`
+- `text0`
+- `text1`
+- `text2`
+- `fieldWidths`
+- `hint`
+
+## ProgressBar properties
+
+Common `ProgressBar` properties include:
+
+- `min`
+- `max`
+- `value`
+- `showText`
+- `text`
+- `hint`
+
+`text` is optional custom display text.
+
+- if `showText` is `true` and `text` is empty, the editor and generated preview display percent text
+- if `showText` is `true` and `text` is non-empty, the custom `text` value is displayed
+- if `showText` is `false`, no ProgressBar text is displayed
+
+## Project file workflow note
+
+The editor stores project documents as `.vfb.json` files and now uses `Generated/Projects` as the default project-folder base when no prior `lastProjectDirectory` setting is available.
 
 ## Example project file
 

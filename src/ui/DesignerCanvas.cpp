@@ -159,6 +159,25 @@ float normalizedRangeValue(const model::WidgetNode& widget, const std::string& v
     return std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
 }
 
+std::string progressBarDisplayText(const model::WidgetNode& widget)
+{
+    if (!getBoolProperty(widget, "showText", true)) {
+        return {};
+    }
+
+    const std::string explicitText = getDisplayTextOrFallback(widget, "text", {});
+    if (!explicitText.empty()) {
+        return explicitText;
+    }
+
+    const float minimum = getNumericProperty(widget, "min", 0.0f);
+    const float maximum = std::max(minimum, getNumericProperty(widget, "max", 100.0f));
+    const float safeMaximum = maximum <= minimum ? minimum + 1.0f : maximum;
+    const float value = std::clamp(getNumericProperty(widget, "value", minimum), minimum, safeMaximum);
+    const float normalized = safeMaximum <= minimum ? 0.0f : std::clamp((value - minimum) / (safeMaximum - minimum), 0.0f, 1.0f);
+    return std::to_string(static_cast<int>(std::round(normalized * 100.0f))) + "%";
+}
+
 int parseColorOrDefault(const std::string& value, int defaultColor)
 {
     if (value.empty() || value.front() != '#') {
@@ -461,28 +480,19 @@ void drawWidget(visage::Canvas& canvas,
     }
     case model::WidgetType::ProgressBar: {
         // Draw a bordered progress bar with fill based on min/max/value
+        const float normalized = normalizedRangeValue(widget, "value");
         canvas.setColor(0xffeef2f7);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         drawBorder(canvas, bounds, 0xff97a3b7);
 
-        const float normalized = normalizedRangeValue(widget, "value");
         const float fillWidth = std::max(0.0f, bounds.width * normalized);
         canvas.setColor(0xff2d7ff9);
         canvas.fill(bounds.x, bounds.y, fillWidth, bounds.height);
 
-        if (drawText) {
-            const bool showText = getBoolProperty(widget, "showText", true);
-            std::string text = getDisplayTextOrFallback(widget, "text", {});
-            if (showText && text.empty()) {
-                const float percent = std::round(normalized * 100.0f);
-                text = std::to_string(static_cast<int>(percent)) + "%";
-            }
-            if (showText && !text.empty()) {
-                // choose text color for contrast: dark on low progress, white on high progress
-                const int textColor = (normalized < 0.5f) ? 0xff182333 : 0xfff8fbff;
-                canvas.setColor(textColor);
-                canvas.text(text, font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
-            }
+        const std::string text = progressBarDisplayText(widget);
+        if (drawText && !text.empty()) {
+            canvas.setColor(normalized >= 0.5f ? 0xfff8fbff : 0xff182333);
+            canvas.text(text, font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
     }

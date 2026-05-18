@@ -19,6 +19,8 @@ namespace {
 
 constexpr float kHeaderHeight = 34.0f;
 constexpr float kRowHeight = 30.0f;
+constexpr float kSuggestionRowHeight = 24.0f;
+constexpr float kSuggestionSpacing = 2.0f;
 constexpr float kPadding = 12.0f;
 constexpr float kLabelColumnWidth = 104.0f;
 
@@ -108,20 +110,6 @@ void collectMatchingHandlers(const model::WidgetNode& widget,
     for (const auto& child : widget.children) {
         collectMatchingHandlers(child, signatureKind, handlerNames);
     }
-}
-
-std::string joinSuggestions(const std::set<std::string>& handlerNames)
-{
-    std::ostringstream stream;
-    bool first = true;
-    for (const auto& name : handlerNames) {
-        if (!first) {
-            stream << ", ";
-        }
-        first = false;
-        stream << name;
-    }
-    return stream.str();
 }
 
 PropertyInspector::PropertyEditKind editKindForDefinition(model::PropertyEditKind editKind, bool editable)
@@ -227,13 +215,6 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         const std::size_t propertyCountBeforeEvents = rows.size();
         for (const auto& event : definition->events) {
             addEventProperty(event.key, event.label);
-            if (activeKey_ == event.key) {
-                std::set<std::string> handlerNames;
-                collectMatchingHandlers(document.root, event.handlerSignatureKind, handlerNames);
-                if (!handlerNames.empty()) {
-                    rows.push_back({ "__suggestions_" + event.key, "Existing", joinSuggestions(handlerNames), PropertyEditKind::ReadOnly });
-                }
-            }
         }
 
         if (rows.size() > propertyCountBeforeEvents) {
@@ -253,6 +234,61 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     return rows;
 }
 
+void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& document) const
+{
+    suggestions_.clear();
+    activeCallbackPropertyKey_.clear();
+
+    if (!isEditing()) {
+        return;
+    }
+
+    const model::WidgetNode* selectedWidget = document.selectedWidget();
+    if (selectedWidget == nullptr) {
+        return;
+    }
+
+    const auto* eventDefinition = findEventDefinition(selectedWidget->type, activeKey_);
+    if (eventDefinition == nullptr) {
+        return;
+    }
+
+    activeCallbackPropertyKey_ = activeKey_;
+
+    std::set<std::string> handlerNames;
+    collectMatchingHandlers(document.root, eventDefinition->handlerSignatureKind, handlerNames);
+    if (handlerNames.empty()) {
+        return;
+    }
+
+    const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(document));
+    const auto activeLayout = std::find_if(layouts.begin(), layouts.end(), [this](const RowLayout& layout) {
+        return layout.row.key == activeCallbackPropertyKey_;
+    });
+    if (activeLayout == layouts.end()) {
+        return;
+    }
+
+    const float valueLeft = x_ + kLabelColumnWidth;
+    const float valueWidth = width_ - kLabelColumnWidth - 20.0f;
+    float itemTop = activeLayout->top + kRowHeight;
+    for (const auto& handlerName : handlerNames) {
+        if (itemTop + kSuggestionRowHeight > y_ + height_ - 8.0f) {
+            break;
+        }
+
+        suggestions_.push_back(CallbackSuggestionItem{
+            handlerName,
+            eventDefinition->handlerSignatureKind,
+            valueLeft,
+            itemTop,
+            valueWidth,
+            kSuggestionRowHeight
+        });
+        itemTop += kSuggestionRowHeight + kSuggestionSpacing;
+    }
+}
+
 std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::ProjectDocument& document, float x, float y) const
 {
     if (!contains(x, y)) {
@@ -260,40 +296,6 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(cons
     }
     const auto rows = buildRows(document);
     const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, rows);
-    // Rebuild suggestion hit areas for the active event row if present
-    suggestions_.clear();
-    for (const auto& layout : layouts) {
-        if (layout.row.key.rfind("__suggestions_", 0) == 0) {
-            const float valueLeft = x_ + kLabelColumnWidth;
-            const float valueWidth = width_ - kLabelColumnWidth - 20.0f;
-            const std::string display = layout.row.displayValue;
-            if (!display.empty()) {
-                // split by comma
-                std::vector<std::string> parts;
-                std::istringstream ss(display);
-                std::string token;
-                while (std::getline(ss, token, ',')) {
-                    // trim whitespace
-                    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front()))) token.erase(token.begin());
-                    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back()))) token.pop_back();
-                    if (!token.empty()) parts.push_back(token);
-                }
-
-                if (!parts.empty()) {
-                    const float itemWidth = std::max(10.0f, valueWidth / static_cast<float>(parts.size()));
-                    for (std::size_t i = 0; i < parts.size(); ++i) {
-                        CallbackSuggestionItem item;
-                        item.handlerName = parts[i];
-                        item.x = valueLeft + itemWidth * static_cast<float>(i);
-                        item.y = layout.top + 2.0f;
-                        item.width = itemWidth;
-                        item.height = kRowHeight - 6.0f;
-                        suggestions_.push_back(item);
-                    }
-                }
-            }
-        }
-    }
     for (const auto& layout : layouts) {
         if (y >= layout.top && y <= layout.top + kRowHeight) {
             return layout.row;
@@ -309,12 +311,11 @@ std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::Pro
         return std::nullopt;
     }
 
-    // Ensure suggestions_ is up-to-date by calling hitTestRow which rebuilds suggestions_
-    (void)hitTestRow(document, x, y);
+    rebuildSuggestions(document);
 
     for (const auto& item : suggestions_) {
         if (x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height) {
-            return item.handlerName;
+            return item.callbackName;
         }
     }
 
@@ -324,11 +325,17 @@ std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::Pro
 bool PropertyInspector::beginEditing(const model::ProjectDocument& document, const std::string& key)
 {
     const auto rows = buildRows(document);
+    const model::WidgetNode* selectedWidget = document.selectedWidget();
     for (const auto& row : rows) {
         if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool) {
             activeKey_ = key;
             activeEditKind_ = row.editKind;
             editBuffer_ = row.displayValue;
+            activeCallbackPropertyKey_.clear();
+            if (selectedWidget != nullptr && findEventDefinition(selectedWidget->type, key) != nullptr) {
+                activeCallbackPropertyKey_ = key;
+            }
+            rebuildSuggestions(document);
             return true;
         }
     }
@@ -355,6 +362,8 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const
 void PropertyInspector::clearEditing()
 {
     activeKey_.clear();
+    activeCallbackPropertyKey_.clear();
+    suggestions_.clear();
     activeEditKind_ = PropertyEditKind::ReadOnly;
 }
 
@@ -433,6 +442,7 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
     }
 
     const auto layouts = buildRowLayouts(y_ + kHeaderHeight + 8.0f, y_ + height_, buildRows(document));
+    rebuildSuggestions(document);
     for (std::size_t index = 0; index < layouts.size(); ++index) {
         const auto& row = layouts[index].row;
         const float rowTop = layouts[index].top;
@@ -480,6 +490,18 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                 canvas.text("Enter=Apply  Esc=Cancel", font, visage::Font::kTopLeft,
                     valueLeft + 8.0f, rowTop + kRowHeight - 2.0f, valueWidth - 12.0f, 16.0f);
             }
+        }
+    }
+
+    if (drawText && !suggestions_.empty()) {
+        for (const auto& suggestion : suggestions_) {
+            canvas.setColor(0xff314055);
+            canvas.fill(suggestion.x, suggestion.y, suggestion.width, suggestion.height);
+            canvas.setColor(0xff92b9ff);
+            canvas.fill(suggestion.x, suggestion.y + suggestion.height - 1.0f, suggestion.width, 1.0f);
+            canvas.setColor(0xffeef2f8);
+            canvas.text(suggestion.callbackName, font, visage::Font::kTopLeft,
+                suggestion.x + 8.0f, suggestion.y + 4.0f, suggestion.width - 12.0f, suggestion.height - 6.0f);
         }
     }
 }

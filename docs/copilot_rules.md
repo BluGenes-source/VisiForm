@@ -8,6 +8,15 @@ Files
 - `.github/instructions/visiform.instructions.md` - optional path-specific instructions that apply to all files via frontmatter and are read by Copilot setups that support path-specific instructions.
 - `docs/agent_plans/` - persistent phase plans created/updated by automated agents for multi-step work.
 
+Required phase-plan maintenance rules:
+
+- every phase creates or updates `docs/agent_plans/phase_N_<name>_plan.md`
+- the phase plan is updated as work progresses
+- completed checklist items are marked with checked boxes
+- the final result summary is written into the phase plan before finishing
+- agents do not finish by asking whether to create or update the phase plan
+- any remaining TODOs are summarized in the phase plan file
+
 Visual Studio
 
 - Visual Studio 2022 is the primary IDE for VisiForm. Copilot custom instruction files are plain Markdown and are visible in Solution Explorer when the repository is opened as a folder.

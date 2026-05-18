@@ -13,6 +13,8 @@ Current widget types:
 - `RadioButton`
 - `Slider`
 - `ScrollBar`
+- `StatusBar`
+- `ProgressBar`
 - `Image`
 - `Spacer`
 
@@ -70,6 +72,19 @@ All widgets can also use a common string property:
 
 This help text is used by the editor for status-bar hints and property inspector editing.
 
+## Callback suggestions
+
+When editing an event property in the Property Inspector, matching existing callbacks are shown as separate clickable suggestion items.
+
+Compatibility now groups handlers by sender-aware signature kind:
+
+- `void_event`
+- `bool_event`
+- `float_event`
+- `string_event`
+
+This allows, for example, `RadioButton.onSelected` and `CheckBox.onToggle` to reuse the same `bool_event` handler names because the generated callback now includes sender metadata.
+
 ## Current limitations
 
 - Event metadata is edited through the property inspector only
@@ -124,3 +139,38 @@ Current `ScrollBar` properties:
 - `onChanged`
 
 Current editor rendering uses arrow-button regions, a track, and a thumb so it looks like a scrollbar instead of a slider.
+
+## StatusBar notes
+
+Current `StatusBar` properties:
+
+- `fields`
+- `text0`
+- `text1`
+- `text2`
+- `fieldWidths`
+- `hint`
+
+Current editor rendering shows a static multi-field status bar preview.
+
+## ProgressBar notes
+
+Current `ProgressBar` properties:
+
+- `min`
+- `max`
+- `value`
+- `showText`
+- `text`
+- `hint`
+
+Current `ProgressBar` text behavior:
+
+- if `showText = true` and `text` is empty, the editor shows percent text such as `25%`
+- if `showText = true` and `text` is not empty, the editor shows the custom text value
+- if `showText = false`, no ProgressBar text is drawn
+
+Current editor rendering uses a simple centered text strategy with a readable single text color:
+
+- dark text when fill percent is below 50%
+- white text when fill percent is 50% or higher

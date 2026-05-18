@@ -28,8 +28,8 @@ WidgetDefinition makeFormWindowDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     definition.events = {
-        { "onLoad", "onLoad", "void", "Called when the form loads." },
-        { "onClose", "onClose", "void", "Called when the form closes." }
+        { "onLoad", "onLoad", "void_event", "Called when the form loads." },
+        { "onClose", "onClose", "void_event", "Called when the form closes." }
     };
     return definition;
 }
@@ -126,7 +126,7 @@ WidgetDefinition makeButtonDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     definition.events = {
-        { "onClick", "onClick", "void", "Called when the button is clicked." }
+        { "onClick", "onClick", "void_event", "Called when the button is clicked." }
     };
     return definition;
 }
@@ -146,7 +146,7 @@ WidgetDefinition makeTextBoxDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     definition.events = {
-        { "onTextChanged", "onTextChanged", "string", "Called when the text changes." }
+        { "onTextChanged", "onTextChanged", "string_event", "Called when the text changes." }
     };
     return definition;
 }
@@ -167,7 +167,7 @@ WidgetDefinition makeCheckBoxDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     definition.events = {
-        { "onToggle", "onToggle", "bool", "Called when the check box toggles." }
+        { "onToggle", "onToggle", "bool_event", "Called when the check box toggles." }
     };
     return definition;
 }
@@ -189,7 +189,7 @@ WidgetDefinition makeRadioButtonDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     definition.events = {
-        { "onSelected", "onSelected", "bool", "Called when the radio button is selected." }
+        { "onSelected", "onSelected", "bool_event", "Called when the radio button is selected." }
     };
     return definition;
 }
@@ -211,7 +211,7 @@ WidgetDefinition makeSliderDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     definition.events = {
-        { "onChanged", "onChanged", "float", "Called when the slider value changes." }
+        { "onChanged", "onChanged", "float_event", "Called when the slider value changes." }
     };
     return definition;
 }
@@ -235,7 +235,7 @@ WidgetDefinition makeScrollBarDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     definition.events = {
-        { "onChanged", "onChanged", "float", "Called when the scroll value changes." }
+        { "onChanged", "onChanged", "float_event", "Called when the scroll value changes." }
     };
     return definition;
 }

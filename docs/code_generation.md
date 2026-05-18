@@ -4,11 +4,12 @@
 
 ## Export folder
 
-Current fixed export folder:
+Current default export fallback folder:
 
 - `Generated/ExportedVisageProject`
 
-The generator overwrites the files it owns inside that folder.
+The export flow may also write to a user-selected folder.
+The generator overwrites only the files it owns inside the chosen export folder.
 
 ## Generated files
 
@@ -70,10 +71,18 @@ Current generated widget rendering support:
 - `RadioButton`
 - `Slider`
 - `ScrollBar`
+- `StatusBar`
+- `ProgressBar`
 - `Image`
 - `Spacer`
 
 Rendering is currently a static preview of the form and widget tree.
+
+`ProgressBar` preview text behavior:
+
+- if `showText` is `true` and `text` is empty, generated preview rendering shows percent text
+- if `showText` is `true` and `text` is non-empty, generated preview rendering shows the custom text value
+- if `showText` is `false`, generated preview rendering shows no ProgressBar text
 
 ## Generated event handler stubs
 
@@ -125,6 +134,32 @@ When a non-empty handler name is present, the generated project emits:
 - a handler definition in `src/MainWindow.cpp`
 - TODO comments near relevant generated widget drawing code
 
+## Sender-aware callback API
+
+Generated code now emits a lightweight sender-aware event structure:
+
+- `struct WidgetEvent`
+  - `senderId`
+  - `senderName`
+  - `senderType`
+
+Generated handler signatures now use sender-aware forms:
+
+- `onClick` -> `void handlerName(const WidgetEvent& event)`
+- `onToggle` -> `void handlerName(const WidgetEvent& event, bool value)`
+- `onSelected` -> `void handlerName(const WidgetEvent& event, bool value)`
+- `onChanged` -> `void handlerName(const WidgetEvent& event, float value)`
+- `onTextChanged` -> `void handlerName(const WidgetEvent& event, const std::string& value)`
+- `onLoad` -> `void handlerName(const WidgetEvent& event)`
+- `onClose` -> `void handlerName(const WidgetEvent& event)`
+
+Callback compatibility for suggestion reuse is now grouped by:
+
+- `void_event`
+- `bool_event`
+- `float_event`
+- `string_event`
+
 ## Generated hint comments
 
 When a widget has a non-empty `hint` property, export also emits a nearby comment in generated drawing code:
@@ -161,13 +196,13 @@ Current limitation:
 
 Current generated signatures:
 
-- `onClick` -> `void handlerName()`
-- `onToggle` -> `void handlerName(bool checked)`
-- `onSelected` -> `void handlerName(bool selected)`
-- `onChanged` -> `void handlerName(float value)`
-- `onTextChanged` -> `void handlerName(const std::string& text)`
-- `onLoad` -> `void handlerName()`
-- `onClose` -> `void handlerName()`
+- `onClick` -> `void handlerName(const WidgetEvent& event)`
+- `onToggle` -> `void handlerName(const WidgetEvent& event, bool value)`
+- `onSelected` -> `void handlerName(const WidgetEvent& event, bool value)`
+- `onChanged` -> `void handlerName(const WidgetEvent& event, float value)`
+- `onTextChanged` -> `void handlerName(const WidgetEvent& event, const std::string& value)`
+- `onLoad` -> `void handlerName(const WidgetEvent& event)`
+- `onClose` -> `void handlerName(const WidgetEvent& event)`
 
 Handler names must be valid C++ identifiers.
 If export finds an invalid handler name, export fails cleanly.
@@ -178,6 +213,11 @@ If the same handler name is reused with incompatible signatures, export fails wi
 The generator may overwrite files inside `Generated/ExportedVisageProject`.
 It does not intentionally overwrite files outside that export folder.
 It only writes known generated files inside that folder and refuses to write paths outside the requested export directory.
+
+## Export progress
+
+The main editor now reports export progress through staged messages and a compact progress pane in the bottom status bar.
+This progress is currently synchronous and stage-based rather than background threaded.
 
 ## Current limitations
 

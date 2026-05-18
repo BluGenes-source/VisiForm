@@ -459,7 +459,9 @@ bool MainWindow::openProjectDialog()
     }
 
     const std::filesystem::path defaultProjectDir = projectRootPath() / "Generated" / "Projects";
-    const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() ? settings_.lastProjectDirectory : defaultProjectDir;
+    const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() && std::filesystem::exists(settings_.lastProjectDirectory)
+        ? settings_.lastProjectDirectory
+        : defaultProjectDir;
     const auto selectedPath = utils::showOpenProjectDialog(initialProjectDir);
     if (!selectedPath.has_value()) {
         setOperationStatus("Open cancelled");
@@ -529,7 +531,11 @@ bool MainWindow::saveProjectAsDialog()
         ? projectRootPath() / "Generated" / suggestedProjectPath(document_, {})
         : currentProjectPath_;
     const std::filesystem::path defaultProjectDir = projectRootPath() / "Generated" / "Projects";
-    const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() ? settings_.lastProjectDirectory : defaultProjectDir;
+    std::string ensureDirectoryError;
+    utils::FileUtils::ensureDirectoryExists(defaultProjectDir, ensureDirectoryError);
+    const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() && std::filesystem::exists(settings_.lastProjectDirectory)
+        ? settings_.lastProjectDirectory
+        : defaultProjectDir;
     const auto selectedPath = utils::showSaveProjectDialog(suggestedPath, initialProjectDir);
     if (!selectedPath.has_value()) {
         setOperationStatus("Save cancelled");
@@ -2470,7 +2476,7 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
         const float progressBarX = rightX;
         const float progressBarY = layout_.statusBar.y + (layout_.statusBar.height - ph) * 0.5f;
         // background
-        canvas.setColor(0xff2b2f36);
+        canvas.setColor(0xffeef2f7);
         canvas.fill(progressBarX, progressBarY, pw, ph);
         // fill
         const float fillW = pw * (static_cast<float>(exportProgressPercent_) / 100.0f);
@@ -2483,10 +2489,11 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
         canvas.fill(progressBarX, progressBarY, 1.0f, ph);
         canvas.fill(progressBarX + pw - 1.0f, progressBarY, 1.0f, ph);
         const std::string progressText = exportInProgress_ ? (exportProgressText_.empty() ? ("Export " + std::to_string(exportProgressPercent_) + "%") : exportProgressText_) : (exportProgressText_.empty() ? "" : exportProgressText_);
-        // choose text color based on percent for contrast
-        const int progressTextColor = (exportProgressPercent_ < 50) ? 0xff182333 : 0xfff8fbff;
-        canvas.setColor(progressTextColor);
-        canvas.text(progressText, labelFont_, visage::Font::kCenter, progressBarX, progressBarY - 2.0f, pw, ph + 4.0f);
+        if (!progressText.empty()) {
+            canvas.setColor(exportProgressPercent_ >= 50 ? 0xfff8fbff : 0xff182333);
+            canvas.text(progressText, labelFont_, visage::Font::kCenter,
+                progressBarX, progressBarY - 2.0f, pw, ph + 4.0f);
+        }
     }
 }
 

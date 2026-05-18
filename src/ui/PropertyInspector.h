@@ -58,9 +58,11 @@ public:
 
 private:
     [[nodiscard]] std::vector<PropertyRow> buildRows(const model::ProjectDocument& document) const;
+    void rebuildSuggestions(const model::ProjectDocument& document) const;
 
     struct CallbackSuggestionItem {
-        std::string handlerName;
+        std::string callbackName;
+        std::string signatureKind;
         float x = 0.0f;
         float y = 0.0f;
         float width = 0.0f;
@@ -68,6 +70,7 @@ private:
     };
 
     mutable std::vector<CallbackSuggestionItem> suggestions_{};
+    mutable std::string activeCallbackPropertyKey_{};
 
     float x_{};
     float y_{};

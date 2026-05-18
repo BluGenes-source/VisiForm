@@ -61,6 +61,25 @@ std::string escapeCppStringLiteral(const std::string& value)
     return stream.str();
 }
 
+std::string progressBarDisplayText(const visiform::model::WidgetNode& widget)
+{
+    if (!widget.getBoolProperty("showText", true)) {
+        return {};
+    }
+
+    const std::string explicitText = widget.getStringProperty("text", {});
+    if (!explicitText.empty()) {
+        return explicitText;
+    }
+
+    const float minimum = widget.getFloatProperty("min", 0.0f);
+    const float maximum = std::max(minimum, widget.getFloatProperty("max", 100.0f));
+    const float safeMaximum = maximum <= minimum ? minimum + 1.0f : maximum;
+    const float currentValue = std::clamp(widget.getFloatProperty("value", minimum), minimum, safeMaximum);
+    const float normalized = safeMaximum <= minimum ? 0.0f : std::clamp((currentValue - minimum) / (safeMaximum - minimum), 0.0f, 1.0f);
+    return std::to_string(static_cast<int>(std::round(normalized * 100.0f))) + "%";
+}
+
 std::string emitFloat(float value)
 {
     std::ostringstream stream;
@@ -222,48 +241,48 @@ std::string signatureDescription(HandlerSignature signature)
 {
     switch (signature) {
     case HandlerSignature::Void:
-        return "void()";
+        return "void(const WidgetEvent&)";
     case HandlerSignature::Bool:
-        return "void(bool)";
+        return "void(const WidgetEvent&, bool)";
     case HandlerSignature::Float:
-        return "void(float)";
+        return "void(const WidgetEvent&, float)";
     case HandlerSignature::String:
-        return "void(const std::string&)";
+        return "void(const WidgetEvent&, const std::string&)";
     }
 
-    return "void()";
+    return "void(const WidgetEvent&)";
 }
 
 std::string handlerDeclaration(const HandlerInfo& handler)
 {
     switch (handler.signature) {
     case HandlerSignature::Void:
-        return "void " + handler.handlerName + "();";
+        return "void " + handler.handlerName + "(const WidgetEvent& event);";
     case HandlerSignature::Bool:
-        return "void " + handler.handlerName + "(bool checked);";
+        return "void " + handler.handlerName + "(const WidgetEvent& event, bool value);";
     case HandlerSignature::Float:
-        return "void " + handler.handlerName + "(float value);";
+        return "void " + handler.handlerName + "(const WidgetEvent& event, float value);";
     case HandlerSignature::String:
-        return "void " + handler.handlerName + "(const std::string& text);";
+        return "void " + handler.handlerName + "(const WidgetEvent& event, const std::string& value);";
     }
 
-    return "void " + handler.handlerName + "();";
+    return "void " + handler.handlerName + "(const WidgetEvent& event);";
 }
 
 std::string handlerDefinitionSignature(const std::string& className, const HandlerInfo& handler)
 {
     switch (handler.signature) {
     case HandlerSignature::Void:
-        return "void " + className + "::" + handler.handlerName + "()";
+        return "void " + className + "::" + handler.handlerName + "(const WidgetEvent& event)";
     case HandlerSignature::Bool:
-        return "void " + className + "::" + handler.handlerName + "(bool checked)";
+        return "void " + className + "::" + handler.handlerName + "(const WidgetEvent& event, bool value)";
     case HandlerSignature::Float:
-        return "void " + className + "::" + handler.handlerName + "(float value)";
+        return "void " + className + "::" + handler.handlerName + "(const WidgetEvent& event, float value)";
     case HandlerSignature::String:
-        return "void " + className + "::" + handler.handlerName + "(const std::string& text)";
+        return "void " + className + "::" + handler.handlerName + "(const WidgetEvent& event, const std::string& value)";
     }
 
-    return "void " + className + "::" + handler.handlerName + "()";
+    return "void " + className + "::" + handler.handlerName + "(const WidgetEvent& event)";
 }
 
 std::string handlerTodoLine(const EventBinding& binding)
@@ -343,7 +362,8 @@ void emitEventComments(std::ostringstream& stream, const std::string& indent, co
             continue;
         }
 
-        stream << indent << "// Event: " << eventKey << " -> " << handlerName << "()\n";
+        stream << indent << "// Event: " << eventKey << " -> " << handlerName << "\n";
+        stream << indent << "// Sender: " << widgetLabel(widget) << " (" << widget.id << ", " << widget.typeName() << ")\n";
         stream << indent << "// TODO: Connect this handler when generated interactive widgets are implemented.\n";
     }
 }
@@ -503,6 +523,44 @@ void emitWidgetDraw(std::ostringstream& stream,
         }
         break;
     }
+    case visiform::model::WidgetType::StatusBar: {
+        const int fields = std::clamp(widget.getIntProperty("fields", 1), 1, 4);
+        stream << indent << "canvas.setColor(0xff2B2F36);\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", 0xff6C7788);\n";
+        stream << indent << "if (drawText) {\n";
+        stream << indent << "    const float fieldWidth = " << widthExpr << " / " << fields << ".0f;\n";
+        for (int index = 0; index < fields; ++index) {
+            const std::string textKey = "text" + std::to_string(index);
+            stream << indent << "    canvas.setColor(0xffE6EBF2);\n";
+            stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty(textKey, index == 0 ? "Ready" : ""))
+                   << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + fieldWidth * " << index << ".0f + 6.0f, " << yExpr << " + 6.0f, fieldWidth - 12.0f, " << heightExpr << " - 12.0f);\n";
+            if (index + 1 < fields) {
+                stream << indent << "    canvas.setColor(0xff3A424E);\n";
+                stream << indent << "    canvas.fill(" << xExpr << " + fieldWidth * " << (index + 1) << ".0f - 1.0f, " << yExpr << " + 4.0f, 1.0f, " << heightExpr << " - 8.0f);\n";
+            }
+        }
+        stream << indent << "}\n";
+        break;
+    }
+    case visiform::model::WidgetType::ProgressBar: {
+        const float minValue = widget.getFloatProperty("min", 0.0f);
+        const float maxValue = std::max(minValue + 1.0f, widget.getFloatProperty("max", 100.0f));
+        const float currentValue = std::clamp(widget.getFloatProperty("value", 25.0f), minValue, maxValue);
+        const float normalized = std::clamp((currentValue - minValue) / (maxValue - minValue), 0.0f, 1.0f);
+        const std::string displayText = progressBarDisplayText(widget);
+        stream << indent << "canvas.setColor(0xffEEF2F7);\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", 0xff97A3B7);\n";
+        stream << indent << "canvas.setColor(0xff2D7FF9);\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << " * " << emitFloat(normalized) << ", " << heightExpr << ");\n";
+        if (!displayText.empty()) {
+            stream << indent << "canvas.setColor(" << (normalized >= 0.5f ? "0xffF8FBFF" : "0xff182333") << ");\n";
+            stream << indent << "canvas.text(" << emitStringLiteral(displayText)
+                   << ", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        }
+        break;
+    }
     case visiform::model::WidgetType::Image:
         stream << indent << "canvas.setColor(0xffD3DAE6);\n";
         stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
@@ -539,6 +597,11 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "#include <string>\n";
     stream << "#include <visage/app.h>\n";
     stream << "#include <visage/graphics.h>\n\n";
+    stream << "struct WidgetEvent {\n";
+    stream << "    const char* senderId = \"\";\n";
+    stream << "    const char* senderName = \"\";\n";
+    stream << "    const char* senderType = \"\";\n";
+    stream << "};\n\n";
     stream << "class " << className << " : public visage::ApplicationWindow {\n";
     stream << "public:\n";
     stream << "    " << className << "();\n";
@@ -663,14 +726,15 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
         stream << "\n" << handlerDefinitionSignature(className, handler) << "\n";
         stream << "{\n";
         stream << "    // References: " << handlerReferenceList(handler) << "\n";
+        stream << "    (void)event;\n";
         if (handler.signature == HandlerSignature::Bool) {
-            stream << "    (void)checked;\n";
+            stream << "    (void)value;\n";
         }
         else if (handler.signature == HandlerSignature::Float) {
             stream << "    (void)value;\n";
         }
         else if (handler.signature == HandlerSignature::String) {
-            stream << "    (void)text;\n";
+            stream << "    (void)value;\n";
         }
         stream << "    // Default generated event hook.\n";
         stream << "}\n";
@@ -734,14 +798,15 @@ std::string emitUserSubclassCpp(const visiform::model::ProjectDocument& document
             }
         }
         else {
+            stream << "    (void)event;\n";
             if (handler.signature == HandlerSignature::Bool) {
-                stream << "    (void)checked;\n";
+                stream << "    (void)value;\n";
             }
             else if (handler.signature == HandlerSignature::Float) {
                 stream << "    (void)value;\n";
             }
             else if (handler.signature == HandlerSignature::String) {
-                stream << "    (void)text;\n";
+                stream << "    (void)value;\n";
             }
             stream << "    " << handlerTodoLine(handler.bindings.front()) << "\n";
         }
