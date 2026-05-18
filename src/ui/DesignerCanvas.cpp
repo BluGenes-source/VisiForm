@@ -2,6 +2,7 @@
 
 #include "ui/DesignerCanvas.h"
 
+#include "model/LookAndFeelRegistry.h"
 #include "ui/WidgetMetrics.h"
 
 #include <algorithm>
@@ -46,6 +47,18 @@ struct PreviewLayout {
 struct WidgetScreenInfo {
     const model::WidgetNode* widget = nullptr;
     PanelRect bounds{};
+};
+
+struct ResolvedWidgetStyle {
+    int panelColor = 0xff1f242d;
+    int fillColor = 0xff2b313d;
+    int textColor = 0xffeef2f8;
+    int borderColor = 0xff97a3b7;
+    int accentColor = 0xff2d7ff9;
+    int disabledColor = 0xff6c7788;
+    float borderThickness = 1.0f;
+    float cornerRadius = 0.0f;
+    float fontSize = 16.0f;
 };
 
 PanelRect expandRect(const PanelRect& rect, float padding)
@@ -198,6 +211,41 @@ int parseColorOrDefault(const std::string& value, int defaultColor)
     }
 
     return defaultColor;
+}
+
+ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, const model::WidgetNode& widget)
+{
+    const model::LookAndFeelRegistry& registry = model::LookAndFeelRegistry::instance();
+    const std::string widgetLookAndFeelId = widget.getStringProperty("lookAndFeelId", {});
+    const model::LookAndFeelDefinition* definition = !widgetLookAndFeelId.empty()
+        ? registry.findById(widgetLookAndFeelId)
+        : registry.findById(document.lookAndFeelId);
+    if (definition == nullptr) {
+        definition = &registry.defaultDefinition();
+    }
+
+    ResolvedWidgetStyle style;
+    style.panelColor = parseColorOrDefault(definition->panelColor, style.panelColor);
+    style.fillColor = parseColorOrDefault(definition->controlFillColor, style.fillColor);
+    style.textColor = parseColorOrDefault(definition->controlTextColor, style.textColor);
+    style.borderColor = parseColorOrDefault(definition->controlBorderColor, style.borderColor);
+    style.accentColor = parseColorOrDefault(definition->accentColor, style.accentColor);
+    style.disabledColor = parseColorOrDefault(definition->disabledColor, style.disabledColor);
+    style.borderThickness = std::clamp(widget.getFloatProperty("borderThickness", definition->borderThickness), 0.0f, 20.0f);
+    style.cornerRadius = std::clamp(widget.getFloatProperty("cornerRadius", definition->cornerRadius), 0.0f, 50.0f);
+    style.fontSize = std::clamp(widget.getFloatProperty("fontSize", definition->fontSize), 8.0f, 72.0f);
+
+    style.fillColor = parseColorOrDefault(widget.getStringProperty("fillColor", {}), style.fillColor);
+    style.textColor = parseColorOrDefault(widget.getStringProperty("textColor", {}), style.textColor);
+    style.borderColor = parseColorOrDefault(widget.getStringProperty("borderColor", {}), style.borderColor);
+    style.accentColor = parseColorOrDefault(widget.getStringProperty("accentColor", {}), style.accentColor);
+
+    if (widget.type == model::WidgetType::FormWindow || widget.type == model::WidgetType::Frame) {
+        style.fillColor = parseColorOrDefault(widget.getStringProperty("backgroundColor", {}),
+            widget.type == model::WidgetType::FormWindow ? style.panelColor : style.fillColor);
+    }
+
+    return style;
 }
 
 PreviewLayout calculatePreviewLayout(float x, float y, float width, float height, const model::ProjectDocument& document)
@@ -434,20 +482,21 @@ void drawWidget(visage::Canvas& canvas,
         std::max(1.0f, widget.bounds.width * scale),
         std::max(1.0f, widget.bounds.height * scale)
     };
+    const ResolvedWidgetStyle style = resolveWidgetStyle(document, widget);
 
     switch (widget.type) {
     case model::WidgetType::FormWindow: {
-        canvas.setColor(parseColorOrDefault(getStringProperty(widget, "backgroundColor", "#f2f4f8"), 0xfff2f4f8));
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         if (showGrid) {
             drawGrid(canvas, bounds, scale, showMinorGrid, gridSize, majorGridSize);
         }
-        canvas.setColor(0xffc4ccd8);
+        canvas.setColor(style.panelColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, std::min(kTitleBarHeight, bounds.height));
-        drawBorder(canvas, bounds, 0xff6c7788);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
 
         if (drawText) {
-            canvas.setColor(0xff17212f);
+            canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x + 10.0f, bounds.y + 4.0f, std::max(0.0f, bounds.width - 20.0f), 22.0f);
         }
@@ -455,9 +504,9 @@ void drawWidget(visage::Canvas& canvas,
     }
     case model::WidgetType::StatusBar: {
         // Draw a horizontal status bar divided into fields
-        canvas.setColor(0xff2b2f36);
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xff6c7788);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
 
         int fields = static_cast<int>(getNumericProperty(widget, "fields", 1.0f));
         fields = std::clamp(fields, 1, 4);
@@ -468,11 +517,11 @@ void drawWidget(visage::Canvas& canvas,
             if (drawText) {
                 const std::string key = std::string("text") + std::to_string(i);
                 const std::string text = getDisplayTextOrFallback(widget, key, i == 0 ? "Ready" : "");
-                canvas.setColor(0xffe6ebf2);
+                canvas.setColor(style.textColor);
                 canvas.text(text, font, visage::Font::kTopLeft, fx + 6.0f, bounds.y + 4.0f, fw - 12.0f, bounds.height - 8.0f);
             }
             if (i + 1 < fields) {
-                canvas.setColor(0xff3a424e);
+                canvas.setColor(style.borderColor);
                 canvas.fill(fx + fw - 1.0f, bounds.y + 4.0f, 1.0f, bounds.height - 8.0f);
             }
         }
@@ -481,57 +530,57 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::ProgressBar: {
         // Draw a bordered progress bar with fill based on min/max/value
         const float normalized = normalizedRangeValue(widget, "value");
-        canvas.setColor(0xffeef2f7);
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xff97a3b7);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
 
         const float fillWidth = std::max(0.0f, bounds.width * normalized);
-        canvas.setColor(0xff2d7ff9);
+        canvas.setColor(style.accentColor);
         canvas.fill(bounds.x, bounds.y, fillWidth, bounds.height);
 
         const std::string text = progressBarDisplayText(widget);
         if (drawText && !text.empty()) {
-            canvas.setColor(normalized >= 0.5f ? 0xfff8fbff : 0xff182333);
+            canvas.setColor(normalized >= 0.5f ? 0xfff8fbff : style.textColor);
             canvas.text(text, font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
     }
     case model::WidgetType::Frame:
-        canvas.setColor(parseColorOrDefault(getStringProperty(widget, "backgroundColor", "#e3e8f0"), 0xffe3e8f0));
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xff97a3b7);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
-            canvas.setColor(0xff182333);
+            canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 16.0f), 20.0f);
         }
         break;
     case model::WidgetType::Label:
         if (drawText) {
-            const float fontSize = defaultDesignerFontSize();
+            const float fontSize = style.fontSize;
             const float textTop = bounds.y + (bounds.height - estimatedLineHeight(fontSize)) * 0.5f;
-            canvas.setColor(0xffeef3fa);
+            canvas.setColor(style.textColor);
             canvas.text(getDisplayTextOrFallback(widget, "text", "Label"), font, visage::Font::kTopLeft,
                 bounds.x + 6.0f, textTop,
                 std::max(0.0f, bounds.width - 12.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
     case model::WidgetType::Button:
-        canvas.setColor(0xffeef1f6);
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xffc2c9d5);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
-            canvas.setColor(0xff101b29);
+            canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kCenter,
                 bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
     case model::WidgetType::TextBox:
-        canvas.setColor(0xffffffff);
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xffb6c0cf);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
-            canvas.setColor(0xff2d3a4d);
+            canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "text", ""), font, visage::Font::kTopLeft,
                 bounds.x + 8.0f, bounds.y + bounds.height * 0.5f - 10.0f,
                 std::max(0.0f, bounds.width - 16.0f), std::max(0.0f, bounds.height - 8.0f));
@@ -542,17 +591,17 @@ void drawWidget(visage::Canvas& canvas,
         const float squareX = bounds.x + 6.0f;
         const float squareY = bounds.y + (bounds.height - boxSize) * 0.5f;
         const float textX = squareX + boxSize + 12.0f;
-        const float fontSize = defaultDesignerFontSize();
+        const float fontSize = style.fontSize;
         const float textY = bounds.y + bounds.height * 0.5f - estimatedTextBaselineOffset(fontSize);
-        canvas.setColor(0xffffffff);
+        canvas.setColor(style.fillColor);
         canvas.fill(squareX, squareY, boxSize, boxSize);
-        drawBorder(canvas, { squareX, squareY, boxSize, boxSize }, 0xff8390a4);
+        drawBorder(canvas, { squareX, squareY, boxSize, boxSize }, style.borderColor, style.borderThickness);
         if (getBoolProperty(widget, "checked", false)) {
-            canvas.setColor(0xff2d7ff9);
+            canvas.setColor(style.accentColor);
             canvas.fill(squareX + 4.0f, squareY + 4.0f, 10.0f, 10.0f);
         }
         if (drawText) {
-            canvas.setColor(0xffeef3fa);
+            canvas.setColor(style.textColor);
             canvas.text(getDisplayTextOrFallback(widget, "text", "CheckBox"), font, visage::Font::kTopLeft,
                 textX, textY,
                 std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
@@ -564,17 +613,17 @@ void drawWidget(visage::Canvas& canvas,
         const float outerX = bounds.x + 6.0f;
         const float outerY = bounds.y + (bounds.height - boxSize) * 0.5f;
         const float textX = outerX + boxSize + 12.0f;
-        const float fontSize = defaultDesignerFontSize();
+        const float fontSize = style.fontSize;
         const float textY = bounds.y + bounds.height * 0.5f - estimatedTextBaselineOffset(fontSize);
-        canvas.setColor(0xffffffff);
+        canvas.setColor(style.fillColor);
         canvas.fill(outerX, outerY, boxSize, boxSize);
-        drawBorder(canvas, { outerX, outerY, boxSize, boxSize }, 0xff8390a4);
+        drawBorder(canvas, { outerX, outerY, boxSize, boxSize }, style.borderColor, style.borderThickness);
         if (getBoolProperty(widget, "selected", false)) {
-            canvas.setColor(0xff2d7ff9);
+            canvas.setColor(style.accentColor);
             canvas.fill(outerX + 5.0f, outerY + 5.0f, 8.0f, 8.0f);
         }
         if (drawText) {
-            canvas.setColor(0xffeef3fa);
+            canvas.setColor(style.textColor);
             canvas.text(getDisplayTextOrFallback(widget, "text", "Radio Button"), font, visage::Font::kTopLeft,
                 textX, textY,
                 std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
@@ -588,13 +637,13 @@ void drawWidget(visage::Canvas& canvas,
         const float trackWidth = std::max(0.0f, bounds.width - 16.0f);
         const float handleCenterX = trackLeft + trackWidth * normalized;
         const float handleX = std::clamp(handleCenterX - 6.0f, trackLeft - 6.0f, trackLeft + trackWidth - 6.0f);
-        canvas.setColor(0xff8f9bae);
+        canvas.setColor(style.borderColor);
         canvas.fill(trackLeft, trackY, trackWidth, 4.0f);
-        canvas.setColor(0xff2d7ff9);
+        canvas.setColor(style.accentColor);
         canvas.fill(handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f);
-        drawBorder(canvas, { handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f }, 0xff11448f);
+        drawBorder(canvas, { handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f }, style.borderColor, style.borderThickness);
         if (drawText) {
-            canvas.setColor(0xff1e2b3c);
+            canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
                 bounds.x, bounds.y - 18.0f, bounds.width, 16.0f);
         }
@@ -609,25 +658,25 @@ void drawWidget(visage::Canvas& canvas,
         const float normalized = std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
         const float thumbFactor = std::clamp(pageSize / (maximum - minimum + pageSize), 0.18f, 0.55f);
         const float arrowSize = vertical ? std::min(bounds.width, 20.0f) : std::min(bounds.height, 20.0f);
-        canvas.setColor(0xffd7dee8);
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xff7d899c);
-        canvas.setColor(0xffb8c2d0);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        canvas.setColor(style.borderColor);
         if (vertical) {
             const float trackTop = bounds.y + arrowSize;
             const float trackHeight = std::max(0.0f, bounds.height - arrowSize * 2.0f);
             const float thumbHeight = std::clamp(trackHeight * thumbFactor, 18.0f, std::max(18.0f, trackHeight));
             const float thumbY = trackTop + std::max(0.0f, trackHeight - thumbHeight) * normalized;
-            canvas.setColor(0xffeef2f8);
+            canvas.setColor(style.fillColor);
             canvas.fill(bounds.x, bounds.y, bounds.width, arrowSize);
             canvas.fill(bounds.x, bounds.y + bounds.height - arrowSize, bounds.width, arrowSize);
-            drawBorder(canvas, { bounds.x, bounds.y, bounds.width, arrowSize }, 0xff7d899c);
-            drawBorder(canvas, { bounds.x, bounds.y + bounds.height - arrowSize, bounds.width, arrowSize }, 0xff7d899c);
-            canvas.setColor(0xffc8d0dc);
+            drawBorder(canvas, { bounds.x, bounds.y, bounds.width, arrowSize }, style.borderColor, style.borderThickness);
+            drawBorder(canvas, { bounds.x, bounds.y + bounds.height - arrowSize, bounds.width, arrowSize }, style.borderColor, style.borderThickness);
+            canvas.setColor(style.panelColor);
             canvas.fill(bounds.x + 2.0f, trackTop, bounds.width - 4.0f, trackHeight);
-            canvas.setColor(0xff6a788d);
+            canvas.setColor(style.accentColor);
             canvas.fill(bounds.x + 4.0f, thumbY, std::max(0.0f, bounds.width - 8.0f), thumbHeight);
-            drawBorder(canvas, { bounds.x + 4.0f, thumbY, std::max(0.0f, bounds.width - 8.0f), thumbHeight }, 0xff485669);
+            drawBorder(canvas, { bounds.x + 4.0f, thumbY, std::max(0.0f, bounds.width - 8.0f), thumbHeight }, style.borderColor, style.borderThickness);
             canvas.fill(bounds.x + bounds.width * 0.5f - 3.0f, bounds.y + 6.0f, 6.0f, 3.0f);
             canvas.fill(bounds.x + bounds.width * 0.5f - 3.0f, bounds.y + bounds.height - 9.0f, 6.0f, 3.0f);
         }
@@ -636,37 +685,37 @@ void drawWidget(visage::Canvas& canvas,
             const float trackWidth = std::max(0.0f, bounds.width - arrowSize * 2.0f);
             const float thumbWidth = std::clamp(trackWidth * thumbFactor, 18.0f, std::max(18.0f, trackWidth));
             const float thumbX = trackLeft + std::max(0.0f, trackWidth - thumbWidth) * normalized;
-            canvas.setColor(0xffeef2f8);
+            canvas.setColor(style.fillColor);
             canvas.fill(bounds.x, bounds.y, arrowSize, bounds.height);
             canvas.fill(bounds.x + bounds.width - arrowSize, bounds.y, arrowSize, bounds.height);
-            drawBorder(canvas, { bounds.x, bounds.y, arrowSize, bounds.height }, 0xff7d899c);
-            drawBorder(canvas, { bounds.x + bounds.width - arrowSize, bounds.y, arrowSize, bounds.height }, 0xff7d899c);
-            canvas.setColor(0xffc8d0dc);
+            drawBorder(canvas, { bounds.x, bounds.y, arrowSize, bounds.height }, style.borderColor, style.borderThickness);
+            drawBorder(canvas, { bounds.x + bounds.width - arrowSize, bounds.y, arrowSize, bounds.height }, style.borderColor, style.borderThickness);
+            canvas.setColor(style.panelColor);
             canvas.fill(trackLeft, bounds.y + 2.0f, trackWidth, bounds.height - 4.0f);
-            canvas.setColor(0xff6a788d);
+            canvas.setColor(style.accentColor);
             canvas.fill(thumbX, bounds.y + 4.0f, thumbWidth, std::max(0.0f, bounds.height - 8.0f));
-            drawBorder(canvas, { thumbX, bounds.y + 4.0f, thumbWidth, std::max(0.0f, bounds.height - 8.0f) }, 0xff485669);
+            drawBorder(canvas, { thumbX, bounds.y + 4.0f, thumbWidth, std::max(0.0f, bounds.height - 8.0f) }, style.borderColor, style.borderThickness);
             canvas.fill(bounds.x + 6.0f, bounds.y + bounds.height * 0.5f - 3.0f, 3.0f, 6.0f);
             canvas.fill(bounds.x + bounds.width - 9.0f, bounds.y + bounds.height * 0.5f - 3.0f, 3.0f, 6.0f);
         }
         break;
     }
     case model::WidgetType::Image:
-        canvas.setColor(0xffd8dfeb);
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xff98a3b3);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
-            canvas.setColor(0xff314055);
+            canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "source", "Image"), font, visage::Font::kCenter,
                 bounds.x + 6.0f, bounds.y, std::max(0.0f, bounds.width - 12.0f), bounds.height);
         }
         break;
     case model::WidgetType::Spacer:
-        canvas.setColor(0xffeef2f7);
+        canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, 0xffb1bbc9);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
-            canvas.setColor(0xff596679);
+            canvas.setColor(style.textColor);
             canvas.text("Spacer", font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;

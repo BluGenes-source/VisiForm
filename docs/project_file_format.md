@@ -17,6 +17,7 @@ Top-level fields:
 - `mainFormClassName` - generated C++ class name for the main form
 - `generatedBaseClassName` - generated base window class name
 - `userSubclassName` - generated user subclass name
+- `lookAndFeelId` - project-level look and feel preset id
 - `selectedWidgetId` - currently selected widget id
 - `root` - root `WidgetNode`
 
@@ -35,6 +36,8 @@ Each widget node stores:
 
 For this phase, generated event metadata is also stored in `properties` as string values.
 Widget help text is also stored in `properties` using the common `hint` string key.
+
+The project-level `lookAndFeelId` is stored at the top level and defaults to `VisiFormDark` when missing.
 
 ## Widget type strings
 
@@ -85,6 +88,21 @@ Supported property JSON value types:
 - string -> `std::string`
 
 Objects and arrays are not currently supported as property values.
+
+## Common style override properties
+
+Most widgets can also store optional style override properties inside `properties`:
+
+- `lookAndFeelId`
+- `fillColor`
+- `textColor`
+- `borderColor`
+- `accentColor`
+- `borderThickness`
+- `cornerRadius`
+- `fontSize`
+
+Empty style override values inherit from the project-level look and feel.
 
 ## Event property keys
 

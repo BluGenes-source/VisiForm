@@ -76,6 +76,7 @@ std::string JsonProjectWriter::writeToString(const model::ProjectDocument& docum
     json["mainFormClassName"] = userSubclassName;
     json["generatedBaseClassName"] = "MainWindow";
     json["userSubclassName"] = userSubclassName;
+    json["lookAndFeelId"] = document.lookAndFeelId.empty() ? std::string{"VisiFormDark"} : document.lookAndFeelId;
     json["selectedWidgetId"] = document.selectedWidgetId;
     json["root"] = widgetToJson(document.root);
 

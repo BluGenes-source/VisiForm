@@ -140,6 +140,7 @@ ProjectDocument ProjectDocument::createDefault()
     document.mainFormClassName = "AppMainWindow";
     document.generatedBaseClassName = "MainWindow";
     document.userSubclassName = "AppMainWindow";
+    document.lookAndFeelId = "VisiFormDark";
     document.root = WidgetRegistry::instance().createDefaultWidget(WidgetType::FormWindow, "form_main");
     document.root.name = "MainWindow";
     document.root.bounds = Rect{ 0.0f, 0.0f, 900.0f, 600.0f };

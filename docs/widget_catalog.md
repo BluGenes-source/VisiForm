@@ -31,6 +31,35 @@ The registry stores:
 - event properties
 - event signature kinds used by export callback hooks and suggestions
 
+## Look and feel foundation
+
+The editor now supports a project-level look and feel plus optional per-widget style overrides.
+
+Built-in presets:
+
+- `VisiFormDark`
+- `VisiFormLight`
+- `ImGuiDark`
+- `FlatClassic`
+
+Project-wide behavior:
+
+- the root `FormWindow` exposes `lookAndFeelId`
+- widgets inherit colors and numeric style values from the active project preset by default
+
+Common widget style overrides:
+
+- `lookAndFeelId`
+- `fillColor`
+- `textColor`
+- `borderColor`
+- `accentColor`
+- `borderThickness`
+- `cornerRadius`
+- `fontSize`
+
+Empty override values inherit from the active project look and feel.
+
 ## Event metadata
 
 For this phase, event handler names are stored as normal widget string properties.
@@ -92,6 +121,8 @@ This allows, for example, `RadioButton.onSelected` and `CheckBox.onToggle` to re
 - No separate visual event editor yet
 - Generated projects currently emit handler stubs and TODO comments
 - Full generated interactive event dispatch is not implemented yet
+- Rounded-corner drawing is stored as a style property but still uses normal rectangle drawing for now
+- No theme editor UI yet
 
 ## Default editor sizes
 

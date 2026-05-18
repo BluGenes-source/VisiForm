@@ -90,6 +90,18 @@ const model::WidgetEventDefinition* findEventDefinition(model::WidgetType type, 
     return nullptr;
 }
 
+bool isStylePropertyKey(const std::string& key)
+{
+    return key == "lookAndFeelId"
+        || key == "fillColor"
+        || key == "textColor"
+        || key == "borderColor"
+        || key == "accentColor"
+        || key == "borderThickness"
+        || key == "cornerRadius"
+        || key == "fontSize";
+}
+
 void collectMatchingHandlers(const model::WidgetNode& widget,
     const std::string& signatureKind,
     std::set<std::string>& handlerNames)
@@ -181,6 +193,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     if (selectedWidget->type == model::WidgetType::FormWindow) {
         rows.push_back({ "generatedBaseClassName", "generatedBaseClassName", "MainWindow", PropertyEditKind::ReadOnly });
         rows.push_back({ "userSubclassName", "userSubclassName", document.userSubclassName, PropertyEditKind::Text });
+        rows.push_back({ "lookAndFeelId", "lookAndFeelId", document.lookAndFeelId, PropertyEditKind::Text });
     }
     rows.push_back({ "x", "x", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
     rows.push_back({ "y", "y", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
@@ -205,7 +218,12 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     };
 
     if (const auto* definition = model::WidgetRegistry::instance().find(selectedWidget->type)) {
+        bool styleSectionInserted = false;
         for (const auto& property : definition->properties) {
+            if (isStylePropertyKey(property.key) && !styleSectionInserted) {
+                rows.push_back({ "__section_style", "Style", {}, PropertyEditKind::ReadOnly, true });
+                styleSectionInserted = true;
+            }
             const auto* propertyValue = selectedWidget->getProperty(property.key);
             const std::string displayValue = propertyValue != nullptr ? propertyValueText(*propertyValue) : property.defaultValue.toDisplayString();
             rows.push_back({ property.key, property.label, displayValue, editKindForDefinition(property.editKind, property.editable) });

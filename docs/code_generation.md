@@ -78,6 +78,31 @@ Current generated widget rendering support:
 
 Rendering is currently a static preview of the form and widget tree.
 
+## Look and feel aware preview rendering
+
+Generated preview drawing now resolves a project-level look and feel plus optional per-widget style overrides at export time.
+
+Built-in preset ids currently include:
+
+- `VisiFormDark`
+- `VisiFormLight`
+- `ImGuiDark`
+- `FlatClassic`
+
+Supported generated preview style fields include:
+
+- `lookAndFeelId`
+- `fillColor`
+- `textColor`
+- `borderColor`
+- `accentColor`
+- `borderThickness`
+- `cornerRadius`
+- `fontSize`
+
+Generated look and feel is static preview drawing for now.
+Runtime theme switching in the generated app is future work.
+
 `ProgressBar` preview text behavior:
 
 - if `showText` is `true` and `text` is empty, generated preview rendering shows percent text

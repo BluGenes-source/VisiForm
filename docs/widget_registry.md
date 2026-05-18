@@ -1,6 +1,7 @@
 # Widget registry
 
 `VisiForm` now uses a built-in `WidgetRegistry` to centralize widget metadata used by the editor and generator.
+It also uses a built-in `LookAndFeelRegistry` for shared visual presets.
 
 ## Current purpose
 
@@ -14,6 +15,18 @@ The registry stores built-in definitions for:
 - editable properties
 - event properties
 
+The look-and-feel registry stores built-in visual presets for:
+
+- panel color
+- control fill color
+- control text color
+- control border color
+- accent color
+- disabled color
+- border thickness
+- corner radius
+- font size
+
 The registry is built-in and static for now.
 It does not support runtime plugin loading yet.
 
@@ -24,9 +37,25 @@ To add a new widget type internally:
 1. Add the `WidgetType` enum value.
 2. Add widget type string conversion.
 3. Add a `WidgetDefinition` to `WidgetRegistry`.
-4. Add designer rendering in `DesignerCanvas`.
-5. Add generator rendering, event signature mapping, and callback hook support.
-6. Update sample data and docs.
+4. Add common style override properties if the widget should support look-and-feel overrides.
+5. Add designer rendering in `DesignerCanvas`.
+6. Add generator rendering, event signature mapping, and callback hook support.
+7. Update sample data and docs.
+
+## Style override properties
+
+Most widgets now expose common style override properties through the registry:
+
+- `lookAndFeelId`
+- `fillColor`
+- `textColor`
+- `borderColor`
+- `accentColor`
+- `borderThickness`
+- `cornerRadius`
+- `fontSize`
+
+Empty override values inherit from the project-level look and feel.
 
 ## Event signatures and suggestions
 

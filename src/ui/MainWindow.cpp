@@ -3,6 +3,7 @@
 #include "ui/MainWindow.h"
 
 #include "commands/Command.h"
+#include "model/LookAndFeelRegistry.h"
 #include "model/WidgetRegistry.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
@@ -53,6 +54,30 @@ constexpr float kSmartGuideSnapThreshold = 6.0f;
 std::string normalizedPathText(const std::filesystem::path& path)
 {
     return utils::FileUtils::normalizeSeparators(path.string());
+}
+
+bool isValidStyleColor(const std::string& value)
+{
+    if (value.empty()) {
+        return true;
+    }
+    if (value.size() != 7 || value.front() != '#') {
+        return false;
+    }
+    return std::all_of(value.begin() + 1, value.end(), [](unsigned char character) {
+        return std::isxdigit(character) != 0;
+    });
+}
+
+bool isStyleColorProperty(const std::string& key)
+{
+    return key == "fillColor" || key == "textColor" || key == "borderColor"
+        || key == "accentColor" || key == "backgroundColor";
+}
+
+bool isStyleFloatProperty(const std::string& key)
+{
+    return key == "borderThickness" || key == "cornerRadius" || key == "fontSize";
 }
 
 
@@ -2222,6 +2247,59 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         setOperationStatus("User subclass changed: " + trimmedValue);
         redraw();
         return true;
+    }
+
+    if (key == "lookAndFeelId") {
+        if (!trimmedValue.empty() && model::LookAndFeelRegistry::instance().findById(trimmedValue) == nullptr) {
+            setOperationStatus("Unknown look and feel preset");
+            redraw();
+            return false;
+        }
+
+        if (widget->type == model::WidgetType::FormWindow && document_.isRootWidgetId(widget->id)) {
+            document_.lookAndFeelId = trimmedValue.empty() ? "VisiFormDark" : trimmedValue;
+            document_.markDirty();
+            setOperationStatus("Look and feel changed: " + document_.lookAndFeelId);
+            redraw();
+            return true;
+        }
+
+        return setSelectedWidgetProperty(key, trimmedValue);
+    }
+
+    if (isStyleColorProperty(key)) {
+        if (!isValidStyleColor(trimmedValue)) {
+            setOperationStatus("Invalid color value");
+            redraw();
+            return false;
+        }
+
+        return setSelectedWidgetProperty(key, trimmedValue);
+    }
+
+    if (isStyleFloatProperty(key)) {
+        float parsedValue = 0.0f;
+        if (!trimmedValue.empty() && !parseFloat(trimmedValue, parsedValue)) {
+            setOperationStatus("Invalid value for " + key);
+            redraw();
+            return false;
+        }
+
+        if (key == "fontSize") {
+            parsedValue = std::clamp(parsedValue, 8.0f, 72.0f);
+        }
+        else if (key == "borderThickness") {
+            parsedValue = std::clamp(parsedValue, 0.0f, 20.0f);
+        }
+        else if (key == "cornerRadius") {
+            parsedValue = std::clamp(parsedValue, 0.0f, 50.0f);
+        }
+
+        if (trimmedValue.empty()) {
+            return setSelectedWidgetProperty(key, model::PropertyValue{});
+        }
+
+        return setSelectedWidgetProperty(key, parsedValue);
     }
 
     if (key == "onClick" || key == "onToggle" || key == "onChanged"

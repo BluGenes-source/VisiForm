@@ -46,6 +46,7 @@ add_executable(VisiForm
     src/model/ProjectDocument.cpp
     src/model/FormNode.cpp
     src/model/WidgetDefinition.cpp
+    src/model/LookAndFeelRegistry.cpp
     src/model/WidgetRegistry.cpp
     src/model/WidgetNode.cpp
     src/model/PropertyValue.cpp

@@ -179,6 +179,8 @@ std::string CMakeEmitter::emitReadme(const model::ProjectDocument& document) con
     stream << "- Release uses the `vs2022-x64-static-release` configure preset and `build-static-release` build preset\n\n";
     stream << "## Known limitations\n\n";
     stream << "- Generated UI is currently static rendering\n";
+    stream << "- Look and feel is generated as static preview drawing only for now\n";
+    stream << "- Runtime theme switching is future work\n";
     stream << "- No generated event handlers yet\n";
     stream << "- No generated native layout manager yet\n";
     stream << "- Visage commit is not pinned yet\n";

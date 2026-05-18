@@ -12,6 +12,27 @@ std::vector<WidgetPropertyDefinition> commonTextProperties()
     };
 }
 
+std::vector<WidgetPropertyDefinition> commonStyleProperties(bool includeLookAndFeelId = true)
+{
+    std::vector<WidgetPropertyDefinition> properties;
+    if (includeLookAndFeelId) {
+        properties.push_back({ "lookAndFeelId", "lookAndFeelId", "", PropertyEditKind::Text, true, "Optional widget look and feel override. Empty means inherit from the project." });
+    }
+    properties.push_back({ "fillColor", "fillColor", "", PropertyEditKind::Color, true, "Optional fill color override. Empty means inherit." });
+    properties.push_back({ "textColor", "textColor", "", PropertyEditKind::Color, true, "Optional text color override. Empty means inherit." });
+    properties.push_back({ "borderColor", "borderColor", "", PropertyEditKind::Color, true, "Optional border color override. Empty means inherit." });
+    properties.push_back({ "accentColor", "accentColor", "", PropertyEditKind::Color, true, "Optional accent color override. Empty means inherit." });
+    properties.push_back({ "borderThickness", "borderThickness", PropertyValue{}, PropertyEditKind::Float, true, "Optional border thickness override. Empty means inherit." });
+    properties.push_back({ "cornerRadius", "cornerRadius", PropertyValue{}, PropertyEditKind::Float, true, "Optional corner radius override. Empty means inherit." });
+    properties.push_back({ "fontSize", "fontSize", PropertyValue{}, PropertyEditKind::Float, true, "Optional font size override. Empty means inherit." });
+    return properties;
+}
+
+void appendProperties(std::vector<WidgetPropertyDefinition>& target, const std::vector<WidgetPropertyDefinition>& source)
+{
+    target.insert(target.end(), source.begin(), source.end());
+}
+
 WidgetDefinition makeFormWindowDefinition()
 {
     WidgetDefinition definition;
@@ -24,9 +45,10 @@ WidgetDefinition makeFormWindowDefinition()
     definition.size = { 900.0f, 600.0f, 300.0f, 200.0f };
     definition.properties = {
         { "title", "title", "MainWindow", PropertyEditKind::Text, true, "Window title text." },
-        { "backgroundColor", "backgroundColor", "#202026", PropertyEditKind::Color, true, "Form background color." },
+        { "backgroundColor", "backgroundColor", "", PropertyEditKind::Color, true, "Form background color override. Empty means inherit from the look and feel." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties(false));
     definition.events = {
         { "onLoad", "onLoad", "void_event", "Called when the form loads." },
         { "onClose", "onClose", "void_event", "Called when the form closes." }
@@ -88,9 +110,10 @@ WidgetDefinition makeFrameDefinition()
     definition.size = { 300.0f, 180.0f, 180.0f, 120.0f };
     definition.properties = {
         { "title", "title", "Frame", PropertyEditKind::Text, true, "Frame caption text." },
-        { "backgroundColor", "backgroundColor", "#D9DEE8", PropertyEditKind::Color, true, "Frame background color." },
+        { "backgroundColor", "backgroundColor", "", PropertyEditKind::Color, true, "Frame background color override. Empty means inherit from the look and feel." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     return definition;
 }
 
@@ -108,6 +131,7 @@ WidgetDefinition makeLabelDefinition()
         { "text", "text", "Label", PropertyEditKind::Text, true, "Displayed label text." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     return definition;
 }
 
@@ -125,6 +149,7 @@ WidgetDefinition makeButtonDefinition()
         { "text", "text", "Button", PropertyEditKind::Text, true, "Button label text." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onClick", "onClick", "void_event", "Called when the button is clicked." }
     };
@@ -145,6 +170,7 @@ WidgetDefinition makeTextBoxDefinition()
         { "text", "text", "", PropertyEditKind::Text, true, "Text box contents." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onTextChanged", "onTextChanged", "string_event", "Called when the text changes." }
     };
@@ -166,6 +192,7 @@ WidgetDefinition makeCheckBoxDefinition()
         { "checked", "checked", false, PropertyEditKind::Bool, true, "Initial checked state." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onToggle", "onToggle", "bool_event", "Called when the check box toggles." }
     };
@@ -188,6 +215,7 @@ WidgetDefinition makeRadioButtonDefinition()
         { "group", "group", "default", PropertyEditKind::Text, true, "Logical radio group name." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onSelected", "onSelected", "bool_event", "Called when the radio button is selected." }
     };
@@ -210,6 +238,7 @@ WidgetDefinition makeSliderDefinition()
         { "value", "value", 50, PropertyEditKind::Integer, true, "Current slider value." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onChanged", "onChanged", "float_event", "Called when the slider value changes." }
     };
@@ -234,6 +263,7 @@ WidgetDefinition makeScrollBarDefinition()
         { "pageSize", "pageSize", 10, PropertyEditKind::Integer, true, "Visible page size for the thumb." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onChanged", "onChanged", "float_event", "Called when the scroll value changes." }
     };
@@ -254,6 +284,7 @@ WidgetDefinition makeImageDefinition()
         { "source", "source", "", PropertyEditKind::FilePath, true, "Image source path." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     return definition;
 }
 
@@ -270,6 +301,7 @@ WidgetDefinition makeSpacerDefinition()
     definition.properties = {
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
     return definition;
 }
 

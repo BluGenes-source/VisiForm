@@ -20,6 +20,7 @@ public:
     std::string mainFormClassName{};
     std::string generatedBaseClassName{};
     std::string userSubclassName{};
+    std::string lookAndFeelId = "VisiFormDark";
     WidgetNode root{};
     std::string selectedWidgetId{};
     bool dirty = false;

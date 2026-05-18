@@ -212,6 +212,13 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
             || !tryReadString(json, "mainFormClassName", document.mainFormClassName, errorMessage)) {
             return std::nullopt;
         }
+        if (const auto iterator = json.find("lookAndFeelId"); iterator != json.end()) {
+            if (!iterator->is_string()) {
+                errorMessage = "lookAndFeelId must be a string when present.";
+                return std::nullopt;
+            }
+            document.lookAndFeelId = iterator->get<std::string>();
+        }
         document.generatedBaseClassName = "MainWindow";
         document.userSubclassName = (document.mainFormClassName.empty() || document.mainFormClassName == "MainWindow")
             ? "AppMainWindow"
