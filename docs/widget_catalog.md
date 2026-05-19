@@ -141,15 +141,23 @@ These values drive generated CMake naming, executable naming, user subclass file
 
 Current exported generated runtime behavior by widget type:
 
-- `Button` - clickable, fires `onClick`
-- `CheckBox` - toggles and fires `onToggle`
-- `RadioButton` - enforces single selection per group and fires `onSelected` for the clicked item
-- `Slider` - supports mouse dragging and fires `onChanged`
-- `ScrollBar` - supports arrow clicks, track paging, thumb dragging, and fires `onChanged`
+- `Button` - clickable, fires `onClick`, and callback code can update other generated widgets through protected `MainWindow` helpers such as `setText(...)` or `setStatusBarField(...)`
+- `CheckBox` - toggles and fires `onToggle`, and callback code can read or write checkbox state with `getChecked(...)` and `setChecked(...)`
+- `RadioButton` - enforces single selection per group and fires `onSelected` for the clicked item; callback code can also use `setSelected(...)` to apply group-aware selection changes
+- `Slider` - supports mouse dragging and fires `onChanged`; callback code can read or write numeric state with `getValue(...)` and `setValue(...)`
+- `ScrollBar` - supports arrow clicks, track paging, thumb dragging, and fires `onChanged`; callback code can read or write numeric state with `getValue(...)` and `setValue(...)`
 - `ColorPicker` - renders a static color swatch preview and exports a string-based `onChanged` callback signature
 - `TextBox` - supports click focus, basic text entry, Backspace, and fires `onTextChanged`
-- `ProgressBar` - display only, but renders current runtime value text
-- `StatusBar` - display only, but renders configured runtime field text
+- `ProgressBar` - display only, but renders current runtime value text and can be updated from callbacks with `setValue(...)` or `setProgressValue(...)`
+- `StatusBar` - display only, but renders configured runtime field text and can be updated from callbacks with `setStatusBarField(...)`
+
+Generated callback code can find widgets by exact `id` or exact `name` through protected `MainWindow` helpers.
+When a helper accepts `idOrName`, lookup order is:
+
+1. exact `id`
+2. exact `name`
+
+Generated helper setters request a repaint after state changes and use safe return values instead of exceptions.
 
 Current generated runtime limitations:
 
@@ -218,6 +226,11 @@ Current `StatusBar` properties:
 
 Current editor rendering shows a static multi-field status bar preview.
 
+Generated runtime helper support:
+
+- `setStatusBarField("statusBar_1", 0, "Ready")`
+- valid field indices are `0` through `3`
+
 ## ProgressBar notes
 
 Current `ProgressBar` properties:
@@ -239,3 +252,10 @@ Current editor rendering uses a simple centered text strategy with a readable si
 
 - dark text when fill percent is below 50%
 - white text when fill percent is 50% or higher
+
+Generated runtime helper support:
+
+- `setValue("progressBar_1", 50.0f)`
+- `setProgressValue("progressBar_1", 50.0f)`
+
+This makes slider-to-progress and scrollbar-to-progress callback flows straightforward in exported projects.

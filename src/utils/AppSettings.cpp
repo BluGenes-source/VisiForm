@@ -53,6 +53,21 @@ AppSettings AppSettings::load(std::string& errorMessage)
         if (const auto iterator = json.find("lastExportDirectory"); iterator != json.end() && iterator->is_string()) {
             settings.lastExportDirectory = normalizePath(iterator->get<std::string>());
         }
+        if (const auto iterator = json.find("localVisageSourceDirectory"); iterator != json.end() && iterator->is_string()) {
+            settings.localVisageSourceDirectory = normalizePath(iterator->get<std::string>());
+        }
+        if (const auto iterator = json.find("visageGitRepository"); iterator != json.end() && iterator->is_string()) {
+            const std::string value = iterator->get<std::string>();
+            if (!value.empty()) {
+                settings.visageGitRepository = value;
+            }
+        }
+        if (const auto iterator = json.find("visageGitTag"); iterator != json.end() && iterator->is_string()) {
+            const std::string value = iterator->get<std::string>();
+            if (!value.empty()) {
+                settings.visageGitTag = value;
+            }
+        }
         if (const auto iterator = json.find("showGrid"); iterator != json.end() && iterator->is_boolean()) {
             settings.showGrid = iterator->get<bool>();
         }
@@ -94,6 +109,9 @@ bool AppSettings::save(std::string& errorMessage) const
     }
     json["lastProjectDirectory"] = lastProjectDirectory.empty() ? std::string{} : FileUtils::normalizeSeparators(lastProjectDirectory.string());
     json["lastExportDirectory"] = lastExportDirectory.empty() ? std::string{} : FileUtils::normalizeSeparators(lastExportDirectory.string());
+    json["localVisageSourceDirectory"] = localVisageSourceDirectory.empty() ? std::string{} : FileUtils::normalizeSeparators(localVisageSourceDirectory.string());
+    json["visageGitRepository"] = visageGitRepository.empty() ? std::string{ defaultVisageGitRepository } : visageGitRepository;
+    json["visageGitTag"] = visageGitTag.empty() ? std::string{ defaultVisageGitTag } : visageGitTag;
     json["showGrid"] = showGrid;
     json["snapToGrid"] = snapToGrid;
     json["smartGuidesEnabled"] = smartGuidesEnabled;

@@ -371,6 +371,55 @@ std::string handlerTodoLine(const EventBinding& binding)
     return "// TODO: Implement " + binding.eventKey + " handler for " + binding.widgetId + ".";
 }
 
+std::vector<std::string> handlerExampleLines(const HandlerInfo& handler)
+{
+    if (handler.bindings.empty()) {
+        return {};
+    }
+
+    const EventBinding& binding = handler.bindings.front();
+    if (binding.widgetType == "Button" && binding.eventKey == "onClick") {
+        return {
+            "// Example:",
+            "// setStatusBarField(\"statusBar_1\", 0, \"Started\");",
+            "// setProgressValue(\"progressBar_1\", 25.0f);"
+        };
+    }
+    if ((binding.widgetType == "Slider" || binding.widgetType == "ScrollBar") && binding.eventKey == "onChanged") {
+        return {
+            "// Example:",
+            "// setProgressValue(\"progressBar_1\", value);"
+        };
+    }
+    if (binding.widgetType == "TextBox" && binding.eventKey == "onTextChanged") {
+        return {
+            "// Example:",
+            "// setStatusBarField(\"statusBar_1\", 0, value);"
+        };
+    }
+    if ((binding.widgetType == "CheckBox" && binding.eventKey == "onToggle")
+        || (binding.widgetType == "RadioButton" && binding.eventKey == "onSelected")) {
+        return {
+            "// Example:",
+            "// setText(\"label_1\", value ? \"Enabled\" : \"Disabled\");"
+        };
+    }
+    if (binding.widgetType == "ColorPicker" && binding.eventKey == "onChanged") {
+        return {
+            "// Example:",
+            "// setStatusBarField(\"statusBar_1\", 0, value);"
+        };
+    }
+    if (binding.widgetType == "FormWindow" && binding.eventKey == "onLoad") {
+        return {
+            "// Example:",
+            "// setStatusBarField(\"statusBar_1\", 0, \"Ready\");"
+        };
+    }
+
+    return {};
+}
+
 std::string handlerReferenceList(const HandlerInfo& handler)
 {
     std::ostringstream stream;
@@ -1030,6 +1079,21 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    bool receivesTextInput() override;\n";
     stream << "    void textInput(const std::string& text) override;\n\n";
     stream << "protected:\n";
+    stream << "    RuntimeWidget* findWidgetById(const std::string& id);\n";
+    stream << "    const RuntimeWidget* findWidgetById(const std::string& id) const;\n";
+    stream << "    RuntimeWidget* findWidgetByName(const std::string& name);\n";
+    stream << "    const RuntimeWidget* findWidgetByName(const std::string& name) const;\n\n";
+    stream << "    bool setText(const std::string& idOrName, const std::string& text);\n";
+    stream << "    std::string getText(const std::string& idOrName) const;\n\n";
+    stream << "    bool setChecked(const std::string& idOrName, bool checked);\n";
+    stream << "    bool getChecked(const std::string& idOrName) const;\n\n";
+    stream << "    bool setSelected(const std::string& idOrName, bool selected);\n";
+    stream << "    bool getSelected(const std::string& idOrName) const;\n\n";
+    stream << "    bool setValue(const std::string& idOrName, float value);\n";
+    stream << "    float getValue(const std::string& idOrName) const;\n\n";
+    stream << "    bool setProgressValue(const std::string& idOrName, float value);\n";
+    stream << "    bool setStatusBarField(const std::string& idOrName, int fieldIndex, const std::string& text);\n\n";
+    stream << "    void requestGeneratedUiRepaint();\n\n";
     for (const auto& handler : handlers) {
         stream << "    // Referenced by: " << handlerReferenceList(handler) << "\n";
         std::string declaration = handlerDeclaration(handler);
@@ -1055,19 +1119,19 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "private:\n";
     stream << "    bool canDrawText() const;\n\n";
     stream << "    void initializeRuntimeWidgets();\n";
-    stream << "    RuntimeWidget* findWidgetById(const std::string& id);\n";
-    stream << "    const RuntimeWidget* findWidgetById(const std::string& id) const;\n";
+    stream << "    RuntimeWidget* findWidgetByIdOrName(const std::string& idOrName);\n";
+    stream << "    const RuntimeWidget* findWidgetByIdOrName(const std::string& idOrName) const;\n";
     stream << "    RuntimeWidget* hitTest(float x, float y);\n";
     stream << "    RuntimeWidget* focusedTextBox();\n";
     stream << "    const RuntimeWidget* focusedTextBox() const;\n";
     stream << "    void setFocusedWidget(const std::string& widgetId);\n";
     stream << "    void clearPressedState();\n";
     stream << "    bool isInteractive(const RuntimeWidget& widget) const;\n";
-    stream << "    bool setWidgetValue(RuntimeWidget& widget, float value);\n";
+    stream << "    bool setWidgetValue(RuntimeWidget& widget, float value, bool emitEvent);\n";
     stream << "    bool updateSliderFromPoint(RuntimeWidget& widget, float formX);\n";
     stream << "    RuntimeRect scrollBarThumbRect(const RuntimeWidget& widget) const;\n";
     stream << "    bool updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY);\n";
-    stream << "    bool updateTextBoxText(RuntimeWidget& widget, const std::string& text);\n";
+    stream << "    bool updateTextBoxText(RuntimeWidget& widget, const std::string& text, bool emitEvent);\n";
     stream << "    void emitVoidEvent(const RuntimeWidget& widget, const std::string& eventKey);\n";
     stream << "    void emitBoolEvent(const RuntimeWidget& widget, const std::string& eventKey, bool value);\n";
     stream << "    void emitFloatEvent(const RuntimeWidget& widget, const std::string& eventKey, float value);\n";
@@ -1482,6 +1546,234 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    return nullptr;\n";
     stream << "}\n\n";
+    stream << "RuntimeWidget* " << className << "::findWidgetByName(const std::string& name)\n";
+    stream << "{\n";
+    stream << "    for (auto& widget : runtimeWidgets_) {\n";
+    stream << "        if (widget.name == name) {\n";
+    stream << "            return &widget;\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    return nullptr;\n";
+    stream << "}\n\n";
+    stream << "const RuntimeWidget* " << className << "::findWidgetByName(const std::string& name) const\n";
+    stream << "{\n";
+    stream << "    for (const auto& widget : runtimeWidgets_) {\n";
+    stream << "        if (widget.name == name) {\n";
+    stream << "            return &widget;\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    return nullptr;\n";
+    stream << "}\n\n";
+    stream << "RuntimeWidget* " << className << "::findWidgetByIdOrName(const std::string& idOrName)\n";
+    stream << "{\n";
+    stream << "    if (RuntimeWidget* widget = findWidgetById(idOrName); widget != nullptr) {\n";
+    stream << "        return widget;\n";
+    stream << "    }\n";
+    stream << "    return findWidgetByName(idOrName);\n";
+    stream << "}\n\n";
+    stream << "const RuntimeWidget* " << className << "::findWidgetByIdOrName(const std::string& idOrName) const\n";
+    stream << "{\n";
+    stream << "    if (const RuntimeWidget* widget = findWidgetById(idOrName); widget != nullptr) {\n";
+    stream << "        return widget;\n";
+    stream << "    }\n";
+    stream << "    return findWidgetByName(idOrName);\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::setText(const std::string& idOrName, const std::string& text)\n";
+    stream << "{\n";
+    stream << "    RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    switch (widget->type) {\n";
+    stream << "    case RuntimeWidgetType::Label:\n";
+    stream << "    case RuntimeWidgetType::Button:\n";
+    stream << "    case RuntimeWidgetType::CheckBox:\n";
+    stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "    case RuntimeWidgetType::ProgressBar:\n";
+    stream << "    case RuntimeWidgetType::ColorPicker:\n";
+    stream << "        if (widget->text == text) {\n";
+    stream << "            return false;\n";
+    stream << "        }\n";
+    stream << "        widget->text = text;\n";
+    stream << "        requestGeneratedUiRepaint();\n";
+    stream << "        return true;\n";
+    stream << "    case RuntimeWidgetType::TextBox:\n";
+    stream << "        if (!updateTextBoxText(*widget, text, false)) {\n";
+    stream << "            return false;\n";
+    stream << "        }\n";
+    stream << "        requestGeneratedUiRepaint();\n";
+    stream << "        return true;\n";
+    stream << "    case RuntimeWidgetType::StatusBar:\n";
+    stream << "        if (widget->items.empty()) {\n";
+    stream << "            widget->items.resize(1);\n";
+    stream << "        }\n";
+    stream << "        if (widget->items.front() == text) {\n";
+    stream << "            return false;\n";
+    stream << "        }\n";
+    stream << "        widget->items.front() = text;\n";
+    stream << "        requestGeneratedUiRepaint();\n";
+    stream << "        return true;\n";
+    stream << "    case RuntimeWidgetType::Slider:\n";
+    stream << "    case RuntimeWidgetType::ScrollBar:\n";
+    stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    return false;\n";
+    stream << "}\n\n";
+    stream << "std::string " << className << "::getText(const std::string& idOrName) const\n";
+    stream << "{\n";
+    stream << "    const RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n\n";
+    stream << "    switch (widget->type) {\n";
+    stream << "    case RuntimeWidgetType::StatusBar:\n";
+    stream << "        return widget->items.empty() ? std::string{} : widget->items.front();\n";
+    stream << "    case RuntimeWidgetType::Label:\n";
+    stream << "    case RuntimeWidgetType::Button:\n";
+    stream << "    case RuntimeWidgetType::TextBox:\n";
+    stream << "    case RuntimeWidgetType::CheckBox:\n";
+    stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "    case RuntimeWidgetType::ProgressBar:\n";
+    stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "    case RuntimeWidgetType::ColorPicker:\n";
+    stream << "        return widget->text;\n";
+    stream << "    case RuntimeWidgetType::Slider:\n";
+    stream << "    case RuntimeWidgetType::ScrollBar:\n";
+    stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "        return {};\n";
+    stream << "    }\n\n";
+    stream << "    return {};\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::setChecked(const std::string& idOrName, bool checked)\n";
+    stream << "{\n";
+    stream << "    RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr || widget->type != RuntimeWidgetType::CheckBox || widget->checked == checked) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    widget->checked = checked;\n";
+    stream << "    requestGeneratedUiRepaint();\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::getChecked(const std::string& idOrName) const\n";
+    stream << "{\n";
+    stream << "    const RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    return widget != nullptr && widget->type == RuntimeWidgetType::CheckBox ? widget->checked : false;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::setSelected(const std::string& idOrName, bool selected)\n";
+    stream << "{\n";
+    stream << "    RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr || widget->type != RuntimeWidgetType::RadioButton) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    bool changed = false;\n";
+    stream << "    if (selected) {\n";
+    stream << "        for (auto& candidate : runtimeWidgets_) {\n";
+    stream << "            if (candidate.type == RuntimeWidgetType::RadioButton && candidate.group == widget->group) {\n";
+    stream << "                const bool shouldBeSelected = candidate.id == widget->id;\n";
+    stream << "                if (candidate.selected != shouldBeSelected) {\n";
+    stream << "                    candidate.selected = shouldBeSelected;\n";
+    stream << "                    changed = true;\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    else if (widget->selected) {\n";
+    stream << "        widget->selected = false;\n";
+    stream << "        changed = true;\n";
+    stream << "    }\n\n";
+    stream << "    if (changed) {\n";
+    stream << "        requestGeneratedUiRepaint();\n";
+    stream << "    }\n";
+    stream << "    return changed;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::getSelected(const std::string& idOrName) const\n";
+    stream << "{\n";
+    stream << "    const RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    return widget != nullptr && widget->type == RuntimeWidgetType::RadioButton ? widget->selected : false;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::setValue(const std::string& idOrName, float value)\n";
+    stream << "{\n";
+    stream << "    RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    switch (widget->type) {\n";
+    stream << "    case RuntimeWidgetType::Slider:\n";
+    stream << "    case RuntimeWidgetType::ScrollBar:\n";
+    stream << "    case RuntimeWidgetType::ProgressBar:\n";
+    stream << "        if (!setWidgetValue(*widget, value, false)) {\n";
+    stream << "            return false;\n";
+    stream << "        }\n";
+    stream << "        requestGeneratedUiRepaint();\n";
+    stream << "        return true;\n";
+    stream << "    case RuntimeWidgetType::Label:\n";
+    stream << "    case RuntimeWidgetType::Button:\n";
+    stream << "    case RuntimeWidgetType::TextBox:\n";
+    stream << "    case RuntimeWidgetType::CheckBox:\n";
+    stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "    case RuntimeWidgetType::StatusBar:\n";
+    stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "    case RuntimeWidgetType::ColorPicker:\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    return false;\n";
+    stream << "}\n\n";
+    stream << "float " << className << "::getValue(const std::string& idOrName) const\n";
+    stream << "{\n";
+    stream << "    const RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr) {\n";
+    stream << "        return 0.0f;\n";
+    stream << "    }\n\n";
+    stream << "    switch (widget->type) {\n";
+    stream << "    case RuntimeWidgetType::Slider:\n";
+    stream << "    case RuntimeWidgetType::ScrollBar:\n";
+    stream << "    case RuntimeWidgetType::ProgressBar:\n";
+    stream << "        return widget->value;\n";
+    stream << "    case RuntimeWidgetType::Label:\n";
+    stream << "    case RuntimeWidgetType::Button:\n";
+    stream << "    case RuntimeWidgetType::TextBox:\n";
+    stream << "    case RuntimeWidgetType::CheckBox:\n";
+    stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "    case RuntimeWidgetType::StatusBar:\n";
+    stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "    case RuntimeWidgetType::ColorPicker:\n";
+    stream << "        return 0.0f;\n";
+    stream << "    }\n\n";
+    stream << "    return 0.0f;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::setProgressValue(const std::string& idOrName, float value)\n";
+    stream << "{\n";
+    stream << "    return setValue(idOrName, value);\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::setStatusBarField(const std::string& idOrName, int fieldIndex, const std::string& text)\n";
+    stream << "{\n";
+    stream << "    RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr || widget->type != RuntimeWidgetType::StatusBar || fieldIndex < 0 || fieldIndex > 3) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    const std::size_t index = static_cast<std::size_t>(fieldIndex);\n";
+    stream << "    if (widget->items.size() <= index) {\n";
+    stream << "        widget->items.resize(index + 1);\n";
+    stream << "    }\n";
+    stream << "    if (widget->items[index] == text) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    widget->items[index] = text;\n";
+    stream << "    requestGeneratedUiRepaint();\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::requestGeneratedUiRepaint()\n";
+    stream << "{\n";
+    stream << "    redraw();\n";
+    stream << "}\n\n";
     stream << "RuntimeWidget* " << className << "::focusedTextBox()\n";
     stream << "{\n";
     stream << "    RuntimeWidget* widget = findWidgetById(focusedWidgetId_);\n";
@@ -1540,7 +1832,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    return nullptr;\n";
     stream << "}\n\n";
-    stream << "bool " << className << "::setWidgetValue(RuntimeWidget& widget, float value)\n";
+    stream << "bool " << className << "::setWidgetValue(RuntimeWidget& widget, float value, bool emitEvent)\n";
     stream << "{\n";
     stream << "    const float safeMaximum = widget.max <= widget.min ? widget.min + 1.0f : widget.max;\n";
     stream << "    const float clamped = std::clamp(value, widget.min, safeMaximum);\n";
@@ -1548,7 +1840,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return false;\n";
     stream << "    }\n";
     stream << "    widget.value = clamped;\n";
-    stream << "    if (!widget.onChanged.empty()) {\n";
+    stream << "    if (emitEvent && !widget.onChanged.empty()) {\n";
     stream << "        emitFloatEvent(widget, \"onChanged\", widget.value);\n";
     stream << "    }\n";
     stream << "    return true;\n";
@@ -1558,7 +1850,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    const float trackLeft = widget.bounds.x + 8.0f;\n";
     stream << "    const float trackWidth = std::max(1.0f, widget.bounds.width - 16.0f);\n";
     stream << "    const float normalized = std::clamp((formX - trackLeft) / trackWidth, 0.0f, 1.0f);\n";
-    stream << "    return setWidgetValue(widget, rangeValueForNormalized(widget, normalized));\n";
+    stream << "    return setWidgetValue(widget, rangeValueForNormalized(widget, normalized), true);\n";
     stream << "}\n\n";
     stream << "RuntimeRect " << className << "::scrollBarThumbRect(const RuntimeWidget& widget) const\n";
     stream << "{\n";
@@ -1577,7 +1869,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        const float thumbY = std::clamp(formY - dragPointerOffset_, trackTop, trackTop + trackHeight - thumb.height);\n";
     stream << "        const float normalized = (thumbY - trackTop) / std::max(1.0f, trackHeight - thumb.height);\n";
-    stream << "        return setWidgetValue(widget, rangeValueForNormalized(widget, normalized));\n";
+    stream << "        return setWidgetValue(widget, rangeValueForNormalized(widget, normalized), true);\n";
     stream << "    }\n";
     stream << "    const float trackLeft = widget.bounds.x + arrowSize;\n";
     stream << "    const float trackWidth = std::max(0.0f, widget.bounds.width - arrowSize * 2.0f);\n";
@@ -1586,15 +1878,15 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    const float thumbX = std::clamp(formX - dragPointerOffset_, trackLeft, trackLeft + trackWidth - thumb.width);\n";
     stream << "    const float normalized = (thumbX - trackLeft) / std::max(1.0f, trackWidth - thumb.width);\n";
-    stream << "    return setWidgetValue(widget, rangeValueForNormalized(widget, normalized));\n";
+    stream << "    return setWidgetValue(widget, rangeValueForNormalized(widget, normalized), true);\n";
     stream << "}\n\n";
-    stream << "bool " << className << "::updateTextBoxText(RuntimeWidget& widget, const std::string& text)\n";
+    stream << "bool " << className << "::updateTextBoxText(RuntimeWidget& widget, const std::string& text, bool emitEvent)\n";
     stream << "{\n";
     stream << "    if (widget.text == text) {\n";
     stream << "        return false;\n";
     stream << "    }\n";
     stream << "    widget.text = text;\n";
-    stream << "    if (!widget.onTextChanged.empty()) {\n";
+    stream << "    if (emitEvent && !widget.onTextChanged.empty()) {\n";
     stream << "        emitStringEvent(widget, \"onTextChanged\", widget.text);\n";
     stream << "    }\n";
     stream << "    return true;\n";
@@ -1690,30 +1982,30 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        bool changed = false;\n";
     stream << "        if (vertical) {\n";
     stream << "            if (formY < widget->bounds.y + arrowSize) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value - step);\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - step, true);\n";
     stream << "            }\n";
     stream << "            else if (formY > widget->bounds.y + widget->bounds.height - arrowSize) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value + step);\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + step, true);\n";
     stream << "            }\n";
     stream << "            else if (formY < thumb.y) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value - std::max(1.0f, widget->pageSize));\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - std::max(1.0f, widget->pageSize), true);\n";
     stream << "            }\n";
     stream << "            else if (formY > thumb.y + thumb.height) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value + std::max(1.0f, widget->pageSize));\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + std::max(1.0f, widget->pageSize), true);\n";
     stream << "            }\n";
     stream << "        }\n";
     stream << "        else {\n";
     stream << "            if (formX < widget->bounds.x + arrowSize) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value - step);\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - step, true);\n";
     stream << "            }\n";
     stream << "            else if (formX > widget->bounds.x + widget->bounds.width - arrowSize) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value + step);\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + step, true);\n";
     stream << "            }\n";
     stream << "            else if (formX < thumb.x) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value - std::max(1.0f, widget->pageSize));\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - std::max(1.0f, widget->pageSize), true);\n";
     stream << "            }\n";
     stream << "            else if (formX > thumb.x + thumb.width) {\n";
-    stream << "                changed = setWidgetValue(*widget, widget->value + std::max(1.0f, widget->pageSize));\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + std::max(1.0f, widget->pageSize), true);\n";
     stream << "            }\n";
     stream << "        }\n";
     stream << "        if (changed) {\n";
@@ -1838,7 +2130,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return false;\n";
     stream << "    }\n";
     stream << "    if (e.keyCode() == KeyCode::Backspace) {\n";
-    stream << "        if (!widget->text.empty() && updateTextBoxText(*widget, widget->text.substr(0, widget->text.size() - 1))) {\n";
+    stream << "        if (!widget->text.empty() && updateTextBoxText(*widget, widget->text.substr(0, widget->text.size() - 1), true)) {\n";
     stream << "            redraw();\n";
     stream << "        }\n";
     stream << "        return true;\n";
@@ -1873,7 +2165,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            appended.push_back(character);\n";
     stream << "        }\n";
     stream << "    }\n";
-    stream << "    if (!appended.empty() && updateTextBoxText(*widget, widget->text + appended)) {\n";
+    stream << "    if (!appended.empty() && updateTextBoxText(*widget, widget->text + appended, true)) {\n";
     stream << "        redraw();\n";
     stream << "    }\n";
     stream << "}\n\n";
@@ -2002,6 +2294,9 @@ std::string emitUserSubclassCpp(const visiform::model::ProjectDocument& document
                 stream << "    (void)value;\n";
             }
             stream << "    " << handlerTodoLine(handler.bindings.front()) << "\n";
+            for (const auto& exampleLine : handlerExampleLines(handler)) {
+                stream << "    " << exampleLine << "\n";
+            }
         }
         stream << "    // USER CODE END " << handler.handlerName << "\n";
         stream << "}\n";

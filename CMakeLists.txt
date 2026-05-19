@@ -15,21 +15,39 @@ endif()
 
 include(FetchContent)
 
-# TODO: Pin Visage to a known-good commit hash instead of main once the project builds cleanly.
+# Optional local Visage source checkout.
+# Recommended for VisiForm development to avoid repeated FetchContent downloads.
+set(VISIFORM_VISAGE_SOURCE_DIR "" CACHE PATH "Optional local Visage source directory")
+set(VISIFORM_VISAGE_GIT_REPOSITORY "https://github.com/VitalAudio/visage.git" CACHE STRING "Visage Git repository")
+set(VISIFORM_VISAGE_GIT_TAG "main" CACHE STRING "Visage Git tag or commit")
+
+# TODO: Replace VISIFORM_VISAGE_GIT_TAG=main with a tested commit hash after validation.
 set(VISAGE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(VISAGE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(VISAGE_ENABLE_WIDGETS ON CACHE BOOL "" FORCE)
 set(VISAGE_AMALGAMATED_BUILD ON CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
-    visage
-    GIT_REPOSITORY https://github.com/VitalAudio/visage.git
-    GIT_TAG main
-    GIT_SHALLOW TRUE
-)
+if (VISIFORM_VISAGE_SOURCE_DIR AND EXISTS "${VISIFORM_VISAGE_SOURCE_DIR}/CMakeLists.txt")
+    message(STATUS "Using local Visage source: ${VISIFORM_VISAGE_SOURCE_DIR}")
 
-FetchContent_MakeAvailable(visage)
+    add_subdirectory(
+        "${VISIFORM_VISAGE_SOURCE_DIR}"
+        "${CMAKE_BINARY_DIR}/_deps/visage-build"
+    )
+else()
+    message(STATUS "Using FetchContent Visage fallback")
+    message(STATUS "Visage repository: ${VISIFORM_VISAGE_GIT_REPOSITORY}")
+    message(STATUS "Visage tag/commit: ${VISIFORM_VISAGE_GIT_TAG}")
 
+    FetchContent_Declare(
+        visage
+        GIT_REPOSITORY "${VISIFORM_VISAGE_GIT_REPOSITORY}"
+        GIT_TAG "${VISIFORM_VISAGE_GIT_TAG}"
+        GIT_SHALLOW TRUE
+    )
+
+    FetchContent_MakeAvailable(visage)
+endif()
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)

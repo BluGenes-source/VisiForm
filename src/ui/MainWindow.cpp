@@ -574,7 +574,7 @@ bool MainWindow::exportGeneratedCode()
         redraw();
     };
 
-    const bool ok = generator.generateProject(document_, *selected, errorMessage, progressCallback);
+    const bool ok = generator.generateProject(document_, settings_, *selected, errorMessage, progressCallback);
     exportInProgress_ = false;
     if (!ok) {
         setOperationStatus("Export failed: " + errorMessage);

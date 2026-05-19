@@ -19,6 +19,9 @@ Current settings include:
 - `recentFiles`
 - `lastProjectDirectory`
 - `lastExportDirectory`
+- `localVisageSourceDirectory`
+- `visageGitRepository`
+- `visageGitTag`
 - `showGrid`
 - `snapToGrid`
 - `gridSize`
@@ -63,6 +66,27 @@ Default export fallback folder:
 
 Exporting to another folder must not overwrite `lastProjectDirectory`.
 Saving or opening a project must not overwrite `lastExportDirectory`.
+
+## Export dependency settings
+
+Generated-project export also stores dependency settings used for emitted CMake files.
+
+- `localVisageSourceDirectory`
+  - default: empty
+  - when non-empty, generated `CMakePresets.json` can prefill `VISIFORM_VISAGE_SOURCE_DIR`
+  - use forward slashes for Windows paths, for example `J:/Dev/CeePlusPlus/visage`
+- `visageGitRepository`
+  - default: `https://github.com/VitalAudio/visage.git`
+  - used by generated `CMakeLists.txt` as the `FetchContent` fallback repository
+- `visageGitTag`
+  - default: `main`
+  - used by generated `CMakeLists.txt` as the `FetchContent` fallback tag or commit
+
+Generated project dependency behavior:
+
+- valid `localVisageSourceDirectory` prefers local `add_subdirectory(...)`
+- empty or invalid `localVisageSourceDirectory` falls back to `FetchContent`
+- this avoids re-downloading Visage for repeated local exports when a shared checkout already exists
 
 ## Current limitations
 

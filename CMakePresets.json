@@ -1,5 +1,5 @@
 ﻿{
-  "version": 5,
+  "version": 3,
   "configurePresets": [
     {
       "name": "vs2022-x64-static-debug",

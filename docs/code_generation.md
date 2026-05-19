@@ -35,11 +35,24 @@ The generated project includes:
 
 - CMake 3.24 minimum
 - C++20
-- `FetchContent` for `visage`
+- optional local-source support for `visage` via `VISIFORM_VISAGE_SOURCE_DIR`
+- `FetchContent` fallback for `visage` when no valid local source is configured
 - the same core Visage options currently used by `VisiForm`
 - static MSVC runtime settings for Debug and Release
 - generated `CMakePresets.json` presets for static Debug and Release builds
 - helper `.cmd` scripts that call those presets
+
+Generated dependency variables in exported `CMakeLists.txt`:
+
+- `VISIFORM_VISAGE_SOURCE_DIR`
+- `VISIFORM_VISAGE_GIT_REPOSITORY`
+- `VISIFORM_VISAGE_GIT_TAG`
+
+Dependency behavior:
+
+- if `VISIFORM_VISAGE_SOURCE_DIR` is non-empty and contains `CMakeLists.txt`, the generated project uses `add_subdirectory(...)` with the local Visage source tree
+- otherwise the generated project falls back to `FetchContent`
+- this avoids repeated dependency downloads when a developer keeps a local Visage checkout
 
 ## Generated project naming
 
@@ -73,6 +86,14 @@ The generated presets use `Ninja` and keep the static MSVC runtime strategy:
 
 - `MultiThreadedDebug` for Debug
 - `MultiThreaded` for Release
+
+If `AppSettings.localVisageSourceDirectory` is configured before export, the generated presets also include:
+
+- `VISIFORM_VISAGE_SOURCE_DIR`
+
+The emitted path uses forward slashes, for example:
+
+- `J:/Dev/CeePlusPlus/visage`
 
 ## Widget mappings
 
@@ -137,6 +158,71 @@ Current generated interactive behavior:
 
 The generated runtime is intentionally small and is not a full retained-mode widget framework.
 
+## Generated runtime widget state API
+
+The generated `MainWindow` base class now exposes protected runtime state helpers so the user subclass can read and update widgets inside exported callbacks without editing generated files.
+
+Current protected helpers on `MainWindow`:
+
+- `RuntimeWidget* findWidgetById(const std::string& id)`
+- `const RuntimeWidget* findWidgetById(const std::string& id) const`
+- `RuntimeWidget* findWidgetByName(const std::string& name)`
+- `const RuntimeWidget* findWidgetByName(const std::string& name) const`
+- `bool setText(const std::string& idOrName, const std::string& text)`
+- `std::string getText(const std::string& idOrName) const`
+- `bool setChecked(const std::string& idOrName, bool checked)`
+- `bool getChecked(const std::string& idOrName) const`
+- `bool setSelected(const std::string& idOrName, bool selected)`
+- `bool getSelected(const std::string& idOrName) const`
+- `bool setValue(const std::string& idOrName, float value)`
+- `float getValue(const std::string& idOrName) const`
+- `bool setProgressValue(const std::string& idOrName, float value)`
+- `bool setStatusBarField(const std::string& idOrName, int fieldIndex, const std::string& text)`
+- `void requestGeneratedUiRepaint()`
+
+Lookup behavior for `idOrName` helpers:
+
+1. exact widget `id`
+2. exact widget `name`
+
+If no widget matches:
+
+- setters return `false`
+- `getText(...)` returns an empty string
+- `getChecked(...)` and `getSelected(...)` return `false`
+- `getValue(...)` returns `0.0f`
+
+Current setter coverage:
+
+- `setText(...)`
+  - supported: `Label`, `Button`, `TextBox`, `CheckBox`, `RadioButton`, `ProgressBar`, `StatusBar` field 0, `Frame`, `ColorPicker`
+- `setChecked(...)`
+  - supported: `CheckBox`
+- `setSelected(...)`
+  - supported: `RadioButton`
+  - selecting `true` enforces single selection for the matching radio `group`
+- `setValue(...)`
+  - supported: `Slider`, `ScrollBar`, `ProgressBar`
+  - values are clamped to the widget `min` and `max`
+- `setProgressValue(...)`
+  - convenience wrapper over `setValue(...)`
+- `setStatusBarField(...)`
+  - supported: `StatusBar`
+  - valid `fieldIndex` range: `0` through `3`
+
+State setter behavior:
+
+- generated helper setters use safe return values and do not throw exceptions
+- helper-driven state changes request a generated UI repaint
+- callback-driven helper setters do not auto-fire the widget's own generated callback again
+
+Example user-subclass callback usage:
+
+- `setText("statusLabel", "Working...")`
+- `setProgressValue("progressBar_1", value)`
+- `setStatusBarField("statusBar_1", 0, "Ready")`
+- `setSelected("modeAdvanced", true)`
+
 `ProgressBar` preview text behavior:
 
 - if `showText` is `true` and `text` is empty, generated preview rendering shows percent text
@@ -187,6 +273,8 @@ User subclass naming rule:
 - `main.cpp` instantiates `<UserSubclassName>`
 
 When the root form is selected in the editor, `projectName`, `executableName`, `userSubclassName`, and `windowTitle` can be edited.
+
+The generated user subclass keeps using `USER CODE` regions, and new handler stubs now include short examples that show how to call the protected runtime state helpers from callbacks.
 
 When a non-empty handler name is present, the generated project emits:
 

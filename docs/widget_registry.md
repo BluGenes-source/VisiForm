@@ -89,12 +89,39 @@ When a widget is meant to be interactive in exported projects, the generated run
 - input dispatch
 - callback signature kind
 
+Generated widgets that expose useful runtime state should now also stay aligned with the protected generated `MainWindow` helper API used by exported user subclasses.
+
 For new interactive widget types, update the generator so the exported `MainWindow` can:
 
 - initialize runtime widget state from the exported document
 - hit test the widget in form-local coordinates
 - update runtime state on mouse or keyboard input
 - dispatch the correct sender-aware callback signature
+- expose safe helper coverage through id-or-name lookup where practical
+- request a repaint after helper-driven state changes
+
+## Generated runtime helper API guidance
+
+The exported `MainWindow` base now provides protected helpers such as:
+
+- `findWidgetById(...)`
+- `findWidgetByName(...)`
+- `setText(...)`
+- `setChecked(...)`
+- `setSelected(...)`
+- `setValue(...)`
+- `setProgressValue(...)`
+- `setStatusBarField(...)`
+
+When extending the generator for a new widget type, decide whether the widget should participate in one or more of those helpers or whether a future dedicated helper is needed.
+
+Recommended rules for future widget additions:
+
+1. store mutable runtime state in the generated `RuntimeWidget` model
+2. allow helper lookup by exact widget `id` first, then exact widget `name`
+3. use safe defaults and `false` returns instead of exceptions for unsupported helper calls
+4. avoid re-firing the same generated callback automatically when a helper is called from user callback code
+5. request a generated UI repaint after successful helper-driven state changes
 
 ## Current limitations
 

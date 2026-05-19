@@ -8,9 +8,15 @@ namespace visiform::utils {
 
 class AppSettings {
 public:
+    static constexpr const char* defaultVisageGitRepository = "https://github.com/VitalAudio/visage.git";
+    static constexpr const char* defaultVisageGitTag = "main";
+
     std::vector<std::filesystem::path> recentFiles{};
     std::filesystem::path lastProjectDirectory{};
     std::filesystem::path lastExportDirectory{};
+    std::filesystem::path localVisageSourceDirectory{};
+    std::string visageGitRepository = defaultVisageGitRepository;
+    std::string visageGitTag = defaultVisageGitTag;
     bool showGrid = true;
     bool snapToGrid = true;
     bool smartGuidesEnabled = true;

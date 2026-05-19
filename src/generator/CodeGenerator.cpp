@@ -67,6 +67,7 @@ bool writeGeneratedFile(const std::filesystem::path& outputDirectory,
 
 bool CodeGenerator::generateProject(
     const model::ProjectDocument& document,
+    const utils::AppSettings& settings,
     const std::filesystem::path& outputDirectory,
     std::string& errorMessage,
     ProgressCallback progressCallback) const
@@ -99,16 +100,16 @@ bool CodeGenerator::generateProject(
     if (progressCallback) {
         progressCallback(40, "Generating sources");
     }
-    if (!writeGeneratedFile(outputDirectory, "CMakeLists.txt", cmakeEmitter_.emitCMakeLists(document), errorMessage)) {
+    if (!writeGeneratedFile(outputDirectory, "CMakeLists.txt", cmakeEmitter_.emitCMakeLists(document, settings), errorMessage)) {
         return false;
     }
     if (progressCallback) {
         progressCallback(60, "Writing CMake files");
     }
-    if (!writeGeneratedFile(outputDirectory, "CMakePresets.json", cmakeEmitter_.emitCMakePresets(), errorMessage)) {
+    if (!writeGeneratedFile(outputDirectory, "CMakePresets.json", cmakeEmitter_.emitCMakePresets(settings), errorMessage)) {
         return false;
     }
-    if (!writeGeneratedFile(outputDirectory, "README.md", cmakeEmitter_.emitReadme(document), errorMessage)) {
+    if (!writeGeneratedFile(outputDirectory, "README.md", cmakeEmitter_.emitReadme(document, settings), errorMessage)) {
         return false;
     }
     if (!writeGeneratedFile(outputDirectory, ".gitignore", cmakeEmitter_.emitGitIgnore(), errorMessage)) {
