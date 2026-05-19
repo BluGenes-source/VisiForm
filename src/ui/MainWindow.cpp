@@ -69,6 +69,30 @@ bool isValidColorValue(const std::string& value)
     });
 }
 
+std::string sanitizeExecutableName(const std::string& value, const std::string& fallback)
+{
+    const std::string source = value.empty() ? fallback : value;
+    std::string sanitized;
+    sanitized.reserve(source.size());
+    for (char character : source) {
+        if (std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_' || character == '-') {
+            sanitized.push_back(character);
+        }
+        else {
+            sanitized.push_back('_');
+        }
+    }
+
+    if (sanitized.empty()) {
+        sanitized = fallback.empty() ? std::string{"VisiFormProject"} : fallback;
+    }
+    if (std::isdigit(static_cast<unsigned char>(sanitized.front())) != 0) {
+        sanitized.insert(sanitized.begin(), '_');
+    }
+
+    return sanitized;
+}
+
 bool isColorPropertyKey(const std::string& key)
 {
     return key == "backgroundColor"
@@ -2252,6 +2276,9 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     const bool radioSelectedTrue = widget->type == model::WidgetType::RadioButton
         && key == "selected" && value.isBool() && value.asBool(false);
     widget->setProperty(key, std::move(value));
+    if (widget->type == model::WidgetType::FormWindow && document_.isRootWidgetId(widget->id) && key == "title") {
+        document_.windowTitle = widget->getStringProperty("title", document_.projectName);
+    }
     if (widget->type == model::WidgetType::RadioButton && key == "group" && widget->getBoolProperty("selected", false)) {
         document_.selectRadioButtonInGroup(widget->id);
     }
@@ -2321,6 +2348,45 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return setSelectedWidgetName(trimmedValue);
     }
 
+    if (key == "projectName") {
+        if (trimmedValue.empty()) {
+            setOperationStatus("Project name cannot be empty");
+            redraw();
+            return false;
+        }
+
+        const std::string previousProjectName = document_.projectName;
+        const std::string previousExecutableName = document_.executableName;
+        const std::string previousWindowTitle = document_.windowTitle;
+        document_.projectName = trimmedValue;
+        if (previousExecutableName.empty() || previousExecutableName == sanitizeExecutableName(previousProjectName, "VisiFormProject")) {
+            document_.executableName = sanitizeExecutableName(trimmedValue, "VisiFormProject");
+        }
+        if (previousWindowTitle.empty() || previousWindowTitle == previousProjectName) {
+            document_.windowTitle = trimmedValue;
+            document_.root.setProperty("title", document_.windowTitle);
+        }
+
+        document_.markDirty();
+        setOperationStatus("Project name changed: " + document_.projectName);
+        redraw();
+        return true;
+    }
+
+    if (key == "executableName") {
+        if (trimmedValue.empty()) {
+            setOperationStatus("Executable name cannot be empty");
+            redraw();
+            return false;
+        }
+
+        document_.executableName = sanitizeExecutableName(trimmedValue, document_.projectName.empty() ? std::string{"VisiFormProject"} : document_.projectName);
+        document_.markDirty();
+        setOperationStatus("Executable name changed: " + document_.executableName);
+        redraw();
+        return true;
+    }
+
     if (key == "generatedBaseClassName" || key == "userSubclassName") {
         if (key == "generatedBaseClassName") {
             setOperationStatus("Generated base class is fixed: MainWindow");
@@ -2347,6 +2413,15 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
 
         document_.markDirty();
         setOperationStatus("User subclass changed: " + trimmedValue);
+        redraw();
+        return true;
+    }
+
+    if (key == "windowTitle") {
+        document_.windowTitle = trimmedValue.empty() ? document_.projectName : trimmedValue;
+        document_.root.setProperty("title", document_.windowTitle);
+        document_.markDirty();
+        setOperationStatus("Window title changed: " + document_.windowTitle);
         redraw();
         return true;
     }

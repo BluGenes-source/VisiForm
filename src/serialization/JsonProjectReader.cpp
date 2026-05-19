@@ -6,10 +6,48 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cctype>
 #include <sstream>
 
 namespace visiform::serialization {
 namespace {
+
+std::string sanitizeExecutableName(const std::string& value, const std::string& fallback)
+{
+    const std::string source = value.empty() ? fallback : value;
+    std::string sanitized;
+    sanitized.reserve(source.size());
+    for (char character : source) {
+        if (std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_' || character == '-') {
+            sanitized.push_back(character);
+        }
+        else if (!std::isspace(static_cast<unsigned char>(character))) {
+            sanitized.push_back('_');
+        }
+        else {
+            sanitized.push_back('_');
+        }
+    }
+
+    while (!sanitized.empty() && sanitized.front() == '_') {
+        if (sanitized.size() == 1) {
+            break;
+        }
+        if (std::isdigit(static_cast<unsigned char>(sanitized[1])) == 0) {
+            break;
+        }
+        sanitized.erase(sanitized.begin());
+    }
+
+    if (sanitized.empty()) {
+        sanitized = fallback;
+    }
+    if (std::isdigit(static_cast<unsigned char>(sanitized.front())) != 0) {
+        sanitized.insert(sanitized.begin(), '_');
+    }
+
+    return sanitized;
+}
 
 bool requireObject(const nlohmann::json& json, const char* fieldName, std::string& errorMessage)
 {
@@ -212,6 +250,9 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
             || !tryReadString(json, "mainFormClassName", document.mainFormClassName, errorMessage)) {
             return std::nullopt;
         }
+        if (document.projectName.empty()) {
+            document.projectName = "VisiFormProject";
+        }
         if (const auto iterator = json.find("lookAndFeelId"); iterator != json.end()) {
             if (!iterator->is_string()) {
                 errorMessage = "lookAndFeelId must be a string when present.";
@@ -230,6 +271,21 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
             }
             document.userSubclassName = iterator->get<std::string>();
         }
+        if (const auto iterator = json.find("executableName"); iterator != json.end()) {
+            if (!iterator->is_string()) {
+                errorMessage = "executableName must be a string when present.";
+                return std::nullopt;
+            }
+            document.executableName = iterator->get<std::string>();
+        }
+        document.executableName = sanitizeExecutableName(document.executableName, document.projectName);
+        if (const auto iterator = json.find("windowTitle"); iterator != json.end()) {
+            if (!iterator->is_string()) {
+                errorMessage = "windowTitle must be a string when present.";
+                return std::nullopt;
+            }
+            document.windowTitle = iterator->get<std::string>();
+        }
         if (const auto iterator = json.find("generatedBaseClassName"); iterator != json.end()) {
             if (!iterator->is_string()) {
                 errorMessage = "generatedBaseClassName must be a string when present.";
@@ -247,6 +303,14 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
         if (!parseWidget(*rootIterator, document.root, errorMessage)) {
             return std::nullopt;
         }
+
+        if (document.windowTitle.empty()) {
+            document.windowTitle = document.root.getStringProperty("title", document.projectName);
+        }
+        if (document.windowTitle.empty()) {
+            document.windowTitle = document.projectName;
+        }
+        document.root.setProperty("title", document.windowTitle);
 
         const auto selectedWidgetIterator = json.find("selectedWidgetId");
         if (selectedWidgetIterator != json.end()) {

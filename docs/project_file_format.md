@@ -14,9 +14,11 @@ Top-level fields:
 
 - `schemaVersion` - integer schema identifier
 - `projectName` - project display name
+- `executableName` - generated executable target name
 - `mainFormClassName` - generated C++ class name for the main form
 - `generatedBaseClassName` - generated base window class name
 - `userSubclassName` - generated user subclass name
+- `windowTitle` - generated runtime window title
 - `lookAndFeelId` - project-level look and feel preset id
 - `selectedWidgetId` - currently selected widget id
 - `root` - root `WidgetNode`
@@ -54,6 +56,7 @@ Supported `type` values:
 - `ScrollBar`
 - `StatusBar`
 - `ProgressBar`
+- `ColorPicker`
 - `Image`
 - `Spacer`
 
@@ -128,8 +131,13 @@ Callback compatibility in the editor and generator now follows sender-aware sign
 
 Future schema versions may move event metadata into a dedicated events object.
 
-For compatibility, older files may contain only `mainFormClassName`.
-Current files may also store `generatedBaseClassName` and `userSubclassName`.
+For compatibility, older files may omit `executableName`, `generatedBaseClassName`, `userSubclassName`, or `windowTitle`.
+When missing:
+
+- `generatedBaseClassName` remains fixed to `MainWindow`
+- `userSubclassName` falls back to `AppMainWindow` or the older `mainFormClassName`
+- `executableName` falls back to a sanitized `projectName`
+- `windowTitle` falls back to the root form `title` property or `projectName`
 
 ## Common widget help property
 
@@ -205,8 +213,12 @@ The editor stores project documents as `.vfb.json` files and now uses `Generated
 ```json
 {
   "schemaVersion": 1,
-  "projectName": "UntitledVisiFormProject",
-  "mainFormClassName": "MainWindow",
+  "projectName": "VisiFormProject",
+  "executableName": "VisiFormProject",
+  "mainFormClassName": "AppMainWindow",
+  "generatedBaseClassName": "MainWindow",
+  "userSubclassName": "AppMainWindow",
+  "windowTitle": "VisiFormProject",
   "selectedWidgetId": "button_hello",
   "root": {
     "id": "form_main",
@@ -219,7 +231,7 @@ The editor stores project documents as `.vfb.json` files and now uses `Generated
       "height": 600
     },
     "properties": {
-      "title": "MainWindow",
+      "title": "VisiFormProject",
       "backgroundColor": "#202026"
     },
     "children": [

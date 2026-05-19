@@ -72,10 +72,12 @@ std::string JsonProjectWriter::writeToString(const model::ProjectDocument& docum
     nlohmann::json json;
     json["schemaVersion"] = document.schemaVersion;
     json["projectName"] = document.projectName;
+    json["executableName"] = document.executableName.empty() ? document.projectName : document.executableName;
     const std::string userSubclassName = document.userSubclassName.empty() ? document.mainFormClassName : document.userSubclassName;
     json["mainFormClassName"] = userSubclassName;
     json["generatedBaseClassName"] = "MainWindow";
     json["userSubclassName"] = userSubclassName;
+    json["windowTitle"] = document.windowTitle.empty() ? document.projectName : document.windowTitle;
     json["lookAndFeelId"] = document.lookAndFeelId.empty() ? std::string{"VisiFormDark"} : document.lookAndFeelId;
     json["selectedWidgetId"] = document.selectedWidgetId;
     json["root"] = widgetToJson(document.root);

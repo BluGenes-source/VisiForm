@@ -742,6 +742,199 @@ void emitWidgetDraw(std::ostringstream& stream,
     }
 }
 
+struct RuntimeWidgetSpec {
+    const visiform::model::WidgetNode* widget = nullptr;
+    float x = 0.0f;
+    float y = 0.0f;
+    ResolvedWidgetStyle style{};
+};
+
+std::string runtimeWidgetTypeLiteral(visiform::model::WidgetType type)
+{
+    switch (type) {
+    case visiform::model::WidgetType::Label:
+        return "RuntimeWidgetType::Label";
+    case visiform::model::WidgetType::Button:
+        return "RuntimeWidgetType::Button";
+    case visiform::model::WidgetType::TextBox:
+        return "RuntimeWidgetType::TextBox";
+    case visiform::model::WidgetType::CheckBox:
+        return "RuntimeWidgetType::CheckBox";
+    case visiform::model::WidgetType::RadioButton:
+        return "RuntimeWidgetType::RadioButton";
+    case visiform::model::WidgetType::Slider:
+        return "RuntimeWidgetType::Slider";
+    case visiform::model::WidgetType::ScrollBar:
+        return "RuntimeWidgetType::ScrollBar";
+    case visiform::model::WidgetType::StatusBar:
+        return "RuntimeWidgetType::StatusBar";
+    case visiform::model::WidgetType::ProgressBar:
+        return "RuntimeWidgetType::ProgressBar";
+    case visiform::model::WidgetType::ColorPicker:
+        return "RuntimeWidgetType::ColorPicker";
+    case visiform::model::WidgetType::Frame:
+        return "RuntimeWidgetType::Frame";
+    case visiform::model::WidgetType::Image:
+        return "RuntimeWidgetType::Image";
+    case visiform::model::WidgetType::Spacer:
+        return "RuntimeWidgetType::Spacer";
+    case visiform::model::WidgetType::FormWindow:
+        break;
+    }
+
+    return "RuntimeWidgetType::Label";
+}
+
+std::string emitStringVectorLiteral(const std::vector<std::string>& values)
+{
+    std::ostringstream stream;
+    stream << "{";
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        if (index > 0) {
+            stream << ", ";
+        }
+        stream << emitStringLiteral(values[index]);
+    }
+    stream << "}";
+    return stream.str();
+}
+
+void collectRuntimeWidgetSpecs(const visiform::model::ProjectDocument& document,
+    const visiform::model::WidgetNode& widget,
+    float parentX,
+    float parentY,
+    std::vector<RuntimeWidgetSpec>& specs)
+{
+    const float absoluteX = parentX + widget.bounds.x;
+    const float absoluteY = parentY + widget.bounds.y;
+    if (widget.type != visiform::model::WidgetType::FormWindow) {
+        specs.push_back(RuntimeWidgetSpec{ &widget, absoluteX, absoluteY, resolveWidgetStyle(document, widget) });
+    }
+
+    for (const auto& child : widget.children) {
+        collectRuntimeWidgetSpecs(document, child, absoluteX, absoluteY, specs);
+    }
+}
+
+void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWidgetSpec& spec, int indentLevel)
+{
+    const auto& widget = *spec.widget;
+    const std::string indent(indentLevel * 4, ' ');
+    const std::string innerIndent = indent + "    ";
+    stream << indent << "{\n";
+    stream << innerIndent << "RuntimeWidget widget{};\n";
+    stream << innerIndent << "widget.type = " << runtimeWidgetTypeLiteral(widget.type) << ";\n";
+    stream << innerIndent << "widget.id = " << emitStringLiteral(widget.id) << ";\n";
+    stream << innerIndent << "widget.name = " << emitStringLiteral(widget.name.empty() ? widget.id : widget.name) << ";\n";
+    stream << innerIndent << "widget.bounds = RuntimeRect{ " << emitFloat(spec.x) << ", " << emitFloat(spec.y) << ", "
+           << emitFloat(widget.bounds.width) << ", " << emitFloat(widget.bounds.height) << " };\n";
+    stream << innerIndent << "widget.hint = " << emitStringLiteral(widget.getStringProperty("hint", {})) << ";\n";
+    stream << innerIndent << "widget.text = " << emitStringLiteral(displayTextOrFallback(widget, "text", widgetLabel(widget))) << ";\n";
+    stream << innerIndent << "widget.source = " << emitStringLiteral(widget.getStringProperty("source", "Image")) << ";\n";
+    stream << innerIndent << "widget.colorValue = " << emitStringLiteral(widget.getStringProperty("value", "#2D7DFF")) << ";\n";
+    stream << innerIndent << "widget.checked = " << (widget.getBoolProperty("checked", false) ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.selected = " << (widget.getBoolProperty("selected", false) ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.group = " << emitStringLiteral(widget.getStringProperty("group", "default")) << ";\n";
+    stream << innerIndent << "widget.min = " << emitFloat(widget.getFloatProperty("min", 0.0f)) << ";\n";
+    stream << innerIndent << "widget.max = " << emitFloat(widget.getFloatProperty("max", 100.0f)) << ";\n";
+    stream << innerIndent << "widget.value = " << emitFloat(widget.getFloatProperty("value", 0.0f)) << ";\n";
+    stream << innerIndent << "widget.pageSize = " << emitFloat(widget.getFloatProperty("pageSize", 10.0f)) << ";\n";
+    stream << innerIndent << "widget.orientation = " << emitStringLiteral(widget.getStringProperty("orientation", "Horizontal")) << ";\n";
+    stream << innerIndent << "widget.showText = " << (widget.getBoolProperty("showText", true) ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.onClick = " << emitStringLiteral(widget.getStringProperty("onClick", {})) << ";\n";
+    stream << innerIndent << "widget.onToggle = " << emitStringLiteral(widget.getStringProperty("onToggle", {})) << ";\n";
+    stream << innerIndent << "widget.onSelected = " << emitStringLiteral(widget.getStringProperty("onSelected", {})) << ";\n";
+    stream << innerIndent << "widget.onChanged = " << emitStringLiteral(widget.getStringProperty("onChanged", {})) << ";\n";
+    stream << innerIndent << "widget.onTextChanged = " << emitStringLiteral(widget.getStringProperty("onTextChanged", {})) << ";\n";
+    stream << innerIndent << "widget.panelColor = " << emitColorExpression(spec.style.panelColor, "0xff1F242D") << ";\n";
+    stream << innerIndent << "widget.fillColor = " << emitColorExpression(spec.style.fillColor, "0xff2B313D") << ";\n";
+    stream << innerIndent << "widget.textColor = " << emitColorExpression(spec.style.textColor, "0xffEEF2F8") << ";\n";
+    stream << innerIndent << "widget.borderColor = " << emitColorExpression(spec.style.borderColor, "0xff97A3B7") << ";\n";
+    stream << innerIndent << "widget.accentColor = " << emitColorExpression(spec.style.accentColor, "0xff2D7FF9") << ";\n";
+    stream << innerIndent << "widget.disabledColor = " << emitColorExpression(spec.style.disabledColor, "0xff6C7788") << ";\n";
+    stream << innerIndent << "widget.borderThickness = " << emitFloat(spec.style.borderThickness) << ";\n";
+    stream << innerIndent << "widget.cornerRadius = " << emitFloat(spec.style.cornerRadius) << ";\n";
+    stream << innerIndent << "widget.fontSize = " << emitFloat(spec.style.fontSize) << ";\n";
+
+    if (widget.type == visiform::model::WidgetType::Frame) {
+        stream << innerIndent << "widget.text = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::TextBox) {
+        stream << innerIndent << "widget.text = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::ProgressBar) {
+        stream << innerIndent << "widget.text = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::ColorPicker) {
+        stream << innerIndent << "widget.text = " << emitStringLiteral(displayTextOrFallback(widget, "text", "Color")) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::Image) {
+        stream << innerIndent << "widget.text = " << emitStringLiteral(widget.getStringProperty("source", "Image")) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::Spacer) {
+        stream << innerIndent << "widget.text = \"Spacer\";\n";
+    }
+
+    if (widget.type == visiform::model::WidgetType::StatusBar) {
+        const int fields = std::clamp(widget.getIntProperty("fields", 1), 1, 4);
+        std::vector<std::string> fieldTexts;
+        fieldTexts.reserve(static_cast<std::size_t>(fields));
+        for (int index = 0; index < fields; ++index) {
+            const std::string key = "text" + std::to_string(index);
+            fieldTexts.push_back(widget.getStringProperty(key, index == 0 ? "Ready" : ""));
+        }
+        stream << innerIndent << "widget.items = " << emitStringVectorLiteral(fieldTexts) << ";\n";
+    }
+
+    stream << innerIndent << "runtimeWidgets_.push_back(std::move(widget));\n";
+    stream << indent << "}\n";
+}
+
+void emitRuntimeEventDispatcher(std::ostringstream& stream,
+    const std::string& signature,
+    HandlerSignature handlerSignature,
+    const std::vector<EventBinding>& bindings)
+{
+    stream << signature << "\n";
+    stream << "{\n";
+
+    bool emittedMatch = false;
+    for (const auto& binding : bindings) {
+        if (binding.signature != handlerSignature) {
+            continue;
+        }
+
+        emittedMatch = true;
+        stream << "    if (widget.id == " << emitStringLiteral(binding.widgetId) << " && eventKey == " << emitStringLiteral(binding.eventKey) << ") {\n";
+        if (handlerSignature == HandlerSignature::Void) {
+            stream << "        " << emitMethodName(binding) << "();\n";
+        }
+        else {
+            stream << "        " << emitMethodName(binding) << "(value);\n";
+        }
+        stream << "        return;\n";
+        stream << "    }\n";
+    }
+
+    if (!emittedMatch) {
+        stream << "    (void)widget;\n";
+        stream << "    (void)eventKey;\n";
+        if (handlerSignature != HandlerSignature::Void) {
+            stream << "    (void)value;\n";
+        }
+        stream << "    return;\n";
+    }
+    else {
+        stream << "    (void)widget;\n";
+        stream << "    (void)eventKey;\n";
+        if (handlerSignature != HandlerSignature::Void) {
+            stream << "    (void)value;\n";
+        }
+    }
+
+    stream << "}\n";
+}
+
 std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& document)
 {
     const std::string className = generatedBaseClassName(document);
@@ -754,6 +947,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << kGeneratedFileHeader;
     stream << "#pragma once\n\n";
     stream << "#include <string>\n";
+    stream << "#include <vector>\n";
     stream << "#include <visage/app.h>\n";
     stream << "#include <visage/graphics.h>\n\n";
     stream << "struct WidgetEvent {\n";
@@ -761,12 +955,80 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    const char* senderName = \"\";\n";
     stream << "    const char* senderType = \"\";\n";
     stream << "};\n\n";
+    stream << "enum class RuntimeWidgetType {\n";
+    stream << "    Button,\n";
+    stream << "    TextBox,\n";
+    stream << "    CheckBox,\n";
+    stream << "    RadioButton,\n";
+    stream << "    Slider,\n";
+    stream << "    ScrollBar,\n";
+    stream << "    ProgressBar,\n";
+    stream << "    StatusBar,\n";
+    stream << "    Label,\n";
+    stream << "    Frame,\n";
+    stream << "    Image,\n";
+    stream << "    Spacer,\n";
+    stream << "    ColorPicker\n";
+    stream << "};\n\n";
+    stream << "struct RuntimeRect {\n";
+    stream << "    float x = 0.0f;\n";
+    stream << "    float y = 0.0f;\n";
+    stream << "    float width = 0.0f;\n";
+    stream << "    float height = 0.0f;\n\n";
+    stream << "    [[nodiscard]] bool contains(float px, float py) const\n";
+    stream << "    {\n";
+    stream << "        return px >= x && py >= y && px <= x + width && py <= y + height;\n";
+    stream << "    }\n";
+    stream << "};\n\n";
+    stream << "struct RuntimeWidget {\n";
+    stream << "    RuntimeWidgetType type = RuntimeWidgetType::Label;\n";
+    stream << "    std::string id;\n";
+    stream << "    std::string name;\n";
+    stream << "    RuntimeRect bounds;\n";
+    stream << "    std::string text;\n";
+    stream << "    std::string hint;\n";
+    stream << "    std::string source;\n";
+    stream << "    std::string colorValue = \"#2D7DFF\";\n";
+    stream << "    std::vector<std::string> items;\n";
+    stream << "    bool checked = false;\n";
+    stream << "    bool selected = false;\n";
+    stream << "    std::string group;\n";
+    stream << "    float min = 0.0f;\n";
+    stream << "    float max = 100.0f;\n";
+    stream << "    float value = 0.0f;\n";
+    stream << "    float pageSize = 10.0f;\n";
+    stream << "    std::string orientation = \"Horizontal\";\n";
+    stream << "    bool showText = true;\n";
+    stream << "    std::string onClick;\n";
+    stream << "    std::string onToggle;\n";
+    stream << "    std::string onSelected;\n";
+    stream << "    std::string onChanged;\n";
+    stream << "    std::string onTextChanged;\n";
+    stream << "    int panelColor = 0xff1f242d;\n";
+    stream << "    int fillColor = 0xff2b313d;\n";
+    stream << "    int textColor = 0xffeef2f8;\n";
+    stream << "    int borderColor = 0xff97a3b7;\n";
+    stream << "    int accentColor = 0xff2d7ff9;\n";
+    stream << "    int disabledColor = 0xff6c7788;\n";
+    stream << "    float borderThickness = 1.0f;\n";
+    stream << "    float cornerRadius = 0.0f;\n";
+    stream << "    float fontSize = 16.0f;\n";
+    stream << "    bool pressed = false;\n";
+    stream << "    bool focused = false;\n";
+    stream << "};\n\n";
     stream << "class " << className << " : public visage::ApplicationWindow {\n";
     stream << "public:\n";
     stream << "    " << className << "();\n";
     stream << "    ~" << className << "() override = default;\n\n";
     stream << "    void showWindow();\n";
     stream << "    void draw(visage::Canvas& canvas) override;\n\n";
+    stream << "    void mouseDown(const visage::MouseEvent& e) override;\n";
+    stream << "    void mouseMove(const visage::MouseEvent& e) override;\n";
+    stream << "    void mouseDrag(const visage::MouseEvent& e) override;\n";
+    stream << "    void mouseUp(const visage::MouseEvent& e) override;\n";
+    stream << "    bool keyPress(const visage::KeyEvent& e) override;\n";
+    stream << "    bool receivesTextInput() override;\n";
+    stream << "    void textInput(const std::string& text) override;\n\n";
     stream << "protected:\n";
     for (const auto& handler : handlers) {
         stream << "    // Referenced by: " << handlerReferenceList(handler) << "\n";
@@ -792,7 +1054,39 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     }
     stream << "private:\n";
     stream << "    bool canDrawText() const;\n\n";
+    stream << "    void initializeRuntimeWidgets();\n";
+    stream << "    RuntimeWidget* findWidgetById(const std::string& id);\n";
+    stream << "    const RuntimeWidget* findWidgetById(const std::string& id) const;\n";
+    stream << "    RuntimeWidget* hitTest(float x, float y);\n";
+    stream << "    RuntimeWidget* focusedTextBox();\n";
+    stream << "    const RuntimeWidget* focusedTextBox() const;\n";
+    stream << "    void setFocusedWidget(const std::string& widgetId);\n";
+    stream << "    void clearPressedState();\n";
+    stream << "    bool isInteractive(const RuntimeWidget& widget) const;\n";
+    stream << "    bool setWidgetValue(RuntimeWidget& widget, float value);\n";
+    stream << "    bool updateSliderFromPoint(RuntimeWidget& widget, float formX);\n";
+    stream << "    RuntimeRect scrollBarThumbRect(const RuntimeWidget& widget) const;\n";
+    stream << "    bool updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY);\n";
+    stream << "    bool updateTextBoxText(RuntimeWidget& widget, const std::string& text);\n";
+    stream << "    void emitVoidEvent(const RuntimeWidget& widget, const std::string& eventKey);\n";
+    stream << "    void emitBoolEvent(const RuntimeWidget& widget, const std::string& eventKey, bool value);\n";
+    stream << "    void emitFloatEvent(const RuntimeWidget& widget, const std::string& eventKey, float value);\n";
+    stream << "    void emitStringEvent(const RuntimeWidget& widget, const std::string& eventKey, const std::string& value);\n\n";
     stream << "    visage::Font labelFont_{};\n";
+    stream << "    RuntimeRect formBounds_{};\n";
+    stream << "    std::string formTitle_{};\n";
+    stream << "    int formPanelColor_ = 0xff2b313d;\n";
+    stream << "    int formFillColor_ = 0xff1f242d;\n";
+    stream << "    int formTextColor_ = 0xffeef2f8;\n";
+    stream << "    int formBorderColor_ = 0xff97a3b7;\n";
+    stream << "    float formBorderThickness_ = 1.0f;\n";
+    stream << "    std::vector<RuntimeWidget> runtimeWidgets_{};\n";
+    stream << "    std::string pressedWidgetId_{};\n";
+    stream << "    std::string focusedWidgetId_{};\n";
+    stream << "    std::string draggingWidgetId_{};\n";
+    stream << "    bool draggingSlider_ = false;\n";
+    stream << "    bool draggingScrollBar_ = false;\n";
+    stream << "    float dragPointerOffset_ = 0.0f;\n";
     stream << "};\n";
     return stream.str();
 }
@@ -831,22 +1125,36 @@ std::string emitMainCpp(const visiform::model::ProjectDocument& document)
 std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& document)
 {
     const std::string className = generatedBaseClassName(document);
-    const std::string windowTitle = document.root.getStringProperty("title", userSubclassName(document));
+    const std::string projectName = document.projectName.empty() ? std::string{"VisiFormProject"} : document.projectName;
+    const std::string windowTitle = document.windowTitle.empty()
+        ? document.root.getStringProperty("title", projectName)
+        : document.windowTitle;
     const float windowWidth = std::max(1000.0f, document.root.bounds.width + 120.0f);
     const float windowHeight = std::max(800.0f, document.root.bounds.height + 120.0f);
+    const ResolvedWidgetStyle rootStyle = resolveWidgetStyle(document, document.root);
     std::vector<HandlerInfo> handlers;
     std::vector<EventBinding> bindings;
+    std::vector<RuntimeWidgetSpec> runtimeWidgets;
     std::string ignoredError;
     collectHandlers(document, handlers, ignoredError);
     collectEventBindings(document.root, bindings, ignoredError);
+    collectRuntimeWidgetSpecs(document, document.root, -document.root.bounds.x, -document.root.bounds.y, runtimeWidgets);
 
     std::ostringstream stream;
     stream << kGeneratedFileHeader;
     stream << "#include \"" << className << ".h\"\n\n";
+    stream << "#include <algorithm>\n";
     stream << "#include <array>\n";
+    stream << "#include <cctype>\n";
+    stream << "#include <cmath>\n";
+    stream << "#include <cstdint>\n";
     stream << "#include <fstream>\n";
-    stream << "#include <string>\n\n";
+    stream << "#include <string>\n";
+    stream << "#include <utility>\n\n";
     stream << "namespace {\n\n";
+    stream << "constexpr float kFormOffsetX = 40.0f;\n";
+    stream << "constexpr float kFormOffsetY = 60.0f;\n";
+    stream << "constexpr float kTitleBarHeight = 28.0f;\n\n";
     stream << "void drawBorder(visage::Canvas& canvas, float x, float y, float width, float height, int color, float thickness = 1.0f)\n";
     stream << "{\n";
     stream << "    canvas.setColor(color);\n";
@@ -855,9 +1163,273 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    canvas.fill(x, y, thickness, height);\n";
     stream << "    canvas.fill(x + width - thickness, y, thickness, height);\n";
     stream << "}\n\n";
+    stream << "int blendColor(int colorA, int colorB, float amount)\n";
+    stream << "{\n";
+    stream << "    const auto blendChannel = [amount](int first, int second) {\n";
+    stream << "        return static_cast<int>(std::round(static_cast<float>(first) * (1.0f - amount) + static_cast<float>(second) * amount));\n";
+    stream << "    };\n\n";
+    stream << "    const int a = blendChannel((colorA >> 24) & 0xff, (colorB >> 24) & 0xff);\n";
+    stream << "    const int r = blendChannel((colorA >> 16) & 0xff, (colorB >> 16) & 0xff);\n";
+    stream << "    const int g = blendChannel((colorA >> 8) & 0xff, (colorB >> 8) & 0xff);\n";
+    stream << "    const int b = blendChannel(colorA & 0xff, colorB & 0xff);\n";
+    stream << "    return (a << 24) | (r << 16) | (g << 8) | b;\n";
+    stream << "}\n\n";
+    stream << "void fillCircleApprox(visage::Canvas& canvas, float centerX, float centerY, float radius, int color)\n";
+    stream << "{\n";
+    stream << "    if (radius <= 0.0f) {\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    canvas.setColor(color);\n";
+    stream << "    const int radiusPixels = std::max(1, static_cast<int>(std::ceil(radius)));\n";
+    stream << "    for (int offsetY = -radiusPixels; offsetY <= radiusPixels; ++offsetY) {\n";
+    stream << "        const float dy = static_cast<float>(offsetY);\n";
+    stream << "        const float halfWidth = std::sqrt(std::max(0.0f, radius * radius - dy * dy));\n";
+    stream << "        canvas.fill(centerX - halfWidth, centerY + dy, halfWidth * 2.0f + 1.0f, 1.0f);\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "int parseColorOrDefault(const std::string& value, int defaultColor)\n";
+    stream << "{\n";
+    stream << "    if (value.empty() || value.front() != '#') {\n";
+    stream << "        return defaultColor;\n";
+    stream << "    }\n\n";
+    stream << "    try {\n";
+    stream << "        const std::string digits = value.substr(1);\n";
+    stream << "        const std::uint32_t parsed = static_cast<std::uint32_t>(std::stoul(digits, nullptr, 16));\n";
+    stream << "        if (digits.size() == 6) {\n";
+    stream << "            return static_cast<int>(0xff000000u | parsed);\n";
+    stream << "        }\n";
+    stream << "        if (digits.size() == 8) {\n";
+    stream << "            return static_cast<int>(parsed);\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    catch (...) {\n";
+    stream << "    }\n\n";
+    stream << "    return defaultColor;\n";
+    stream << "}\n\n";
+    stream << "float normalizedRangeValue(const RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    const float safeMaximum = widget.max <= widget.min ? widget.min + 1.0f : widget.max;\n";
+    stream << "    return std::clamp((widget.value - widget.min) / (safeMaximum - widget.min), 0.0f, 1.0f);\n";
+    stream << "}\n\n";
+    stream << "float rangeValueForNormalized(const RuntimeWidget& widget, float normalized)\n";
+    stream << "{\n";
+    stream << "    const float safeMaximum = widget.max <= widget.min ? widget.min + 1.0f : widget.max;\n";
+    stream << "    return widget.min + (safeMaximum - widget.min) * std::clamp(normalized, 0.0f, 1.0f);\n";
+    stream << "}\n\n";
+    stream << "std::string progressText(const RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    if (!widget.showText) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n";
+    stream << "    if (!widget.text.empty()) {\n";
+    stream << "        return widget.text;\n";
+    stream << "    }\n";
+    stream << "    return std::to_string(static_cast<int>(std::round(normalizedRangeValue(widget) * 100.0f))) + \"%\";\n";
+    stream << "}\n\n";
+    stream << "RuntimeRect scrollBarThumbRectForWidget(const RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    const bool vertical = widget.orientation == \"Vertical\";\n";
+    stream << "    const float arrowSize = vertical ? std::min(widget.bounds.width, 20.0f) : std::min(widget.bounds.height, 20.0f);\n";
+    stream << "    const float normalized = normalizedRangeValue(widget);\n";
+    stream << "    const float safeMaximum = widget.max <= widget.min ? widget.min + 1.0f : widget.max;\n";
+    stream << "    const float thumbFactor = std::clamp(widget.pageSize / (safeMaximum - widget.min + widget.pageSize), 0.18f, 0.55f);\n";
+    stream << "    if (vertical) {\n";
+    stream << "        const float trackTop = widget.bounds.y + arrowSize;\n";
+    stream << "        const float trackHeight = std::max(0.0f, widget.bounds.height - arrowSize * 2.0f);\n";
+    stream << "        const float thumbHeight = std::clamp(trackHeight * thumbFactor, 18.0f, std::max(18.0f, trackHeight));\n";
+    stream << "        const float thumbY = trackTop + std::max(0.0f, trackHeight - thumbHeight) * normalized;\n";
+    stream << "        return { widget.bounds.x + 4.0f, thumbY, std::max(0.0f, widget.bounds.width - 8.0f), thumbHeight };\n";
+    stream << "    }\n";
+    stream << "    const float trackLeft = widget.bounds.x + arrowSize;\n";
+    stream << "    const float trackWidth = std::max(0.0f, widget.bounds.width - arrowSize * 2.0f);\n";
+    stream << "    const float thumbWidth = std::clamp(trackWidth * thumbFactor, 18.0f, std::max(18.0f, trackWidth));\n";
+    stream << "    const float thumbX = trackLeft + std::max(0.0f, trackWidth - thumbWidth) * normalized;\n";
+    stream << "    return { thumbX, widget.bounds.y + 4.0f, thumbWidth, std::max(0.0f, widget.bounds.height - 8.0f) };\n";
+    stream << "}\n\n";
+    stream << "void drawRuntimeWidget(visage::Canvas& canvas, const visage::Font& font, bool drawText, const RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    const float x = kFormOffsetX + widget.bounds.x;\n";
+    stream << "    const float y = kFormOffsetY + widget.bounds.y;\n";
+    stream << "    const float width = widget.bounds.width;\n";
+    stream << "    const float height = widget.bounds.height;\n\n";
+    stream << "    switch (widget.type) {\n";
+    stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.text, font, visage::Font::kTopLeft, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), 20.0f);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::Label:\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.text, font, visage::Font::kTopLeft, x + 6.0f, y + 4.0f, std::max(0.0f, width - 12.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::Button:\n";
+    stream << "        canvas.setColor(widget.pressed ? blendColor(widget.fillColor, widget.accentColor, 0.18f) : widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.text, font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::TextBox:\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.focused ? widget.accentColor : widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.text, font, visage::Font::kTopLeft, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::CheckBox:\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x + 6.0f, y + (height - 18.0f) * 0.5f, 18.0f, 18.0f);\n";
+    stream << "        drawBorder(canvas, x + 6.0f, y + (height - 18.0f) * 0.5f, 18.0f, 18.0f, widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (widget.checked) {\n";
+    stream << "            canvas.setColor(widget.accentColor);\n";
+    stream << "            canvas.fill(x + 10.0f, y + (height - 10.0f) * 0.5f, 10.0f, 10.0f);\n";
+    stream << "        }\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.text, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 36.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::RadioButton: {\n";
+    stream << "        const float centerX = x + 15.0f;\n";
+    stream << "        const float centerY = y + height * 0.5f;\n";
+    stream << "        fillCircleApprox(canvas, centerX, centerY, 9.0f, widget.borderColor);\n";
+    stream << "        fillCircleApprox(canvas, centerX, centerY, std::max(2.0f, 9.0f - std::max(1.0f, widget.borderThickness)), widget.fillColor);\n";
+    stream << "        if (widget.selected) {\n";
+    stream << "            fillCircleApprox(canvas, centerX, centerY, 4.0f, widget.accentColor);\n";
+    stream << "        }\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.text, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 36.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::Slider: {\n";
+    stream << "        const float normalized = normalizedRangeValue(widget);\n";
+    stream << "        const float trackLeft = x + 8.0f;\n";
+    stream << "        const float trackWidth = std::max(0.0f, width - 16.0f);\n";
+    stream << "        const float handleX = std::clamp(trackLeft + trackWidth * normalized - 6.0f, trackLeft - 6.0f, trackLeft + trackWidth - 6.0f);\n";
+    stream << "        canvas.setColor(widget.borderColor);\n";
+    stream << "        canvas.fill(trackLeft, y + height * 0.5f - 2.0f, trackWidth, 4.0f);\n";
+    stream << "        canvas.setColor(widget.accentColor);\n";
+    stream << "        canvas.fill(handleX, y + height * 0.5f - 8.0f, 12.0f, 16.0f);\n";
+    stream << "        drawBorder(canvas, handleX, y + height * 0.5f - 8.0f, 12.0f, 16.0f, widget.borderColor, widget.borderThickness);\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::ScrollBar: {\n";
+    stream << "        const bool vertical = widget.orientation == \"Vertical\";\n";
+    stream << "        const float arrowSize = vertical ? std::min(width, 20.0f) : std::min(height, 20.0f);\n";
+    stream << "        const RuntimeRect thumb = scrollBarThumbRectForWidget(widget);\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (vertical) {\n";
+    stream << "            canvas.setColor(widget.fillColor);\n";
+    stream << "            canvas.fill(x, y, width, arrowSize);\n";
+    stream << "            canvas.fill(x, y + height - arrowSize, width, arrowSize);\n";
+    stream << "            drawBorder(canvas, x, y, width, arrowSize, widget.borderColor, widget.borderThickness);\n";
+    stream << "            drawBorder(canvas, x, y + height - arrowSize, width, arrowSize, widget.borderColor, widget.borderThickness);\n";
+    stream << "            canvas.setColor(widget.panelColor);\n";
+    stream << "            canvas.fill(x + 2.0f, y + arrowSize, width - 4.0f, std::max(0.0f, height - arrowSize * 2.0f));\n";
+    stream << "        }\n";
+    stream << "        else {\n";
+    stream << "            canvas.setColor(widget.fillColor);\n";
+    stream << "            canvas.fill(x, y, arrowSize, height);\n";
+    stream << "            canvas.fill(x + width - arrowSize, y, arrowSize, height);\n";
+    stream << "            drawBorder(canvas, x, y, arrowSize, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "            drawBorder(canvas, x + width - arrowSize, y, arrowSize, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "            canvas.setColor(widget.panelColor);\n";
+    stream << "            canvas.fill(x + arrowSize, y + 2.0f, std::max(0.0f, width - arrowSize * 2.0f), height - 4.0f);\n";
+    stream << "        }\n";
+    stream << "        canvas.setColor(widget.accentColor);\n";
+    stream << "        canvas.fill(kFormOffsetX + thumb.x, kFormOffsetY + thumb.y, thumb.width, thumb.height);\n";
+    stream << "        drawBorder(canvas, kFormOffsetX + thumb.x, kFormOffsetY + thumb.y, thumb.width, thumb.height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::StatusBar: {\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (drawText && !widget.items.empty()) {\n";
+    stream << "            const float fieldWidth = width / static_cast<float>(widget.items.size());\n";
+    stream << "            for (std::size_t index = 0; index < widget.items.size(); ++index) {\n";
+    stream << "                canvas.setColor(widget.textColor);\n";
+    stream << "                canvas.text(widget.items[index], font, visage::Font::kTopLeft, x + fieldWidth * static_cast<float>(index) + 6.0f, y + 6.0f, fieldWidth - 12.0f, height - 12.0f);\n";
+    stream << "                if (index + 1 < widget.items.size()) {\n";
+    stream << "                    canvas.setColor(widget.borderColor);\n";
+    stream << "                    canvas.fill(x + fieldWidth * static_cast<float>(index + 1) - 1.0f, y + 4.0f, 1.0f, height - 8.0f);\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::ProgressBar: {\n";
+    stream << "        const float normalized = normalizedRangeValue(widget);\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        canvas.setColor(widget.accentColor);\n";
+    stream << "        canvas.fill(x, y, width * normalized, height);\n";
+    stream << "        const std::string display = progressText(widget);\n";
+    stream << "        if (drawText && !display.empty()) {\n";
+    stream << "            canvas.setColor(normalized >= 0.5f ? 0xfff8fbff : widget.textColor);\n";
+    stream << "            canvas.text(display, font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::ColorPicker: {\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        canvas.setColor(parseColorOrDefault(widget.colorValue, widget.accentColor));\n";
+    stream << "        canvas.fill(x + 6.0f, y + 6.0f, 22.0f, std::max(16.0f, height - 12.0f));\n";
+    stream << "        drawBorder(canvas, x + 6.0f, y + 6.0f, 22.0f, std::max(16.0f, height - 12.0f), widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.showText ? widget.text + \"  \" + widget.colorValue : widget.colorValue, font, visage::Font::kTopLeft, x + 36.0f, y + 6.0f, std::max(0.0f, width - 42.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.source, font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "        canvas.setColor(widget.fillColor);\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.borderColor, widget.borderThickness);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(widget.textColor);\n";
+    stream << "            canvas.text(widget.text, font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "}\n\n";
     stream << "} // namespace\n\n";
     stream << className << "::" << className << "()\n";
     stream << "{\n";
+    stream << "    formBounds_ = RuntimeRect{ 0.0f, 0.0f, " << emitFloat(document.root.bounds.width) << ", " << emitFloat(document.root.bounds.height) << " };\n";
+    stream << "    formTitle_ = " << emitStringLiteral(windowTitle) << ";\n";
+    stream << "    formPanelColor_ = " << emitColorExpression(rootStyle.panelColor, "0xff2B313D") << ";\n";
+    stream << "    formFillColor_ = " << emitColorExpression(rootStyle.fillColor, "0xff1F242D") << ";\n";
+    stream << "    formTextColor_ = " << emitColorExpression(rootStyle.textColor, "0xffEEF2F8") << ";\n";
+    stream << "    formBorderColor_ = " << emitColorExpression(rootStyle.borderColor, "0xff97A3B7") << ";\n";
+    stream << "    formBorderThickness_ = " << emitFloat(rootStyle.borderThickness) << ";\n";
+    stream << "    initializeRuntimeWidgets();\n";
     stream << "    setTitle(" << emitStringLiteral(windowTitle) << ");\n";
     stream << "\n";
     stream << "    static constexpr std::array<const char*, 3> kFontCandidates = {\n";
@@ -879,20 +1451,453 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "void " << className << "::showWindow()\n";
     stream << "{\n";
     stream << "    show(visage::Dimension::logicalPixels(" << emitFloat(windowWidth) << "), visage::Dimension::logicalPixels(" << emitFloat(windowHeight) << "));\n";
+    for (const auto& binding : bindings) {
+        if (binding.widgetId == document.root.id && binding.eventKey == "onLoad" && binding.signature == HandlerSignature::Void) {
+            stream << "    " << emitMethodName(binding) << "();\n";
+        }
+    }
+    stream << "}\n\n";
+    stream << "void " << className << "::initializeRuntimeWidgets()\n";
+    stream << "{\n";
+    stream << "    runtimeWidgets_.clear();\n";
+    for (const auto& runtimeWidget : runtimeWidgets) {
+        emitRuntimeWidgetInitialization(stream, runtimeWidget, 1);
+    }
+    stream << "}\n\n";
+    stream << "RuntimeWidget* " << className << "::findWidgetById(const std::string& id)\n";
+    stream << "{\n";
+    stream << "    for (auto& widget : runtimeWidgets_) {\n";
+    stream << "        if (widget.id == id) {\n";
+    stream << "            return &widget;\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    return nullptr;\n";
+    stream << "}\n\n";
+    stream << "const RuntimeWidget* " << className << "::findWidgetById(const std::string& id) const\n";
+    stream << "{\n";
+    stream << "    for (const auto& widget : runtimeWidgets_) {\n";
+    stream << "        if (widget.id == id) {\n";
+    stream << "            return &widget;\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    return nullptr;\n";
+    stream << "}\n\n";
+    stream << "RuntimeWidget* " << className << "::focusedTextBox()\n";
+    stream << "{\n";
+    stream << "    RuntimeWidget* widget = findWidgetById(focusedWidgetId_);\n";
+    stream << "    return widget != nullptr && widget->type == RuntimeWidgetType::TextBox ? widget : nullptr;\n";
+    stream << "}\n\n";
+    stream << "const RuntimeWidget* " << className << "::focusedTextBox() const\n";
+    stream << "{\n";
+    stream << "    const RuntimeWidget* widget = findWidgetById(focusedWidgetId_);\n";
+    stream << "    return widget != nullptr && widget->type == RuntimeWidgetType::TextBox ? widget : nullptr;\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::setFocusedWidget(const std::string& widgetId)\n";
+    stream << "{\n";
+    stream << "    focusedWidgetId_.clear();\n";
+    stream << "    for (auto& widget : runtimeWidgets_) {\n";
+    stream << "        widget.focused = false;\n";
+    stream << "        if (widget.id == widgetId && widget.type == RuntimeWidgetType::TextBox) {\n";
+    stream << "            widget.focused = true;\n";
+    stream << "            focusedWidgetId_ = widget.id;\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::clearPressedState()\n";
+    stream << "{\n";
+    stream << "    pressedWidgetId_.clear();\n";
+    stream << "    for (auto& widget : runtimeWidgets_) {\n";
+    stream << "        widget.pressed = false;\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::isInteractive(const RuntimeWidget& widget) const\n";
+    stream << "{\n";
+    stream << "    switch (widget.type) {\n";
+    stream << "    case RuntimeWidgetType::Button:\n";
+    stream << "    case RuntimeWidgetType::TextBox:\n";
+    stream << "    case RuntimeWidgetType::CheckBox:\n";
+    stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "    case RuntimeWidgetType::Slider:\n";
+    stream << "    case RuntimeWidgetType::ScrollBar:\n";
+    stream << "    case RuntimeWidgetType::ColorPicker:\n";
+    stream << "        return true;\n";
+    stream << "    case RuntimeWidgetType::ProgressBar:\n";
+    stream << "    case RuntimeWidgetType::StatusBar:\n";
+    stream << "    case RuntimeWidgetType::Label:\n";
+    stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "        return false;\n";
+    stream << "    }\n";
+    stream << "    return false;\n";
+    stream << "}\n\n";
+    stream << "RuntimeWidget* " << className << "::hitTest(float x, float y)\n";
+    stream << "{\n";
+    stream << "    for (auto iterator = runtimeWidgets_.rbegin(); iterator != runtimeWidgets_.rend(); ++iterator) {\n";
+    stream << "        if (isInteractive(*iterator) && iterator->bounds.contains(x, y)) {\n";
+    stream << "            return &(*iterator);\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    return nullptr;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::setWidgetValue(RuntimeWidget& widget, float value)\n";
+    stream << "{\n";
+    stream << "    const float safeMaximum = widget.max <= widget.min ? widget.min + 1.0f : widget.max;\n";
+    stream << "    const float clamped = std::clamp(value, widget.min, safeMaximum);\n";
+    stream << "    if (std::fabs(clamped - widget.value) <= 0.001f) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n";
+    stream << "    widget.value = clamped;\n";
+    stream << "    if (!widget.onChanged.empty()) {\n";
+    stream << "        emitFloatEvent(widget, \"onChanged\", widget.value);\n";
+    stream << "    }\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::updateSliderFromPoint(RuntimeWidget& widget, float formX)\n";
+    stream << "{\n";
+    stream << "    const float trackLeft = widget.bounds.x + 8.0f;\n";
+    stream << "    const float trackWidth = std::max(1.0f, widget.bounds.width - 16.0f);\n";
+    stream << "    const float normalized = std::clamp((formX - trackLeft) / trackWidth, 0.0f, 1.0f);\n";
+    stream << "    return setWidgetValue(widget, rangeValueForNormalized(widget, normalized));\n";
+    stream << "}\n\n";
+    stream << "RuntimeRect " << className << "::scrollBarThumbRect(const RuntimeWidget& widget) const\n";
+    stream << "{\n";
+    stream << "    return scrollBarThumbRectForWidget(widget);\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY)\n";
+    stream << "{\n";
+    stream << "    const bool vertical = widget.orientation == \"Vertical\";\n";
+    stream << "    const float arrowSize = vertical ? std::min(widget.bounds.width, 20.0f) : std::min(widget.bounds.height, 20.0f);\n";
+    stream << "    const RuntimeRect thumb = scrollBarThumbRect(widget);\n";
+    stream << "    if (vertical) {\n";
+    stream << "        const float trackTop = widget.bounds.y + arrowSize;\n";
+    stream << "        const float trackHeight = std::max(0.0f, widget.bounds.height - arrowSize * 2.0f);\n";
+    stream << "        if (trackHeight <= thumb.height) {\n";
+    stream << "            return false;\n";
+    stream << "        }\n";
+    stream << "        const float thumbY = std::clamp(formY - dragPointerOffset_, trackTop, trackTop + trackHeight - thumb.height);\n";
+    stream << "        const float normalized = (thumbY - trackTop) / std::max(1.0f, trackHeight - thumb.height);\n";
+    stream << "        return setWidgetValue(widget, rangeValueForNormalized(widget, normalized));\n";
+    stream << "    }\n";
+    stream << "    const float trackLeft = widget.bounds.x + arrowSize;\n";
+    stream << "    const float trackWidth = std::max(0.0f, widget.bounds.width - arrowSize * 2.0f);\n";
+    stream << "    if (trackWidth <= thumb.width) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n";
+    stream << "    const float thumbX = std::clamp(formX - dragPointerOffset_, trackLeft, trackLeft + trackWidth - thumb.width);\n";
+    stream << "    const float normalized = (thumbX - trackLeft) / std::max(1.0f, trackWidth - thumb.width);\n";
+    stream << "    return setWidgetValue(widget, rangeValueForNormalized(widget, normalized));\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::updateTextBoxText(RuntimeWidget& widget, const std::string& text)\n";
+    stream << "{\n";
+    stream << "    if (widget.text == text) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n";
+    stream << "    widget.text = text;\n";
+    stream << "    if (!widget.onTextChanged.empty()) {\n";
+    stream << "        emitStringEvent(widget, \"onTextChanged\", widget.text);\n";
+    stream << "    }\n";
+    stream << "    return true;\n";
     stream << "}\n\n";
     stream << "void " << className << "::draw(visage::Canvas& canvas)\n";
     stream << "{\n";
     stream << "    canvas.setColor(0xff1B1D23);\n";
     stream << "    canvas.fill(0.0f, 0.0f, width(), height());\n\n";
     stream << "    const bool drawText = canDrawText();\n";
-    stream << "    const float formOffsetX = 40.0f;\n";
-    stream << "    const float formOffsetY = 60.0f;\n\n";
-    emitWidgetDraw(stream, document, document.root, 40.0f, 60.0f, 1);
+    stream << "    canvas.setColor(formFillColor_);\n";
+    stream << "    canvas.fill(kFormOffsetX, kFormOffsetY, formBounds_.width, formBounds_.height);\n";
+    stream << "    canvas.setColor(formPanelColor_);\n";
+    stream << "    canvas.fill(kFormOffsetX, kFormOffsetY, formBounds_.width, std::min(kTitleBarHeight, formBounds_.height));\n";
+    stream << "    drawBorder(canvas, kFormOffsetX, kFormOffsetY, formBounds_.width, formBounds_.height, formBorderColor_, formBorderThickness_);\n";
+    stream << "    if (drawText) {\n";
+    stream << "        canvas.setColor(formTextColor_);\n";
+    stream << "        canvas.text(formTitle_, labelFont_, visage::Font::kTopLeft, kFormOffsetX + 10.0f, kFormOffsetY + 4.0f, std::max(0.0f, formBounds_.width - 20.0f), 22.0f);\n";
+    stream << "    }\n";
+    stream << "    for (const auto& widget : runtimeWidgets_) {\n";
+    stream << "        drawRuntimeWidget(canvas, labelFont_, drawText, widget);\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::mouseDown(const visage::MouseEvent& e)\n";
+    stream << "{\n";
+    stream << "    if (!e.isLeftButton()) {\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    requestKeyboardFocus();\n";
+    stream << "    const float formX = e.position.x - kFormOffsetX;\n";
+    stream << "    const float formY = e.position.y - kFormOffsetY;\n";
+    stream << "    if (!formBounds_.contains(formX, formY)) {\n";
+    stream << "        const bool hadFocus = !focusedWidgetId_.empty();\n";
+    stream << "        draggingSlider_ = false;\n";
+    stream << "        draggingScrollBar_ = false;\n";
+    stream << "        draggingWidgetId_.clear();\n";
+    stream << "        clearPressedState();\n";
+    stream << "        setFocusedWidget(std::string{});\n";
+    stream << "        if (hadFocus) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    RuntimeWidget* widget = hitTest(formX, formY);\n";
+    stream << "    if (widget == nullptr) {\n";
+    stream << "        clearPressedState();\n";
+    stream << "        setFocusedWidget(std::string{});\n";
+    stream << "        redraw();\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    if (widget->type == RuntimeWidgetType::TextBox) {\n";
+    stream << "        clearPressedState();\n";
+    stream << "        draggingSlider_ = false;\n";
+    stream << "        draggingScrollBar_ = false;\n";
+    stream << "        draggingWidgetId_.clear();\n";
+    stream << "        setFocusedWidget(widget->id);\n";
+    stream << "        redraw();\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    setFocusedWidget(std::string{});\n";
+    stream << "    switch (widget->type) {\n";
+    stream << "    case RuntimeWidgetType::Button:\n";
+    stream << "    case RuntimeWidgetType::CheckBox:\n";
+    stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "        clearPressedState();\n";
+    stream << "        widget->pressed = true;\n";
+    stream << "        pressedWidgetId_ = widget->id;\n";
+    stream << "        redraw();\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::Slider:\n";
+    stream << "        clearPressedState();\n";
+    stream << "        draggingSlider_ = true;\n";
+    stream << "        draggingScrollBar_ = false;\n";
+    stream << "        draggingWidgetId_ = widget->id;\n";
+    stream << "        if (updateSliderFromPoint(*widget, formX)) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::ScrollBar: {\n";
+    stream << "        clearPressedState();\n";
+    stream << "        draggingSlider_ = false;\n";
+    stream << "        draggingWidgetId_ = widget->id;\n";
+    stream << "        const RuntimeRect thumb = scrollBarThumbRect(*widget);\n";
+    stream << "        const bool vertical = widget->orientation == \"Vertical\";\n";
+    stream << "        const float arrowSize = vertical ? std::min(widget->bounds.width, 20.0f) : std::min(widget->bounds.height, 20.0f);\n";
+    stream << "        if (thumb.contains(formX, formY)) {\n";
+    stream << "            draggingScrollBar_ = true;\n";
+    stream << "            dragPointerOffset_ = vertical ? (formY - thumb.y) : (formX - thumb.x);\n";
+    stream << "            redraw();\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        draggingScrollBar_ = false;\n";
+    stream << "        const float step = std::max(1.0f, (std::max(widget->min + 1.0f, widget->max) - widget->min) / 20.0f);\n";
+    stream << "        bool changed = false;\n";
+    stream << "        if (vertical) {\n";
+    stream << "            if (formY < widget->bounds.y + arrowSize) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - step);\n";
+    stream << "            }\n";
+    stream << "            else if (formY > widget->bounds.y + widget->bounds.height - arrowSize) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + step);\n";
+    stream << "            }\n";
+    stream << "            else if (formY < thumb.y) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - std::max(1.0f, widget->pageSize));\n";
+    stream << "            }\n";
+    stream << "            else if (formY > thumb.y + thumb.height) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + std::max(1.0f, widget->pageSize));\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        else {\n";
+    stream << "            if (formX < widget->bounds.x + arrowSize) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - step);\n";
+    stream << "            }\n";
+    stream << "            else if (formX > widget->bounds.x + widget->bounds.width - arrowSize) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + step);\n";
+    stream << "            }\n";
+    stream << "            else if (formX < thumb.x) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value - std::max(1.0f, widget->pageSize));\n";
+    stream << "            }\n";
+    stream << "            else if (formX > thumb.x + thumb.width) {\n";
+    stream << "                changed = setWidgetValue(*widget, widget->value + std::max(1.0f, widget->pageSize));\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        if (changed) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::ColorPicker:\n";
+    stream << "        if (!widget->onChanged.empty()) {\n";
+    stream << "            emitStringEvent(*widget, \"onChanged\", widget->colorValue);\n";
+    stream << "        }\n";
+    stream << "        redraw();\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::ProgressBar:\n";
+    stream << "    case RuntimeWidgetType::StatusBar:\n";
+    stream << "    case RuntimeWidgetType::Label:\n";
+    stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::mouseMove(const visage::MouseEvent& e)\n";
+    stream << "{\n";
+    stream << "    if (pressedWidgetId_.empty() || draggingSlider_ || draggingScrollBar_) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    RuntimeWidget* pressedWidget = findWidgetById(pressedWidgetId_);\n";
+    stream << "    if (pressedWidget == nullptr) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    RuntimeWidget* hoverWidget = formBounds_.contains(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
+    stream << "        ? hitTest(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
+    stream << "        : nullptr;\n";
+    stream << "    const bool shouldBePressed = hoverWidget != nullptr && hoverWidget->id == pressedWidgetId_;\n";
+    stream << "    if (pressedWidget->pressed != shouldBePressed) {\n";
+    stream << "        pressedWidget->pressed = shouldBePressed;\n";
+    stream << "        redraw();\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::mouseDrag(const visage::MouseEvent& e)\n";
+    stream << "{\n";
+    stream << "    const float formX = e.position.x - kFormOffsetX;\n";
+    stream << "    const float formY = e.position.y - kFormOffsetY;\n";
+    stream << "    if (draggingSlider_) {\n";
+    stream << "        if (RuntimeWidget* widget = findWidgetById(draggingWidgetId_); widget != nullptr && updateSliderFromPoint(*widget, formX)) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    if (draggingScrollBar_) {\n";
+    stream << "        if (RuntimeWidget* widget = findWidgetById(draggingWidgetId_); widget != nullptr && updateScrollBarFromPointer(*widget, formX, formY)) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::mouseUp(const visage::MouseEvent& e)\n";
+    stream << "{\n";
+    stream << "    if (!e.isLeftButton()) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    draggingSlider_ = false;\n";
+    stream << "    draggingScrollBar_ = false;\n";
+    stream << "    draggingWidgetId_.clear();\n";
+    stream << "    if (pressedWidgetId_.empty()) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    RuntimeWidget* pressedWidget = findWidgetById(pressedWidgetId_);\n";
+    stream << "    RuntimeWidget* releaseWidget = formBounds_.contains(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
+    stream << "        ? hitTest(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
+    stream << "        : nullptr;\n";
+    stream << "    const bool triggered = pressedWidget != nullptr && releaseWidget != nullptr && releaseWidget->id == pressedWidgetId_;\n";
+    stream << "    if (pressedWidget != nullptr) {\n";
+    stream << "        pressedWidget->pressed = false;\n";
+    stream << "        switch (pressedWidget->type) {\n";
+    stream << "        case RuntimeWidgetType::Button:\n";
+    stream << "            if (triggered && !pressedWidget->onClick.empty()) {\n";
+    stream << "                emitVoidEvent(*pressedWidget, \"onClick\");\n";
+    stream << "            }\n";
+    stream << "            break;\n";
+    stream << "        case RuntimeWidgetType::CheckBox:\n";
+    stream << "            if (triggered) {\n";
+    stream << "                pressedWidget->checked = !pressedWidget->checked;\n";
+    stream << "                if (!pressedWidget->onToggle.empty()) {\n";
+    stream << "                    emitBoolEvent(*pressedWidget, \"onToggle\", pressedWidget->checked);\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            break;\n";
+    stream << "        case RuntimeWidgetType::RadioButton:\n";
+    stream << "            if (triggered) {\n";
+    stream << "                for (auto& widget : runtimeWidgets_) {\n";
+    stream << "                    if (widget.type == RuntimeWidgetType::RadioButton && widget.group == pressedWidget->group) {\n";
+    stream << "                        widget.selected = widget.id == pressedWidget->id;\n";
+    stream << "                    }\n";
+    stream << "                }\n";
+    stream << "                if (!pressedWidget->onSelected.empty()) {\n";
+    stream << "                    emitBoolEvent(*pressedWidget, \"onSelected\", true);\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            break;\n";
+    stream << "        case RuntimeWidgetType::TextBox:\n";
+    stream << "        case RuntimeWidgetType::Slider:\n";
+    stream << "        case RuntimeWidgetType::ScrollBar:\n";
+    stream << "        case RuntimeWidgetType::ProgressBar:\n";
+    stream << "        case RuntimeWidgetType::StatusBar:\n";
+    stream << "        case RuntimeWidgetType::Label:\n";
+    stream << "        case RuntimeWidgetType::Frame:\n";
+    stream << "        case RuntimeWidgetType::Image:\n";
+    stream << "        case RuntimeWidgetType::Spacer:\n";
+    stream << "        case RuntimeWidgetType::ColorPicker:\n";
+    stream << "            break;\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    pressedWidgetId_.clear();\n";
+    stream << "    redraw();\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::keyPress(const visage::KeyEvent& e)\n";
+    stream << "{\n";
+    stream << "    using KeyCode = visage::KeyCode;\n";
+    stream << "    RuntimeWidget* widget = focusedTextBox();\n";
+    stream << "    if (widget == nullptr) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n";
+    stream << "    if (e.keyCode() == KeyCode::Backspace) {\n";
+    stream << "        if (!widget->text.empty() && updateTextBoxText(*widget, widget->text.substr(0, widget->text.size() - 1))) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return true;\n";
+    stream << "    }\n";
+    stream << "    if (e.keyCode() == KeyCode::Escape) {\n";
+    stream << "        setFocusedWidget(std::string{});\n";
+    stream << "        redraw();\n";
+    stream << "        return true;\n";
+    stream << "    }\n";
+    stream << "    if (e.keyCode() == KeyCode::Return) {\n";
+    stream << "        return true;\n";
+    stream << "    }\n";
+    stream << "    return false;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::receivesTextInput()\n";
+    stream << "{\n";
+    stream << "    return focusedTextBox() != nullptr;\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::textInput(const std::string& text)\n";
+    stream << "{\n";
+    stream << "    RuntimeWidget* widget = focusedTextBox();\n";
+    stream << "    if (widget == nullptr || text.empty()) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    std::string appended;\n";
+    stream << "    appended.reserve(text.size());\n";
+    stream << "    for (char character : text) {\n";
+    stream << "        if (character == '\\n' || character == '\\r' || character == '\\b') {\n";
+    stream << "            continue;\n";
+    stream << "        }\n";
+    stream << "        if (!std::iscntrl(static_cast<unsigned char>(character))) {\n";
+    stream << "            appended.push_back(character);\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    if (!appended.empty() && updateTextBoxText(*widget, widget->text + appended)) {\n";
+    stream << "        redraw();\n";
+    stream << "    }\n";
     stream << "}\n\n";
     stream << "bool " << className << "::canDrawText() const\n";
     stream << "{\n";
     stream << "    return labelFont_.packedFont() != nullptr;\n";
     stream << "}\n";
+
+    emitRuntimeEventDispatcher(stream,
+        "\nvoid " + className + "::emitVoidEvent(const RuntimeWidget& widget, const std::string& eventKey)",
+        HandlerSignature::Void,
+        bindings);
+    emitRuntimeEventDispatcher(stream,
+        "\nvoid " + className + "::emitBoolEvent(const RuntimeWidget& widget, const std::string& eventKey, bool value)",
+        HandlerSignature::Bool,
+        bindings);
+    emitRuntimeEventDispatcher(stream,
+        "\nvoid " + className + "::emitFloatEvent(const RuntimeWidget& widget, const std::string& eventKey, float value)",
+        HandlerSignature::Float,
+        bindings);
+    emitRuntimeEventDispatcher(stream,
+        "\nvoid " + className + "::emitStringEvent(const RuntimeWidget& widget, const std::string& eventKey, const std::string& value)",
+        HandlerSignature::String,
+        bindings);
 
     for (const auto& handler : handlers) {
         stream << "\n" << handlerDefinitionSignature(className, handler) << "\n";

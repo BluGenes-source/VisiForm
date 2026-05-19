@@ -17,9 +17,11 @@ class ProjectDocument {
 public:
     int schemaVersion = 1;
     std::string projectName{};
+    std::string executableName{};
     std::string mainFormClassName{};
     std::string generatedBaseClassName{};
     std::string userSubclassName{};
+    std::string windowTitle{};
     std::string lookAndFeelId = "VisiFormDark";
     WidgetNode root{};
     std::string selectedWidgetId{};

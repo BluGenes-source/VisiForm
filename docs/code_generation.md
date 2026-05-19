@@ -41,6 +41,22 @@ The generated project includes:
 - generated `CMakePresets.json` presets for static Debug and Release builds
 - helper `.cmd` scripts that call those presets
 
+## Generated project naming
+
+The root `FormWindow` now exposes generated-project naming fields in the editor:
+
+- `projectName`
+- `executableName`
+- `userSubclassName`
+- `windowTitle`
+
+Export uses those fields as follows:
+
+- `projectName` drives the generated `project(...)` name in `CMakeLists.txt` after CMake-safe sanitization
+- `executableName` drives `add_executable(...)` and therefore the produced Windows executable name
+- `userSubclassName` drives `src/<UserSubclassName>.h`, `src/<UserSubclassName>.cpp`, and `main.cpp`
+- `windowTitle` drives the generated runtime window title and title-bar caption text
+
 ## Generated presets
 
 The exported project currently includes these configure presets:
@@ -170,7 +186,7 @@ User subclass naming rule:
 - `main.cpp` includes `<UserSubclassName>.h`
 - `main.cpp` instantiates `<UserSubclassName>`
 
-When the root form is selected in the editor, the generated base class name and user subclass name can be edited.
+When the root form is selected in the editor, `projectName`, `executableName`, `userSubclassName`, and `windowTitle` can be edited.
 
 When a non-empty handler name is present, the generated project emits:
 

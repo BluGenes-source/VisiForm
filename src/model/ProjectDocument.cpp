@@ -136,15 +136,17 @@ void assignDuplicateIds(WidgetNode& widget, ProjectDocument& document, utils::Id
 ProjectDocument ProjectDocument::createDefault()
 {
     ProjectDocument document;
-    document.projectName = "UntitledVisiFormProject";
+    document.projectName = "VisiFormProject";
+    document.executableName = "VisiFormProject";
     document.mainFormClassName = "AppMainWindow";
     document.generatedBaseClassName = "MainWindow";
     document.userSubclassName = "AppMainWindow";
+    document.windowTitle = document.projectName;
     document.lookAndFeelId = "VisiFormDark";
     document.root = WidgetRegistry::instance().createDefaultWidget(WidgetType::FormWindow, "form_main");
     document.root.name = "MainWindow";
     document.root.bounds = Rect{ 0.0f, 0.0f, 900.0f, 600.0f };
-    document.root.setProperty("title", "MainWindow");
+    document.root.setProperty("title", document.windowTitle);
 
     WidgetNode helloButton = WidgetRegistry::instance().createDefaultWidget(WidgetType::Button, "button_hello");
     helloButton.name = "helloButton";

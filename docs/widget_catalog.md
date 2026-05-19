@@ -122,10 +122,20 @@ This allows, for example, `RadioButton.onSelected` and `CheckBox.onToggle` to re
 - Event metadata is edited through the property inspector only
 - Event fields currently show simple existing-callback suggestions instead of a full dropdown editor
 - No separate visual event editor yet
-- Generated projects currently emit handler stubs and TODO comments
-- Full generated interactive event dispatch is not implemented yet
+- Generated runtime interaction is intentionally lightweight and not a full retained-mode widget toolkit
 - Rounded-corner drawing is stored as a style property but still uses normal rectangle drawing for now
 - No theme editor UI yet
+
+## Root FormWindow project naming fields
+
+When the root `FormWindow` is selected, the property inspector also exposes generated-project naming fields:
+
+- `projectName`
+- `executableName`
+- `userSubclassName`
+- `windowTitle`
+
+These values drive generated CMake naming, executable naming, user subclass filenames, and the generated runtime title bar.
 
 ## Generated runtime behavior
 

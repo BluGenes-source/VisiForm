@@ -357,8 +357,11 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     rows.push_back({ "type", "type", selectedWidget->typeName(), PropertyEditKind::ReadOnly });
     rows.push_back({ "name", "name", selectedWidget->name, PropertyEditKind::Text });
     if (selectedWidget->type == model::WidgetType::FormWindow) {
+        rows.push_back({ "projectName", "projectName", document.projectName, PropertyEditKind::Text });
+        rows.push_back({ "executableName", "executableName", document.executableName, PropertyEditKind::Text });
         rows.push_back({ "generatedBaseClassName", "generatedBaseClassName", "MainWindow", PropertyEditKind::ReadOnly });
         rows.push_back({ "userSubclassName", "userSubclassName", document.userSubclassName, PropertyEditKind::Text });
+        rows.push_back({ "windowTitle", "windowTitle", document.windowTitle, PropertyEditKind::Text });
         rows.push_back({ "lookAndFeelId", "lookAndFeelId", document.lookAndFeelId, PropertyEditKind::Text });
     }
     rows.push_back({ "x", "x", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
@@ -369,6 +372,9 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     std::set<std::string> drawnKeys;
     for (const auto& row : rows) {
         drawnKeys.insert(row.key);
+    }
+    if (selectedWidget->type == model::WidgetType::FormWindow) {
+        drawnKeys.insert("title");
     }
 
     const auto addEventProperty = [&](const std::string& key, const std::string& label, const std::string& fallback = {}) {
