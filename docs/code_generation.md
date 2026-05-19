@@ -87,6 +87,11 @@ The generated presets use `Ninja` and keep the static MSVC runtime strategy:
 - `MultiThreadedDebug` for Debug
 - `MultiThreaded` for Release
 
+Generated configure presets also include these dependency cache variables:
+
+- `VISIFORM_VISAGE_GIT_REPOSITORY`
+- `VISIFORM_VISAGE_GIT_TAG`
+
 If `AppSettings.localVisageSourceDirectory` is configured before export, the generated presets also include:
 
 - `VISIFORM_VISAGE_SOURCE_DIR`
@@ -94,6 +99,8 @@ If `AppSettings.localVisageSourceDirectory` is configured before export, the gen
 The emitted path uses forward slashes, for example:
 
 - `J:/Dev/CeePlusPlus/visage`
+
+The root `FormWindow` property inspector now exposes an `Export / Dependencies` section for these app-level export settings. These values are stored in `AppSettings`, not in `.vfb.json` project files.
 
 ## Widget mappings
 

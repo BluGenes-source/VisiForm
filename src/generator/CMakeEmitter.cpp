@@ -215,14 +215,11 @@ std::string CMakeEmitter::emitCMakeLists(const model::ProjectDocument& document,
 std::string CMakeEmitter::emitCMakePresets(const utils::AppSettings& settings) const
 {
     const std::string localVisageSourceDirectory = configuredLocalVisageSourceDirectory(settings);
+    const std::string visageGitRepository = configuredVisageGitRepository(settings);
+    const std::string visageGitTag = configuredVisageGitTag(settings);
     std::ostringstream stream;
     stream << "{\n";
-    stream << "  \"version\": 6,\n";
-    stream << "  \"cmakeMinimumRequired\": {\n";
-    stream << "    \"major\": 3,\n";
-    stream << "    \"minor\": 24,\n";
-    stream << "    \"patch\": 0\n";
-    stream << "  },\n";
+    stream << "  \"version\": 3,\n";
     stream << "  \"configurePresets\": [\n";
     stream << "    {\n";
     stream << "      \"name\": \"vs2022-x64-static-debug\",\n";
@@ -231,7 +228,9 @@ std::string CMakeEmitter::emitCMakePresets(const utils::AppSettings& settings) c
     stream << "      \"binaryDir\": \"${sourceDir}/build/vs2022-x64-static-debug\",\n";
     stream << "      \"cacheVariables\": {\n";
     stream << "        \"CMAKE_BUILD_TYPE\": \"Debug\",\n";
-    stream << "        \"CMAKE_MSVC_RUNTIME_LIBRARY\": \"MultiThreadedDebug\"";
+    stream << "        \"CMAKE_MSVC_RUNTIME_LIBRARY\": \"MultiThreadedDebug\",\n";
+    stream << "        \"VISIFORM_VISAGE_GIT_REPOSITORY\": \"" << escapeJsonString(visageGitRepository) << "\",\n";
+    stream << "        \"VISIFORM_VISAGE_GIT_TAG\": \"" << escapeJsonString(visageGitTag) << "\"";
     if (!localVisageSourceDirectory.empty()) {
         stream << ",\n";
         stream << "        \"VISIFORM_VISAGE_SOURCE_DIR\": \"" << escapeJsonString(localVisageSourceDirectory) << "\"\n";
@@ -248,7 +247,9 @@ std::string CMakeEmitter::emitCMakePresets(const utils::AppSettings& settings) c
     stream << "      \"binaryDir\": \"${sourceDir}/build/vs2022-x64-static-release\",\n";
     stream << "      \"cacheVariables\": {\n";
     stream << "        \"CMAKE_BUILD_TYPE\": \"Release\",\n";
-    stream << "        \"CMAKE_MSVC_RUNTIME_LIBRARY\": \"MultiThreaded\"";
+    stream << "        \"CMAKE_MSVC_RUNTIME_LIBRARY\": \"MultiThreaded\",\n";
+    stream << "        \"VISIFORM_VISAGE_GIT_REPOSITORY\": \"" << escapeJsonString(visageGitRepository) << "\",\n";
+    stream << "        \"VISIFORM_VISAGE_GIT_TAG\": \"" << escapeJsonString(visageGitTag) << "\"";
     if (!localVisageSourceDirectory.empty()) {
         stream << ",\n";
         stream << "        \"VISIFORM_VISAGE_SOURCE_DIR\": \"" << escapeJsonString(localVisageSourceDirectory) << "\"\n";
@@ -299,6 +300,7 @@ std::string CMakeEmitter::emitReadme(const model::ProjectDocument& document, con
     }
     stream << "### Portable fallback\n\n";
     stream << "If `VISIFORM_VISAGE_SOURCE_DIR` is empty or does not point to a valid Visage source tree, CMake falls back to `FetchContent` using the configured repository and tag values.\n\n";
+    stream << "You can set or override `VISIFORM_VISAGE_SOURCE_DIR` in `CMakePresets.json`, `CMakeUserPresets.json`, or on the CMake command line.\n\n";
     stream << "## Debug build\n\n";
     stream << "`cmake --preset vs2022-x64-static-debug`\n\n";
     stream << "`cmake --build --preset build-static-debug`\n\n";

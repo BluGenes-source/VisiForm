@@ -75,18 +75,22 @@ Generated-project export also stores dependency settings used for emitted CMake 
   - default: empty
   - when non-empty, generated `CMakePresets.json` can prefill `VISIFORM_VISAGE_SOURCE_DIR`
   - use forward slashes for Windows paths, for example `J:/Dev/CeePlusPlus/visage`
+  - the root `FormWindow` property inspector now exposes this as an app-level `Export / Dependencies` field
 - `visageGitRepository`
   - default: `https://github.com/VitalAudio/visage.git`
   - used by generated `CMakeLists.txt` as the `FetchContent` fallback repository
+  - generated `CMakePresets.json` also emits this as `VISIFORM_VISAGE_GIT_REPOSITORY`
 - `visageGitTag`
   - default: `main`
   - used by generated `CMakeLists.txt` as the `FetchContent` fallback tag or commit
+  - generated `CMakePresets.json` also emits this as `VISIFORM_VISAGE_GIT_TAG`
 
 Generated project dependency behavior:
 
 - valid `localVisageSourceDirectory` prefers local `add_subdirectory(...)`
 - empty or invalid `localVisageSourceDirectory` falls back to `FetchContent`
 - this avoids re-downloading Visage for repeated local exports when a shared checkout already exists
+- when editing `localVisageSourceDirectory`, an invalid path shows a warning status if `CMakeLists.txt` is missing, but export is still allowed
 
 ## Current limitations
 

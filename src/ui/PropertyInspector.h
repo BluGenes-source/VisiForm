@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/ProjectDocument.h"
+#include "utils/AppSettings.h"
 
 #include <visage/graphics.h>
 
@@ -46,25 +47,25 @@ public:
 
     void setBounds(float x, float y, float width, float height);
     [[nodiscard]] bool contains(float x, float y) const;
-    [[nodiscard]] std::optional<PropertyRow> hitTestRow(const model::ProjectDocument& document, float x, float y);
-    [[nodiscard]] std::optional<std::string> hitTestSuggestion(const model::ProjectDocument& document, float x, float y);
-    [[nodiscard]] std::optional<std::string> hitTestColorSwatch(const model::ProjectDocument& document, float x, float y);
-    [[nodiscard]] bool mouseDown(const model::ProjectDocument& document, float x, float y);
-    [[nodiscard]] bool mouseDrag(const model::ProjectDocument& document, float x, float y);
+    [[nodiscard]] std::optional<PropertyRow> hitTestRow(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
+    [[nodiscard]] std::optional<std::string> hitTestSuggestion(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
+    [[nodiscard]] std::optional<std::string> hitTestColorSwatch(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
+    [[nodiscard]] bool mouseDown(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
+    [[nodiscard]] bool mouseDrag(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
     [[nodiscard]] bool mouseUp();
-    [[nodiscard]] bool mouseWheel(const model::ProjectDocument& document, float deltaY, float x, float y);
-    [[nodiscard]] bool beginEditing(const model::ProjectDocument& document, const std::string& key);
-    [[nodiscard]] std::optional<PropertyRow> activeRow(const model::ProjectDocument& document) const;
-    [[nodiscard]] std::optional<ValueCellBounds> activeEditorBounds(const model::ProjectDocument& document);
+    [[nodiscard]] bool mouseWheel(const model::ProjectDocument& document, const utils::AppSettings& settings, float deltaY, float x, float y);
+    [[nodiscard]] bool beginEditing(const model::ProjectDocument& document, const utils::AppSettings& settings, const std::string& key);
+    [[nodiscard]] std::optional<PropertyRow> activeRow(const model::ProjectDocument& document, const utils::AppSettings& settings) const;
+    [[nodiscard]] std::optional<ValueCellBounds> activeEditorBounds(const model::ProjectDocument& document, const utils::AppSettings& settings);
     [[nodiscard]] std::optional<PendingEdit> buildPendingEdit(const std::string& valueText) const;
     void clearEditing();
     void cancelEditing();
     [[nodiscard]] bool isEditing() const;
-    void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document, std::size_t selectionCount = 0);
+    void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document, const utils::AppSettings& settings, std::size_t selectionCount = 0);
 
 private:
-    [[nodiscard]] std::vector<PropertyRow> buildRows(const model::ProjectDocument& document) const;
-    void rebuildSuggestions(const model::ProjectDocument& document);
+    [[nodiscard]] std::vector<PropertyRow> buildRows(const model::ProjectDocument& document, const utils::AppSettings& settings) const;
+    void rebuildSuggestions(const model::ProjectDocument& document, const utils::AppSettings& settings);
     void updateScrollMetrics(const std::vector<PropertyRow>& rows);
     void clampScrollOffset();
     [[nodiscard]] float rowYWithScroll(float originalY) const;

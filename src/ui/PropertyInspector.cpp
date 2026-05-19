@@ -3,6 +3,7 @@
 #include "ui/PropertyInspector.h"
 
 #include "model/WidgetRegistry.h"
+#include "utils/FileUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -345,7 +346,7 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::colorSwatch
     return ValueCellBounds{ swatchX, rowTop + 6.0f, swatchSize, swatchSize };
 }
 
-std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const model::ProjectDocument& document) const
+std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const model::ProjectDocument& document, const utils::AppSettings& settings) const
 {
     std::vector<PropertyRow> rows;
     const model::WidgetNode* selectedWidget = document.selectedWidget();
@@ -363,6 +364,10 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         rows.push_back({ "userSubclassName", "userSubclassName", document.userSubclassName, PropertyEditKind::Text });
         rows.push_back({ "windowTitle", "windowTitle", document.windowTitle, PropertyEditKind::Text });
         rows.push_back({ "lookAndFeelId", "lookAndFeelId", document.lookAndFeelId, PropertyEditKind::Text });
+        rows.push_back({ "__section_export_dependencies", "Export / Dependencies", {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({ "localVisageSourceDirectory", "localVisageSourceDirectory", utils::FileUtils::normalizeSeparators(settings.localVisageSourceDirectory.string()), PropertyEditKind::Text });
+        rows.push_back({ "visageGitRepository", "visageGitRepository", settings.visageGitRepository, PropertyEditKind::Text });
+        rows.push_back({ "visageGitTag", "visageGitTag", settings.visageGitTag, PropertyEditKind::Text });
     }
     rows.push_back({ "x", "x", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
     rows.push_back({ "y", "y", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
@@ -424,7 +429,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     return rows;
 }
 
-void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& document)
+void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& document, const utils::AppSettings& settings)
 {
     suggestions_.clear();
     activeCallbackPropertyKey_.clear();
@@ -433,7 +438,7 @@ void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& documen
         return;
     }
 
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     const auto layouts = buildRowLayouts(contentBounds().y, rows);
     const auto activeLayout = std::find_if(layouts.begin(), layouts.end(), [this](const RowLayout& layout) {
@@ -518,9 +523,9 @@ void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& documen
     }
 }
 
-std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::ProjectDocument& document, float x, float y)
+std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     if (!isWithinVisibleContent(x, y)) {
         return std::nullopt;
@@ -541,9 +546,9 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(cons
     return std::nullopt;
 }
 
-std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::ProjectDocument& document, float x, float y)
+std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     if (!isWithinVisibleContent(x, y)) {
         return std::nullopt;
@@ -566,13 +571,13 @@ std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::Pr
     return std::nullopt;
 }
 
-std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::ProjectDocument& document, float x, float y)
+std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
     if (!contains(x, y)) {
         return std::nullopt;
     }
 
-    rebuildSuggestions(document);
+    rebuildSuggestions(document, settings);
 
     for (const auto& item : suggestions_) {
         if (x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height) {
@@ -583,9 +588,9 @@ std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::Pro
     return std::nullopt;
 }
 
-bool PropertyInspector::mouseDown(const model::ProjectDocument& document, float x, float y)
+bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     const auto scrollBar = scrollBarBounds();
     if (!scrollBar.has_value() || !containsPoint(*scrollBar, x, y)) {
@@ -614,11 +619,11 @@ bool PropertyInspector::mouseDown(const model::ProjectDocument& document, float 
     }
 
     clampScrollOffset();
-    rebuildSuggestions(document);
+    rebuildSuggestions(document, settings);
     return true;
 }
 
-bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, float x, float y)
+bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
     (void)x;
     if (!draggingScrollBarThumb_) {
@@ -646,7 +651,7 @@ bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, float 
     }
 
     clampScrollOffset();
-    rebuildSuggestions(document);
+    rebuildSuggestions(document, settings);
     return true;
 }
 
@@ -658,13 +663,13 @@ bool PropertyInspector::mouseUp()
     return wasDragging;
 }
 
-bool PropertyInspector::mouseWheel(const model::ProjectDocument& document, float deltaY, float x, float y)
+bool PropertyInspector::mouseWheel(const model::ProjectDocument& document, const utils::AppSettings& settings, float deltaY, float x, float y)
 {
     if (!contains(x, y)) {
         return false;
     }
 
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     if (!needsVerticalScrollBar_) {
         return false;
@@ -672,13 +677,13 @@ bool PropertyInspector::mouseWheel(const model::ProjectDocument& document, float
 
     scrollOffsetY_ += -deltaY * kMouseWheelSensitivity;
     clampScrollOffset();
-    rebuildSuggestions(document);
+    rebuildSuggestions(document, settings);
     return true;
 }
 
-bool PropertyInspector::beginEditing(const model::ProjectDocument& document, const std::string& key)
+bool PropertyInspector::beginEditing(const model::ProjectDocument& document, const utils::AppSettings& settings, const std::string& key)
 {
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     const model::WidgetNode* selectedWidget = document.selectedWidget();
     for (const auto& row : rows) {
         if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool) {
@@ -689,7 +694,7 @@ bool PropertyInspector::beginEditing(const model::ProjectDocument& document, con
             if (row.choices.empty() && selectedWidget != nullptr && findEventDefinition(selectedWidget->type, key) != nullptr) {
                 activeCallbackPropertyKey_ = key;
             }
-            rebuildSuggestions(document);
+            rebuildSuggestions(document, settings);
             return true;
         }
     }
@@ -697,13 +702,13 @@ bool PropertyInspector::beginEditing(const model::ProjectDocument& document, con
     return false;
 }
 
-std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const model::ProjectDocument& document) const
+std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const model::ProjectDocument& document, const utils::AppSettings& settings) const
 {
     if (!isEditing()) {
         return std::nullopt;
     }
 
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     for (const auto& row : rows) {
         if (row.key == activeKey_) {
             return row;
@@ -726,9 +731,9 @@ void PropertyInspector::cancelEditing()
     clearEditing();
 }
 
-std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::ProjectDocument& document)
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::ProjectDocument& document, const utils::AppSettings& settings)
 {
-    const auto active = activeRow(document);
+    const auto active = activeRow(document, settings);
     if (!active.has_value()) {
         return std::nullopt;
     }
@@ -737,7 +742,7 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEdito
         return std::nullopt;
     }
 
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     const auto bounds = contentBounds();
     const auto layouts = buildRowLayouts(bounds.y, rows);
@@ -778,7 +783,7 @@ bool PropertyInspector::isEditing() const
     return !activeKey_.empty();
 }
 
-void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document, std::size_t selectionCount)
+void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document, const utils::AppSettings& settings, std::size_t selectionCount)
 {
     const model::WidgetNode* selectedWidget = document.selectedWidget();
     if (width_ <= 0.0f || height_ <= 0.0f) {
@@ -815,11 +820,11 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
         return;
     }
 
-    const auto rows = buildRows(document);
+    const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     const ValueCellBounds bounds = contentBounds();
     const auto layouts = buildRowLayouts(bounds.y, rows);
-    rebuildSuggestions(document);
+    rebuildSuggestions(document, settings);
 
     canvas.saveState();
     canvas.setClampBounds(bounds.x, bounds.y, bounds.width, bounds.height);

@@ -584,7 +584,13 @@ bool MainWindow::exportGeneratedCode()
 
     settings_.lastExportDirectory = *selected;
     saveAppSettings();
-    setOperationStatus("Code exported: " + normalizedPathText(*selected));
+    const std::filesystem::path localVisagePath = settings_.localVisageSourceDirectory;
+    if (!localVisagePath.empty() && std::filesystem::exists(localVisagePath / "CMakeLists.txt")) {
+        setOperationStatus("Exported with local Visage source: " + normalizedPathText(localVisagePath));
+    }
+    else {
+        setOperationStatus("Exported with FetchContent Visage fallback");
+    }
     exportProgressPercent_ = 100;
     exportProgressText_ = "Export complete";
     redraw();
@@ -750,7 +756,7 @@ void MainWindow::draw(visage::Canvas& canvas)
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
     designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, marqueeRect, canvasInteraction_.smartGuides);
-    propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, document_.selectedWidgetIds().size());
+    propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, settings_, document_.selectedWidgetIds().size());
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
     }
@@ -866,7 +872,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
-    if (e.isLeftButton() && propertyInspector_.mouseDown(document_, e.position.x, e.position.y)) {
+    if (e.isLeftButton() && propertyInspector_.mouseDown(document_, settings_, e.position.x, e.position.y)) {
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -878,10 +884,10 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     // Check callback suggestion hit-test first so suggestion clicks are applied before committing edits.
-    if (const auto suggestion = propertyInspector_.hitTestSuggestion(document_, e.position.x, e.position.y)) {
+    if (const auto suggestion = propertyInspector_.hitTestSuggestion(document_, settings_, e.position.x, e.position.y)) {
         // Only apply suggestion when we are actively editing an event property.
         if (propertyInspector_.isEditing()) {
-            const auto active = propertyInspector_.activeRow(document_);
+            const auto active = propertyInspector_.activeRow(document_, settings_);
             if (active.has_value()) {
                 if (applySelectedWidgetCallbackProperty(active->key, *suggestion)) {
                     suggestionAppliedThisClick_ = true;
@@ -891,7 +897,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         }
     }
 
-    if (const auto colorPropertyKey = propertyInspector_.hitTestColorSwatch(document_, e.position.x, e.position.y)) {
+    if (const auto colorPropertyKey = propertyInspector_.hitTestColorSwatch(document_, settings_, e.position.x, e.position.y)) {
         if (propertyInspector_.isEditing() && !commitInspectorEdit()) {
             return;
         }
@@ -923,7 +929,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         }
     }
 
-    if (const auto row = propertyInspector_.hitTestRow(document_, e.position.x, e.position.y)) {
+    if (const auto row = propertyInspector_.hitTestRow(document_, settings_, e.position.x, e.position.y)) {
         if (row->editKind == PropertyInspector::PropertyEditKind::Bool) {
             const bool currentValue = document_.selectedWidget() != nullptr
                 && document_.selectedWidget()->getBoolProperty(row->key, false);
@@ -1035,7 +1041,7 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
 
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
 {
-    if (propertyInspector_.mouseDrag(document_, e.position.x, e.position.y)) {
+    if (propertyInspector_.mouseDrag(document_, settings_, e.position.x, e.position.y)) {
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -1237,7 +1243,7 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
         return true;
     }
 
-    if (propertyInspector_.mouseWheel(document_, deltaY, e.position.x, e.position.y)) {
+    if (propertyInspector_.mouseWheel(document_, settings_, deltaY, e.position.x, e.position.y)) {
         updatePropertyEditorBounds();
         redraw();
         return true;
@@ -2444,6 +2450,47 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return setSelectedWidgetProperty(key, trimmedValue);
     }
 
+    if (key == "localVisageSourceDirectory") {
+        settings_.localVisageSourceDirectory = trimmedValue.empty()
+            ? std::filesystem::path{}
+            : std::filesystem::path{ utils::FileUtils::normalizeSeparators(trimmedValue) };
+        saveAppSettings();
+        if (!settings_.localVisageSourceDirectory.empty() && !std::filesystem::exists(settings_.localVisageSourceDirectory / "CMakeLists.txt")) {
+            setOperationStatus("Local Visage source path does not contain CMakeLists.txt");
+        }
+        else if (settings_.localVisageSourceDirectory.empty()) {
+            setOperationStatus("Local Visage source path cleared");
+        }
+        else {
+            setOperationStatus("Local Visage source path set: " + normalizedPathText(settings_.localVisageSourceDirectory));
+        }
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
+    if (key == "visageGitRepository") {
+        settings_.visageGitRepository = trimmedValue.empty()
+            ? std::string{ utils::AppSettings::defaultVisageGitRepository }
+            : trimmedValue;
+        saveAppSettings();
+        setOperationStatus("Visage Git repository changed: " + settings_.visageGitRepository);
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
+    if (key == "visageGitTag") {
+        settings_.visageGitTag = trimmedValue.empty()
+            ? std::string{ utils::AppSettings::defaultVisageGitTag }
+            : trimmedValue;
+        saveAppSettings();
+        setOperationStatus("Visage Git tag changed: " + settings_.visageGitTag);
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
     if (isWidgetColorProperty(*widget, key)) {
         if (!isValidColorValue(trimmedValue)) {
             setOperationStatus("Invalid color value");
@@ -3075,7 +3122,7 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
         return false;
     }
 
-    if (!propertyInspector_.beginEditing(document_, row.key)) {
+    if (!propertyInspector_.beginEditing(document_, settings_, row.key)) {
         return false;
     }
 
@@ -3150,7 +3197,7 @@ void MainWindow::updatePropertyEditorBounds()
         return;
     }
 
-    const auto bounds = propertyInspector_.activeEditorBounds(document_);
+    const auto bounds = propertyInspector_.activeEditorBounds(document_, settings_);
     if (!bounds.has_value()) {
         propertyEditor_.setVisible(false);
         return;
