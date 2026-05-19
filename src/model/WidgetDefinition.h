@@ -25,6 +25,7 @@ struct WidgetPropertyDefinition {
     PropertyEditKind editKind = PropertyEditKind::Text;
     bool editable = true;
     std::string hint{};
+    std::vector<std::string> choices{};
 };
 
 struct WidgetEventDefinition {

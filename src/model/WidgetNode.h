@@ -24,9 +24,10 @@ enum class WidgetType {
     CheckBox,
     RadioButton,
     Slider,
-        ScrollBar,
-        StatusBar,
-        ProgressBar,
+    ScrollBar,
+    StatusBar,
+    ProgressBar,
+    ColorPicker,
     Image,
     Spacer
 };

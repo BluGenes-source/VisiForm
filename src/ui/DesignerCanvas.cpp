@@ -7,11 +7,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace visiform::ui {
 namespace {
@@ -61,6 +64,11 @@ struct ResolvedWidgetStyle {
     float fontSize = 16.0f;
 };
 
+struct GridColors {
+    int minorLineColor = 0xff252a33;
+    int majorLineColor = 0xff303744;
+};
+
 PanelRect expandRect(const PanelRect& rect, float padding)
 {
     return { rect.x - padding, rect.y - padding, rect.width + padding * 2.0f, rect.height + padding * 2.0f };
@@ -87,6 +95,132 @@ void drawBorder(visage::Canvas& canvas, const PanelRect& bounds, int color, floa
     canvas.fill(bounds.x, bounds.y + bounds.height - thickness, bounds.width, thickness);
     canvas.fill(bounds.x, bounds.y, thickness, bounds.height);
     canvas.fill(bounds.x + bounds.width - thickness, bounds.y, thickness, bounds.height);
+}
+
+int blendColor(int colorA, int colorB, float amount)
+{
+    const auto blendChannel = [amount](int first, int second) {
+        return static_cast<int>(std::round(static_cast<float>(first) * (1.0f - amount) + static_cast<float>(second) * amount));
+    };
+
+    const int a = blendChannel((colorA >> 24) & 0xff, (colorB >> 24) & 0xff);
+    const int r = blendChannel((colorA >> 16) & 0xff, (colorB >> 16) & 0xff);
+    const int g = blendChannel((colorA >> 8) & 0xff, (colorB >> 8) & 0xff);
+    const int b = blendChannel(colorA & 0xff, colorB & 0xff);
+    return (a << 24) | (r << 16) | (g << 8) | b;
+}
+
+GridColors computeGridColors(int backgroundColor)
+{
+    const float luminance = 0.2126f * static_cast<float>((backgroundColor >> 16) & 0xff)
+        + 0.7152f * static_cast<float>((backgroundColor >> 8) & 0xff)
+        + 0.0722f * static_cast<float>(backgroundColor & 0xff);
+    const int contrastTarget = luminance < 128.0f ? 0xffffffff : 0xff000000;
+
+    GridColors colors;
+    colors.minorLineColor = blendColor(backgroundColor, contrastTarget, 0.08f);
+    colors.majorLineColor = blendColor(backgroundColor, contrastTarget, 0.18f);
+    if (colors.majorLineColor == colors.minorLineColor) {
+        colors.majorLineColor = blendColor(backgroundColor, contrastTarget, 0.28f);
+    }
+
+    return colors;
+}
+
+void fillCircleApprox(visage::Canvas& canvas, float centerX, float centerY, float radius, int color)
+{
+    if (radius <= 0.0f) {
+        return;
+    }
+
+    canvas.setColor(color);
+    const int radiusPixels = std::max(1, static_cast<int>(std::ceil(radius)));
+    for (int offsetY = -radiusPixels; offsetY <= radiusPixels; ++offsetY) {
+        const float dy = static_cast<float>(offsetY);
+        const float halfWidth = std::sqrt(std::max(0.0f, radius * radius - dy * dy));
+        canvas.fill(centerX - halfWidth, centerY + dy, halfWidth * 2.0f + 1.0f, 1.0f);
+    }
+}
+
+std::optional<std::string> resolveFontPath(const std::string& family, bool bold, bool italic)
+{
+    std::string normalizedFamily = family;
+    std::transform(normalizedFamily.begin(), normalizedFamily.end(), normalizedFamily.begin(),
+        [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+
+    std::vector<std::string> candidates;
+    if (normalizedFamily == "arial") {
+        if (bold && italic) {
+            candidates.push_back("C:/Windows/Fonts/arialbi.ttf");
+        }
+        if (bold) {
+            candidates.push_back("C:/Windows/Fonts/arialbd.ttf");
+        }
+        if (italic) {
+            candidates.push_back("C:/Windows/Fonts/ariali.ttf");
+        }
+        candidates.push_back("C:/Windows/Fonts/arial.ttf");
+    }
+    else if (normalizedFamily == "tahoma") {
+        if (bold) {
+            candidates.push_back("C:/Windows/Fonts/tahomabd.ttf");
+        }
+        candidates.push_back("C:/Windows/Fonts/tahoma.ttf");
+    }
+    else {
+        if (bold && italic) {
+            candidates.push_back("C:/Windows/Fonts/segoeuiz.ttf");
+        }
+        if (bold) {
+            candidates.push_back("C:/Windows/Fonts/segoeuib.ttf");
+        }
+        if (italic) {
+            candidates.push_back("C:/Windows/Fonts/segoeuii.ttf");
+        }
+        candidates.push_back("C:/Windows/Fonts/segoeui.ttf");
+        candidates.push_back("C:/Windows/Fonts/tahoma.ttf");
+        candidates.push_back("C:/Windows/Fonts/arial.ttf");
+    }
+
+    for (const auto& candidate : candidates) {
+        if (std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+
+    return std::nullopt;
+}
+
+float resolvedFontSize(const model::WidgetNode& widget, const ResolvedWidgetStyle& style)
+{
+    return std::clamp(widget.getFloatProperty("fontSize", style.fontSize), 8.0f, 72.0f);
+}
+
+const visage::Font& resolvedWidgetFont(const model::WidgetNode& widget,
+    const ResolvedWidgetStyle& style,
+    const visage::Font& fallback,
+    visage::Font& fontStorage)
+{
+    const float fontSize = resolvedFontSize(widget, style);
+    const std::string fontFamily = widget.getStringProperty("fontFamily", "Default");
+    const bool fontBold = widget.getBoolProperty("fontBold", false);
+    const bool fontItalic = widget.getBoolProperty("fontItalic", false);
+
+    const bool useFallbackFont = (fontFamily.empty() || fontFamily == "Default")
+        && !fontBold
+        && !fontItalic
+        && std::abs(fontSize - defaultDesignerFontSize()) < 0.01f;
+    if (useFallbackFont) {
+        return fallback;
+    }
+
+    const auto fontPath = resolveFontPath(fontFamily, fontBold, fontItalic);
+    if (!fontPath.has_value()) {
+        return fallback;
+    }
+
+    fontStorage = visage::Font(fontSize, *fontPath);
+    return fontStorage.packedFont() != nullptr ? fontStorage : fallback;
 }
 
 std::string widgetLabel(const model::WidgetNode& widget)
@@ -391,7 +525,7 @@ std::optional<std::string> hitTestWidgetScreenId(const model::WidgetNode& widget
     return std::nullopt;
 }
 
-void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, bool showMinorGrid, int gridSize, int majorGridSize)
+void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, bool showMinorGrid, int gridSize, int majorGridSize, int backgroundColor)
 {
     const float scaledGridSize = gridSize * scale;
     if (scaledGridSize < 4.0f) {
@@ -406,8 +540,10 @@ void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, bool
         return;
     }
 
+    const GridColors gridColors = computeGridColors(backgroundColor);
+
     if (showMinorGrid) {
-        canvas.setColor(0xff252a33);
+        canvas.setColor(gridColors.minorLineColor);
         for (float x = bounds.x + scaledGridSize; x < bounds.x + bounds.width; x += scaledGridSize) {
             canvas.fill(x, contentTop, 1.0f, contentHeight);
         }
@@ -417,7 +553,7 @@ void drawGrid(visage::Canvas& canvas, const PanelRect& bounds, float scale, bool
     }
 
     if (scaledMajorGridSize >= scaledGridSize + 1.0f) {
-        canvas.setColor(0xff303744);
+        canvas.setColor(gridColors.majorLineColor);
         for (float x = bounds.x + scaledMajorGridSize; x < bounds.x + bounds.width; x += scaledMajorGridSize) {
             canvas.fill(x, contentTop, 1.0f, contentHeight);
         }
@@ -483,13 +619,16 @@ void drawWidget(visage::Canvas& canvas,
         std::max(1.0f, widget.bounds.height * scale)
     };
     const ResolvedWidgetStyle style = resolveWidgetStyle(document, widget);
+    visage::Font widgetFontStorage{};
+    const visage::Font& widgetFont = resolvedWidgetFont(widget, style, font, widgetFontStorage);
+    const float fontSize = resolvedFontSize(widget, style);
 
     switch (widget.type) {
     case model::WidgetType::FormWindow: {
         canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         if (showGrid) {
-            drawGrid(canvas, bounds, scale, showMinorGrid, gridSize, majorGridSize);
+            drawGrid(canvas, bounds, scale, showMinorGrid, gridSize, majorGridSize, style.fillColor);
         }
         canvas.setColor(style.panelColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, std::min(kTitleBarHeight, bounds.height));
@@ -497,7 +636,7 @@ void drawWidget(visage::Canvas& canvas,
 
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), widgetFont, visage::Font::kTopLeft,
                 bounds.x + 10.0f, bounds.y + 4.0f, std::max(0.0f, bounds.width - 20.0f), 22.0f);
         }
         break;
@@ -518,7 +657,8 @@ void drawWidget(visage::Canvas& canvas,
                 const std::string key = std::string("text") + std::to_string(i);
                 const std::string text = getDisplayTextOrFallback(widget, key, i == 0 ? "Ready" : "");
                 canvas.setColor(style.textColor);
-                canvas.text(text, font, visage::Font::kTopLeft, fx + 6.0f, bounds.y + 4.0f, fw - 12.0f, bounds.height - 8.0f);
+                canvas.text(text, widgetFont, visage::Font::kTopLeft,
+                    fx + 6.0f, centeredTextTop(bounds.y, bounds.height, fontSize), fw - 12.0f, bounds.height - 8.0f);
             }
             if (i + 1 < fields) {
                 canvas.setColor(style.borderColor);
@@ -541,7 +681,30 @@ void drawWidget(visage::Canvas& canvas,
         const std::string text = progressBarDisplayText(widget);
         if (drawText && !text.empty()) {
             canvas.setColor(normalized >= 0.5f ? 0xfff8fbff : style.textColor);
-            canvas.text(text, font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+            canvas.text(text, widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+        break;
+    }
+    case model::WidgetType::ColorPicker: {
+        const std::string colorValue = getStringProperty(widget, "value", "#2D7DFF");
+        const bool showText = getBoolProperty(widget, "showText", true);
+        const float swatchSize = std::max(16.0f, bounds.height - 12.0f);
+        const float swatchX = bounds.x + 6.0f;
+        const float swatchY = bounds.y + (bounds.height - swatchSize) * 0.5f;
+        const float textX = swatchX + swatchSize + 10.0f;
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        canvas.setColor(parseColorOrDefault(colorValue, style.accentColor));
+        canvas.fill(swatchX, swatchY, swatchSize, swatchSize);
+        drawBorder(canvas, { swatchX, swatchY, swatchSize, swatchSize }, style.borderColor, style.borderThickness);
+        if (drawText) {
+            canvas.setColor(style.textColor);
+            const std::string label = showText ? getDisplayTextOrFallback(widget, "text", "Color") : colorValue;
+            const std::string text = showText ? label + "  " + colorValue : colorValue;
+            canvas.text(text, font, visage::Font::kTopLeft,
+                textX, bounds.y + bounds.height * 0.5f - 10.0f,
+                std::max(0.0f, bounds.width - (textX - bounds.x) - 8.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
     }
@@ -551,17 +714,15 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), widgetFont, visage::Font::kTopLeft,
                 bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 16.0f), 20.0f);
         }
         break;
     case model::WidgetType::Label:
         if (drawText) {
-            const float fontSize = style.fontSize;
-            const float textTop = bounds.y + (bounds.height - estimatedLineHeight(fontSize)) * 0.5f;
             canvas.setColor(style.textColor);
-            canvas.text(getDisplayTextOrFallback(widget, "text", "Label"), font, visage::Font::kTopLeft,
-                bounds.x + 6.0f, textTop,
+            canvas.text(getDisplayTextOrFallback(widget, "text", "Label"), widgetFont, visage::Font::kTopLeft,
+                bounds.x + 6.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
                 std::max(0.0f, bounds.width - 12.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
@@ -571,7 +732,7 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kCenter,
+            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), widgetFont, visage::Font::kCenter,
                 bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
@@ -581,8 +742,8 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "text", ""), font, visage::Font::kTopLeft,
-                bounds.x + 8.0f, bounds.y + bounds.height * 0.5f - 10.0f,
+            canvas.text(getStringProperty(widget, "text", ""), widgetFont, visage::Font::kTopLeft,
+                bounds.x + 8.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
                 std::max(0.0f, bounds.width - 16.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
@@ -591,8 +752,6 @@ void drawWidget(visage::Canvas& canvas,
         const float squareX = bounds.x + 6.0f;
         const float squareY = bounds.y + (bounds.height - boxSize) * 0.5f;
         const float textX = squareX + boxSize + 12.0f;
-        const float fontSize = style.fontSize;
-        const float textY = bounds.y + bounds.height * 0.5f - estimatedTextBaselineOffset(fontSize);
         canvas.setColor(style.fillColor);
         canvas.fill(squareX, squareY, boxSize, boxSize);
         drawBorder(canvas, { squareX, squareY, boxSize, boxSize }, style.borderColor, style.borderThickness);
@@ -602,8 +761,8 @@ void drawWidget(visage::Canvas& canvas,
         }
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getDisplayTextOrFallback(widget, "text", "CheckBox"), font, visage::Font::kTopLeft,
-                textX, textY,
+            canvas.text(getDisplayTextOrFallback(widget, "text", "CheckBox"), widgetFont, visage::Font::kTopLeft,
+                textX, centeredTextTop(bounds.y, bounds.height, fontSize),
                 std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
@@ -612,20 +771,19 @@ void drawWidget(visage::Canvas& canvas,
         const float boxSize = 18.0f;
         const float outerX = bounds.x + 6.0f;
         const float outerY = bounds.y + (bounds.height - boxSize) * 0.5f;
+        const float centerX = outerX + boxSize * 0.5f;
+        const float centerY = outerY + boxSize * 0.5f;
         const float textX = outerX + boxSize + 12.0f;
-        const float fontSize = style.fontSize;
-        const float textY = bounds.y + bounds.height * 0.5f - estimatedTextBaselineOffset(fontSize);
-        canvas.setColor(style.fillColor);
-        canvas.fill(outerX, outerY, boxSize, boxSize);
-        drawBorder(canvas, { outerX, outerY, boxSize, boxSize }, style.borderColor, style.borderThickness);
+        fillCircleApprox(canvas, centerX, centerY, boxSize * 0.5f, style.borderColor);
+        fillCircleApprox(canvas, centerX, centerY,
+            std::max(2.0f, boxSize * 0.5f - std::max(1.0f, style.borderThickness)), style.fillColor);
         if (getBoolProperty(widget, "selected", false)) {
-            canvas.setColor(style.accentColor);
-            canvas.fill(outerX + 5.0f, outerY + 5.0f, 8.0f, 8.0f);
+            fillCircleApprox(canvas, centerX, centerY, 4.0f, style.accentColor);
         }
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getDisplayTextOrFallback(widget, "text", "Radio Button"), font, visage::Font::kTopLeft,
-                textX, textY,
+            canvas.text(getDisplayTextOrFallback(widget, "text", "Radio Button"), widgetFont, visage::Font::kTopLeft,
+                textX, centeredTextTop(bounds.y, bounds.height, fontSize),
                 std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
@@ -644,7 +802,7 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, { handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f }, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), font, visage::Font::kTopLeft,
+            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), widgetFont, visage::Font::kTopLeft,
                 bounds.x, bounds.y - 18.0f, bounds.width, 16.0f);
         }
         break;
@@ -706,7 +864,7 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "source", "Image"), font, visage::Font::kCenter,
+            canvas.text(getStringProperty(widget, "source", "Image"), widgetFont, visage::Font::kCenter,
                 bounds.x + 6.0f, bounds.y, std::max(0.0f, bounds.width - 12.0f), bounds.height);
         }
         break;
@@ -716,7 +874,7 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text("Spacer", font, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+            canvas.text("Spacer", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
     }

@@ -4,7 +4,10 @@
 
 #include "utils/FileUtils.h"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -79,6 +82,29 @@ std::optional<std::filesystem::path> showProjectDialog(bool saveDialog,
     return saveDialog ? normalizeProjectSavePath(std::move(selectedPath)) : selectedPath;
 }
 
+bool isValidColorText(const std::string& value)
+{
+    if (value.size() != 7 || value.front() != '#') {
+        return false;
+    }
+
+    return std::all_of(value.begin() + 1, value.end(), [](unsigned char character) {
+        return std::isxdigit(character) != 0;
+    });
+}
+
+COLORREF parseInitialColor(const std::string& initialColor)
+{
+    if (!isValidColorText(initialColor)) {
+        return RGB(45, 125, 255);
+    }
+
+    const unsigned int red = std::stoul(initialColor.substr(1, 2), nullptr, 16);
+    const unsigned int green = std::stoul(initialColor.substr(3, 2), nullptr, 16);
+    const unsigned int blue = std::stoul(initialColor.substr(5, 2), nullptr, 16);
+    return RGB(red, green, blue);
+}
+
 } // namespace
 
 std::optional<std::filesystem::path> showOpenProjectDialog(const std::filesystem::path& initialDirectory)
@@ -134,6 +160,30 @@ std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::fil
     }
 
     return resultPath;
+}
+
+std::optional<std::string> showColorPickerDialog(const std::string& initialColor)
+{
+    static COLORREF customColors[16] = {};
+
+    CHOOSECOLORW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = nullptr;
+    dialog.rgbResult = parseInitialColor(initialColor);
+    dialog.lpCustColors = customColors;
+    dialog.Flags = CC_FULLOPEN | CC_RGBINIT;
+
+    if (!ChooseColorW(&dialog)) {
+        return std::nullopt;
+    }
+
+    const unsigned int red = GetRValue(dialog.rgbResult);
+    const unsigned int green = GetGValue(dialog.rgbResult);
+    const unsigned int blue = GetBValue(dialog.rgbResult);
+
+    char buffer[8] = {};
+    std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X", red, green, blue);
+    return std::string{ buffer };
 }
 
 } // namespace visiform::utils

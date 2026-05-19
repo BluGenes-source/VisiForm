@@ -56,12 +56,12 @@ std::string normalizedPathText(const std::filesystem::path& path)
     return utils::FileUtils::normalizeSeparators(path.string());
 }
 
-bool isValidStyleColor(const std::string& value)
+bool isValidColorValue(const std::string& value)
 {
     if (value.empty()) {
         return true;
     }
-    if (value.size() != 7 || value.front() != '#') {
+    if ((value.size() != 7 && value.size() != 9) || value.front() != '#') {
         return false;
     }
     return std::all_of(value.begin() + 1, value.end(), [](unsigned char character) {
@@ -69,10 +69,34 @@ bool isValidStyleColor(const std::string& value)
     });
 }
 
-bool isStyleColorProperty(const std::string& key)
+bool isColorPropertyKey(const std::string& key)
 {
-    return key == "fillColor" || key == "textColor" || key == "borderColor"
-        || key == "accentColor" || key == "backgroundColor";
+    return key == "backgroundColor"
+        || key == "fillColor"
+        || key == "textColor"
+        || key == "borderColor"
+        || key == "accentColor"
+        || key == "panelColor"
+        || key == "controlFillColor"
+        || key == "controlTextColor"
+        || key == "controlBorderColor"
+        || key == "disabledColor";
+}
+
+bool isWidgetColorProperty(const model::WidgetNode& widget, const std::string& key)
+{
+    if (isColorPropertyKey(key)) {
+        return true;
+    }
+
+    if (const auto* definition = model::WidgetRegistry::instance().find(widget.type)) {
+        const auto iterator = std::find_if(definition->properties.begin(), definition->properties.end(), [&key](const model::WidgetPropertyDefinition& property) {
+            return property.key == key && property.editKind == model::PropertyEditKind::Color;
+        });
+        return iterator != definition->properties.end();
+    }
+
+    return false;
 }
 
 bool isStyleFloatProperty(const std::string& key)
@@ -99,6 +123,8 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
         return "slider" + suffix;
     case model::WidgetType::Frame:
         return "frame" + suffix;
+    case model::WidgetType::ColorPicker:
+        return "colorPicker" + suffix;
     case model::WidgetType::Image:
         return "image" + suffix;
     case model::WidgetType::Spacer:
@@ -816,6 +842,17 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
+    if (e.isLeftButton() && propertyInspector_.mouseDown(document_, e.position.x, e.position.y)) {
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    if (layout_.showProjectTree && projectTree_.mouseDown(document_, e.position.x, e.position.y)) {
+        redraw();
+        return;
+    }
+
     // Check callback suggestion hit-test first so suggestion clicks are applied before committing edits.
     if (const auto suggestion = propertyInspector_.hitTestSuggestion(document_, e.position.x, e.position.y)) {
         // Only apply suggestion when we are actively editing an event property.
@@ -828,6 +865,30 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 return;
             }
         }
+    }
+
+    if (const auto colorPropertyKey = propertyInspector_.hitTestColorSwatch(document_, e.position.x, e.position.y)) {
+        if (propertyInspector_.isEditing() && !commitInspectorEdit()) {
+            return;
+        }
+
+        const model::WidgetNode* selectedWidget = document_.selectedWidget();
+        const std::string initialColor = selectedWidget != nullptr
+            ? selectedWidget->getStringProperty(*colorPropertyKey, {})
+            : std::string{};
+        const auto selectedColor = utils::showColorPickerDialog(initialColor);
+        if (!selectedColor.has_value()) {
+            return;
+        }
+
+        if (setSelectedWidgetPropertyFromString(*colorPropertyKey, *selectedColor)) {
+            propertyInspector_.clearEditing();
+            propertyEditor_.setVisible(false);
+            requestKeyboardFocus();
+            updatePropertyEditorBounds();
+            redraw();
+        }
+        return;
     }
 
     if (propertyInspector_.isEditing()) {
@@ -950,6 +1011,17 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
 
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
 {
+    if (propertyInspector_.mouseDrag(document_, e.position.x, e.position.y)) {
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    if (layout_.showProjectTree && projectTree_.mouseDrag(document_, e.position.x, e.position.y)) {
+        redraw();
+        return;
+    }
+
     if (canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
         return;
     }
@@ -1043,6 +1115,19 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 
 void MainWindow::mouseUp(const visage::MouseEvent& e)
 {
+    const bool releasedInspectorScrollBar = propertyInspector_.mouseUp();
+    if (releasedInspectorScrollBar && canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    const bool releasedProjectTreeScrollBar = projectTree_.mouseUp();
+    if (releasedProjectTreeScrollBar && canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        redraw();
+        return;
+    }
+
     if (!e.isLeftButton() || canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
         return;
     }
@@ -1118,6 +1203,23 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 
     clearCanvasInteraction();
     redraw();
+}
+
+bool MainWindow::mouseWheel(const visage::MouseEvent& e)
+{
+    const float deltaY = e.precise_wheel_delta_y != 0.0f ? e.precise_wheel_delta_y : e.wheel_delta_y;
+    if (layout_.showProjectTree && projectTree_.mouseWheel(document_, deltaY, e.position.x, e.position.y)) {
+        redraw();
+        return true;
+    }
+
+    if (propertyInspector_.mouseWheel(document_, deltaY, e.position.x, e.position.y)) {
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
+    return false;
 }
 
 bool MainWindow::keyPress(const visage::KeyEvent& e)
@@ -2267,8 +2369,8 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return setSelectedWidgetProperty(key, trimmedValue);
     }
 
-    if (isStyleColorProperty(key)) {
-        if (!isValidStyleColor(trimmedValue)) {
+    if (isWidgetColorProperty(*widget, key)) {
+        if (!isValidColorValue(trimmedValue)) {
             setOperationStatus("Invalid color value");
             redraw();
             return false;
@@ -2903,6 +3005,13 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
     }
 
     propertyEditor_.setText(row.displayValue);
+    if (row.editKind == PropertyInspector::PropertyEditKind::Choice) {
+        propertyEditor_.setVisible(false);
+        requestKeyboardFocus();
+        redraw();
+        return true;
+    }
+
     updatePropertyEditorBounds();
     propertyEditor_.setVisible(true);
     propertyEditor_.selectAll();

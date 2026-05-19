@@ -15,6 +15,7 @@ Current widget types:
 - `ScrollBar`
 - `StatusBar`
 - `ProgressBar`
+- `ColorPicker`
 - `Image`
 - `Spacer`
 
@@ -79,6 +80,8 @@ Supported event properties:
   - `onChanged`
 - `ScrollBar`
   - `onChanged`
+- `ColorPicker`
+  - `onChanged`
 - `TextBox`
   - `onTextChanged`
 
@@ -124,6 +127,26 @@ This allows, for example, `RadioButton.onSelected` and `CheckBox.onToggle` to re
 - Rounded-corner drawing is stored as a style property but still uses normal rectangle drawing for now
 - No theme editor UI yet
 
+## Generated runtime behavior
+
+Current exported generated runtime behavior by widget type:
+
+- `Button` - clickable, fires `onClick`
+- `CheckBox` - toggles and fires `onToggle`
+- `RadioButton` - enforces single selection per group and fires `onSelected` for the clicked item
+- `Slider` - supports mouse dragging and fires `onChanged`
+- `ScrollBar` - supports arrow clicks, track paging, thumb dragging, and fires `onChanged`
+- `ColorPicker` - renders a static color swatch preview and exports a string-based `onChanged` callback signature
+- `TextBox` - supports click focus, basic text entry, Backspace, and fires `onTextChanged`
+- `ProgressBar` - display only, but renders current runtime value text
+- `StatusBar` - display only, but renders configured runtime field text
+
+Current generated runtime limitations:
+
+- no text selection, clipboard, or IME support in generated `TextBox` yet
+- no full retained-mode widget framework yet
+- no generated layout manager yet
+
 ## Default editor sizes
 
 Current default editor widget sizes are tuned for readable text:
@@ -135,6 +158,7 @@ Current default editor widget sizes are tuned for readable text:
 - `RadioButton` - `280 x 52`
 - `Slider` - `220 x 36`
 - `ScrollBar` - `240 x 36`
+- `ColorPicker` - `220 x 40`
 - `Frame` - `260 x 160`
 - `Image` - `180 x 120`
 - `Spacer` - `160 x 40`

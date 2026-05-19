@@ -18,6 +18,8 @@ struct WidgetSizeMetrics {
 [[nodiscard]] float estimatedCharacterWidth(float fontSize);
 [[nodiscard]] float estimatedLineHeight(float fontSize);
 [[nodiscard]] float estimatedTextBaselineOffset(float fontSize);
+[[nodiscard]] float centeredTextTop(float top, float height, float fontSize);
+[[nodiscard]] float estimateDesignerTextWidth(const std::string& text, float fontSize);
 [[nodiscard]] float estimateDesignerTextWidth(const std::string& text);
 
 } // namespace visiform::ui

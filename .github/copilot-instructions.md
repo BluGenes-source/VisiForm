@@ -19,11 +19,15 @@ Key rules for automated agents
 - Do not use Start-Process, automate keyboard input, or otherwise interact with the OS in a way that runs the built application.
 - Build only the main project with the `build-static-debug` workflow unless requested otherwise.
 - Always create or update a persistent phase plan file in `docs/agent_plans/` for multi-step changes.
-- Every phase must create or update `docs/agent_plans/phase_N_<name>_plan.md`.
+- Every phase must create a new `docs/agent_plans/phase_N_<name>_plan.md` file.
+- The phase plan must include a markdown TODO checklist.
 - The phase plan must be updated as work progresses.
 - Completed checklist items in the phase plan must be marked with checked boxes.
+- The phase plan must include build validation.
+- Agent Mode must build the main app with `build-static-debug` before finishing and fix compile errors introduced by the phase.
 - The final result summary must be written into the phase plan file before finishing.
 - Do not finish by asking whether to create or update the phase plan; it must already be updated.
+- Do not claim completion unless the phase plan has already been updated with progress, build validation, and the final summary.
 - Always summarize remaining TODOs in the phase plan file.
 - Keep model, serialization, and generator layers free of Visage UI headers; isolate UI-specific code in the `ui/` layer.
 - Generated projects must not be compiled into the main `VisiForm` target.
@@ -33,6 +37,7 @@ Key rules for automated agents
 - Use `WidgetRegistry` to register new widget types and update `WidgetDefinition` accordingly.
 - Update documentation when adding features or changing export behavior.
 - Ensure repository builds successfully after changes and fix compile errors if introduced.
+- Do not launch generated apps from Agent Mode.
 
 Contact / Notes
 

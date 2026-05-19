@@ -36,6 +36,7 @@ public:
     void mouseMove(const visage::MouseEvent& e) override;
     void mouseDrag(const visage::MouseEvent& e) override;
     void mouseUp(const visage::MouseEvent& e) override;
+    bool mouseWheel(const visage::MouseEvent& e) override;
     bool keyPress(const visage::KeyEvent& e) override;
     bool receivesTextInput() override;
     void textInput(const std::string& text) override;

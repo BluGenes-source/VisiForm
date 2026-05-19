@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace visiform::utils {
 
@@ -13,5 +14,6 @@ namespace visiform::utils {
     const std::filesystem::path& initialDirectory = {});
 
 [[nodiscard]] std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::filesystem::path& initialDirectory = {});
+[[nodiscard]] std::optional<std::string> showColorPickerDialog(const std::string& initialColor = {});
 
 } // namespace visiform::utils

@@ -73,10 +73,11 @@ Current generated widget rendering support:
 - `ScrollBar`
 - `StatusBar`
 - `ProgressBar`
+- `ColorPicker`
 - `Image`
 - `Spacer`
 
-Rendering is currently a static preview of the form and widget tree.
+Rendering now uses a simple generated runtime widget model.
 
 ## Look and feel aware preview rendering
 
@@ -100,8 +101,25 @@ Supported generated preview style fields include:
 - `cornerRadius`
 - `fontSize`
 
-Generated look and feel is static preview drawing for now.
+Generated look and feel is baked into that runtime model for now.
 Runtime theme switching in the generated app is future work.
+
+## Generated interactive widget behavior
+
+The exported `MainWindow` now generates a lightweight runtime widget list, hit testing, mouse input handling, basic text input handling, redraw calls, and sender-aware callback dispatch.
+
+Current generated interactive behavior:
+
+- `Button` - click fires `onClick`
+- `CheckBox` - click toggles and fires `onToggle`
+- `RadioButton` - click selects within its group and fires `onSelected`
+- `Slider` - drag updates value and fires `onChanged`
+- `ScrollBar` - arrows, track paging, and thumb dragging update value and fire `onChanged`
+- `TextBox` - click focuses, text input appends characters, Backspace removes a character, and changes fire `onTextChanged`
+- `ProgressBar` - display only, but now renders from generated runtime state
+- `StatusBar` - display only, but now renders from generated runtime state
+
+The generated runtime is intentionally small and is not a full retained-mode widget framework.
 
 `ProgressBar` preview text behavior:
 
@@ -120,6 +138,7 @@ Supported event properties:
 - `RadioButton.onSelected`
 - `Slider.onChanged`
 - `ScrollBar.onChanged`
+- `ColorPicker.onChanged`
 - `TextBox.onTextChanged`
 - `FormWindow.onLoad`
 - `FormWindow.onClose`
@@ -176,6 +195,7 @@ Generated handler signatures now use sender-aware forms:
 - `onToggle` -> `void handlerName(const WidgetEvent& event, bool value)`
 - `onSelected` -> `void handlerName(const WidgetEvent& event, bool value)`
 - `onChanged` -> `void handlerName(const WidgetEvent& event, float value)`
+- `ColorPicker.onChanged` -> `void handlerName(const WidgetEvent& event, const std::string& value)`
 - `onTextChanged` -> `void handlerName(const WidgetEvent& event, const std::string& value)`
 - `onLoad` -> `void handlerName(const WidgetEvent& event)`
 - `onClose` -> `void handlerName(const WidgetEvent& event)`
@@ -281,7 +301,14 @@ Current export does not yet generate:
 - custom widgets
 
 Generated handler stubs exist, but users still implement the actual behavior manually.
-Generated UI event dispatch is still partial for now. The generated emit helpers provide a clean foundation for future interactive widget hookup, but the generated app does not yet include a full JUCE-style runtime messaging system.
+Generated UI event dispatch is still intentionally limited compared with a full widget framework.
+
+Current generated runtime limitations include:
+
+- no text selection, clipboard, IME, or text cursor editing yet
+- no tab traversal or full focus-management framework yet
+- `ProgressBar` and `StatusBar` remain display-only for this phase
+- no async event queue or threaded callback model
 
 ## Building the generated project manually
 

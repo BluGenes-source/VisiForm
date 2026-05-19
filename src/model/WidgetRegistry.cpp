@@ -1,4 +1,5 @@
 #include "model/WidgetRegistry.h"
+#include "model/WidgetRegistry.h"
 
 #include <algorithm>
 
@@ -26,6 +27,15 @@ std::vector<WidgetPropertyDefinition> commonStyleProperties(bool includeLookAndF
     properties.push_back({ "cornerRadius", "cornerRadius", PropertyValue{}, PropertyEditKind::Float, true, "Optional corner radius override. Empty means inherit." });
     properties.push_back({ "fontSize", "fontSize", PropertyValue{}, PropertyEditKind::Float, true, "Optional font size override. Empty means inherit." });
     return properties;
+}
+
+std::vector<WidgetPropertyDefinition> commonFontProperties()
+{
+    return {
+        { "fontFamily", "fontFamily", "Default", PropertyEditKind::Text, true, "Font family name. \"Default\" uses the editor fallback font." },
+        { "fontBold", "fontBold", false, PropertyEditKind::Bool, true, "Use bold text style when supported by the preview font." },
+        { "fontItalic", "fontItalic", false, PropertyEditKind::Bool, true, "Use italic text style when supported by the preview font." }
+    };
 }
 
 void appendProperties(std::vector<WidgetPropertyDefinition>& target, const std::vector<WidgetPropertyDefinition>& source)
@@ -72,8 +82,12 @@ WidgetDefinition makeStatusBarDefinition()
         { "text1", "text1", "", PropertyEditKind::Text, true, "Text for field 1." },
         { "text2", "text2", "", PropertyEditKind::Text, true, "Text for field 2." },
         { "fieldWidths", "fieldWidths", "1", PropertyEditKind::Text, true, "Relative field widths e.g. \"1,2,1\"." },
+        { "dock", "dock", "Bottom", PropertyEditKind::Text, true, "Simple docking mode for the editor.", { "Bottom", "None" } },
+        { "fillWidth", "fillWidth", true, PropertyEditKind::Bool, true, "Stretch the status bar to the root form width when docked." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     return definition;
 }
 
@@ -95,6 +109,8 @@ WidgetDefinition makeProgressBarDefinition()
         { "text", "text", "", PropertyEditKind::Text, true, "Optional text to display." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     return definition;
 }
 
@@ -114,6 +130,7 @@ WidgetDefinition makeFrameDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     return definition;
 }
 
@@ -132,6 +149,7 @@ WidgetDefinition makeLabelDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     return definition;
 }
 
@@ -150,6 +168,7 @@ WidgetDefinition makeButtonDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     definition.events = {
         { "onClick", "onClick", "void_event", "Called when the button is clicked." }
     };
@@ -171,6 +190,7 @@ WidgetDefinition makeTextBoxDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     definition.events = {
         { "onTextChanged", "onTextChanged", "string_event", "Called when the text changes." }
     };
@@ -193,6 +213,7 @@ WidgetDefinition makeCheckBoxDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     definition.events = {
         { "onToggle", "onToggle", "bool_event", "Called when the check box toggles." }
     };
@@ -216,6 +237,7 @@ WidgetDefinition makeRadioButtonDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
     definition.events = {
         { "onSelected", "onSelected", "bool_event", "Called when the radio button is selected." }
     };
@@ -256,7 +278,7 @@ WidgetDefinition makeScrollBarDefinition()
     definition.defaultHint = "Scrolls through a range of values.";
     definition.size = { 240.0f, 36.0f, 100.0f, 28.0f };
     definition.properties = {
-        { "orientation", "orientation", "Horizontal", PropertyEditKind::Text, true, "Scroll bar orientation: Horizontal or Vertical." },
+        { "orientation", "orientation", "Horizontal", PropertyEditKind::Text, true, "Scroll bar orientation: Horizontal or Vertical.", { "Horizontal", "Vertical" } },
         { "min", "min", 0, PropertyEditKind::Integer, true, "Minimum scroll value." },
         { "max", "max", 100, PropertyEditKind::Integer, true, "Maximum scroll value." },
         { "value", "value", 0, PropertyEditKind::Integer, true, "Current scroll value." },
@@ -285,6 +307,30 @@ WidgetDefinition makeImageDefinition()
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
+    return definition;
+}
+
+WidgetDefinition makeColorPickerDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::ColorPicker;
+    definition.typeName = "ColorPicker";
+    definition.displayName = "Color Picker";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "colorPicker";
+    definition.defaultHint = "Selects a color value.";
+    definition.size = { 220.0f, 40.0f, 140.0f, 34.0f };
+    definition.properties = {
+        { "value", "value", "#2D7DFF", PropertyEditKind::Color, true, "Selected color value." },
+        { "text", "text", "Color", PropertyEditKind::Text, true, "Optional color picker label text." },
+        { "showText", "showText", true, PropertyEditKind::Bool, true, "Show the label text beside the swatch." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    definition.events = {
+        { "onChanged", "onChanged", "string_event", "Called when the selected color changes." }
+    };
     return definition;
 }
 
@@ -327,6 +373,7 @@ WidgetRegistry::WidgetRegistry()
         makeScrollBarDefinition(),
         makeStatusBarDefinition(),
         makeProgressBarDefinition(),
+        makeColorPickerDefinition(),
         makeImageDefinition(),
         makeSpacerDefinition() }
 {

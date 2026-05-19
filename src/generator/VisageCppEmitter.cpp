@@ -3,6 +3,7 @@
 #include "generator/VisageCppEmitter.h"
 
 #include "model/LookAndFeelRegistry.h"
+#include "model/WidgetRegistry.h"
 #include "utils/CppIdentifier.h"
 
 #include <algorithm>
@@ -273,6 +274,8 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
     case visiform::model::WidgetType::Slider:
     case visiform::model::WidgetType::ScrollBar:
         return { "onChanged" };
+    case visiform::model::WidgetType::ColorPicker:
+        return { "onChanged" };
     case visiform::model::WidgetType::TextBox:
         return { "onTextChanged" };
     case visiform::model::WidgetType::FormWindow:
@@ -287,18 +290,28 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
     return {};
 }
 
-HandlerSignature signatureForEventKey(const std::string& eventKey)
+const visiform::model::WidgetEventDefinition* findEventDefinition(visiform::model::WidgetType type, const std::string& eventKey)
 {
-    if (eventKey == "onToggle") {
+    if (const auto* definition = visiform::model::WidgetRegistry::instance().find(type)) {
+        for (const auto& event : definition->events) {
+            if (event.key == eventKey) {
+                return &event;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+HandlerSignature signatureForEventKind(const std::string& handlerSignatureKind)
+{
+    if (handlerSignatureKind == "bool_event") {
         return HandlerSignature::Bool;
     }
-    if (eventKey == "onSelected") {
-        return HandlerSignature::Bool;
-    }
-    if (eventKey == "onChanged") {
+    if (handlerSignatureKind == "float_event") {
         return HandlerSignature::Float;
     }
-    if (eventKey == "onTextChanged") {
+    if (handlerSignatureKind == "string_event") {
         return HandlerSignature::String;
     }
 
@@ -429,13 +442,14 @@ void collectEventBindings(const visiform::model::WidgetNode& widget, std::vector
             return;
         }
 
+        const auto* eventDefinition = findEventDefinition(widget.type, eventKey);
         bindings.push_back(EventBinding{
             eventKey,
             handlerName,
             widget.id,
             widget.name.empty() ? widget.id : widget.name,
             widget.typeName(),
-            signatureForEventKey(eventKey)
+            signatureForEventKind(eventDefinition == nullptr ? std::string{} : eventDefinition->handlerSignatureKind)
         });
     }
 
@@ -682,6 +696,24 @@ void emitWidgetDraw(std::ostringstream& stream,
             stream << indent << "canvas.text(" << emitStringLiteral(displayText)
                    << ", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
         }
+        break;
+    }
+    case visiform::model::WidgetType::ColorPicker: {
+        const std::string value = widget.getStringProperty("value", "#2D7DFF");
+        const std::string label = widget.getBoolProperty("showText", true)
+            ? displayTextOrFallback(widget, "text", "Color") + "  " + value
+            : value;
+        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "canvas.setColor(" << emitColorExpression(value, emitColorExpression(style.accentColor, "0xff2D7FF9")) << ");\n";
+        stream << indent << "canvas.fill(" << xExpr << " + 6.0f, " << yExpr << " + 6.0f, 22.0f, " << heightExpr << " - 12.0f);\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << " + 6.0f, " << yExpr << " + 6.0f, 22.0f, " << heightExpr << " - 12.0f, " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "if (drawText) {\n";
+        stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
+        stream << indent << "    canvas.text(" << emitStringLiteral(label)
+               << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 36.0f, " << yExpr << " + 6.0f, " << widthExpr << " - 42.0f, " << heightExpr << " - 8.0f);\n";
+        stream << indent << "}\n";
         break;
     }
     case visiform::model::WidgetType::Image:

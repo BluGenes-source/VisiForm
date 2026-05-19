@@ -39,8 +39,10 @@ To add a new widget type internally:
 3. Add a `WidgetDefinition` to `WidgetRegistry`.
 4. Add common style override properties if the widget should support look-and-feel overrides.
 5. Add designer rendering in `DesignerCanvas`.
-6. Add generator rendering, event signature mapping, and callback hook support.
-7. Update sample data and docs.
+6. Add generator rendering.
+7. Add generated runtime hit testing and interaction if the exported widget should be interactive.
+8. Add or confirm callback signature mapping and dispatch behavior.
+9. Update sample data and docs.
 
 ## Style override properties
 
@@ -77,6 +79,22 @@ Current signature kinds map to the generated listener API payloads:
 When adding a new widget event, choose the signature kind that matches the value payload the future generated emit helper should forward.
 Widgets may share the same handler name when the signature kind is compatible.
 If the same handler name is reused with incompatible signature kinds, export fails with a conflict error.
+
+## Generated interactive widget responsibilities
+
+When a widget is meant to be interactive in exported projects, the generated runtime now expects four related pieces to stay aligned:
+
+- drawing from generated runtime state
+- hit testing
+- input dispatch
+- callback signature kind
+
+For new interactive widget types, update the generator so the exported `MainWindow` can:
+
+- initialize runtime widget state from the exported document
+- hit test the widget in form-local coordinates
+- update runtime state on mouse or keyboard input
+- dispatch the correct sender-aware callback signature
 
 ## Current limitations
 

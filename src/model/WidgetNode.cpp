@@ -21,6 +21,7 @@ const std::string& widgetTypeName(WidgetType type)
     static const std::string scrollBar = "ScrollBar";
     static const std::string statusBar = "StatusBar";
     static const std::string progressBar = "ProgressBar";
+    static const std::string colorPicker = "ColorPicker";
     static const std::string image = "Image";
     static const std::string spacer = "Spacer";
 
@@ -47,6 +48,8 @@ const std::string& widgetTypeName(WidgetType type)
         return statusBar;
     case WidgetType::ProgressBar:
         return progressBar;
+    case WidgetType::ColorPicker:
+        return colorPicker;
     case WidgetType::Image:
         return image;
     case WidgetType::Spacer:
@@ -97,6 +100,9 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     }
     if (value == "ProgressBar") {
         return WidgetType::ProgressBar;
+    }
+    if (value == "ColorPicker") {
+        return WidgetType::ColorPicker;
     }
     if (value == "Image") {
         return WidgetType::Image;
