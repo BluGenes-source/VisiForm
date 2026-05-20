@@ -11,6 +11,17 @@ Current default export fallback folder:
 The export flow may also write to a user-selected folder.
 The generator overwrites only the files it owns inside the chosen export folder.
 
+Before export, `VisiForm` now validates the in-memory project document and writes a markdown report to:
+
+- `Generated/validation_report.md`
+
+Validation result behavior:
+
+- errors block export before generated files are written
+- warnings do not block export
+- a clean validation pass keeps the generated export behavior unchanged
+- the toolbar `Chk` action runs the same validation flow on demand
+
 ## Generated files
 
 The export currently writes:
@@ -118,6 +129,33 @@ The emitted path uses forward slashes, for example:
 That local source path is still controlled by `VISIFORM_VISAGE_SOURCE_DIR`. If it is unset or invalid, the generated project still falls back to `FetchContent` using the configured repository and tag values.
 
 The root `FormWindow` property inspector now exposes an `Export / Dependencies` section for these app-level export settings. These values are stored in `AppSettings`, not in `.vfb.json` project files.
+
+## Validation before export
+
+`VisiForm` now validates the current project before export so bad generated code can be caught inside the editor first.
+
+Current export validation highlights:
+
+- project naming checks for `projectName`, `executableName`, and `userSubclassName`
+- local Visage dependency-setting checks for `localVisageSourceDirectory`, `visageGitRepository`, and `visageGitTag`
+- widget validation for duplicate ids, duplicate names, empty ids, bounds, colors, enum values, and numeric ranges
+- callback validation for invalid handler names and incompatible signature reuse
+- `RadioButton` group validation for empty groups, missing selections, and conflicting selected states
+
+Export decision rules:
+
+- if validation reports one or more errors, export is blocked
+- if validation reports warnings only, export continues and the status text reports the warning count
+- if validation reports no warnings or errors, export continues normally
+
+Callback compatibility checks now reuse the same `handlerSignatureKind` metadata already stored in `WidgetRegistry` event definitions. A callback name can be shared only when every use maps to the same signature group:
+
+- `void_event`
+- `bool_event`
+- `float_event`
+- `string_event`
+
+If the same callback name is assigned to incompatible signature kinds, validation reports an error before export.
 
 ## Widget mappings
 

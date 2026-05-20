@@ -12,6 +12,7 @@
 #include "utils/CppIdentifier.h"
 #include "utils/FileUtils.h"
 #include "utils/NativeFileDialogs.h"
+#include "validation/ProjectValidator.h"
 
 #include <algorithm>
 #include <array>
@@ -22,6 +23,7 @@
 #include <limits>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <string>
 
 #ifndef NOMINMAX
@@ -105,6 +107,102 @@ bool isColorPropertyKey(const std::string& key)
         || key == "controlTextColor"
         || key == "controlBorderColor"
         || key == "disabledColor";
+}
+
+struct ValidationRunResult {
+    validation::ValidationReport report{};
+    std::filesystem::path reportPath{};
+    bool reportWritten = false;
+    std::string reportWriteError{};
+};
+
+int validationInfoCount(const validation::ValidationReport& report)
+{
+    return static_cast<int>(std::count_if(report.messages.begin(), report.messages.end(), [](const validation::ValidationMessage& message) {
+        return message.severity == validation::ValidationSeverity::Info;
+    }));
+}
+
+std::string validationReportDisplayPath(const std::filesystem::path& rootPath, const std::filesystem::path& reportPath)
+{
+    const std::filesystem::path relativePath = reportPath.lexically_relative(rootPath);
+    if (!relativePath.empty()) {
+        return normalizedPathText(relativePath);
+    }
+
+    return normalizedPathText(reportPath);
+}
+
+std::string buildValidationReportMarkdown(const validation::ValidationReport& report)
+{
+    const auto appendSection = [&report](std::ostringstream& stream, validation::ValidationSeverity severity, const char* heading) {
+        stream << "## " << heading << "\n";
+
+        bool foundAny = false;
+        for (const auto& message : report.messages) {
+            if (message.severity != severity) {
+                continue;
+            }
+
+            foundAny = true;
+            stream << "- [" << message.code << "] " << message.message << "\n";
+            if (!message.widgetId.empty()) {
+                stream << "  Widget: " << message.widgetId << "\n";
+            }
+            if (!message.propertyKey.empty()) {
+                stream << "  Property: " << message.propertyKey << "\n";
+            }
+        }
+
+        if (!foundAny) {
+            stream << "- None.\n";
+        }
+
+        stream << "\n";
+    };
+
+    std::ostringstream stream;
+    stream << "# VisiForm Validation Report\n\n";
+    stream << "Summary:\n";
+    stream << "- Errors: " << report.errorCount() << "\n";
+    stream << "- Warnings: " << report.warningCount() << "\n";
+    const int infoCount = validationInfoCount(report);
+    if (infoCount > 0) {
+        stream << "- Info: " << infoCount << "\n";
+    }
+    stream << "\n";
+
+    appendSection(stream, validation::ValidationSeverity::Error, "Errors");
+    appendSection(stream, validation::ValidationSeverity::Warning, "Warnings");
+    if (infoCount > 0) {
+        appendSection(stream, validation::ValidationSeverity::Info, "Info");
+    }
+
+    return stream.str();
+}
+
+ValidationRunResult runProjectValidation(const model::ProjectDocument& document,
+    const utils::AppSettings& settings,
+    const std::filesystem::path& reportPath)
+{
+    validation::ProjectValidator validator;
+    ValidationRunResult result;
+    result.report = validator.validate(document, settings);
+    result.reportPath = reportPath;
+
+    std::string errorMessage;
+    if (!reportPath.parent_path().empty() && !utils::FileUtils::ensureDirectoryExists(reportPath.parent_path(), errorMessage)) {
+        result.reportWriteError = errorMessage;
+        return result;
+    }
+
+    if (!utils::FileUtils::writeTextFile(reportPath, buildValidationReportMarkdown(result.report), errorMessage)) {
+        result.reportWriteError = errorMessage;
+        return result;
+    }
+
+    result.reportWritten = true;
+    return result;
 }
 
 bool isWidgetColorProperty(const model::WidgetNode& widget, const std::string& key)
@@ -549,6 +647,24 @@ bool MainWindow::openProjectDialog()
 
 bool MainWindow::exportGeneratedCode()
 {
+    const ValidationRunResult validationResult = runProjectValidation(document_, settings_, projectRootPath() / "Generated" / "validation_report.md");
+    const std::string validationReportPathText = validationReportDisplayPath(projectRootPath(), validationResult.reportPath);
+    if (validationResult.report.hasErrors()) {
+        std::string status = "Export blocked: " + std::to_string(validationResult.report.errorCount()) + " validation errors.";
+        if (validationResult.report.warningCount() > 0) {
+            status += " Warnings: " + std::to_string(validationResult.report.warningCount()) + ".";
+        }
+        if (validationResult.reportWritten) {
+            status += " See " + validationReportPathText;
+        }
+        else if (!validationResult.reportWriteError.empty()) {
+            status += " Validation report write failed: " + validationResult.reportWriteError;
+        }
+        setOperationStatus(status);
+        redraw();
+        return false;
+    }
+
     // Prefer to prompt the user for an export folder. Use lastExportDirectory as initial folder.
     const std::filesystem::path initial = !settings_.lastExportDirectory.empty() ? settings_.lastExportDirectory : defaultExportPath();
     const auto selected = utils::showSelectExportFolderDialog(initial);
@@ -584,17 +700,64 @@ bool MainWindow::exportGeneratedCode()
 
     settings_.lastExportDirectory = *selected;
     saveAppSettings();
-    const std::filesystem::path localVisagePath = settings_.localVisageSourceDirectory;
-    if (!localVisagePath.empty() && std::filesystem::exists(localVisagePath / "CMakeLists.txt")) {
-        setOperationStatus("Exported with local Visage source: " + normalizedPathText(localVisagePath));
+    if (validationResult.report.warningCount() > 0) {
+        std::string status = "Export completed with " + std::to_string(validationResult.report.warningCount()) + " warnings.";
+        if (validationResult.reportWritten) {
+            status += " See " + validationReportPathText;
+        }
+        else if (!validationResult.reportWriteError.empty()) {
+            status += " Validation report write failed: " + validationResult.reportWriteError;
+        }
+        setOperationStatus(status);
     }
     else {
-        setOperationStatus("Exported with FetchContent Visage fallback");
+        const std::filesystem::path localVisagePath = settings_.localVisageSourceDirectory;
+        if (!localVisagePath.empty() && std::filesystem::exists(localVisagePath / "CMakeLists.txt")) {
+            std::string status = "Exported with local Visage source: " + normalizedPathText(localVisagePath);
+            if (!validationResult.reportWritten && !validationResult.reportWriteError.empty()) {
+                status += " (validation report write failed: " + validationResult.reportWriteError + ")";
+            }
+            setOperationStatus(std::move(status));
+        }
+        else {
+            std::string status = "Exported with FetchContent Visage fallback";
+            if (!validationResult.reportWritten && !validationResult.reportWriteError.empty()) {
+                status += " (validation report write failed: " + validationResult.reportWriteError + ")";
+            }
+            setOperationStatus(std::move(status));
+        }
     }
     exportProgressPercent_ = 100;
     exportProgressText_ = "Export complete";
     redraw();
     return true;
+}
+
+bool MainWindow::validateProject()
+{
+    const ValidationRunResult validationResult = runProjectValidation(document_, settings_, projectRootPath() / "Generated" / "validation_report.md");
+    const std::string validationReportPathText = validationReportDisplayPath(projectRootPath(), validationResult.reportPath);
+
+    std::string status;
+    if (validationResult.report.hasErrors() || validationResult.report.hasWarnings()) {
+        status = "Validation found "
+            + std::to_string(validationResult.report.errorCount()) + " errors, "
+            + std::to_string(validationResult.report.warningCount()) + " warnings.";
+    }
+    else {
+        status = "Validation passed.";
+    }
+
+    if (validationResult.reportWritten) {
+        status += " See " + validationReportPathText;
+    }
+    else if (!validationResult.reportWriteError.empty()) {
+        status += " Validation report write failed: " + validationResult.reportWriteError;
+    }
+
+    setOperationStatus(std::move(status));
+    redraw();
+    return !validationResult.report.hasErrors();
 }
 
 bool MainWindow::saveProject()
@@ -792,6 +955,9 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     case ToolbarAction::ExportCode:
         exportGeneratedCode();
+        return;
+    case ToolbarAction::ValidateProject:
+        validateProject();
         return;
     case ToolbarAction::FitText:
         fitSelectedWidgetToText();
@@ -2916,6 +3082,7 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(ToolbarAction::OpenSample, "Smp", "Open the sample project");
     addButton(ToolbarAction::SaveProjectAsDebug, "Dbg", "Save to the debug test project path");
     addButton(ToolbarAction::ExportCode, "Exp", "Export generated Visage C++ project");
+    addButton(ToolbarAction::ValidateProject, "Chk", "Validate the current project before export");
     addButton(ToolbarAction::FitText, "Fit", "Fit the selected widget to its text");
     addButton(ToolbarAction::CopyWidgets, "Cp", "Copy selected widgets");
     addButton(ToolbarAction::PasteWidgets, "Pt", "Paste copied widgets");

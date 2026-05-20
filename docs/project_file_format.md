@@ -204,6 +204,55 @@ Common `ProgressBar` properties include:
 - if `showText` is `true` and `text` is non-empty, the custom `text` value is displayed
 - if `showText` is `false`, no ProgressBar text is displayed
 
+## Validation expectations
+
+Before export, `VisiForm` validates the current in-memory document and reports warnings or errors.
+
+Current validation expectations include:
+
+- `projectName` should not stay empty or on the default placeholder value
+- `executableName` must not be empty and may be sanitized for generated target names
+- `userSubclassName` must be a valid C++ identifier and must not be `MainWindow`
+- widget `id` values must be present and unique
+- duplicate widget `name` values are allowed but reported as warnings because generated lookup by name becomes ambiguous
+- callback property values must be empty or valid C++ identifiers
+- the same callback name must not be reused across incompatible signature groups
+- invalid enum-like string values such as `ScrollBar.orientation` are reported before export
+
+## Color format validation
+
+Color-valued properties are validated before export.
+
+Accepted color string formats:
+
+- empty string
+- `#RRGGBB`
+- `#AARRGGBB`
+
+Color-related keys currently validated include:
+
+- `backgroundColor`
+- `fillColor`
+- `textColor`
+- `borderColor`
+- `accentColor`
+- `panelColor`
+- `controlFillColor`
+- `controlTextColor`
+- `controlBorderColor`
+- `disabledColor`
+- `ColorPicker.value`
+
+Invalid color strings are reported as export-blocking validation errors.
+
+## Enum value validation
+
+Current enum-like string validation includes:
+
+- `ScrollBar.orientation` - `Horizontal` or `Vertical`
+- `dock` - empty, `None`, `Bottom`, `Top`, `Left`, `Right`, or `Fill`
+- `lookAndFeelId` - empty or a known preset id
+
 ## Project file workflow note
 
 The editor stores project documents as `.vfb.json` files and now uses `Generated/Projects` as the default project-folder base when no prior `lastProjectDirectory` setting is available.

@@ -48,6 +48,7 @@ public:
     bool saveProjectAs(const std::filesystem::path& path);
     bool loadProjectFromPath(const std::filesystem::path& path);
     bool exportGeneratedCode();
+    bool validateProject();
     // Export helpers
     [[nodiscard]] std::filesystem::path defaultExportPath() const;
     void deleteSelectedWidget();
@@ -90,6 +91,7 @@ private:
         OpenSample,
         SaveProjectAsDebug,
         ExportCode,
+        ValidateProject,
         FitText,
         CopyWidgets,
         PasteWidgets,
