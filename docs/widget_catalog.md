@@ -15,6 +15,7 @@ Current widget types:
 - `ScrollBar`
 - `StatusBar`
 - `ProgressBar`
+- `ModalDialog`
 - `ColorPicker`
 - `Image`
 - `Spacer`
@@ -84,6 +85,9 @@ Supported event properties:
   - `onChanged`
 - `TextBox`
   - `onTextChanged`
+- `ModalDialog`
+  - `onAccepted`
+  - `onCancelled`
 
 ## Handler name rules
 
@@ -150,6 +154,7 @@ Current exported generated runtime behavior by widget type:
 - `TextBox` - supports click focus, basic text entry, Backspace, and fires `onTextChanged`
 - `ProgressBar` - display only, but renders current runtime value text and can be updated from callbacks with `setValue(...)` or `setProgressValue(...)`
 - `StatusBar` - display only, but renders configured runtime field text and can be updated from callbacks with `setStatusBarField(...)`
+- `ModalDialog` - exports reusable modal dialog definitions with generated `showModalDialog(...)`, `closeModalDialog()`, and `activeModalDialogId()` helpers; message boxes can also be shown from callbacks with `showMessageDialog(...)`, and widget-backed dialogs fire `onAccepted` or `onCancelled`
 
 Generated callback code can find widgets by exact `id` or exact `name` through protected `MainWindow` helpers.
 When a helper accepts `idOrName`, lookup order is:
@@ -178,6 +183,7 @@ Current default editor widget sizes are tuned for readable text:
 - `ScrollBar` - `240 x 36`
 - `ColorPicker` - `220 x 40`
 - `Frame` - `260 x 160`
+- `ModalDialog` - `420 x 240`
 - `Image` - `180 x 120`
 - `Spacer` - `160 x 40`
 

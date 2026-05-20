@@ -52,6 +52,14 @@ constexpr float kNewWidgetSpacing = 12.0f;
 constexpr float kLayoutMargin = 20.0f;
 constexpr float kMarqueeDragThreshold = 4.0f;
 constexpr float kSmartGuideSnapThreshold = 6.0f;
+constexpr float kEditorModalMaxWidth = 560.0f;
+constexpr float kEditorModalMinWidth = 320.0f;
+constexpr float kEditorModalMinHeight = 180.0f;
+constexpr float kEditorModalMaxBodyLines = 8.0f;
+constexpr float kEditorModalButtonWidth = 96.0f;
+constexpr float kEditorModalButtonHeight = 32.0f;
+constexpr float kEditorModalButtonSpacing = 12.0f;
+constexpr float kEditorModalSectionSpacing = 10.0f;
 
 std::string normalizedPathText(const std::filesystem::path& path)
 {
@@ -181,6 +189,26 @@ std::string buildValidationReportMarkdown(const validation::ValidationReport& re
     return stream.str();
 }
 
+std::vector<std::string> splitMessageLines(const std::string& text)
+{
+    std::vector<std::string> lines;
+    if (text.empty()) {
+        return lines;
+    }
+
+    std::istringstream stream(text);
+    std::string line;
+    while (std::getline(stream, line)) {
+        lines.push_back(line);
+    }
+
+    if (lines.empty()) {
+        lines.push_back(text);
+    }
+
+    return lines;
+}
+
 ValidationRunResult runProjectValidation(const model::ProjectDocument& document,
     const utils::AppSettings& settings,
     const std::filesystem::path& reportPath)
@@ -247,6 +275,8 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
         return "frame" + suffix;
     case model::WidgetType::ColorPicker:
         return "colorPicker" + suffix;
+    case model::WidgetType::ModalDialog:
+        return "modalDialog" + suffix;
     case model::WidgetType::Image:
         return "image" + suffix;
     case model::WidgetType::Spacer:
@@ -661,6 +691,7 @@ bool MainWindow::exportGeneratedCode()
             status += " Validation report write failed: " + validationResult.reportWriteError;
         }
         setOperationStatus(status);
+        showEditorValidationDialog(validationResult.report, validationReportPathText, validationResult.reportWriteError);
         redraw();
         return false;
     }
@@ -756,6 +787,7 @@ bool MainWindow::validateProject()
     }
 
     setOperationStatus(std::move(status));
+    showEditorValidationDialog(validationResult.report, validationReportPathText, validationResult.reportWriteError);
     redraw();
     return !validationResult.report.hasErrors();
 }
@@ -924,6 +956,9 @@ void MainWindow::draw(visage::Canvas& canvas)
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
     }
     drawStatusBar(canvas);
+    if (isEditorModalVisible()) {
+        drawEditorModalDialog(canvas);
+    }
 }
 
 void MainWindow::mouseDown(const visage::MouseEvent& e)
@@ -933,6 +968,11 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     requestKeyboardFocus();
+
+    if (isEditorModalVisible()) {
+        handleEditorModalMouseDown(e);
+        return;
+    }
 
     switch (toolbarActionAt(e.position.x, e.position.y)) {
     case ToolbarAction::NewProject:
@@ -1198,6 +1238,10 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
 void MainWindow::mouseMove(const visage::MouseEvent& e)
 {
+    if (isEditorModalVisible()) {
+        return;
+    }
+
     if (canvasInteraction_.mode != CanvasInteractionState::Mode::None) {
         return;
     }
@@ -1207,6 +1251,10 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
 
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
 {
+    if (isEditorModalVisible()) {
+        return;
+    }
+
     if (propertyInspector_.mouseDrag(document_, settings_, e.position.x, e.position.y)) {
         updatePropertyEditorBounds();
         redraw();
@@ -1311,6 +1359,10 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 
 void MainWindow::mouseUp(const visage::MouseEvent& e)
 {
+    if (isEditorModalVisible()) {
+        return;
+    }
+
     const bool releasedInspectorScrollBar = propertyInspector_.mouseUp();
     if (releasedInspectorScrollBar && canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
         updatePropertyEditorBounds();
@@ -1403,6 +1455,10 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 
 bool MainWindow::mouseWheel(const visage::MouseEvent& e)
 {
+    if (isEditorModalVisible()) {
+        return true;
+    }
+
     const float deltaY = e.precise_wheel_delta_y != 0.0f ? e.precise_wheel_delta_y : e.wheel_delta_y;
     if (layout_.showProjectTree && projectTree_.mouseWheel(document_, deltaY, e.position.x, e.position.y)) {
         redraw();
@@ -1421,6 +1477,21 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
 bool MainWindow::keyPress(const visage::KeyEvent& e)
 {
     using KeyCode = visage::KeyCode;
+    if (isEditorModalVisible()) {
+        if (e.keyCode() == KeyCode::Escape) {
+            const bool hasCancel = std::any_of(editorModal_.buttons.begin(), editorModal_.buttons.end(), [](const EditorModalButton& button) {
+                return button.id == "cancel";
+            });
+            closeEditorModalDialog(hasCancel ? "cancel" : "ok");
+            return true;
+        }
+        if (e.keyCode() == KeyCode::Return) {
+            closeEditorModalDialog("ok");
+            return true;
+        }
+        return true;
+    }
+
     if (propertyInspector_.isEditing()) {
         return false;
     }
@@ -2693,7 +2764,8 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
     }
 
     if (key == "onClick" || key == "onToggle" || key == "onChanged"
-        || key == "onTextChanged" || key == "onLoad" || key == "onClose" || key == "onSelected") {
+        || key == "onTextChanged" || key == "onLoad" || key == "onClose" || key == "onSelected"
+        || key == "onAccepted" || key == "onCancelled") {
         if (!trimmedValue.empty() && !utils::isValidCppIdentifier(trimmedValue)) {
             setOperationStatus("Invalid event handler name");
             redraw();
@@ -3376,6 +3448,243 @@ void MainWindow::updatePropertyEditorBounds()
 void MainWindow::clearCanvasInteraction()
 {
     canvasInteraction_ = {};
+}
+
+void MainWindow::showEditorMessageDialog(const std::string& title, const std::string& message)
+{
+    cancelInspectorEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    editorModal_.visible = true;
+    editorModal_.title = title;
+    editorModal_.message = message;
+    editorModal_.lines.clear();
+    editorModal_.buttons = { { "ok", "OK" } };
+    editorModal_.result.clear();
+    redraw();
+}
+
+void MainWindow::showEditorValidationDialog(const validation::ValidationReport& report,
+    const std::string& reportPathText,
+    const std::string& reportWriteError)
+{
+    cancelInspectorEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    editorModal_.visible = true;
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = { { "ok", "OK" } };
+    editorModal_.result.clear();
+
+    if (report.hasErrors()) {
+        editorModal_.title = "Validation Errors";
+        editorModal_.lines.push_back("Validation found " + std::to_string(report.errorCount())
+            + " errors and " + std::to_string(report.warningCount()) + " warnings.");
+    }
+    else if (report.hasWarnings()) {
+        editorModal_.title = "Validation Warnings";
+        editorModal_.lines.push_back("Validation found 0 errors and " + std::to_string(report.warningCount()) + " warnings.");
+    }
+    else {
+        editorModal_.title = "Validation Passed";
+        editorModal_.lines.push_back("Validation passed with no errors.");
+    }
+
+    const int infoCount = validationInfoCount(report);
+    if (infoCount > 0) {
+        editorModal_.lines.push_back("Info messages: " + std::to_string(infoCount) + ".");
+    }
+
+    constexpr std::size_t kPreviewMessageCount = 5;
+    std::size_t previewCount = 0;
+    for (const auto& message : report.messages) {
+        if (previewCount >= kPreviewMessageCount) {
+            break;
+        }
+
+        std::string severity;
+        switch (message.severity) {
+        case validation::ValidationSeverity::Info:
+            severity = "Info";
+            break;
+        case validation::ValidationSeverity::Warning:
+            severity = "Warning";
+            break;
+        case validation::ValidationSeverity::Error:
+            severity = "Error";
+            break;
+        }
+
+        std::string line = severity;
+        if (!message.code.empty()) {
+            line += " [" + message.code + "]";
+        }
+        line += ": " + message.message;
+        editorModal_.lines.push_back(std::move(line));
+        ++previewCount;
+    }
+
+    if (report.messages.size() > kPreviewMessageCount) {
+        editorModal_.lines.push_back("Showing first " + std::to_string(kPreviewMessageCount)
+            + " of " + std::to_string(report.messages.size()) + " messages.");
+    }
+
+    if (!reportPathText.empty()) {
+        editorModal_.lines.push_back("Full report written to " + reportPathText + ".");
+    }
+    if (!reportWriteError.empty()) {
+        editorModal_.lines.push_back("Validation report write failed: " + reportWriteError);
+    }
+
+    redraw();
+}
+
+void MainWindow::closeEditorModalDialog(const std::string& result)
+{
+    editorModal_.result = result;
+    editorModal_.visible = false;
+    requestKeyboardFocus();
+    redraw();
+}
+
+bool MainWindow::isEditorModalVisible() const
+{
+    return editorModal_.visible;
+}
+
+MainWindow::PanelBounds MainWindow::editorModalDialogBounds() const
+{
+    const float availableWidth = std::max(0.0f, width() - 32.0f);
+    const float maxWidth = std::min(kEditorModalMaxWidth, availableWidth);
+    const float dialogWidth = maxWidth <= 0.0f
+        ? 0.0f
+        : std::clamp(availableWidth * 0.7f, std::min(kEditorModalMinWidth, maxWidth), maxWidth);
+
+    std::vector<std::string> bodyLines = splitMessageLines(editorModal_.message);
+    bodyLines.insert(bodyLines.end(), editorModal_.lines.begin(), editorModal_.lines.end());
+
+    const float visibleLineCount = std::min(kEditorModalMaxBodyLines,
+        static_cast<float>(std::max<std::size_t>(1, bodyLines.size())));
+    const float bodyHeight = visibleLineCount * 22.0f;
+    const float buttonSectionHeight = editorModal_.buttons.empty() ? 0.0f : (kEditorModalButtonHeight + 24.0f);
+    const float dialogHeight = std::max(kEditorModalMinHeight, 68.0f + bodyHeight + kEditorModalSectionSpacing + buttonSectionHeight);
+
+    return {
+        std::max(12.0f, (width() - dialogWidth) * 0.5f),
+        std::max(16.0f, (height() - dialogHeight) * 0.5f),
+        dialogWidth,
+        std::min(dialogHeight, std::max(0.0f, height() - 32.0f))
+    };
+}
+
+std::vector<MainWindow::PanelBounds> MainWindow::editorModalButtonBounds() const
+{
+    std::vector<PanelBounds> bounds;
+    if (editorModal_.buttons.empty()) {
+        return bounds;
+    }
+
+    const PanelBounds dialogBounds = editorModalDialogBounds();
+    const float totalWidth = static_cast<float>(editorModal_.buttons.size()) * kEditorModalButtonWidth
+        + static_cast<float>(std::max<std::size_t>(0, editorModal_.buttons.size() - 1)) * kEditorModalButtonSpacing;
+    const float buttonX = dialogBounds.x + std::max(0.0f, (dialogBounds.width - totalWidth) * 0.5f);
+    const float buttonY = dialogBounds.y + dialogBounds.height - kEditorModalButtonHeight - 16.0f;
+
+    bounds.reserve(editorModal_.buttons.size());
+    for (std::size_t index = 0; index < editorModal_.buttons.size(); ++index) {
+        bounds.push_back({
+            buttonX + static_cast<float>(index) * (kEditorModalButtonWidth + kEditorModalButtonSpacing),
+            buttonY,
+            kEditorModalButtonWidth,
+            kEditorModalButtonHeight
+        });
+    }
+
+    return bounds;
+}
+
+void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
+{
+    if (!isEditorModalVisible()) {
+        return;
+    }
+
+    canvas.setColor(0xff0f1318);
+    canvas.fill(0.0f, 0.0f, width(), height());
+
+    const PanelBounds dialogBounds = editorModalDialogBounds();
+    canvas.setColor(0xff232a34);
+    canvas.fill(dialogBounds.x, dialogBounds.y, dialogBounds.width, dialogBounds.height);
+    canvas.setColor(0xff2f3948);
+    canvas.fill(dialogBounds.x, dialogBounds.y, dialogBounds.width, 38.0f);
+
+    canvas.setColor(0xff12161c);
+    canvas.fill(dialogBounds.x, dialogBounds.y, dialogBounds.width, 1.0f);
+    canvas.fill(dialogBounds.x, dialogBounds.y + dialogBounds.height - 1.0f, dialogBounds.width, 1.0f);
+    canvas.fill(dialogBounds.x, dialogBounds.y, 1.0f, dialogBounds.height);
+    canvas.fill(dialogBounds.x + dialogBounds.width - 1.0f, dialogBounds.y, 1.0f, dialogBounds.height);
+
+    if (!canDrawText()) {
+        return;
+    }
+
+    canvas.setColor(0xfff3f5f8);
+    canvas.text(editorModal_.title, labelFont_, visage::Font::kTopLeft,
+        dialogBounds.x + 14.0f, dialogBounds.y + 6.0f, dialogBounds.width - 28.0f, 26.0f);
+
+    std::vector<std::string> bodyLines = splitMessageLines(editorModal_.message);
+    bodyLines.insert(bodyLines.end(), editorModal_.lines.begin(), editorModal_.lines.end());
+    if (bodyLines.empty()) {
+        bodyLines.push_back({});
+    }
+
+    float lineY = dialogBounds.y + 52.0f;
+    const std::size_t visibleCount = std::min(bodyLines.size(), static_cast<std::size_t>(kEditorModalMaxBodyLines));
+    for (std::size_t index = 0; index < visibleCount; ++index) {
+        canvas.setColor(0xffdde2ea);
+        canvas.text(bodyLines[index], labelFont_, visage::Font::kTopLeft,
+            dialogBounds.x + 14.0f, lineY, dialogBounds.width - 28.0f, 20.0f);
+        lineY += 22.0f;
+    }
+
+    if (bodyLines.size() > visibleCount) {
+        canvas.setColor(0xffb6bfcc);
+        canvas.text("...", labelFont_, visage::Font::kTopLeft,
+            dialogBounds.x + 14.0f, lineY, dialogBounds.width - 28.0f, 20.0f);
+    }
+
+    const auto buttonBounds = editorModalButtonBounds();
+    for (std::size_t index = 0; index < buttonBounds.size(); ++index) {
+        canvas.setColor(index == 0 ? 0xff355382 : 0xff39414e);
+        canvas.fill(buttonBounds[index].x, buttonBounds[index].y, buttonBounds[index].width, buttonBounds[index].height);
+        canvas.setColor(0xff14161b);
+        canvas.fill(buttonBounds[index].x, buttonBounds[index].y + buttonBounds[index].height - 1.0f, buttonBounds[index].width, 1.0f);
+        canvas.setColor(0xfff3f5f8);
+        canvas.text(editorModal_.buttons[index].text, labelFont_, visage::Font::kCenter,
+            buttonBounds[index].x, buttonBounds[index].y, buttonBounds[index].width, buttonBounds[index].height);
+    }
+}
+
+bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
+{
+    if (!isEditorModalVisible()) {
+        return false;
+    }
+
+    const auto buttonBounds = editorModalButtonBounds();
+    for (std::size_t index = 0; index < buttonBounds.size(); ++index) {
+        if (e.position.x >= buttonBounds[index].x && e.position.x <= buttonBounds[index].x + buttonBounds[index].width
+            && e.position.y >= buttonBounds[index].y && e.position.y <= buttonBounds[index].y + buttonBounds[index].height) {
+            closeEditorModalDialog(editorModal_.buttons[index].id);
+            return true;
+        }
+    }
+
+    redraw();
+    return true;
 }
 
 bool MainWindow::canDrawText() const

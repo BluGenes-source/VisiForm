@@ -21,6 +21,8 @@ Validation result behavior:
 - warnings do not block export
 - a clean validation pass keeps the generated export behavior unchanged
 - the toolbar `Chk` action runs the same validation flow on demand
+- the editor now shows a modal validation summary after `Chk`
+- export-blocking validation errors also surface in an editor modal dialog before export stops
 
 ## Generated files
 
@@ -172,6 +174,7 @@ Current generated widget rendering support:
 - `ScrollBar`
 - `StatusBar`
 - `ProgressBar`
+- `ModalDialog`
 - `ColorPicker`
 - `Image`
 - `Spacer`
@@ -225,6 +228,7 @@ Current generated interactive behavior:
 - `TextBox` - click focuses, text input appends characters, Backspace removes a character, and changes fire `onTextChanged`
 - `ProgressBar` - display only, but now renders from generated runtime state
 - `StatusBar` - display only, but now renders from generated runtime state
+- `ModalDialog` - exports runtime modal definitions, blocks underlying generated input while visible, supports `Enter` and `Escape`, and dispatches `onAccepted` or `onCancelled` from configured dialog buttons
 
 The generated runtime is intentionally small and is not a full retained-mode widget framework.
 
@@ -252,6 +256,10 @@ Current protected helpers on `MainWindow`:
 - `float getValueOr(const std::string& idOrName, float fallback) const`
 - `[[nodiscard]] bool setProgressValue(const std::string& idOrName, float value)`
 - `[[nodiscard]] bool setStatusBarField(const std::string& idOrName, int fieldIndex, const std::string& text)`
+- `[[nodiscard]] bool showMessageDialog(const std::string& title, const std::string& message)`
+- `[[nodiscard]] bool showModalDialog(const std::string& idOrName)`
+- `void closeModalDialog()`
+- `std::optional<std::string> activeModalDialogId() const`
 - `void requestGeneratedUiRepaint()`
 
 Lookup behavior for `idOrName` helpers:
@@ -268,7 +276,7 @@ If no widget matches, or if the widget type does not support the requested gette
 Current setter coverage:
 
 - `setText(...)`
-  - supported: `Label`, `Button`, `TextBox`, `CheckBox`, `RadioButton`, `ProgressBar`, `StatusBar` field 0, `Frame`, `ColorPicker`
+  - supported: `Label`, `Button`, `TextBox`, `CheckBox`, `RadioButton`, `ProgressBar`, `StatusBar` field 0, `Frame`, `ModalDialog`, `ColorPicker`
 - `setChecked(...)`
   - supported: `CheckBox`
 - `setSelected(...)`
@@ -317,6 +325,8 @@ Supported event properties:
 - `TextBox.onTextChanged`
 - `FormWindow.onLoad`
 - `FormWindow.onClose`
+- `ModalDialog.onAccepted`
+- `ModalDialog.onCancelled`
 
 ## Generated base class and user subclass
 
@@ -347,7 +357,7 @@ User subclass naming rule:
 
 When the root form is selected in the editor, `projectName`, `executableName`, `userSubclassName`, and `windowTitle` can be edited.
 
-The generated user subclass keeps using `USER CODE` regions, and new handler stubs now include short examples that show how to call the protected runtime state helpers from callbacks.
+The generated user subclass keeps using `USER CODE` regions, and new handler stubs now include short examples that show how to call the protected runtime state helpers from callbacks, including dialog helpers such as `showMessageDialog(...)` and `showModalDialog(...)`.
 
 When a non-empty handler name is present, the generated project emits:
 

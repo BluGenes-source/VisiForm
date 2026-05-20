@@ -12,6 +12,7 @@
 #include "ui/WidgetPalette.h"
 #include "utils/AppSettings.h"
 #include "utils/IdGenerator.h"
+#include "validation/ProjectValidator.h"
 
 #include <filesystem>
 #include <optional>
@@ -156,6 +157,20 @@ private:
         bool accent = false;
     };
 
+    struct EditorModalButton {
+        std::string id{};
+        std::string text{};
+    };
+
+    struct EditorModalDialog {
+        bool visible = false;
+        std::string title{};
+        std::string message{};
+        std::vector<std::string> lines{};
+        std::vector<EditorModalButton> buttons{};
+        std::string result{};
+    };
+
     void loadLabelFont();
     void updateLayout();
     [[nodiscard]] WindowLayout calculateLayout(float windowWidth, float windowHeight) const;
@@ -223,6 +238,16 @@ private:
     void updateHoverHint(float x, float y);
     void clearCanvasInteraction();
     [[nodiscard]] bool canDrawText() const;
+    void showEditorMessageDialog(const std::string& title, const std::string& message);
+    void showEditorValidationDialog(const validation::ValidationReport& report,
+        const std::string& reportPathText = {},
+        const std::string& reportWriteError = {});
+    void closeEditorModalDialog(const std::string& result);
+    [[nodiscard]] bool isEditorModalVisible() const;
+    [[nodiscard]] PanelBounds editorModalDialogBounds() const;
+    [[nodiscard]] std::vector<PanelBounds> editorModalButtonBounds() const;
+    void drawEditorModalDialog(visage::Canvas& canvas) const;
+    bool handleEditorModalMouseDown(const visage::MouseEvent& e);
 
     WindowLayout layout_{};
     model::ProjectDocument document_ = model::ProjectDocument::createDefault();
@@ -246,6 +271,7 @@ private:
     int exportProgressPercent_ = 0;
     std::string exportProgressText_{};
     bool suggestionAppliedThisClick_ = false;
+    EditorModalDialog editorModal_{};
 
     // Apply a callback suggestion directly to the selected widget property
     bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);

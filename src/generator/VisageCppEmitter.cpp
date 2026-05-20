@@ -65,6 +65,30 @@ std::string escapeCppStringLiteral(const std::string& value)
     return stream.str();
 }
 
+std::vector<std::string> splitCommaSeparatedValues(const std::string& text)
+{
+    std::vector<std::string> values;
+    std::istringstream stream(text);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        const auto first = std::find_if_not(item.begin(), item.end(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        });
+        const auto last = std::find_if_not(item.rbegin(), item.rend(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        }).base();
+        if (first < last) {
+            values.emplace_back(first, last);
+        }
+    }
+
+    if (values.empty()) {
+        values.push_back("OK");
+    }
+
+    return values;
+}
+
 std::string progressBarDisplayText(const visiform::model::WidgetNode& widget)
 {
     if (!widget.getBoolProperty("showText", true)) {
@@ -368,6 +392,8 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
         return { "onTextChanged" };
     case visiform::model::WidgetType::FormWindow:
         return { "onLoad", "onClose" };
+    case visiform::model::WidgetType::ModalDialog:
+        return { "onAccepted", "onCancelled" };
     case visiform::model::WidgetType::Label:
     case visiform::model::WidgetType::Frame:
     case visiform::model::WidgetType::Image:
@@ -469,8 +495,8 @@ std::vector<std::string> handlerExampleLines(const HandlerInfo& handler)
     if (binding.widgetType == "Button" && binding.eventKey == "onClick") {
         return {
             "// Example:",
-            "// setStatusBarField(\"statusBar_1\", 0, \"Started\");",
-            "// setProgressValue(\"progressBar_1\", 25.0f);"
+            "// showMessageDialog(\"Hello\", \"Button clicked.\");",
+            "// showModalDialog(\"modalDialog_1\");"
         };
     }
     if ((binding.widgetType == "Slider" || binding.widgetType == "ScrollBar") && binding.eventKey == "onChanged") {
@@ -502,6 +528,18 @@ std::vector<std::string> handlerExampleLines(const HandlerInfo& handler)
         return {
             "// Example:",
             "// setStatusBarField(\"statusBar_1\", 0, \"Ready\");"
+        };
+    }
+    if (binding.widgetType == "ModalDialog" && binding.eventKey == "onAccepted") {
+        return {
+            "// Example:",
+            "// setStatusBarField(\"statusBar\", 0, \"Dialog accepted\");"
+        };
+    }
+    if (binding.widgetType == "ModalDialog" && binding.eventKey == "onCancelled") {
+        return {
+            "// Example:",
+            "// setStatusBarField(\"statusBar\", 0, \"Dialog cancelled\");"
         };
     }
 
@@ -550,6 +588,12 @@ std::string runtimeEventHandlerAccessor(std::string_view eventKey)
     }
     if (eventKey == "onTextChanged") {
         return "widget.events.onTextChanged";
+    }
+    if (eventKey == "onAccepted") {
+        return "widget.events.onAccepted";
+    }
+    if (eventKey == "onCancelled") {
+        return "widget.events.onCancelled";
     }
 
     return {};
@@ -928,6 +972,8 @@ std::string runtimeWidgetTypeLiteral(visiform::model::WidgetType type)
         return "RuntimeWidgetType::StatusBar";
     case visiform::model::WidgetType::ProgressBar:
         return "RuntimeWidgetType::ProgressBar";
+    case visiform::model::WidgetType::ModalDialog:
+        return "RuntimeWidgetType::ModalDialog";
     case visiform::model::WidgetType::ColorPicker:
         return "RuntimeWidgetType::ColorPicker";
     case visiform::model::WidgetType::Frame:
@@ -987,10 +1033,13 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.bounds = RuntimeRect{ " << emitFloat(spec.x) << ", " << emitFloat(spec.y) << ", "
            << emitFloat(widget.bounds.width) << ", " << emitFloat(widget.bounds.height) << " };\n";
     stream << innerIndent << "widget.hint = " << emitStringLiteral(widget.getStringProperty("hint", {})) << ";\n";
+    stream << innerIndent << "widget.dialogTitle = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
     stream << innerIndent << "widget.text.value = " << emitStringLiteral(displayTextOrFallback(widget, "text", widgetLabel(widget))) << ";\n";
     stream << innerIndent << "widget.source = " << emitStringLiteral(widget.getStringProperty("source", "Image")) << ";\n";
     stream << innerIndent << "widget.colorValue = " << emitStringLiteral(widget.getStringProperty("value", "#2D7DFF")) << ";\n";
     stream << innerIndent << "widget.text.showText = " << (widget.getBoolProperty("showText", true) ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.modal = " << (widget.getBoolProperty("modal", true) ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.visibleAtStartup = " << (widget.getBoolProperty("visibleAtStartup", false) ? "true" : "false") << ";\n";
     stream << innerIndent << "widget.toggle.checked = " << (widget.getBoolProperty("checked", false) ? "true" : "false") << ";\n";
     stream << innerIndent << "widget.toggle.selected = " << (widget.getBoolProperty("selected", false) ? "true" : "false") << ";\n";
     stream << innerIndent << "widget.toggle.group = " << emitStringLiteral(widget.getStringProperty("group", "default")) << ";\n";
@@ -1004,6 +1053,8 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.events.onSelected = " << emitStringLiteral(widget.getStringProperty("onSelected", {})) << ";\n";
     stream << innerIndent << "widget.events.onChanged = " << emitStringLiteral(widget.getStringProperty("onChanged", {})) << ";\n";
     stream << innerIndent << "widget.events.onTextChanged = " << emitStringLiteral(widget.getStringProperty("onTextChanged", {})) << ";\n";
+    stream << innerIndent << "widget.events.onAccepted = " << emitStringLiteral(widget.getStringProperty("onAccepted", {})) << ";\n";
+    stream << innerIndent << "widget.events.onCancelled = " << emitStringLiteral(widget.getStringProperty("onCancelled", {})) << ";\n";
     stream << innerIndent << "widget.style.panelColor = " << emitRuntimeColorLiteral(spec.style.panelColor, "makeColor(0x1F, 0x24, 0x2D)") << ";\n";
     stream << innerIndent << "widget.style.fillColor = " << emitRuntimeColorLiteral(spec.style.fillColor, "makeColor(0x2B, 0x31, 0x3D)") << ";\n";
     stream << innerIndent << "widget.style.textColor = " << emitRuntimeColorLiteral(spec.style.textColor, "makeColor(0xEE, 0xF2, 0xF8)") << ";\n";
@@ -1022,6 +1073,10 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     }
     else if (widget.type == visiform::model::WidgetType::ProgressBar) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::ModalDialog) {
+        stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("message", "Message text")) << ";\n";
+        stream << innerIndent << "widget.items = " << emitStringVectorLiteral(splitCommaSeparatedValues(widget.getStringProperty("buttons", "OK"))) << ";\n";
     }
     else if (widget.type == visiform::model::WidgetType::ColorPicker) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(displayTextOrFallback(widget, "text", "Color")) << ";\n";
@@ -1149,6 +1204,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    ScrollBar,\n";
     stream << "    ProgressBar,\n";
     stream << "    StatusBar,\n";
+    stream << "    ModalDialog,\n";
     stream << "    Label,\n";
     stream << "    Frame,\n";
     stream << "    Image,\n";
@@ -1202,6 +1258,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string onSelected;\n";
     stream << "    std::string onChanged;\n";
     stream << "    std::string onTextChanged;\n";
+    stream << "    std::string onAccepted;\n";
+    stream << "    std::string onCancelled;\n";
     stream << "};\n\n";
     stream << "struct RuntimeInteractionState {\n";
     stream << "    bool pressed = false;\n";
@@ -1213,15 +1271,25 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string name;\n";
     stream << "    RuntimeRect bounds;\n";
     stream << "    std::string hint;\n";
+    stream << "    std::string dialogTitle;\n";
     stream << "    std::string source;\n";
     stream << "    std::string colorValue = \"#2D7DFF\";\n";
     stream << "    std::vector<std::string> items;\n";
+    stream << "    bool modal = true;\n";
+    stream << "    bool visibleAtStartup = false;\n";
     stream << "    RuntimeTextState text;\n";
     stream << "    RuntimeToggleState toggle;\n";
     stream << "    RuntimeRangeState range;\n";
     stream << "    RuntimeStyleState style;\n";
     stream << "    RuntimeEventHandlers events;\n";
     stream << "    RuntimeInteractionState interaction;\n";
+    stream << "};\n\n";
+    stream << "struct RuntimeModalState {\n";
+    stream << "    bool visible = false;\n";
+    stream << "    std::string dialogId;\n";
+    stream << "    std::string title;\n";
+    stream << "    std::string message;\n";
+    stream << "    std::vector<std::string> buttons;\n";
     stream << "};\n\n";
     stream << "class " << className << " : public visage::ApplicationWindow {\n";
     stream << "public:\n";
@@ -1255,6 +1323,10 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    [[nodiscard]] float getValueOr(const std::string& idOrName, float fallback) const;\n\n";
     stream << "    [[nodiscard]] bool setProgressValue(const std::string& idOrName, float value);\n";
     stream << "    [[nodiscard]] bool setStatusBarField(const std::string& idOrName, int fieldIndex, const std::string& text);\n\n";
+    stream << "    [[nodiscard]] bool showMessageDialog(const std::string& title, const std::string& message);\n";
+    stream << "    [[nodiscard]] bool showModalDialog(const std::string& idOrName);\n";
+    stream << "    void closeModalDialog();\n";
+    stream << "    [[nodiscard]] std::optional<std::string> activeModalDialogId() const;\n\n";
     stream << "    void requestGeneratedUiRepaint();\n\n";
     for (const auto& handler : handlers) {
         stream << "    // Referenced by: " << handlerReferenceList(handler) << "\n";
@@ -1272,6 +1344,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    void initializeRuntimeWidgets();\n";
     stream << "    RuntimeWidget* findWidgetByIdOrName(const std::string& idOrName);\n";
     stream << "    const RuntimeWidget* findWidgetByIdOrName(const std::string& idOrName) const;\n";
+    stream << "    RuntimeWidget* activeModalWidget();\n";
+    stream << "    const RuntimeWidget* activeModalWidget() const;\n";
     stream << "    RuntimeWidget* hitTest(float x, float y);\n";
     stream << "    RuntimeWidget* focusedTextBox();\n";
     stream << "    const RuntimeWidget* focusedTextBox() const;\n";
@@ -1279,6 +1353,10 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    void clearPressedState();\n";
     stream << "    bool isInteractive(const RuntimeWidget& widget) const;\n";
     stream << "    [[nodiscard]] WidgetEvent makeWidgetEvent(const RuntimeWidget& widget) const;\n";
+    stream << "    [[nodiscard]] RuntimeRect activeModalDialogRect() const;\n";
+    stream << "    [[nodiscard]] RuntimeRect activeModalButtonRect(std::size_t buttonIndex) const;\n";
+    stream << "    void handleActiveModalButton(std::size_t buttonIndex);\n";
+    stream << "    void drawActiveModalDialog(visage::Canvas& canvas, bool drawText) const;\n";
     stream << "    bool setWidgetValue(RuntimeWidget& widget, float value, bool emitEvent);\n";
     stream << "    bool updateSliderFromPoint(RuntimeWidget& widget, float formX);\n";
     stream << "    RuntimeRect scrollBarThumbRect(const RuntimeWidget& widget) const;\n";
@@ -1303,6 +1381,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    bool draggingSlider_ = false;\n";
     stream << "    bool draggingScrollBar_ = false;\n";
     stream << "    float dragPointerOffset_ = 0.0f;\n";
+    stream << "    RuntimeModalState modalState_{};\n";
     stream << "};\n";
     return stream.str();
 }
@@ -1365,6 +1444,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "#include <cmath>\n";
     stream << "#include <cstdint>\n";
     stream << "#include <fstream>\n";
+    stream << "#include <sstream>\n";
     stream << "#include <string>\n";
     stream << "#include <string_view>\n";
     stream << "#include <utility>\n\n";
@@ -1453,6 +1533,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::ScrollBar: return \"ScrollBar\";\n";
     stream << "    case RuntimeWidgetType::ProgressBar: return \"ProgressBar\";\n";
     stream << "    case RuntimeWidgetType::StatusBar: return \"StatusBar\";\n";
+    stream << "    case RuntimeWidgetType::ModalDialog: return \"ModalDialog\";\n";
     stream << "    case RuntimeWidgetType::Label: return \"Label\";\n";
     stream << "    case RuntimeWidgetType::Frame: return \"Frame\";\n";
     stream << "    case RuntimeWidgetType::Image: return \"Image\";\n";
@@ -1500,6 +1581,36 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    const float thumbWidth = std::clamp(trackWidth * thumbFactor, 18.0f, std::max(18.0f, trackWidth));\n";
     stream << "    const float thumbX = trackLeft + std::max(0.0f, trackWidth - thumbWidth) * normalized;\n";
     stream << "    return { thumbX, widget.bounds.y + 4.0f, thumbWidth, std::max(0.0f, widget.bounds.height - 8.0f) };\n";
+    stream << "}\n\n";
+    stream << "std::vector<std::string> splitModalMessageLines(const std::string& text)\n";
+    stream << "{\n";
+    stream << "    std::vector<std::string> lines;\n";
+    stream << "    std::istringstream stream(text);\n";
+    stream << "    std::string line;\n";
+    stream << "    while (std::getline(stream, line)) {\n";
+    stream << "        lines.push_back(line);\n";
+    stream << "    }\n";
+    stream << "    if (lines.empty()) {\n";
+    stream << "        lines.push_back(text);\n";
+    stream << "    }\n";
+    stream << "    return lines;\n";
+    stream << "}\n\n";
+    stream << "std::string lowerText(std::string value)\n";
+    stream << "{\n";
+    stream << "    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {\n";
+    stream << "        return static_cast<char>(std::tolower(character));\n";
+    stream << "    });\n";
+    stream << "    return value;\n";
+    stream << "}\n\n";
+    stream << "bool isAcceptButtonLabel(std::string_view label)\n";
+    stream << "{\n";
+    stream << "    const std::string lowered = lowerText(std::string{ label });\n";
+    stream << "    return lowered == \"ok\" || lowered == \"yes\" || lowered == \"apply\" || lowered == \"continue\";\n";
+    stream << "}\n\n";
+    stream << "bool isCancelButtonLabel(std::string_view label)\n";
+    stream << "{\n";
+    stream << "    const std::string lowered = lowerText(std::string{ label });\n";
+    stream << "    return lowered == \"cancel\" || lowered == \"no\" || lowered == \"close\";\n";
     stream << "}\n\n";
     stream << "void drawRuntimeWidget(visage::Canvas& canvas, const visage::Font& font, bool drawText, const RuntimeWidget& widget)\n";
     stream << "{\n";
@@ -1629,6 +1740,8 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    }\n";
+    stream << "    case RuntimeWidgetType::ModalDialog:\n";
+    stream << "        break;\n";
     stream << "    case RuntimeWidgetType::ProgressBar: {\n";
     stream << "        const float normalized = normalizedRangeValue(widget);\n";
     stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
@@ -1714,6 +1827,14 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
             stream << "    " << binding.handlerName << "(" << widgetEventLiteral(binding) << ");\n";
         }
     }
+    stream << "    if (!modalState_.visible) {\n";
+    stream << "        for (const auto& widget : runtimeWidgets_) {\n";
+    stream << "            if (widget.type == RuntimeWidgetType::ModalDialog && widget.visibleAtStartup) {\n";
+    stream << "                showModalDialog(widget.id);\n";
+    stream << "                break;\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "    }\n";
     stream << "}\n\n";
     stream << "void " << className << "::initializeRuntimeWidgets()\n";
     stream << "{\n";
@@ -1772,6 +1893,14 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    return findWidgetByName(idOrName);\n";
     stream << "}\n\n";
+    stream << "RuntimeWidget* " << className << "::activeModalWidget()\n";
+    stream << "{\n";
+    stream << "    return modalState_.dialogId.empty() ? nullptr : findWidgetById(modalState_.dialogId);\n";
+    stream << "}\n\n";
+    stream << "const RuntimeWidget* " << className << "::activeModalWidget() const\n";
+    stream << "{\n";
+    stream << "    return modalState_.dialogId.empty() ? nullptr : findWidgetById(modalState_.dialogId);\n";
+    stream << "}\n\n";
     stream << "bool " << className << "::setText(const std::string& idOrName, const std::string& text)\n";
     stream << "{\n";
     stream << "    RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
@@ -1805,6 +1934,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Button:\n";
     stream << "    case RuntimeWidgetType::CheckBox:\n";
     stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "    case RuntimeWidgetType::ModalDialog:\n";
     stream << "    case RuntimeWidgetType::ProgressBar:\n";
     stream << "    case RuntimeWidgetType::Frame:\n";
     stream << "    case RuntimeWidgetType::ColorPicker:\n";
@@ -1812,6 +1942,9 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            return false;\n";
     stream << "        }\n";
     stream << "        widget->text.value = text;\n";
+    stream << "        if (modalState_.visible && modalState_.dialogId == widget->id) {\n";
+    stream << "            modalState_.message = text;\n";
+    stream << "        }\n";
     stream << "        requestGeneratedUiRepaint();\n";
     stream << "        return true;\n";
     stream << "    }\n\n";
@@ -1831,6 +1964,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::TextBox:\n";
     stream << "    case RuntimeWidgetType::CheckBox:\n";
     stream << "    case RuntimeWidgetType::RadioButton:\n";
+    stream << "    case RuntimeWidgetType::ModalDialog:\n";
     stream << "    case RuntimeWidgetType::ProgressBar:\n";
     stream << "    case RuntimeWidgetType::Frame:\n";
     stream << "    case RuntimeWidgetType::ColorPicker:\n";
@@ -2002,6 +2136,63 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    requestGeneratedUiRepaint();\n";
     stream << "    return true;\n";
     stream << "}\n\n";
+    stream << "bool " << className << "::showMessageDialog(const std::string& title, const std::string& message)\n";
+    stream << "{\n";
+    stream << "    clearPressedState();\n";
+    stream << "    draggingSlider_ = false;\n";
+    stream << "    draggingScrollBar_ = false;\n";
+    stream << "    draggingWidgetId_.clear();\n";
+    stream << "    setFocusedWidget(std::string{});\n";
+    stream << "    modalState_.visible = true;\n";
+    stream << "    modalState_.dialogId.clear();\n";
+    stream << "    modalState_.title = title.empty() ? std::string{ \"Message\" } : title;\n";
+    stream << "    modalState_.message = message;\n";
+    stream << "    modalState_.buttons = { \"OK\" };\n";
+    stream << "    requestGeneratedUiRepaint();\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::showModalDialog(const std::string& idOrName)\n";
+    stream << "{\n";
+    stream << "    const RuntimeWidget* widget = findWidgetByIdOrName(idOrName);\n";
+    stream << "    if (widget == nullptr || widget->type != RuntimeWidgetType::ModalDialog) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n\n";
+    stream << "    clearPressedState();\n";
+    stream << "    draggingSlider_ = false;\n";
+    stream << "    draggingScrollBar_ = false;\n";
+    stream << "    draggingWidgetId_.clear();\n";
+    stream << "    setFocusedWidget(std::string{});\n";
+    stream << "    modalState_.visible = true;\n";
+    stream << "    modalState_.dialogId = widget->id;\n";
+    stream << "    modalState_.title = widget->dialogTitle.empty() ? (widget->name.empty() ? widget->id : widget->name) : widget->dialogTitle;\n";
+    stream << "    modalState_.message = widget->text.value;\n";
+    stream << "    modalState_.buttons = widget->items.empty() ? std::vector<std::string>{ \"OK\" } : widget->items;\n";
+    stream << "    requestGeneratedUiRepaint();\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::closeModalDialog()\n";
+    stream << "{\n";
+    stream << "    if (!modalState_.visible) {\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    modalState_.visible = false;\n";
+    stream << "    modalState_.dialogId.clear();\n";
+    stream << "    modalState_.title.clear();\n";
+    stream << "    modalState_.message.clear();\n";
+    stream << "    modalState_.buttons.clear();\n";
+    stream << "    clearPressedState();\n";
+    stream << "    draggingSlider_ = false;\n";
+    stream << "    draggingScrollBar_ = false;\n";
+    stream << "    draggingWidgetId_.clear();\n";
+    stream << "    requestGeneratedUiRepaint();\n";
+    stream << "}\n\n";
+    stream << "std::optional<std::string> " << className << "::activeModalDialogId() const\n";
+    stream << "{\n";
+    stream << "    if (!modalState_.visible || modalState_.dialogId.empty()) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    return modalState_.dialogId;\n";
+    stream << "}\n\n";
     stream << "void " << className << "::requestGeneratedUiRepaint()\n";
     stream << "{\n";
     stream << "    redraw();\n";
@@ -2060,6 +2251,109 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "WidgetEvent " << className << "::makeWidgetEvent(const RuntimeWidget& widget) const\n";
     stream << "{\n";
     stream << "    return WidgetEvent{ widget.id, widget.name, runtimeWidgetTypeName(widget.type) };\n";
+    stream << "}\n\n";
+    stream << "RuntimeRect " << className << "::activeModalDialogRect() const\n";
+    stream << "{\n";
+    stream << "    if (!modalState_.visible) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n\n";
+    stream << "    const float availableWidth = std::max(280.0f, std::min(formBounds_.width - 24.0f, 560.0f));\n";
+    stream << "    const float lineCount = static_cast<float>(std::max<std::size_t>(1, splitModalMessageLines(modalState_.message).size()));\n";
+    stream << "    const float dialogWidth = std::clamp(formBounds_.width * 0.58f, 280.0f, availableWidth);\n";
+    stream << "    const float dialogHeight = std::clamp(132.0f + lineCount * 24.0f, 170.0f, std::max(170.0f, formBounds_.height - 24.0f));\n";
+    stream << "    return RuntimeRect{\n";
+    stream << "        kFormOffsetX + (formBounds_.width - dialogWidth) * 0.5f,\n";
+    stream << "        kFormOffsetY + (formBounds_.height - dialogHeight) * 0.5f,\n";
+    stream << "        dialogWidth,\n";
+    stream << "        dialogHeight\n";
+    stream << "    };\n";
+    stream << "}\n\n";
+    stream << "RuntimeRect " << className << "::activeModalButtonRect(std::size_t buttonIndex) const\n";
+    stream << "{\n";
+    stream << "    if (!modalState_.visible) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n\n";
+    stream << "    const std::size_t buttonCount = std::max<std::size_t>(1, modalState_.buttons.size());\n";
+    stream << "    if (buttonIndex >= buttonCount) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n\n";
+    stream << "    const RuntimeRect dialog = activeModalDialogRect();\n";
+    stream << "    const float spacing = 12.0f;\n";
+    stream << "    const float availableWidth = std::max(96.0f, dialog.width - 48.0f - spacing * static_cast<float>(buttonCount - 1));\n";
+    stream << "    const float buttonWidth = std::clamp(availableWidth / static_cast<float>(buttonCount), 96.0f, 150.0f);\n";
+    stream << "    const float totalWidth = buttonWidth * static_cast<float>(buttonCount) + spacing * static_cast<float>(buttonCount - 1);\n";
+    stream << "    const float buttonX = dialog.x + (dialog.width - totalWidth) * 0.5f + static_cast<float>(buttonIndex) * (buttonWidth + spacing);\n";
+    stream << "    const float buttonY = dialog.y + dialog.height - 52.0f;\n";
+    stream << "    return RuntimeRect{ buttonX, buttonY, buttonWidth, 32.0f };\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::handleActiveModalButton(std::size_t buttonIndex)\n";
+    stream << "{\n";
+    stream << "    if (!modalState_.visible) {\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    const std::size_t buttonCount = std::max<std::size_t>(1, modalState_.buttons.size());\n";
+    stream << "    if (buttonIndex >= buttonCount) {\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    const std::string label = modalState_.buttons.empty() ? std::string{ \"OK\" } : modalState_.buttons[buttonIndex];\n";
+    stream << "    RuntimeWidget* widget = activeModalWidget();\n";
+    stream << "    const bool cancelled = isCancelButtonLabel(label);\n";
+    stream << "    const bool accepted = !cancelled && (isAcceptButtonLabel(label) || buttonIndex == 0);\n";
+    stream << "    closeModalDialog();\n";
+    stream << "    if (widget == nullptr) {\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    if (cancelled) {\n";
+    stream << "        if (!widget->events.onCancelled.empty()) {\n";
+    stream << "            emitVoidEvent(*widget, \"onCancelled\");\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    if (accepted && !widget->events.onAccepted.empty()) {\n";
+    stream << "        emitVoidEvent(*widget, \"onAccepted\");\n";
+    stream << "    }\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::drawActiveModalDialog(visage::Canvas& canvas, bool drawText) const\n";
+    stream << "{\n";
+    stream << "    if (!modalState_.visible) {\n";
+    stream << "        return;\n";
+    stream << "    }\n\n";
+    stream << "    const RuntimeWidget* widget = activeModalWidget();\n";
+    stream << "    const RuntimeStyleState style = widget != nullptr ? widget->style : RuntimeStyleState{};\n";
+    stream << "    const RuntimeRect dialog = activeModalDialogRect();\n";
+    stream << "    const auto lines = splitModalMessageLines(modalState_.message);\n";
+    stream << "    canvas.setColor(0x96000000);\n";
+    stream << "    canvas.fill(0.0f, 0.0f, width(), height());\n";
+    stream << "    canvas.setColor(canvasColor(style.fillColor));\n";
+    stream << "    canvas.fill(dialog.x, dialog.y, dialog.width, dialog.height);\n";
+    stream << "    canvas.setColor(canvasColor(style.panelColor));\n";
+    stream << "    canvas.fill(dialog.x, dialog.y, dialog.width, 34.0f);\n";
+    stream << "    drawBorder(canvas, dialog.x, dialog.y, dialog.width, dialog.height, style.borderColor, std::max(1.0f, style.borderThickness));\n";
+    stream << "    if (drawText) {\n";
+    stream << "        canvas.setColor(canvasColor(style.textColor));\n";
+    stream << "        canvas.text(modalState_.title.empty() ? std::string{ \"Dialog\" } : modalState_.title, labelFont_, visage::Font::kTopLeft, dialog.x + 12.0f, dialog.y + 6.0f, std::max(0.0f, dialog.width - 24.0f), 22.0f);\n";
+    stream << "        float lineY = dialog.y + 46.0f;\n";
+    stream << "        for (const auto& line : lines) {\n";
+    stream << "            canvas.text(line, labelFont_, visage::Font::kTopLeft, dialog.x + 14.0f, lineY, std::max(0.0f, dialog.width - 28.0f), 22.0f);\n";
+    stream << "            lineY += 22.0f;\n";
+    stream << "            if (lineY > dialog.y + dialog.height - 72.0f) {\n";
+    stream << "                break;\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "    }\n\n";
+    stream << "    const std::size_t buttonCount = std::max<std::size_t>(1, modalState_.buttons.size());\n";
+    stream << "    for (std::size_t index = 0; index < buttonCount; ++index) {\n";
+    stream << "        const RuntimeRect button = activeModalButtonRect(index);\n";
+    stream << "        const std::string label = modalState_.buttons.empty() ? std::string{ \"OK\" } : modalState_.buttons[index];\n";
+    stream << "        const RuntimeColor fill = isCancelButtonLabel(label) ? style.fillColor : style.accentColor;\n";
+    stream << "        canvas.setColor(canvasColor(fill));\n";
+    stream << "        canvas.fill(button.x, button.y, button.width, button.height);\n";
+    stream << "        drawBorder(canvas, button.x, button.y, button.width, button.height, style.borderColor, std::max(1.0f, style.borderThickness));\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(canvasColor(style.textColor));\n";
+    stream << "            canvas.text(label, labelFont_, visage::Font::kCenter, button.x, button.y, button.width, button.height);\n";
+    stream << "        }\n";
+    stream << "    }\n";
     stream << "}\n\n";
     stream << "RuntimeWidget* " << className << "::hitTest(float x, float y)\n";
     stream << "{\n";
@@ -2146,6 +2440,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    for (const auto& widget : runtimeWidgets_) {\n";
     stream << "        drawRuntimeWidget(canvas, labelFont_, drawText, widget);\n";
     stream << "    }\n";
+    stream << "    drawActiveModalDialog(canvas, drawText);\n";
     stream << "}\n\n";
     stream << "void " << className << "::mouseDown(const visage::MouseEvent& e)\n";
     stream << "{\n";
@@ -2153,6 +2448,15 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return;\n";
     stream << "    }\n\n";
     stream << "    requestKeyboardFocus();\n";
+    stream << "    if (modalState_.visible) {\n";
+    stream << "        for (std::size_t index = 0; index < std::max<std::size_t>(1, modalState_.buttons.size()); ++index) {\n";
+    stream << "            if (activeModalButtonRect(index).contains(e.position.x, e.position.y)) {\n";
+    stream << "                handleActiveModalButton(index);\n";
+    stream << "                return;\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    }\n";
     stream << "    const float formX = e.position.x - kFormOffsetX;\n";
     stream << "    const float formY = e.position.y - kFormOffsetY;\n";
     stream << "    if (!formBounds_.contains(formX, formY)) {\n";
@@ -2270,6 +2574,9 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "}\n\n";
     stream << "void " << className << "::mouseMove(const visage::MouseEvent& e)\n";
     stream << "{\n";
+    stream << "    if (modalState_.visible) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
     stream << "    if (pressedWidgetId_.empty() || draggingSlider_ || draggingScrollBar_) {\n";
     stream << "        return;\n";
     stream << "    }\n";
@@ -2288,6 +2595,9 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "}\n\n";
     stream << "void " << className << "::mouseDrag(const visage::MouseEvent& e)\n";
     stream << "{\n";
+    stream << "    if (modalState_.visible) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
     stream << "    const float formX = e.position.x - kFormOffsetX;\n";
     stream << "    const float formY = e.position.y - kFormOffsetY;\n";
     stream << "    if (draggingSlider_) {\n";
@@ -2305,6 +2615,12 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "void " << className << "::mouseUp(const visage::MouseEvent& e)\n";
     stream << "{\n";
     stream << "    if (!e.isLeftButton()) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    if (modalState_.visible) {\n";
+    stream << "        draggingSlider_ = false;\n";
+    stream << "        draggingScrollBar_ = false;\n";
+    stream << "        draggingWidgetId_.clear();\n";
     stream << "        return;\n";
     stream << "    }\n";
     stream << "    draggingSlider_ = false;\n";
@@ -2367,6 +2683,29 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "bool " << className << "::keyPress(const visage::KeyEvent& e)\n";
     stream << "{\n";
     stream << "    using KeyCode = visage::KeyCode;\n";
+    stream << "    if (modalState_.visible) {\n";
+    stream << "        if (e.keyCode() == KeyCode::Escape) {\n";
+    stream << "            for (std::size_t index = 0; index < modalState_.buttons.size(); ++index) {\n";
+    stream << "                if (isCancelButtonLabel(modalState_.buttons[index])) {\n";
+    stream << "                    handleActiveModalButton(index);\n";
+    stream << "                    return true;\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            handleActiveModalButton(0);\n";
+    stream << "            return true;\n";
+    stream << "        }\n";
+    stream << "        if (e.keyCode() == KeyCode::Return) {\n";
+    stream << "            for (std::size_t index = 0; index < modalState_.buttons.size(); ++index) {\n";
+    stream << "                if (isAcceptButtonLabel(modalState_.buttons[index])) {\n";
+    stream << "                    handleActiveModalButton(index);\n";
+    stream << "                    return true;\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            handleActiveModalButton(0);\n";
+    stream << "            return true;\n";
+    stream << "        }\n";
+    stream << "        return true;\n";
+    stream << "    }\n";
     stream << "    RuntimeWidget* widget = focusedTextBox();\n";
     stream << "    if (widget == nullptr) {\n";
     stream << "        return false;\n";
@@ -2389,10 +2728,13 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "}\n\n";
     stream << "bool " << className << "::receivesTextInput()\n";
     stream << "{\n";
-    stream << "    return focusedTextBox() != nullptr;\n";
+    stream << "    return !modalState_.visible && focusedTextBox() != nullptr;\n";
     stream << "}\n\n";
     stream << "void " << className << "::textInput(const std::string& text)\n";
     stream << "{\n";
+    stream << "    if (modalState_.visible) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
     stream << "    RuntimeWidget* widget = focusedTextBox();\n";
     stream << "    if (widget == nullptr || text.empty()) {\n";
     stream << "        return;\n";

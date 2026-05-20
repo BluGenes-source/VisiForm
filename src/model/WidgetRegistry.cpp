@@ -334,6 +334,33 @@ WidgetDefinition makeColorPickerDefinition()
     return definition;
 }
 
+WidgetDefinition makeModalDialogDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::ModalDialog;
+    definition.typeName = "ModalDialog";
+    definition.displayName = "Modal Dialog";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "modalDialog";
+    definition.defaultHint = "Displays a modal dialog.";
+    definition.size = { 420.0f, 240.0f, 260.0f, 160.0f };
+    definition.properties = {
+        { "title", "title", "Dialog", PropertyEditKind::Text, true, "Dialog title text." },
+        { "message", "message", "Message text", PropertyEditKind::Text, true, "Dialog message text." },
+        { "buttons", "buttons", "OK", PropertyEditKind::Text, true, "Comma-separated dialog buttons such as OK or OK,Cancel." },
+        { "modal", "modal", true, PropertyEditKind::Bool, true, "Keep the dialog modal at runtime." },
+        { "visibleAtStartup", "visibleAtStartup", false, PropertyEditKind::Bool, true, "Show this dialog when the generated window first opens." },
+        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    definition.events = {
+        { "onAccepted", "onAccepted", "void_event", "Called when an accept-style dialog button is clicked." },
+        { "onCancelled", "onCancelled", "void_event", "Called when a cancel-style dialog button is clicked." }
+    };
+    return definition;
+}
+
 WidgetDefinition makeSpacerDefinition()
 {
     WidgetDefinition definition;
@@ -373,6 +400,7 @@ WidgetRegistry::WidgetRegistry()
         makeScrollBarDefinition(),
         makeStatusBarDefinition(),
         makeProgressBarDefinition(),
+        makeModalDialogDefinition(),
         makeColorPickerDefinition(),
         makeImageDefinition(),
         makeSpacerDefinition() }

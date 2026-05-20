@@ -56,6 +56,7 @@ Supported `type` values:
 - `ScrollBar`
 - `StatusBar`
 - `ProgressBar`
+- `ModalDialog`
 - `ColorPicker`
 - `Image`
 - `Spacer`
@@ -118,6 +119,8 @@ Current event handler name properties:
 - `onTextChanged`
 - `onLoad`
 - `onClose`
+- `onAccepted`
+- `onCancelled`
 
 These values are stored as strings for now.
 Empty strings mean no handler is assigned.
@@ -203,6 +206,22 @@ Common `ProgressBar` properties include:
 - if `showText` is `true` and `text` is empty, the editor and generated preview display percent text
 - if `showText` is `true` and `text` is non-empty, the custom `text` value is displayed
 - if `showText` is `false`, no ProgressBar text is displayed
+
+## ModalDialog properties
+
+Common `ModalDialog` properties include:
+
+- `title`
+- `message`
+- `buttons` - comma-separated button labels such as `OK` or `OK,Cancel`
+- `modal`
+- `visibleAtStartup`
+- `hint`
+- `onAccepted`
+- `onCancelled`
+
+`ModalDialog` widgets are stored in the normal widget tree and reuse the same generic property serialization path as other widgets.
+The editor preview renders them as design-time placeholders, while generated projects show them through exported runtime modal helpers.
 
 ## Validation expectations
 

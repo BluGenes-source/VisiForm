@@ -27,6 +27,7 @@ enum class WidgetType {
     ScrollBar,
     StatusBar,
     ProgressBar,
+    ModalDialog,
     ColorPicker,
     Image,
     Spacer

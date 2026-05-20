@@ -113,6 +113,7 @@ The toolbar `Chk` action:
 - runs the validator
 - updates the status area with a summary
 - rewrites `Generated/validation_report.md`
+- shows a modal summary dialog with the validation result counts
 
 The export action:
 
@@ -120,3 +121,4 @@ The export action:
 - blocks export when errors exist
 - allows export when only warnings exist
 - reports warning counts after a successful export with warnings
+- shows a modal error summary when validation errors block export

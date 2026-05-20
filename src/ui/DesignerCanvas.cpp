@@ -281,6 +281,30 @@ bool getBoolProperty(const model::WidgetNode& widget, const std::string& key, bo
     return widget.getBoolProperty(key, defaultValue);
 }
 
+std::vector<std::string> splitCommaSeparatedValues(const std::string& text)
+{
+    std::vector<std::string> values;
+    std::istringstream stream(text);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        const auto first = std::find_if_not(item.begin(), item.end(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        });
+        const auto last = std::find_if_not(item.rbegin(), item.rend(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        }).base();
+        if (first < last) {
+            values.emplace_back(first, last);
+        }
+    }
+
+    if (values.empty()) {
+        values.push_back("OK");
+    }
+
+    return values;
+}
+
 float normalizedSliderValue(const model::WidgetNode& widget)
 {
     const float minimum = getNumericProperty(widget, "min", 0.0f);
@@ -705,6 +729,51 @@ void drawWidget(visage::Canvas& canvas,
             canvas.text(text, font, visage::Font::kTopLeft,
                 textX, bounds.y + bounds.height * 0.5f - 10.0f,
                 std::max(0.0f, bounds.width - (textX - bounds.x) - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+        }
+        break;
+    }
+    case model::WidgetType::ModalDialog: {
+        canvas.setColor(0xff0f1318);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+
+        const PanelRect dialogBounds{
+            bounds.x + std::max(10.0f, bounds.width * 0.08f),
+            bounds.y + std::max(10.0f, bounds.height * 0.08f),
+            std::max(120.0f, bounds.width - std::max(20.0f, bounds.width * 0.16f)),
+            std::max(80.0f, bounds.height - std::max(20.0f, bounds.height * 0.16f))
+        };
+
+        canvas.setColor(style.fillColor);
+        canvas.fill(dialogBounds.x, dialogBounds.y, dialogBounds.width, dialogBounds.height);
+        canvas.setColor(style.panelColor);
+        canvas.fill(dialogBounds.x, dialogBounds.y, dialogBounds.width, std::min(28.0f, dialogBounds.height));
+        drawBorder(canvas, dialogBounds, style.borderColor, style.borderThickness);
+
+        if (drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text(getStringProperty(widget, "title", "Dialog"), widgetFont, visage::Font::kTopLeft,
+                dialogBounds.x + 8.0f, dialogBounds.y + 4.0f, std::max(0.0f, dialogBounds.width - 16.0f), 20.0f);
+            canvas.text(getStringProperty(widget, "message", "Message text"), widgetFont, visage::Font::kTopLeft,
+                dialogBounds.x + 10.0f, dialogBounds.y + 40.0f, std::max(0.0f, dialogBounds.width - 20.0f), std::max(20.0f, dialogBounds.height - 90.0f));
+        }
+
+        const auto buttons = splitCommaSeparatedValues(getStringProperty(widget, "buttons", "OK"));
+        const float buttonWidth = std::max(56.0f, std::min(96.0f, dialogBounds.width * 0.22f));
+        const float buttonHeight = 24.0f;
+        const float buttonSpacing = 8.0f;
+        const float totalButtonWidth = static_cast<float>(buttons.size()) * buttonWidth
+            + static_cast<float>(std::max<std::size_t>(0, buttons.size() - 1)) * buttonSpacing;
+        float buttonX = dialogBounds.x + std::max(8.0f, (dialogBounds.width - totalButtonWidth) * 0.5f);
+        const float buttonY = dialogBounds.y + dialogBounds.height - buttonHeight - 10.0f;
+        for (const auto& button : buttons) {
+            canvas.setColor(style.accentColor);
+            canvas.fill(buttonX, buttonY, buttonWidth, buttonHeight);
+            drawBorder(canvas, { buttonX, buttonY, buttonWidth, buttonHeight }, style.borderColor, style.borderThickness);
+            if (drawText) {
+                canvas.setColor(style.textColor);
+                canvas.text(button, widgetFont, visage::Font::kCenter, buttonX, buttonY, buttonWidth, buttonHeight);
+            }
+            buttonX += buttonWidth + buttonSpacing;
         }
         break;
     }
