@@ -15,6 +15,8 @@ public:
     [[nodiscard]] std::string emitGitIgnore() const;
     [[nodiscard]] std::string emitConfigureScript(bool release) const;
     [[nodiscard]] std::string emitBuildScript(bool release) const;
+    [[nodiscard]] std::string emitConfigurePowerShellScript(bool release) const;
+    [[nodiscard]] std::string emitBuildPowerShellScript(bool release) const;
 };
 
 } // namespace visiform::generator

@@ -131,6 +131,22 @@ bool CodeGenerator::generateProject(
             cmakeEmitter_.emitBuildScript(true), errorMessage)) {
         return false;
     }
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"scripts"} / "configure_static_debug.ps1",
+            cmakeEmitter_.emitConfigurePowerShellScript(false), errorMessage)) {
+        return false;
+    }
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"scripts"} / "build_static_debug.ps1",
+            cmakeEmitter_.emitBuildPowerShellScript(false), errorMessage)) {
+        return false;
+    }
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"scripts"} / "configure_static_release.ps1",
+            cmakeEmitter_.emitConfigurePowerShellScript(true), errorMessage)) {
+        return false;
+    }
+    if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"scripts"} / "build_static_release.ps1",
+            cmakeEmitter_.emitBuildPowerShellScript(true), errorMessage)) {
+        return false;
+    }
     if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / "main.cpp", emittedSources.mainCpp, errorMessage)) {
         return false;
     }

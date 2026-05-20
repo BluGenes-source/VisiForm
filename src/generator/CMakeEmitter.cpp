@@ -150,6 +150,66 @@ std::string configuredLocalVisageSourceDirectory(const utils::AppSettings& setti
         : utils::FileUtils::normalizeSeparators(settings.localVisageSourceDirectory.string());
 }
 
+std::string emitVsDevCmdBatchScript(const char* cmakeCommand)
+{
+    std::ostringstream stream;
+    stream << "@echo off\r\n";
+    stream << "setlocal\r\n\r\n";
+    stream << "cd /d \"%~dp0\\..\"\r\n\r\n";
+    stream << "set \"VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\"\r\n\r\n";
+    stream << "if not exist \"%VSWHERE%\" (\r\n";
+    stream << "    echo ERROR: vswhere.exe not found.\r\n";
+    stream << "    echo Install Visual Studio 2022 with Desktop development with C++.\r\n";
+    stream << "    exit /b 1\r\n";
+    stream << ")\r\n\r\n";
+    stream << "set \"VSINSTALL=\"\r\n";
+    stream << "for /f \"usebackq tokens=*\" %%i in (`\"%VSWHERE%\" -latest -version [17.0,18.0) -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (\r\n";
+    stream << "    set \"VSINSTALL=%%i\"\r\n";
+    stream << ")\r\n\r\n";
+    stream << "if \"%VSINSTALL%\"==\"\" (\r\n";
+    stream << "    echo ERROR: Visual Studio 2022 C++ tools were not found.\r\n";
+    stream << "    echo Install Desktop development with C++.\r\n";
+    stream << "    exit /b 1\r\n";
+    stream << ")\r\n\r\n";
+    stream << "set \"VSDEVCMD=%VSINSTALL%\\Common7\\Tools\\VsDevCmd.bat\"\r\n";
+    stream << "if not exist \"%VSDEVCMD%\" (\r\n";
+    stream << "    echo ERROR: VsDevCmd.bat not found in the selected Visual Studio installation.\r\n";
+    stream << "    exit /b 1\r\n";
+    stream << ")\r\n\r\n";
+    stream << "call \"%VSDEVCMD%\" -arch=x64 -host_arch=x64\r\n";
+    stream << "if errorlevel 1 exit /b 1\r\n\r\n";
+    stream << cmakeCommand << "\r\n";
+    stream << "if errorlevel 1 exit /b 1\r\n\r\n";
+    stream << "endlocal & exit /b 0\r\n";
+    return stream.str();
+}
+
+std::string emitVsDevCmdPowerShellScript(const char* cmakeCommand)
+{
+    std::ostringstream stream;
+    stream << "$ErrorActionPreference = 'Stop'\n\n";
+    stream << "$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path\n";
+    stream << "Set-Location (Join-Path $scriptRoot '..')\n\n";
+    stream << "$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'\n";
+    stream << "if (-not (Test-Path $vswhere)) {\n";
+    stream << "    Write-Error 'vswhere.exe not found. Install Visual Studio 2022 with Desktop development with C++.'\n";
+    stream << "}\n\n";
+    stream << "$vsInstall = & $vswhere -latest -version [17.0,18.0) -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\n";
+    stream << "if ([string]::IsNullOrWhiteSpace($vsInstall)) {\n";
+    stream << "    Write-Error 'Visual Studio 2022 C++ tools were not found. Install Desktop development with C++.'\n";
+    stream << "}\n\n";
+    stream << "$vsDevCmd = Join-Path $vsInstall 'Common7\\Tools\\VsDevCmd.bat'\n";
+    stream << "if (-not (Test-Path $vsDevCmd)) {\n";
+    stream << "    Write-Error 'VsDevCmd.bat not found in the selected Visual Studio installation.'\n";
+    stream << "}\n\n";
+    stream << "$command = \"call `\"$vsDevCmd`\" -arch=x64 -host_arch=x64 && " << cmakeCommand << "\"\n";
+    stream << "cmd.exe /c $command\n";
+    stream << "if ($LASTEXITCODE -ne 0) {\n";
+    stream << "    exit $LASTEXITCODE\n";
+    stream << "}\n";
+    return stream.str();
+}
+
 } // namespace
 
 std::string CMakeEmitter::emitCMakeLists(const model::ProjectDocument& document, const utils::AppSettings& settings) const
@@ -301,15 +361,34 @@ std::string CMakeEmitter::emitReadme(const model::ProjectDocument& document, con
     stream << "### Portable fallback\n\n";
     stream << "If `VISIFORM_VISAGE_SOURCE_DIR` is empty or does not point to a valid Visage source tree, CMake falls back to `FetchContent` using the configured repository and tag values.\n\n";
     stream << "You can set or override `VISIFORM_VISAGE_SOURCE_DIR` in `CMakePresets.json`, `CMakeUserPresets.json`, or on the CMake command line.\n\n";
-    stream << "## Debug build\n\n";
-    stream << "`cmake --preset vs2022-x64-static-debug`\n\n";
-    stream << "`cmake --build --preset build-static-debug`\n\n";
-    stream << "## Release build\n\n";
-    stream << "`cmake --preset vs2022-x64-static-release`\n\n";
-    stream << "`cmake --build --preset build-static-release`\n\n";
+    stream << "## Build workflows\n\n";
+    stream << "The generated presets continue to use `Ninja`. Ninja needs the Visual Studio C++ compiler environment so `cl.exe` is available to CMake. A normal PowerShell session does not load that environment automatically, which is why `cmake --preset ...` can fail with `No CMAKE_CXX_COMPILER could be found`.\n\n";
     stream << "## Open in Visual Studio\n\n";
-    stream << "Use `File > Open > Folder` and choose this exported project directory.\n\n";
-    stream << "Select the `vs2022-x64-static-debug` or `vs2022-x64-static-release` preset in Visual Studio, then build and run from the IDE.\n\n";
+    stream << "1. Open `Visual Studio 2022`.\n";
+    stream << "2. Use `File > Open > Folder` and choose this exported project directory.\n";
+    stream << "3. Select the `vs2022-x64-static-debug` or `vs2022-x64-static-release` preset in Visual Studio.\n";
+    stream << "4. Build and run from the IDE.\n\n";
+    stream << "Visual Studio loads the required MSVC environment for the `Ninja` presets automatically when the folder is opened.\n\n";
+    stream << "## x64 Native Tools Command Prompt\n\n";
+    stream << "Open `x64 Native Tools Command Prompt for VS 2022`, then run:\n\n";
+    stream << "- Debug configure: `cmake --preset vs2022-x64-static-debug`\n";
+    stream << "- Debug build: `cmake --build --preset build-static-debug`\n";
+    stream << "- Release configure: `cmake --preset vs2022-x64-static-release`\n";
+    stream << "- Release build: `cmake --build --preset build-static-release`\n\n";
+    stream << "## Normal PowerShell\n\n";
+    stream << "Use the generated helper scripts from a normal PowerShell or Command Prompt window. They locate Visual Studio with `vswhere`, call `VsDevCmd.bat` for `x64`, switch to the generated project root, and then invoke CMake.\n\n";
+    stream << "Required `.cmd` scripts:\n\n";
+    stream << "- `scripts\\configure_static_debug.cmd`\n";
+    stream << "- `scripts\\build_static_debug.cmd`\n";
+    stream << "- `scripts\\configure_static_release.cmd`\n";
+    stream << "- `scripts\\build_static_release.cmd`\n\n";
+    stream << "Optional `.ps1` wrappers:\n\n";
+    stream << "- `scripts/configure_static_debug.ps1`\n";
+    stream << "- `scripts/build_static_debug.ps1`\n";
+    stream << "- `scripts/configure_static_release.ps1`\n";
+    stream << "- `scripts/build_static_release.ps1`\n\n";
+    stream << "## Direct command usage notes\n\n";
+    stream << "If you want to run `cmake --preset ...` directly from PowerShell, load `VsDevCmd.bat` first or use the `x64 Native Tools Command Prompt`. The helper scripts exist to make that setup automatic.\n\n";
     stream << "## Generated source structure\n\n";
     stream << "- `src/" << baseClassName << ".*` is regenerated by VisiForm\n";
     stream << "- `src/" << userClassName << ".*` is the user subclass layer\n";
@@ -351,19 +430,33 @@ std::string CMakeEmitter::emitGitIgnore() const
 std::string CMakeEmitter::emitConfigureScript(bool release) const
 {
     const char* presetName = release ? "vs2022-x64-static-release" : "vs2022-x64-static-debug";
-    std::ostringstream stream;
-    stream << "@echo off\r\n";
-    stream << "cmake --preset " << presetName << "\r\n";
-    return stream.str();
+    std::ostringstream command;
+    command << "cmake --preset " << presetName;
+    return emitVsDevCmdBatchScript(command.str().c_str());
 }
 
 std::string CMakeEmitter::emitBuildScript(bool release) const
 {
     const char* presetName = release ? "build-static-release" : "build-static-debug";
-    std::ostringstream stream;
-    stream << "@echo off\r\n";
-    stream << "cmake --build --preset " << presetName << "\r\n";
-    return stream.str();
+    std::ostringstream command;
+    command << "cmake --build --preset " << presetName;
+    return emitVsDevCmdBatchScript(command.str().c_str());
+}
+
+std::string CMakeEmitter::emitConfigurePowerShellScript(bool release) const
+{
+    const char* presetName = release ? "vs2022-x64-static-release" : "vs2022-x64-static-debug";
+    std::ostringstream command;
+    command << "cmake --preset " << presetName;
+    return emitVsDevCmdPowerShellScript(command.str().c_str());
+}
+
+std::string CMakeEmitter::emitBuildPowerShellScript(bool release) const
+{
+    const char* presetName = release ? "build-static-release" : "build-static-debug";
+    std::ostringstream command;
+    command << "cmake --build --preset " << presetName;
+    return emitVsDevCmdPowerShellScript(command.str().c_str());
 }
 
 } // namespace visiform::generator

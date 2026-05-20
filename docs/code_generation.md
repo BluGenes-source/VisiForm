@@ -23,6 +23,10 @@ The export currently writes:
 - `Generated/ExportedVisageProject/scripts/build_static_debug.cmd`
 - `Generated/ExportedVisageProject/scripts/configure_static_release.cmd`
 - `Generated/ExportedVisageProject/scripts/build_static_release.cmd`
+- `Generated/ExportedVisageProject/scripts/configure_static_debug.ps1`
+- `Generated/ExportedVisageProject/scripts/build_static_debug.ps1`
+- `Generated/ExportedVisageProject/scripts/configure_static_release.ps1`
+- `Generated/ExportedVisageProject/scripts/build_static_release.ps1`
 - `Generated/ExportedVisageProject/src/main.cpp`
 - `Generated/ExportedVisageProject/src/MainWindow.h`
 - `Generated/ExportedVisageProject/src/MainWindow.cpp`
@@ -40,7 +44,8 @@ The generated project includes:
 - the same core Visage options currently used by `VisiForm`
 - static MSVC runtime settings for Debug and Release
 - generated `CMakePresets.json` presets for static Debug and Release builds
-- helper `.cmd` scripts that call those presets
+- helper `.cmd` scripts that locate Visual Studio with `vswhere`, load `VsDevCmd.bat`, and call those presets from the generated project root
+- optional `.ps1` wrappers that perform the same Visual Studio environment bootstrap
 
 Generated dependency variables in exported `CMakeLists.txt`:
 
@@ -87,6 +92,16 @@ The generated presets use `Ninja` and keep the static MSVC runtime strategy:
 - `MultiThreadedDebug` for Debug
 - `MultiThreaded` for Release
 
+Because the generated presets use `Ninja`, `cl.exe` must already be available in the environment when CMake configures the project. `Visual Studio 2022` and the `x64 Native Tools Command Prompt for VS 2022` provide that environment automatically. A normal PowerShell session does not, so direct `cmake --preset ...` commands can fail with `No CMAKE_CXX_COMPILER could be found` unless `VsDevCmd.bat` is loaded first.
+
+The exported helper scripts solve that by locating the latest `Visual Studio 2022` installation with `vswhere`, calling `VsDevCmd.bat -arch=x64 -host_arch=x64`, and then running the matching configure or build preset.
+
+Recommended generated-project workflows:
+
+- `Visual Studio 2022` - use `File > Open > Folder`, choose the exported project folder, select `vs2022-x64-static-debug` or `vs2022-x64-static-release`, then build from the IDE
+- `x64 Native Tools Command Prompt for VS 2022` - run `cmake --preset ...` and `cmake --build --preset ...` directly
+- normal PowerShell - run the generated scripts in `scripts/`, such as `configure_static_debug.cmd` and `build_static_debug.cmd`
+
 Generated configure presets also include these dependency cache variables:
 
 - `VISIFORM_VISAGE_GIT_REPOSITORY`
@@ -99,6 +114,8 @@ If `AppSettings.localVisageSourceDirectory` is configured before export, the gen
 The emitted path uses forward slashes, for example:
 
 - `J:/Dev/CeePlusPlus/visage`
+
+That local source path is still controlled by `VISIFORM_VISAGE_SOURCE_DIR`. If it is unset or invalid, the generated project still falls back to `FetchContent` using the configured repository and tag values.
 
 The root `FormWindow` property inspector now exposes an `Export / Dependencies` section for these app-level export settings. These values are stored in `AppSettings`, not in `.vfb.json` project files.
 
@@ -122,6 +139,14 @@ Current generated widget rendering support:
 - `Spacer`
 
 Rendering now uses a simple generated runtime widget model.
+
+Generated runtime type highlights:
+
+- `WidgetEvent` now uses `std::string_view` sender metadata for synchronous callback dispatch
+- `RuntimeWidgetType` now uses `std::uint8_t` with an `Unknown` default value
+- `RuntimeOrientation` replaces string-based runtime orientation checks
+- `RuntimeColor` replaces plain integer color fields in the generated runtime model
+- `RuntimeWidget` now groups related text, toggle, range, style, event, and interaction state
 
 ## Look and feel aware preview rendering
 
@@ -175,16 +200,20 @@ Current protected helpers on `MainWindow`:
 - `const RuntimeWidget* findWidgetById(const std::string& id) const`
 - `RuntimeWidget* findWidgetByName(const std::string& name)`
 - `const RuntimeWidget* findWidgetByName(const std::string& name) const`
-- `bool setText(const std::string& idOrName, const std::string& text)`
-- `std::string getText(const std::string& idOrName) const`
-- `bool setChecked(const std::string& idOrName, bool checked)`
-- `bool getChecked(const std::string& idOrName) const`
-- `bool setSelected(const std::string& idOrName, bool selected)`
-- `bool getSelected(const std::string& idOrName) const`
-- `bool setValue(const std::string& idOrName, float value)`
-- `float getValue(const std::string& idOrName) const`
-- `bool setProgressValue(const std::string& idOrName, float value)`
-- `bool setStatusBarField(const std::string& idOrName, int fieldIndex, const std::string& text)`
+- `[[nodiscard]] bool setText(const std::string& idOrName, const std::string& text)`
+- `std::optional<std::string> getText(const std::string& idOrName) const`
+- `std::string getTextOr(const std::string& idOrName, std::string fallback) const`
+- `[[nodiscard]] bool setChecked(const std::string& idOrName, bool checked)`
+- `std::optional<bool> getChecked(const std::string& idOrName) const`
+- `bool getCheckedOr(const std::string& idOrName, bool fallback) const`
+- `[[nodiscard]] bool setSelected(const std::string& idOrName, bool selected)`
+- `std::optional<bool> getSelected(const std::string& idOrName) const`
+- `bool getSelectedOr(const std::string& idOrName, bool fallback) const`
+- `[[nodiscard]] bool setValue(const std::string& idOrName, float value)`
+- `std::optional<float> getValue(const std::string& idOrName) const`
+- `float getValueOr(const std::string& idOrName, float fallback) const`
+- `[[nodiscard]] bool setProgressValue(const std::string& idOrName, float value)`
+- `[[nodiscard]] bool setStatusBarField(const std::string& idOrName, int fieldIndex, const std::string& text)`
 - `void requestGeneratedUiRepaint()`
 
 Lookup behavior for `idOrName` helpers:
@@ -192,12 +221,11 @@ Lookup behavior for `idOrName` helpers:
 1. exact widget `id`
 2. exact widget `name`
 
-If no widget matches:
+If no widget matches, or if the widget type does not support the requested getter:
 
 - setters return `false`
-- `getText(...)` returns an empty string
-- `getChecked(...)` and `getSelected(...)` return `false`
-- `getValue(...)` returns `0.0f`
+- `getText(...)`, `getChecked(...)`, `getSelected(...)`, and `getValue(...)` return `std::nullopt`
+- `getTextOr(...)`, `getCheckedOr(...)`, `getSelectedOr(...)`, and `getValueOr(...)` return the provided fallback
 
 Current setter coverage:
 
@@ -219,7 +247,7 @@ Current setter coverage:
 
 State setter behavior:
 
-- generated helper setters use safe return values and do not throw exceptions
+- generated helper setters are marked `[[nodiscard]]`, use safe return values, and do not throw exceptions
 - helper-driven state changes request a generated UI repaint
 - callback-driven helper setters do not auto-fire the widget's own generated callback again
 
@@ -294,11 +322,13 @@ When a non-empty handler name is present, the generated project emits:
 Generated code now emits a lightweight sender-aware event structure:
 
 - `struct WidgetEvent`
-  - `senderId`
-  - `senderName`
-  - `senderType`
+  - `std::string_view senderId`
+  - `std::string_view senderName`
+  - `std::string_view senderType`
 
 This provides a small practical listener/callback foundation similar in spirit to JUCE-style shared listener handlers, without generating a full messaging framework.
+
+The generated runtime now also emits shared dispatch helpers per signature kind instead of generating one emit wrapper per widget binding. Those helpers inspect `widget.events.*`, build a `WidgetEvent` from the current runtime widget, and dispatch compatible callbacks by handler name.
 
 Generated handler signatures now use sender-aware forms:
 
