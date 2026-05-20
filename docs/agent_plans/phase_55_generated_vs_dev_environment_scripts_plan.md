@@ -34,6 +34,11 @@ Generated exported projects use the `Ninja` generator. Running `cmake --preset v
 - [x] Confirm the main app build completed successfully.
 - [x] Confirm no generated-project executables were launched.
 
+### Latest build validation
+- [x] Revalidated on 2026-05-20 by loading `VsDevCmd.bat` for `x64`, running `cmake --preset vs2022-x64-static-debug`, and then running `cmake --build --preset build-static-debug` from `J:\Dev\CeePlusPlus\VisiForm`.
+- [x] Confirmed the main `VisiForm` target linked successfully as `VisiForm.exe` without introducing new phase 55 compile errors.
+- [x] Confirmed no generated-project applications were launched during validation.
+
 ## Manual test checklist
 - [ ] Export a generated project and inspect `scripts/configure_static_debug.cmd`.
 - [ ] Run `scripts\configure_static_debug.cmd` from a normal PowerShell window in the exported project.
@@ -43,7 +48,7 @@ Generated exported projects use the `Ninja` generator. Running `cmake --preset v
 - [ ] Confirm the generated README explains the compiler environment requirement and local `VISIFORM_VISAGE_SOURCE_DIR` behavior.
 
 ## Final result summary
-Updated the generated exported-project configure and build helper scripts so the emitted `.cmd` and optional `.ps1` wrappers locate `Visual Studio 2022` with `vswhere`, load `VsDevCmd.bat` for `x64`, switch to the generated project root, and fail with a nonzero exit code on errors before invoking the `Ninja` presets. Updated the generated `README.md` and `docs/code_generation.md` to explain Visual Studio IDE usage, `x64 Native Tools Command Prompt for VS 2022`, normal PowerShell helper-script usage, and the `VISIFORM_VISAGE_SOURCE_DIR` local-source fallback behavior. Built the main `VisiForm` project successfully with the required `build-static-debug` workflow; warnings were present, but no phase 55 compile errors required fixes, and no generated-project executables were launched.
+`src/generator/CMakeEmitter.cpp`, `src/generator/CodeGenerator.cpp`, and `docs/code_generation.md` already contain the requested phase 55 behavior: generated `.cmd` and optional `.ps1` helper scripts locate `Visual Studio 2022` with `vswhere`, load `VsDevCmd.bat` for `x64`, switch to the generated project root, and fail with a nonzero exit code on errors before invoking the `Ninja` presets; generated `README.md` content explains Visual Studio IDE usage, `x64 Native Tools Command Prompt for VS 2022`, normal PowerShell helper-script usage, and the `VISIFORM_VISAGE_SOURCE_DIR` local-source fallback behavior; generated `CMakePresets.json` remains on `Ninja` while continuing to emit the local Visage source path when configured. Revalidated the main `VisiForm` project successfully with the required `build-static-debug` workflow in this session; no additional phase 55 source edits were required, no new compile errors were introduced, and no generated-project executables were launched.
 
 ## Remaining TODOs
 - Manual exported-project verification remains pending:
