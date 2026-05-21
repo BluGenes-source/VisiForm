@@ -68,6 +68,14 @@ constexpr float kEditorModalButtonWidth = 96.0f;
 constexpr float kEditorModalButtonHeight = 32.0f;
 constexpr float kEditorModalButtonSpacing = 12.0f;
 constexpr float kEditorModalSectionSpacing = 10.0f;
+constexpr float kEditorModalFormRowHeight = 34.0f;
+constexpr float kEditorModalFormRowSpacing = 10.0f;
+constexpr float kEditorModalFormLabelWidth = 190.0f;
+constexpr float kEditorModalFormStatusHeight = 40.0f;
+constexpr float kWizardModalWidth = 640.0f;
+constexpr float kWizardModalHeight = 520.0f;
+constexpr float kProjectSettingsModalWidth = 640.0f;
+constexpr float kProjectSettingsModalHeight = 520.0f;
 
 bool pointInBounds(float x, float y, float left, float top, float width, float height)
 {
@@ -115,6 +123,66 @@ std::string sanitizeExecutableName(const std::string& value, const std::string& 
     }
 
     return sanitized;
+}
+
+std::vector<std::string> availableLookAndFeelIds()
+{
+    std::vector<std::string> result;
+    for (const auto& definition : model::LookAndFeelRegistry::instance().definitions()) {
+        result.push_back(definition.id);
+    }
+    return result;
+}
+
+std::vector<std::string> newProjectTemplateIds()
+{
+    return {
+        "blank",
+        "basic_app",
+        "form_with_status",
+        "control_panel",
+        "dialog_test"
+    };
+}
+
+bool containsText(const std::vector<std::string>& values, const std::string& value)
+{
+    return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+std::string templateDescription(const std::string& templateId)
+{
+    if (templateId == "blank") {
+        return "Template: blank - Empty form.";
+    }
+    if (templateId == "basic_app") {
+        return "Template: basic_app - Label, button, and docked status bar.";
+    }
+    if (templateId == "form_with_status") {
+        return "Template: form_with_status - Label, button, progress bar, and status bar.";
+    }
+    if (templateId == "control_panel") {
+        return "Template: control_panel - Common controls plus a docked status bar.";
+    }
+    if (templateId == "dialog_test") {
+        return "Template: dialog_test - Button, modal dialog, and docked status bar.";
+    }
+    return "Template: custom";
+}
+
+void updateDerivedProjectNames(const std::string& previousProjectName,
+    const std::string& nextProjectName,
+    std::string& executableName,
+    std::string& windowTitle)
+{
+    const std::string previousExecutableName = sanitizeExecutableName(previousProjectName, "VisiFormProject");
+    const std::string nextExecutableName = sanitizeExecutableName(nextProjectName, "VisiFormProject");
+    if (executableName.empty() || executableName == previousExecutableName) {
+        executableName = nextExecutableName;
+    }
+    if (windowTitle.empty() || windowTitle == previousProjectName) {
+        windowTitle = nextProjectName;
+    }
 }
 
 bool isColorPropertyKey(const std::string& key)
@@ -641,9 +709,17 @@ MainWindow::MainWindow()
     }
     propertyEditor_.setVisible(false);
     propertyEditor_.onEnterKey() = [this] {
+        if (editorModalEdit_.active) {
+            commitEditorModalFieldEdit();
+            return;
+        }
         commitInspectorEdit();
     };
     propertyEditor_.onEscapeKey() = [this] {
+        if (editorModalEdit_.active) {
+            cancelEditorModalFieldEdit();
+            return;
+        }
         cancelInspectorEdit();
     };
     addChild(&propertyEditor_);
@@ -654,17 +730,363 @@ MainWindow::MainWindow()
 
 bool MainWindow::newProject()
 {
+    return openNewProjectWizard();
+}
+
+bool MainWindow::openNewProjectWizard()
+{
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    resetNewProjectWizard();
+    newProjectWizard_.visible = true;
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::NewProjectWizard;
+    editorModal_.title = "New Project Wizard";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = { { "create", "Create" }, { "cancel", "Cancel" } };
+    editorModal_.result.clear();
+    editorModal_.statusText = templateDescription(newProjectWizard_.templateId);
+    editorModal_.preferredWidth = kWizardModalWidth;
+    editorModal_.preferredHeight = kWizardModalHeight;
+    redraw();
+    return true;
+}
+
+bool MainWindow::openProjectSettingsDialog()
+{
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    populateProjectSettingsDialog();
+    projectSettingsDialog_.visible = true;
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::ProjectSettings;
+    editorModal_.title = "Project Settings";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = { { "apply", "Apply" }, { "cancel", "Cancel" } };
+    editorModal_.result.clear();
+    editorModal_.statusText = "Update project naming, look and feel, and local Visage export settings.";
+    editorModal_.preferredWidth = kProjectSettingsModalWidth;
+    editorModal_.preferredHeight = kProjectSettingsModalHeight;
+    redraw();
+    return true;
+}
+
+void MainWindow::resetNewProjectWizard()
+{
+    newProjectWizard_ = {};
+}
+
+void MainWindow::populateProjectSettingsDialog()
+{
+    projectSettingsDialog_ = {};
+    projectSettingsDialog_.projectName = document_.projectName;
+    projectSettingsDialog_.executableName = document_.executableName;
+    projectSettingsDialog_.userSubclassName = document_.userSubclassName;
+    projectSettingsDialog_.windowTitle = document_.windowTitle;
+    projectSettingsDialog_.lookAndFeelId = document_.lookAndFeelId.empty() ? std::string{ "VisiFormDark" } : document_.lookAndFeelId;
+    projectSettingsDialog_.localVisageSourceDirectory = normalizedPathText(settings_.localVisageSourceDirectory);
+    projectSettingsDialog_.visageGitRepository = settings_.visageGitRepository;
+    projectSettingsDialog_.visageGitTag = settings_.visageGitTag;
+}
+
+std::string MainWindow::validateNewProjectWizard() const
+{
+    const std::string projectName = trimWhitespace(newProjectWizard_.projectName);
+    const std::string executableName = trimWhitespace(newProjectWizard_.executableName);
+    const std::string userSubclassName = trimWhitespace(newProjectWizard_.userSubclassName);
+    if (projectName.empty()) {
+        return "Project name cannot be empty.";
+    }
+    if (executableName.empty()) {
+        return "Executable name cannot be empty.";
+    }
+    if (sanitizeExecutableName(executableName, projectName) != executableName) {
+        return "Executable name must use only letters, numbers, underscores, or hyphens.";
+    }
+    if (userSubclassName.empty() || !utils::isValidCppIdentifier(userSubclassName)) {
+        return "User subclass name must be a valid C++ identifier.";
+    }
+    if (userSubclassName == "MainWindow") {
+        return "User subclass name must not be MainWindow.";
+    }
+    if (newProjectWizard_.formWidth < 200 || newProjectWizard_.formWidth > 4000
+        || newProjectWizard_.formHeight < 160 || newProjectWizard_.formHeight > 4000) {
+        return "Form width and height must stay within a reasonable range.";
+    }
+    if (model::LookAndFeelRegistry::instance().findById(newProjectWizard_.lookAndFeelId) == nullptr) {
+        return "Choose a valid look and feel preset.";
+    }
+    if (!containsText(newProjectTemplateIds(), newProjectWizard_.templateId)) {
+        return "Choose a valid project template.";
+    }
+    return {};
+}
+
+std::string MainWindow::validateProjectSettingsDialog() const
+{
+    const std::string projectName = trimWhitespace(projectSettingsDialog_.projectName);
+    const std::string executableName = trimWhitespace(projectSettingsDialog_.executableName);
+    const std::string userSubclassName = trimWhitespace(projectSettingsDialog_.userSubclassName);
+    if (projectName.empty()) {
+        return "Project name cannot be empty.";
+    }
+    if (executableName.empty()) {
+        return "Executable name cannot be empty.";
+    }
+    if (sanitizeExecutableName(executableName, projectName) != executableName) {
+        return "Executable name must use only letters, numbers, underscores, or hyphens.";
+    }
+    if (userSubclassName.empty() || !utils::isValidCppIdentifier(userSubclassName)) {
+        return "User subclass name must be a valid C++ identifier.";
+    }
+    if (userSubclassName == "MainWindow") {
+        return "User subclass name must not be MainWindow.";
+    }
+    if (model::LookAndFeelRegistry::instance().findById(projectSettingsDialog_.lookAndFeelId) == nullptr) {
+        return "Choose a valid look and feel preset.";
+    }
+    return {};
+}
+
+model::ProjectDocument MainWindow::createDocumentFromWizard()
+{
+    model::ProjectDocument document = model::ProjectDocument::createDefault();
+    document.projectName = trimWhitespace(newProjectWizard_.projectName);
+    document.executableName = trimWhitespace(newProjectWizard_.executableName);
+    document.generatedBaseClassName = "MainWindow";
+    document.userSubclassName = trimWhitespace(newProjectWizard_.userSubclassName);
+    document.mainFormClassName = document.userSubclassName;
+    document.windowTitle = trimWhitespace(newProjectWizard_.windowTitle);
+    if (document.windowTitle.empty()) {
+        document.windowTitle = document.projectName;
+    }
+    document.lookAndFeelId = newProjectWizard_.lookAndFeelId;
+    document.root = model::WidgetRegistry::instance().createDefaultWidget(model::WidgetType::FormWindow, "form_main");
+    document.root.name = "MainWindow";
+    document.root.bounds = { 0.0f, 0.0f, static_cast<float>(newProjectWizard_.formWidth), static_cast<float>(newProjectWizard_.formHeight) };
+    document.root.children.clear();
+    document.root.setProperty("title", document.windowTitle);
+    document.selectedWidgetId = document.root.id;
+    document.clearSelection();
+    document.setSelection(document.root.id);
+    applyWizardTemplate(document, newProjectWizard_.templateId);
+    document.normalizeRadioGroups();
+    document.markDirty();
+    return document;
+}
+
+void MainWindow::applyWizardTemplate(model::ProjectDocument& document, const std::string& templateId)
+{
+    auto addWidget = [this, &document](model::WidgetType type, const model::Rect& bounds, const auto& configure) {
+        const std::string id = idGenerator_.next(type, document);
+        model::WidgetNode widget = model::WidgetRegistry::instance().createDefaultWidget(type, id);
+        widget.bounds = bounds;
+        configure(widget);
+        document.root.children.push_back(std::move(widget));
+    };
+
+    auto addStatusBar = [&]() {
+        addWidget(model::WidgetType::StatusBar,
+            { 0.0f, document.root.bounds.height - 50.0f, document.root.bounds.width, 50.0f },
+            [](model::WidgetNode& widget) {
+                widget.setProperty("dock", "Bottom");
+                widget.setProperty("fillWidth", true);
+                widget.setProperty("fields", 1);
+                widget.setProperty("text0", "Ready");
+            });
+    };
+
+    if (templateId == "blank") {
+        return;
+    }
+
+    if (templateId == "basic_app") {
+        addWidget(model::WidgetType::Label, { 40.0f, 40.0f, 280.0f, 58.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Welcome");
+        });
+        addWidget(model::WidgetType::Button, { 40.0f, 120.0f, 180.0f, 52.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Click Me");
+        });
+        addStatusBar();
+        return;
+    }
+
+    if (templateId == "form_with_status") {
+        addWidget(model::WidgetType::Label, { 40.0f, 40.0f, 320.0f, 58.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Processing status");
+        });
+        addWidget(model::WidgetType::Button, { 40.0f, 118.0f, 180.0f, 52.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Start Task");
+        });
+        addWidget(model::WidgetType::ProgressBar, { 40.0f, 190.0f, 320.0f, 32.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("value", 35);
+            widget.setProperty("showText", true);
+        });
+        addStatusBar();
+        return;
+    }
+
+    if (templateId == "control_panel") {
+        addWidget(model::WidgetType::Button, { 40.0f, 40.0f, 180.0f, 52.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Apply");
+        });
+        addWidget(model::WidgetType::CheckBox, { 40.0f, 110.0f, 220.0f, 62.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Enable Option");
+            widget.setProperty("checked", true);
+        });
+        addWidget(model::WidgetType::RadioButton, { 40.0f, 184.0f, 220.0f, 48.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Mode A");
+            widget.setProperty("group", "mode");
+            widget.setProperty("selected", true);
+        });
+        addWidget(model::WidgetType::RadioButton, { 40.0f, 236.0f, 220.0f, 48.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Mode B");
+            widget.setProperty("group", "mode");
+            widget.setProperty("selected", false);
+        });
+        addWidget(model::WidgetType::RadioButton, { 40.0f, 288.0f, 220.0f, 48.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Mode C");
+            widget.setProperty("group", "mode");
+            widget.setProperty("selected", false);
+        });
+        addWidget(model::WidgetType::Slider, { 300.0f, 110.0f, 220.0f, 40.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("value", 65);
+        });
+        addWidget(model::WidgetType::ScrollBar, { 300.0f, 180.0f, 220.0f, 28.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("value", 20);
+        });
+        addStatusBar();
+        return;
+    }
+
+    if (templateId == "dialog_test") {
+        addWidget(model::WidgetType::Button, { 40.0f, 40.0f, 220.0f, 52.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("text", "Show Dialog");
+            widget.setProperty("onClick", "handleShowDialog");
+        });
+        addWidget(model::WidgetType::ModalDialog, { 120.0f, 140.0f, 420.0f, 220.0f }, [](model::WidgetNode& widget) {
+            widget.setProperty("title", "Preview Dialog");
+            widget.setProperty("message", "Hello from the dialog template.");
+            widget.setProperty("buttons", "OK,Cancel");
+            widget.setProperty("visibleAtStartup", false);
+        });
+        addStatusBar();
+    }
+}
+
+bool MainWindow::applyNewProjectWizard()
+{
+    const std::string validationError = validateNewProjectWizard();
+    if (!validationError.empty()) {
+        editorModal_.statusText = validationError;
+        redraw();
+        return false;
+    }
+
     if (!confirmSaveIfDirty()) {
         return false;
     }
 
     cancelInspectorEdit();
-    document_ = model::ProjectDocument::createDefault();
+    cancelEditorModalFieldEdit();
+    idGenerator_ = {};
+    document_ = createDocumentFromWizard();
     normalizeWidgetBoundsForEditor();
     currentProjectPath_.clear();
     undoRedo_.clear();
-    document_.clearDirty();
-    setOperationStatus("New project created");
+    document_.setSelection(document_.root.id);
+    setOperationStatus("Created new project: " + document_.projectName);
+    closeEditorModalDialog("create");
+    redraw();
+    return true;
+}
+
+bool MainWindow::applyProjectSettingsDialog()
+{
+    const std::string validationError = validateProjectSettingsDialog();
+    if (!validationError.empty()) {
+        editorModal_.statusText = validationError;
+        redraw();
+        return false;
+    }
+
+    bool projectChanged = false;
+    bool settingsChanged = false;
+
+    const std::string projectName = trimWhitespace(projectSettingsDialog_.projectName);
+    const std::string executableName = trimWhitespace(projectSettingsDialog_.executableName);
+    const std::string userSubclassName = trimWhitespace(projectSettingsDialog_.userSubclassName);
+    const std::string windowTitle = trimWhitespace(projectSettingsDialog_.windowTitle).empty()
+        ? projectName
+        : trimWhitespace(projectSettingsDialog_.windowTitle);
+
+    if (document_.projectName != projectName) {
+        document_.projectName = projectName;
+        projectChanged = true;
+    }
+    if (document_.executableName != executableName) {
+        document_.executableName = executableName;
+        projectChanged = true;
+    }
+    if (document_.userSubclassName != userSubclassName || document_.mainFormClassName != userSubclassName) {
+        document_.userSubclassName = userSubclassName;
+        document_.mainFormClassName = userSubclassName;
+        document_.generatedBaseClassName = "MainWindow";
+        projectChanged = true;
+    }
+    if (document_.windowTitle != windowTitle) {
+        document_.windowTitle = windowTitle;
+        document_.root.setProperty("title", document_.windowTitle);
+        projectChanged = true;
+    }
+    if (document_.lookAndFeelId != projectSettingsDialog_.lookAndFeelId) {
+        document_.lookAndFeelId = projectSettingsDialog_.lookAndFeelId;
+        projectChanged = true;
+    }
+
+    const std::filesystem::path localVisageSourceDirectory = trimWhitespace(projectSettingsDialog_.localVisageSourceDirectory).empty()
+        ? std::filesystem::path{}
+        : std::filesystem::path{ utils::FileUtils::normalizeSeparators(trimWhitespace(projectSettingsDialog_.localVisageSourceDirectory)) };
+    if (settings_.localVisageSourceDirectory != localVisageSourceDirectory) {
+        settings_.localVisageSourceDirectory = localVisageSourceDirectory;
+        settingsChanged = true;
+    }
+
+    const std::string visageGitRepository = trimWhitespace(projectSettingsDialog_.visageGitRepository).empty()
+        ? std::string{ utils::AppSettings::defaultVisageGitRepository }
+        : trimWhitespace(projectSettingsDialog_.visageGitRepository);
+    if (settings_.visageGitRepository != visageGitRepository) {
+        settings_.visageGitRepository = visageGitRepository;
+        settingsChanged = true;
+    }
+
+    const std::string visageGitTag = trimWhitespace(projectSettingsDialog_.visageGitTag).empty()
+        ? std::string{ utils::AppSettings::defaultVisageGitTag }
+        : trimWhitespace(projectSettingsDialog_.visageGitTag);
+    if (settings_.visageGitTag != visageGitTag) {
+        settings_.visageGitTag = visageGitTag;
+        settingsChanged = true;
+    }
+
+    if (projectChanged) {
+        document_.markDirty();
+    }
+    if (settingsChanged) {
+        saveAppSettings();
+    }
+
+    closeEditorModalDialog("apply");
+    setOperationStatus("Project settings updated.");
     redraw();
     return true;
 }
@@ -1427,15 +1849,20 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
 {
     using KeyCode = visage::KeyCode;
     if (isEditorModalVisible()) {
+        if (editorModalEdit_.active) {
+            return false;
+        }
         if (e.keyCode() == KeyCode::Escape) {
             const bool hasCancel = std::any_of(editorModal_.buttons.begin(), editorModal_.buttons.end(), [](const EditorModalButton& button) {
                 return button.id == "cancel";
             });
-            closeEditorModalDialog(hasCancel ? "cancel" : "ok");
+            activateEditorModalButton(hasCancel ? "cancel" : "ok");
             return true;
         }
         if (e.keyCode() == KeyCode::Return) {
-            closeEditorModalDialog("ok");
+            if (!editorModal_.buttons.empty()) {
+                activateEditorModalButton(editorModal_.buttons.front().id);
+            }
             return true;
         }
         return true;
@@ -2950,7 +3377,7 @@ std::string MainWindow::commandHintText(CommandId command) const
     case CommandId::ShowGeneratedCodeGuide:
         return "Show a short guide to generated code output";
     case CommandId::ShowProjectSettings:
-        return "Show where project settings are edited";
+        return "Open the project settings dialog";
     case CommandId::ShowExportDependencies:
         return "Show where export dependency settings are edited";
     case CommandId::FitText:
@@ -3670,15 +4097,14 @@ bool MainWindow::executeCommand(CommandId command)
     case CommandId::ShowGeneratedCodeGuide:
         showEditorMessageDialog("Generated Code Guide",
             "Use Export to write a generated Visage project to the selected export folder.\n"
+            "Use Project Settings to adjust executable naming, subclass naming, and local Visage export settings.\n"
             "See docs/code_generation.md for generated files, presets, and validation behavior.");
         return true;
     case CommandId::ShowProjectSettings:
-        showEditorMessageDialog("Project Settings",
-            "Select the root FormWindow to edit project name, executable name, window title, and other project settings in the Property Inspector.");
-        return true;
+        return openProjectSettingsDialog();
     case CommandId::ShowExportDependencies:
         showEditorMessageDialog("Export Dependencies",
-            "Select the root FormWindow and review the Export / Dependencies section in the Property Inspector to adjust local Visage source and FetchContent settings.");
+            "Use Project Settings to adjust local Visage source, repository, and tag values used during export.");
         return true;
     case CommandId::FitText:
         fitSelectedWidgetToText();
@@ -4004,6 +4430,11 @@ bool MainWindow::applySelectedWidgetCallbackProperty(const std::string& property
 
 void MainWindow::updatePropertyEditorBounds()
 {
+    if (editorModalEdit_.active) {
+        updateEditorModalEditorBounds();
+        return;
+    }
+
     if (!propertyInspector_.isEditing()) {
         propertyEditor_.setVisible(false);
         return;
@@ -4023,18 +4454,305 @@ void MainWindow::clearCanvasInteraction()
     canvasInteraction_ = {};
 }
 
+std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
+{
+    std::vector<EditorModalField> fields;
+    const std::vector<std::string> lookAndFeelChoices = availableLookAndFeelIds();
+    if (editorModal_.mode == EditorModalMode::NewProjectWizard) {
+        fields.push_back({ "projectName", "Project Name", newProjectWizard_.projectName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "executableName", "Executable Name", newProjectWizard_.executableName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "windowTitle", "Window Title", newProjectWizard_.windowTitle, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "userSubclassName", "User Subclass Name", newProjectWizard_.userSubclassName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "formWidth", "Form Width", std::to_string(newProjectWizard_.formWidth), PropertyInspector::PropertyEditKind::Integer });
+        fields.push_back({ "formHeight", "Form Height", std::to_string(newProjectWizard_.formHeight), PropertyInspector::PropertyEditKind::Integer });
+        fields.push_back({ "lookAndFeelId", "Look And Feel", newProjectWizard_.lookAndFeelId, PropertyInspector::PropertyEditKind::Choice, lookAndFeelChoices });
+        fields.push_back({ "templateId", "Template", newProjectWizard_.templateId, PropertyInspector::PropertyEditKind::Choice, newProjectTemplateIds() });
+    }
+    else if (editorModal_.mode == EditorModalMode::ProjectSettings) {
+        fields.push_back({ "projectName", "Project Name", projectSettingsDialog_.projectName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "executableName", "Executable Name", projectSettingsDialog_.executableName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "windowTitle", "Window Title", projectSettingsDialog_.windowTitle, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "userSubclassName", "User Subclass Name", projectSettingsDialog_.userSubclassName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "lookAndFeelId", "Look And Feel", projectSettingsDialog_.lookAndFeelId, PropertyInspector::PropertyEditKind::Choice, lookAndFeelChoices });
+        fields.push_back({ "localVisageSourceDirectory", "Local Visage Source", projectSettingsDialog_.localVisageSourceDirectory, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "visageGitRepository", "Visage Git Repository", projectSettingsDialog_.visageGitRepository, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back({ "visageGitTag", "Visage Git Tag", projectSettingsDialog_.visageGitTag, PropertyInspector::PropertyEditKind::Text });
+    }
+    return fields;
+}
+
+MainWindow::PanelBounds MainWindow::editorModalBodyBounds() const
+{
+    const PanelBounds dialogBounds = editorModalDialogBounds();
+    const float top = dialogBounds.y + 52.0f;
+    const float bottom = dialogBounds.y + dialogBounds.height - kEditorModalButtonHeight - 16.0f
+        - (editorModal_.mode == EditorModalMode::Message ? 0.0f : (kEditorModalFormStatusHeight + 10.0f));
+    return {
+        dialogBounds.x + 14.0f,
+        top,
+        dialogBounds.width - 28.0f,
+        std::max(0.0f, bottom - top)
+    };
+}
+
+MainWindow::PanelBounds MainWindow::editorModalStatusBounds() const
+{
+    const PanelBounds dialogBounds = editorModalDialogBounds();
+    const float y = dialogBounds.y + dialogBounds.height - kEditorModalButtonHeight - 16.0f - kEditorModalFormStatusHeight - 8.0f;
+    return {
+        dialogBounds.x + 14.0f,
+        y,
+        dialogBounds.width - 28.0f,
+        kEditorModalFormStatusHeight
+    };
+}
+
+std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() const
+{
+    std::vector<EditorModalFieldHit> hits;
+    const auto fields = editorModalFields();
+    if (fields.empty()) {
+        return hits;
+    }
+
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    float top = bodyBounds.y;
+    hits.reserve(fields.size());
+    for (const auto& field : fields) {
+        const PanelBounds valueBounds{
+            bodyBounds.x + kEditorModalFormLabelWidth,
+            top,
+            std::max(0.0f, bodyBounds.width - kEditorModalFormLabelWidth),
+            kEditorModalFormRowHeight
+        };
+        hits.push_back({ field, valueBounds });
+        top += kEditorModalFormRowHeight + kEditorModalFormRowSpacing;
+    }
+    return hits;
+}
+
+std::optional<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldAt(float x, float y) const
+{
+    for (const auto& hit : editorModalFieldHits()) {
+        if (pointInBounds(x, y, hit.bounds.x, hit.bounds.y, hit.bounds.width, hit.bounds.height)) {
+            return hit;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string MainWindow::editorModalFieldValue(const std::string& key) const
+{
+    for (const auto& field : editorModalFields()) {
+        if (field.key == key) {
+            return field.value;
+        }
+    }
+    return {};
+}
+
+void MainWindow::setEditorModalFieldValue(const std::string& key, const std::string& valueText)
+{
+    const std::string trimmedValue = trimWhitespace(valueText);
+    if (editorModal_.mode == EditorModalMode::NewProjectWizard) {
+        if (key == "projectName") {
+            const std::string previousProjectName = newProjectWizard_.projectName;
+            newProjectWizard_.projectName = trimmedValue;
+            if (!trimmedValue.empty()) {
+                updateDerivedProjectNames(previousProjectName, trimmedValue, newProjectWizard_.executableName, newProjectWizard_.windowTitle);
+            }
+        }
+        else if (key == "executableName") {
+            newProjectWizard_.executableName = trimmedValue;
+        }
+        else if (key == "windowTitle") {
+            newProjectWizard_.windowTitle = trimmedValue;
+        }
+        else if (key == "userSubclassName") {
+            newProjectWizard_.userSubclassName = trimmedValue;
+        }
+        else if (key == "formWidth") {
+            newProjectWizard_.formWidth = std::max(1, std::stoi(trimmedValue));
+        }
+        else if (key == "formHeight") {
+            newProjectWizard_.formHeight = std::max(1, std::stoi(trimmedValue));
+        }
+        else if (key == "lookAndFeelId" && containsText(availableLookAndFeelIds(), trimmedValue)) {
+            newProjectWizard_.lookAndFeelId = trimmedValue;
+        }
+        else if (key == "templateId" && containsText(newProjectTemplateIds(), trimmedValue)) {
+            newProjectWizard_.templateId = trimmedValue;
+        }
+
+        editorModal_.statusText = key == "templateId"
+            ? templateDescription(newProjectWizard_.templateId)
+            : "Configure the new project and click Create.";
+        return;
+    }
+
+    if (editorModal_.mode == EditorModalMode::ProjectSettings) {
+        if (key == "projectName") {
+            const std::string previousProjectName = projectSettingsDialog_.projectName;
+            projectSettingsDialog_.projectName = trimmedValue;
+            if (!trimmedValue.empty()) {
+                updateDerivedProjectNames(previousProjectName, trimmedValue, projectSettingsDialog_.executableName, projectSettingsDialog_.windowTitle);
+            }
+        }
+        else if (key == "executableName") {
+            projectSettingsDialog_.executableName = trimmedValue;
+        }
+        else if (key == "windowTitle") {
+            projectSettingsDialog_.windowTitle = trimmedValue;
+        }
+        else if (key == "userSubclassName") {
+            projectSettingsDialog_.userSubclassName = trimmedValue;
+        }
+        else if (key == "lookAndFeelId" && containsText(availableLookAndFeelIds(), trimmedValue)) {
+            projectSettingsDialog_.lookAndFeelId = trimmedValue;
+        }
+        else if (key == "localVisageSourceDirectory") {
+            projectSettingsDialog_.localVisageSourceDirectory = trimmedValue;
+        }
+        else if (key == "visageGitRepository") {
+            projectSettingsDialog_.visageGitRepository = trimmedValue;
+        }
+        else if (key == "visageGitTag") {
+            projectSettingsDialog_.visageGitTag = trimmedValue;
+        }
+
+        editorModal_.statusText = "Update project naming, look and feel, and local Visage export settings.";
+    }
+}
+
+bool MainWindow::beginEditorModalFieldEdit(const EditorModalField& field)
+{
+    if (field.editKind == PropertyInspector::PropertyEditKind::ReadOnly
+        || field.editKind == PropertyInspector::PropertyEditKind::Bool
+        || field.editKind == PropertyInspector::PropertyEditKind::Choice) {
+        return false;
+    }
+
+    editorModalEdit_.active = true;
+    editorModalEdit_.key = field.key;
+    editorModalEdit_.editKind = field.editKind;
+    propertyEditor_.setText(field.value);
+    updateEditorModalEditorBounds();
+    propertyEditor_.setVisible(true);
+    propertyEditor_.selectAll();
+    propertyEditor_.requestKeyboardFocus();
+    redraw();
+    return true;
+}
+
+bool MainWindow::commitEditorModalFieldEdit()
+{
+    if (!editorModalEdit_.active) {
+        return true;
+    }
+
+    const auto fields = editorModalFields();
+    const auto iterator = std::find_if(fields.begin(), fields.end(), [this](const EditorModalField& field) {
+        return field.key == editorModalEdit_.key;
+    });
+    if (iterator == fields.end()) {
+        cancelEditorModalFieldEdit();
+        return true;
+    }
+
+    const std::string valueText = trimWhitespace(propertyEditor_.text().toUtf8());
+    if (iterator->editKind == PropertyInspector::PropertyEditKind::Integer) {
+        try {
+            const int value = std::stoi(valueText);
+            setEditorModalFieldValue(iterator->key, std::to_string(value));
+        }
+        catch (...) {
+            editorModal_.statusText = "Invalid integer value for " + iterator->label + ".";
+            propertyEditor_.requestKeyboardFocus();
+            redraw();
+            return false;
+        }
+    }
+    else {
+        setEditorModalFieldValue(iterator->key, valueText);
+    }
+
+    editorModalEdit_ = {};
+    propertyEditor_.setVisible(false);
+    requestKeyboardFocus();
+    redraw();
+    return true;
+}
+
+void MainWindow::cancelEditorModalFieldEdit()
+{
+    if (!editorModalEdit_.active) {
+        return;
+    }
+
+    editorModalEdit_ = {};
+    propertyEditor_.setVisible(false);
+    requestKeyboardFocus();
+    redraw();
+}
+
+void MainWindow::updateEditorModalEditorBounds()
+{
+    if (!editorModalEdit_.active) {
+        propertyEditor_.setVisible(false);
+        return;
+    }
+
+    for (const auto& hit : editorModalFieldHits()) {
+        if (hit.field.key == editorModalEdit_.key) {
+            propertyEditor_.setBounds(hit.bounds.x + 1.0f, hit.bounds.y + 1.0f, hit.bounds.width - 2.0f, hit.bounds.height - 2.0f);
+            return;
+        }
+    }
+
+    propertyEditor_.setVisible(false);
+}
+
+bool MainWindow::activateEditorModalButton(const std::string& buttonId)
+{
+    if (buttonId == "cancel") {
+        closeEditorModalDialog(buttonId);
+        return true;
+    }
+
+    if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+        return false;
+    }
+
+    if (buttonId == "create" && editorModal_.mode == EditorModalMode::NewProjectWizard) {
+        return applyNewProjectWizard();
+    }
+    if (buttonId == "apply" && editorModal_.mode == EditorModalMode::ProjectSettings) {
+        return applyProjectSettingsDialog();
+    }
+
+    closeEditorModalDialog(buttonId);
+    return true;
+}
+
 void MainWindow::showEditorMessageDialog(const std::string& title, const std::string& message)
 {
     cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
     clearCanvasInteraction();
     requestKeyboardFocus();
 
     editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::Message;
     editorModal_.title = title;
     editorModal_.message = message;
     editorModal_.lines.clear();
     editorModal_.buttons = { { "ok", "OK" } };
     editorModal_.result.clear();
+    editorModal_.statusText.clear();
+    editorModal_.preferredWidth = 0.0f;
+    editorModal_.preferredHeight = 0.0f;
+    newProjectWizard_.visible = false;
+    projectSettingsDialog_.visible = false;
     redraw();
 }
 
@@ -4043,14 +4761,21 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
     const std::string& reportWriteError)
 {
     cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
     clearCanvasInteraction();
     requestKeyboardFocus();
 
     editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::Message;
     editorModal_.message.clear();
     editorModal_.lines.clear();
     editorModal_.buttons = { { "ok", "OK" } };
     editorModal_.result.clear();
+    editorModal_.statusText.clear();
+    editorModal_.preferredWidth = 0.0f;
+    editorModal_.preferredHeight = 0.0f;
+    newProjectWizard_.visible = false;
+    projectSettingsDialog_.visible = false;
 
     if (report.hasErrors()) {
         editorModal_.title = "Validation Errors";
@@ -4117,8 +4842,16 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
 
 void MainWindow::closeEditorModalDialog(const std::string& result)
 {
+    editorModalEdit_ = {};
+    propertyEditor_.setVisible(false);
     editorModal_.result = result;
     editorModal_.visible = false;
+    editorModal_.mode = EditorModalMode::Message;
+    editorModal_.statusText.clear();
+    editorModal_.preferredWidth = 0.0f;
+    editorModal_.preferredHeight = 0.0f;
+    newProjectWizard_.visible = false;
+    projectSettingsDialog_.visible = false;
     requestKeyboardFocus();
     redraw();
 }
@@ -4130,11 +4863,13 @@ bool MainWindow::isEditorModalVisible() const
 
 MainWindow::PanelBounds MainWindow::editorModalDialogBounds() const
 {
+    const float preferredWidth = editorModal_.preferredWidth > 0.0f ? editorModal_.preferredWidth : kEditorModalPreferredWidth;
+    const float preferredHeight = editorModal_.preferredHeight > 0.0f ? editorModal_.preferredHeight : kEditorModalPreferredHeight;
     const float maxWidth = std::max(0.0f, std::min(kEditorModalMaxWidth, width() - 120.0f));
     const float minWidth = std::min(kEditorModalMinWidth, maxWidth);
     const float dialogWidth = maxWidth <= 0.0f
         ? 0.0f
-        : std::clamp(kEditorModalPreferredWidth, minWidth, maxWidth);
+        : std::clamp(preferredWidth, minWidth, maxWidth);
 
     std::vector<std::string> bodyLines = splitMessageLines(editorModal_.message);
     bodyLines.insert(bodyLines.end(), editorModal_.lines.begin(), editorModal_.lines.end());
@@ -4145,7 +4880,9 @@ MainWindow::PanelBounds MainWindow::editorModalDialogBounds() const
     const float buttonSectionHeight = editorModal_.buttons.empty() ? 0.0f : (kEditorModalButtonHeight + 24.0f);
     const float maxHeight = std::max(0.0f, std::min(kEditorModalMaxHeight, height() - 120.0f));
     const float minHeight = std::min(kEditorModalMinHeight, maxHeight);
-    const float desiredHeight = std::max(kEditorModalPreferredHeight, 68.0f + bodyHeight + kEditorModalSectionSpacing + buttonSectionHeight);
+    const float desiredHeight = editorModal_.mode == EditorModalMode::Message
+        ? std::max(preferredHeight, 68.0f + bodyHeight + kEditorModalSectionSpacing + buttonSectionHeight)
+        : preferredHeight;
     const float dialogHeight = maxHeight <= 0.0f
         ? 0.0f
         : std::clamp(desiredHeight, minHeight, maxHeight);
@@ -4215,25 +4952,65 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
     canvas.text(editorModal_.title, labelFont_, visage::Font::kTopLeft,
         dialogBounds.x + 14.0f, dialogBounds.y + 6.0f, dialogBounds.width - 28.0f, 26.0f);
 
-    std::vector<std::string> bodyLines = splitMessageLines(editorModal_.message);
-    bodyLines.insert(bodyLines.end(), editorModal_.lines.begin(), editorModal_.lines.end());
-    if (bodyLines.empty()) {
-        bodyLines.push_back({});
-    }
+    if (editorModal_.mode == EditorModalMode::Message) {
+        std::vector<std::string> bodyLines = splitMessageLines(editorModal_.message);
+        bodyLines.insert(bodyLines.end(), editorModal_.lines.begin(), editorModal_.lines.end());
+        if (bodyLines.empty()) {
+            bodyLines.push_back({});
+        }
 
-    float lineY = dialogBounds.y + 52.0f;
-    const std::size_t visibleCount = std::min(bodyLines.size(), kEditorModalMaxBodyLines);
-    for (std::size_t index = 0; index < visibleCount; ++index) {
-        canvas.setColor(0xffdde2ea);
-        canvas.text(bodyLines[index], labelFont_, visage::Font::kTopLeft,
-            dialogBounds.x + 14.0f, lineY, dialogBounds.width - 28.0f, 20.0f);
-        lineY += 22.0f;
-    }
+        float lineY = dialogBounds.y + 52.0f;
+        const std::size_t visibleCount = std::min(bodyLines.size(), kEditorModalMaxBodyLines);
+        for (std::size_t index = 0; index < visibleCount; ++index) {
+            canvas.setColor(0xffdde2ea);
+            canvas.text(bodyLines[index], labelFont_, visage::Font::kTopLeft,
+                dialogBounds.x + 14.0f, lineY, dialogBounds.width - 28.0f, 20.0f);
+            lineY += 22.0f;
+        }
 
-    if (bodyLines.size() > visibleCount) {
-        canvas.setColor(0xffb6bfcc);
-        canvas.text("...", labelFont_, visage::Font::kTopLeft,
-            dialogBounds.x + 14.0f, lineY, dialogBounds.width - 28.0f, 20.0f);
+        if (bodyLines.size() > visibleCount) {
+            canvas.setColor(0xffb6bfcc);
+            canvas.text("...", labelFont_, visage::Font::kTopLeft,
+                dialogBounds.x + 14.0f, lineY, dialogBounds.width - 28.0f, 20.0f);
+        }
+    }
+    else {
+        const PanelBounds bodyBounds = editorModalBodyBounds();
+        for (const auto& hit : editorModalFieldHits()) {
+            const bool active = editorModalEdit_.active && editorModalEdit_.key == hit.field.key;
+            canvas.setColor(0xffd6dbe4);
+            canvas.text(hit.field.label, labelFont_, visage::Font::kTopLeft,
+                bodyBounds.x, hit.bounds.y + 6.0f, kEditorModalFormLabelWidth - 14.0f, hit.bounds.height - 8.0f);
+
+            canvas.setColor(active ? 0xff355382 : 0xff1a2028);
+            canvas.fill(hit.bounds.x, hit.bounds.y, hit.bounds.width, hit.bounds.height);
+            canvas.setColor(0xff12161c);
+            canvas.fill(hit.bounds.x, hit.bounds.y, hit.bounds.width, 1.0f);
+            canvas.fill(hit.bounds.x, hit.bounds.y + hit.bounds.height - 1.0f, hit.bounds.width, 1.0f);
+            canvas.fill(hit.bounds.x, hit.bounds.y, 1.0f, hit.bounds.height);
+            canvas.fill(hit.bounds.x + hit.bounds.width - 1.0f, hit.bounds.y, 1.0f, hit.bounds.height);
+
+            std::string valueText = hit.field.value;
+            if (valueText.empty()) {
+                valueText = hit.field.editKind == PropertyInspector::PropertyEditKind::Choice ? "Select" : "";
+            }
+            if (hit.field.editKind == PropertyInspector::PropertyEditKind::Choice) {
+                valueText += "  >";
+            }
+
+            canvas.setColor(0xffeef2f8);
+            canvas.text(valueText, labelFont_, visage::Font::kTopLeft,
+                hit.bounds.x + 10.0f, hit.bounds.y + 6.0f, hit.bounds.width - 20.0f, hit.bounds.height - 8.0f);
+        }
+
+        const PanelBounds statusBounds = editorModalStatusBounds();
+        canvas.setColor(0xff1a2028);
+        canvas.fill(statusBounds.x, statusBounds.y, statusBounds.width, statusBounds.height);
+        canvas.setColor(0xff12161c);
+        canvas.fill(statusBounds.x, statusBounds.y + statusBounds.height - 1.0f, statusBounds.width, 1.0f);
+        canvas.setColor(0xffd6dbe4);
+        canvas.text(editorModal_.statusText, labelFont_, visage::Font::kTopLeft,
+            statusBounds.x + 8.0f, statusBounds.y + 6.0f, statusBounds.width - 16.0f, statusBounds.height - 8.0f);
     }
 
     const auto buttonBounds = editorModalButtonBounds();
@@ -4254,11 +5031,40 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
         return false;
     }
 
+    if (editorModalEdit_.active) {
+        const auto activeField = editorModalFieldAt(e.position.x, e.position.y);
+        if (activeField.has_value() && activeField->field.key == editorModalEdit_.key) {
+            propertyEditor_.requestKeyboardFocus();
+            return true;
+        }
+        if (!commitEditorModalFieldEdit()) {
+            return true;
+        }
+    }
+
     const auto buttonBounds = editorModalButtonBounds();
     for (std::size_t index = 0; index < buttonBounds.size(); ++index) {
         if (e.position.x >= buttonBounds[index].x && e.position.x <= buttonBounds[index].x + buttonBounds[index].width
             && e.position.y >= buttonBounds[index].y && e.position.y <= buttonBounds[index].y + buttonBounds[index].height) {
-            closeEditorModalDialog(editorModal_.buttons[index].id);
+            activateEditorModalButton(editorModal_.buttons[index].id);
+            return true;
+        }
+    }
+
+    if (editorModal_.mode != EditorModalMode::Message) {
+        if (const auto fieldHit = editorModalFieldAt(e.position.x, e.position.y)) {
+            if (fieldHit->field.editKind == PropertyInspector::PropertyEditKind::Choice && !fieldHit->field.choices.empty()) {
+                const auto iterator = std::find(fieldHit->field.choices.begin(), fieldHit->field.choices.end(), fieldHit->field.value);
+                const std::size_t currentIndex = iterator == fieldHit->field.choices.end()
+                    ? 0
+                    : static_cast<std::size_t>(std::distance(fieldHit->field.choices.begin(), iterator));
+                const std::size_t nextIndex = (currentIndex + 1) % fieldHit->field.choices.size();
+                setEditorModalFieldValue(fieldHit->field.key, fieldHit->field.choices[nextIndex]);
+                redraw();
+                return true;
+            }
+
+            beginEditorModalFieldEdit(fieldHit->field);
             return true;
         }
     }

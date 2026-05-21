@@ -43,7 +43,7 @@ Shared command examples:
 
 ### File
 
-- `New`
+- `New` - opens the `New Project Wizard`
 - `Open`
 - `Open Sample`
 - `Save`
@@ -99,7 +99,7 @@ Current insertable widget types include:
 ### Project
 
 - `Validate / Check`
-- `Project Settings`
+- `Project Settings` - opens the centered modal dialog for project naming, look and feel, and export dependency settings
 - `Export Dependencies`
 
 ### Export
@@ -134,6 +134,13 @@ The toolbar remains available for high-frequency commands only:
 - `Guides`
 
 Less frequent layout commands now live primarily in the `Layout` menu.
+
+## Wizard and settings flow
+
+- `File > New` now opens a single-page `New Project Wizard`
+- the wizard lets the user edit project identity, form size, look and feel, and a built-in template before creating a clean document
+- `Project > Settings` opens a modal dialog for updating project naming fields stored in `.vfb.json`
+- local `Visage` dependency values remain machine-specific `AppSettings` values and are edited from that same settings dialog
 
 ## Current limitations
 

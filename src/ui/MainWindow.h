@@ -15,6 +15,7 @@
 #include "validation/ProjectValidator.h"
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -196,13 +197,67 @@ private:
         std::string text{};
     };
 
+    enum class EditorModalMode {
+        Message,
+        NewProjectWizard,
+        ProjectSettings
+    };
+
+    struct EditorModalField {
+        std::string key{};
+        std::string label{};
+        std::string value{};
+        PropertyInspector::PropertyEditKind editKind = PropertyInspector::PropertyEditKind::ReadOnly;
+        std::vector<std::string> choices{};
+    };
+
+    struct EditorModalFieldHit {
+        EditorModalField field{};
+        PanelBounds bounds{};
+    };
+
+    struct EditorModalEditState {
+        bool active = false;
+        std::string key{};
+        PropertyInspector::PropertyEditKind editKind = PropertyInspector::PropertyEditKind::ReadOnly;
+    };
+
+    struct NewProjectWizardState {
+        bool visible = false;
+        int step = 0;
+        std::string projectName = "My VisiForm App";
+        std::string executableName = "MyVisiFormApp";
+        std::string userSubclassName = "AppMainWindow";
+        std::string windowTitle = "My VisiForm App";
+        int formWidth = 900;
+        int formHeight = 600;
+        std::string lookAndFeelId = "VisiFormDark";
+        std::string templateId = "blank";
+    };
+
+    struct ProjectSettingsDialogState {
+        bool visible = false;
+        std::string projectName{};
+        std::string executableName{};
+        std::string userSubclassName{};
+        std::string windowTitle{};
+        std::string lookAndFeelId = "VisiFormDark";
+        std::string localVisageSourceDirectory{};
+        std::string visageGitRepository{};
+        std::string visageGitTag{};
+    };
+
     struct EditorModalDialog {
         bool visible = false;
+        EditorModalMode mode = EditorModalMode::Message;
         std::string title{};
         std::string message{};
         std::vector<std::string> lines{};
         std::vector<EditorModalButton> buttons{};
         std::string result{};
+        std::string statusText{};
+        float preferredWidth = 0.0f;
+        float preferredHeight = 0.0f;
     };
 
     void loadLabelFont();
@@ -284,13 +339,35 @@ private:
     void updateHoverHint(float x, float y);
     void clearCanvasInteraction();
     [[nodiscard]] bool canDrawText() const;
+    bool openNewProjectWizard();
+    bool openProjectSettingsDialog();
+    void resetNewProjectWizard();
+    void populateProjectSettingsDialog();
     void showEditorMessageDialog(const std::string& title, const std::string& message);
     void showEditorValidationDialog(const validation::ValidationReport& report,
         const std::string& reportPathText = {},
         const std::string& reportWriteError = {});
     void closeEditorModalDialog(const std::string& result);
+    bool activateEditorModalButton(const std::string& buttonId);
     [[nodiscard]] bool isEditorModalVisible() const;
     [[nodiscard]] PanelBounds editorModalDialogBounds() const;
+    [[nodiscard]] PanelBounds editorModalBodyBounds() const;
+    [[nodiscard]] PanelBounds editorModalStatusBounds() const;
+    [[nodiscard]] std::vector<EditorModalField> editorModalFields() const;
+    [[nodiscard]] std::vector<EditorModalFieldHit> editorModalFieldHits() const;
+    [[nodiscard]] std::optional<EditorModalFieldHit> editorModalFieldAt(float x, float y) const;
+    [[nodiscard]] std::string editorModalFieldValue(const std::string& key) const;
+    void setEditorModalFieldValue(const std::string& key, const std::string& valueText);
+    bool beginEditorModalFieldEdit(const EditorModalField& field);
+    bool commitEditorModalFieldEdit();
+    void cancelEditorModalFieldEdit();
+    void updateEditorModalEditorBounds();
+    [[nodiscard]] std::string validateNewProjectWizard() const;
+    [[nodiscard]] std::string validateProjectSettingsDialog() const;
+    bool applyNewProjectWizard();
+    bool applyProjectSettingsDialog();
+    [[nodiscard]] model::ProjectDocument createDocumentFromWizard();
+    void applyWizardTemplate(model::ProjectDocument& document, const std::string& templateId);
     [[nodiscard]] std::vector<PanelBounds> editorModalButtonBounds() const;
     void drawEditorModalDialog(visage::Canvas& canvas) const;
     bool handleEditorModalMouseDown(const visage::MouseEvent& e);
@@ -318,6 +395,9 @@ private:
     std::string exportProgressText_{};
     bool suggestionAppliedThisClick_ = false;
     EditorModalDialog editorModal_{};
+    EditorModalEditState editorModalEdit_{};
+    NewProjectWizardState newProjectWizard_{};
+    ProjectSettingsDialogState projectSettingsDialog_{};
 
     // Apply a callback suggestion directly to the selected widget property
     bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);

@@ -25,6 +25,30 @@ Top-level fields:
 
 The `dirty` flag is runtime-only and is not stored in the file.
 
+## Project settings persistence
+
+The new modal `New Project Wizard` and `Project Settings` dialog edit two kinds of values:
+
+- project document values stored in `.vfb.json`
+- machine-specific export values stored in `AppSettings`
+
+Stored in `.vfb.json`:
+
+- `projectName`
+- `executableName`
+- `mainFormClassName`
+- `generatedBaseClassName`
+- `userSubclassName`
+- `windowTitle`
+- `lookAndFeelId`
+- root form `bounds.width` and `bounds.height` for the default form size
+
+Stored in `AppSettings`, not in `.vfb.json`:
+
+- `localVisageSourceDirectory`
+- `visageGitRepository`
+- `visageGitTag`
+
 ## WidgetNode fields
 
 Each widget node stores:
@@ -141,6 +165,8 @@ When missing:
 - `userSubclassName` falls back to `AppMainWindow` or the older `mainFormClassName`
 - `executableName` falls back to a sanitized `projectName`
 - `windowTitle` falls back to the root form `title` property or `projectName`
+
+The wizard-created form size is preserved through the root `FormWindow` bounds that are already serialized in `root.bounds`.
 
 ## Common widget help property
 

@@ -75,12 +75,13 @@ Dependency behavior:
 
 ## Generated project naming
 
-The root `FormWindow` now exposes generated-project naming fields in the editor:
+The `New Project Wizard`, `Project Settings` dialog, and root `FormWindow` property editing flow all feed the same generated-project naming fields:
 
 - `projectName`
 - `executableName`
 - `userSubclassName`
 - `windowTitle`
+- `lookAndFeelId`
 
 Export uses those fields as follows:
 
@@ -88,6 +89,9 @@ Export uses those fields as follows:
 - `executableName` drives `add_executable(...)` and therefore the produced Windows executable name
 - `userSubclassName` drives `src/<UserSubclassName>.h`, `src/<UserSubclassName>.cpp`, and `main.cpp`
 - `windowTitle` drives the generated runtime window title and title-bar caption text
+- `lookAndFeelId` drives the project-level default look and feel used by generated runtime widgets
+
+The wizard also sets the initial root `FormWindow` size by writing the selected width and height into the root widget bounds.
 
 ## Generated presets
 
@@ -131,7 +135,13 @@ The emitted path uses forward slashes, for example:
 
 That local source path is still controlled by `VISIFORM_VISAGE_SOURCE_DIR`. If it is unset or invalid, the generated project still falls back to `FetchContent` using the configured repository and tag values.
 
-The root `FormWindow` property inspector now exposes an `Export / Dependencies` section for these app-level export settings. These values are stored in `AppSettings`, not in `.vfb.json` project files.
+The root `FormWindow` property inspector and `Project Settings` dialog both expose the app-level export dependency values. These values are stored in `AppSettings`, not in `.vfb.json` project files.
+
+That means:
+
+- `localVisageSourceDirectory` remains machine-specific and is read from `AppSettings` during export
+- `visageGitRepository` remains machine-specific and is read from `AppSettings` during export
+- `visageGitTag` remains machine-specific and is read from `AppSettings` during export
 
 ## Validation before export
 
