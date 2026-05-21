@@ -35,6 +35,7 @@ namespace visiform::ui {
 namespace {
 
 constexpr auto kWindowTitle = "VisiForm - Visage Form Builder";
+constexpr float kMenuBarHeight = 30.0f;
 constexpr float kToolbarHeight = 42.0f;
 constexpr float kStatusBarHeight = 28.0f;
 constexpr float kLeftPanelWidth = 220.0f;
@@ -43,23 +44,36 @@ constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kToolbarButtonWidth = 42.0f;
+constexpr float kToolbarButtonMinWidth = 42.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
-constexpr float kToolbarButtonSpacing = 2.0f;
+constexpr float kToolbarButtonSpacing = 6.0f;
+constexpr float kMenuBarButtonSpacing = 4.0f;
+constexpr float kMenuBarDropdownMinWidth = 220.0f;
+constexpr float kMenuBarItemHeight = 28.0f;
+constexpr float kMenuBarSeparatorHeight = 10.0f;
 constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
 constexpr float kLayoutMargin = 20.0f;
 constexpr float kMarqueeDragThreshold = 4.0f;
 constexpr float kSmartGuideSnapThreshold = 6.0f;
-constexpr float kEditorModalMaxWidth = 560.0f;
-constexpr float kEditorModalMinWidth = 320.0f;
-constexpr float kEditorModalMinHeight = 180.0f;
-constexpr float kEditorModalMaxBodyLines = 8.0f;
+constexpr float kEditorModalPreferredWidth = 560.0f;
+constexpr float kEditorModalPreferredHeight = 320.0f;
+constexpr float kEditorModalMaxWidth = 720.0f;
+constexpr float kEditorModalMaxHeight = 520.0f;
+constexpr float kEditorModalMinWidth = 420.0f;
+constexpr float kEditorModalMinHeight = 240.0f;
+constexpr std::size_t kEditorModalMaxBodyLines = 10;
 constexpr float kEditorModalButtonWidth = 96.0f;
 constexpr float kEditorModalButtonHeight = 32.0f;
 constexpr float kEditorModalButtonSpacing = 12.0f;
 constexpr float kEditorModalSectionSpacing = 10.0f;
+
+bool pointInBounds(float x, float y, float left, float top, float width, float height)
+{
+    return x >= left && x <= left + width
+        && y >= top && y <= top + height;
+}
 
 std::string normalizedPathText(const std::filesystem::path& path)
 {
@@ -948,6 +962,7 @@ void MainWindow::draw(visage::Canvas& canvas)
         marqueeRect = normalizedSelectionRect(canvasInteraction_.dragStart, canvasInteraction_.currentPoint);
     }
 
+    drawMenuBar(canvas);
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
     designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, marqueeRect, canvasInteraction_.smartGuides);
@@ -956,6 +971,9 @@ void MainWindow::draw(visage::Canvas& canvas)
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
     }
     drawStatusBar(canvas);
+    if (openMenuIndex_ >= 0) {
+        drawMenuBar(canvas);
+    }
     if (isEditorModalVisible()) {
         drawEditorModalDialog(canvas);
     }
@@ -974,102 +992,16 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
-    switch (toolbarActionAt(e.position.x, e.position.y)) {
-    case ToolbarAction::NewProject:
-        newProject();
+    if (handleMenuMouseDown(e)) {
         return;
-    case ToolbarAction::OpenProject:
-        openProjectDialog();
+    }
+
+    if (const auto button = toolbarButtonAt(e.position.x, e.position.y)) {
+        if (isCommandEnabled(button->command)) {
+            executeCommand(button->command);
+        }
+        redraw();
         return;
-    case ToolbarAction::SaveProjectAsDialog:
-        saveProjectAsDialog();
-        return;
-    case ToolbarAction::OpenSample:
-        openSampleProject();
-        return;
-    case ToolbarAction::SaveProject:
-        saveProject();
-        return;
-    case ToolbarAction::SaveProjectAsDebug:
-        saveDebugProject();
-        return;
-    case ToolbarAction::ExportCode:
-        exportGeneratedCode();
-        return;
-    case ToolbarAction::ValidateProject:
-        validateProject();
-        return;
-    case ToolbarAction::FitText:
-        fitSelectedWidgetToText();
-        return;
-    case ToolbarAction::CopyWidgets:
-        copySelectedWidgets();
-        return;
-    case ToolbarAction::PasteWidgets:
-        pasteWidgets();
-        return;
-    case ToolbarAction::ToggleMultiSelect:
-        toggleMultiSelectMode();
-        return;
-    case ToolbarAction::AlignLeft:
-        alignSelectedLeft();
-        return;
-    case ToolbarAction::AlignTop:
-        alignSelectedTop();
-        return;
-    case ToolbarAction::AlignRight:
-        alignSelectedRight();
-        return;
-    case ToolbarAction::AlignBottom:
-        alignSelectedBottom();
-        return;
-    case ToolbarAction::CenterHorizontally:
-        centerSelectedHorizontally();
-        return;
-    case ToolbarAction::CenterVertically:
-        centerSelectedVertically();
-        return;
-    case ToolbarAction::SameWidth:
-        makeSelectedSameWidth();
-        return;
-    case ToolbarAction::SameHeight:
-        makeSelectedSameHeight();
-        return;
-    case ToolbarAction::DistributeHorizontally:
-        distributeSelectedHorizontally();
-        return;
-    case ToolbarAction::DistributeVertically:
-        distributeSelectedVertically();
-        return;
-    case ToolbarAction::ToggleSmartGuides:
-        toggleSmartGuides();
-        return;
-    case ToolbarAction::BringForward:
-        bringSelectedForward();
-        return;
-    case ToolbarAction::SendBackward:
-        sendSelectedBackward();
-        return;
-    case ToolbarAction::ToggleGrid:
-        toggleGrid();
-        return;
-    case ToolbarAction::ToggleSnap:
-        toggleSnapToGrid();
-        return;
-    case ToolbarAction::DuplicateWidget:
-        duplicateSelectedWidget();
-        return;
-    case ToolbarAction::DeleteWidget:
-        deleteSelectedWidget();
-        return;
-    case ToolbarAction::UndoAction:
-        undo();
-        return;
-    case ToolbarAction::RedoAction:
-        redo();
-        return;
-    case ToolbarAction::None:
-        break;
     }
 
     if (const auto widgetType = widgetPalette_.hitTestWidgetType(e.position.x, e.position.y)) {
@@ -1242,6 +1174,11 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
         return;
     }
 
+    if (openMenuIndex_ >= 0) {
+        updateHoverHint(e.position.x, e.position.y);
+        return;
+    }
+
     if (canvasInteraction_.mode != CanvasInteractionState::Mode::None) {
         return;
     }
@@ -1252,6 +1189,10 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
 {
     if (isEditorModalVisible()) {
+        return;
+    }
+
+    if (openMenuIndex_ >= 0) {
         return;
     }
 
@@ -1363,6 +1304,10 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         return;
     }
 
+    if (openMenuIndex_ >= 0) {
+        return;
+    }
+
     const bool releasedInspectorScrollBar = propertyInspector_.mouseUp();
     if (releasedInspectorScrollBar && canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
         updatePropertyEditorBounds();
@@ -1459,6 +1404,10 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
         return true;
     }
 
+    if (openMenuIndex_ >= 0) {
+        return true;
+    }
+
     const float deltaY = e.precise_wheel_delta_y != 0.0f ? e.precise_wheel_delta_y : e.wheel_delta_y;
     if (layout_.showProjectTree && projectTree_.mouseWheel(document_, deltaY, e.position.x, e.position.y)) {
         redraw();
@@ -1488,6 +1437,14 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
         if (e.keyCode() == KeyCode::Return) {
             closeEditorModalDialog("ok");
             return true;
+        }
+        return true;
+    }
+
+    if (openMenuIndex_ >= 0) {
+        if (e.keyCode() == KeyCode::Escape) {
+            openMenuIndex_ = -1;
+            redraw();
         }
         return true;
     }
@@ -2880,10 +2837,11 @@ MainWindow::WindowLayout MainWindow::calculateLayout(float windowWidth, float wi
         return layout;
     }
 
-    layout.toolbar = { 0.0f, 0.0f, windowWidth, kToolbarHeight };
+    layout.menuBar = { 0.0f, 0.0f, windowWidth, kMenuBarHeight };
+    layout.toolbar = { 0.0f, layout.menuBar.height, windowWidth, kToolbarHeight };
     layout.statusBar = { 0.0f, std::max(0.0f, windowHeight - kStatusBarHeight), windowWidth, kStatusBarHeight };
 
-    const float contentTop = layout.toolbar.height + kGap;
+    const float contentTop = layout.toolbar.y + layout.toolbar.height + kGap;
     const float contentBottom = std::max(contentTop, layout.statusBar.y - kGap);
     const float contentHeight = std::max(0.0f, contentBottom - contentTop);
 
@@ -2938,6 +2896,457 @@ void MainWindow::applyLayout(const WindowLayout& layout)
 void MainWindow::updateWindowTitle()
 {
     setTitle(document_.dirty ? "VisiForm - Visage Form Builder *" : kWindowTitle);
+}
+
+std::string MainWindow::commandShortcutText(CommandId command) const
+{
+    switch (command) {
+    case CommandId::NewProject:
+        return "Ctrl+N";
+    case CommandId::OpenProject:
+        return "Ctrl+O";
+    case CommandId::SaveProject:
+        return "Ctrl+S";
+    case CommandId::SaveProjectAsDialog:
+        return "Ctrl+Shift+S";
+    case CommandId::CopyWidgets:
+        return "Ctrl+C";
+    case CommandId::PasteWidgets:
+        return "Ctrl+V";
+    case CommandId::DeleteWidget:
+        return "Delete";
+    case CommandId::UndoAction:
+        return "Ctrl+Z";
+    case CommandId::RedoAction:
+        return "Ctrl+Y";
+    default:
+        return {};
+    }
+}
+
+std::string MainWindow::commandHintText(CommandId command) const
+{
+    switch (command) {
+    case CommandId::NewProject:
+        return "Create a new VisiForm project";
+    case CommandId::OpenProject:
+        return "Open a .vfb.json project";
+    case CommandId::OpenSample:
+        return "Open the sample project";
+    case CommandId::SaveProject:
+        return "Save the current project";
+    case CommandId::SaveProjectAsDialog:
+        return "Save the project to a new .vfb.json file";
+    case CommandId::ExportCode:
+        return "Export generated Visage C++ project";
+    case CommandId::ValidateProject:
+        return "Validate the current project before export";
+    case CommandId::ShowValidationReport:
+        return "Show where the latest validation report was written";
+    case CommandId::ShowAboutDialog:
+        return "Show information about VisiForm";
+    case CommandId::ShowKeyboardShortcuts:
+        return "Show the currently supported editor shortcuts";
+    case CommandId::ShowGeneratedCodeGuide:
+        return "Show a short guide to generated code output";
+    case CommandId::ShowProjectSettings:
+        return "Show where project settings are edited";
+    case CommandId::ShowExportDependencies:
+        return "Show where export dependency settings are edited";
+    case CommandId::FitText:
+        return "Fit the selected widget to its text";
+    case CommandId::CopyWidgets:
+        return "Copy selected widgets";
+    case CommandId::PasteWidgets:
+        return "Paste copied widgets";
+    case CommandId::DeleteWidget:
+        return "Delete the selected widget or widgets";
+    case CommandId::DuplicateWidget:
+        return "Duplicate the primary selected widget";
+    case CommandId::ToggleMultiSelect:
+        return "Toggle multi-select mode";
+    case CommandId::AlignLeft:
+        return "Align selected widgets left";
+    case CommandId::AlignTop:
+        return "Align selected widgets top";
+    case CommandId::AlignRight:
+        return "Align selected widgets right";
+    case CommandId::AlignBottom:
+        return "Align selected widgets bottom";
+    case CommandId::CenterHorizontally:
+        return "Center selected widgets horizontally";
+    case CommandId::CenterVertically:
+        return "Center selected widgets vertically";
+    case CommandId::SameWidth:
+        return "Match selected widget widths";
+    case CommandId::SameHeight:
+        return "Match selected widget heights";
+    case CommandId::DistributeHorizontally:
+        return "Distribute selected widgets horizontally";
+    case CommandId::DistributeVertically:
+        return "Distribute selected widgets vertically";
+    case CommandId::ToggleSmartGuides:
+        return "Toggle smart guides";
+    case CommandId::BringForward:
+        return "Bring the selected widget forward";
+    case CommandId::SendBackward:
+        return "Send the selected widget backward";
+    case CommandId::ToggleGrid:
+        return "Toggle grid visibility";
+    case CommandId::ToggleSnap:
+        return "Toggle snap-to-grid";
+    case CommandId::UndoAction:
+        return "Undo the last command";
+    case CommandId::RedoAction:
+        return "Redo the last undone command";
+    case CommandId::None:
+    default:
+        return {};
+    }
+}
+
+bool MainWindow::isCommandEnabled(CommandId command) const
+{
+    const auto* selectedWidget = document_.selectedWidget();
+    const bool hasNonRootSelection = selectedWidget != nullptr && !document_.isRootWidgetId(selectedWidget->id);
+    const bool hasMultiSelection = document_.selectedWidgetIds().size() >= 2;
+
+    switch (command) {
+    case CommandId::UndoAction:
+        return canUndo();
+    case CommandId::RedoAction:
+        return canRedo();
+    case CommandId::PasteWidgets:
+        return !clipboardWidgets_.empty();
+    case CommandId::CopyWidgets:
+    case CommandId::DeleteWidget:
+    case CommandId::DuplicateWidget:
+    case CommandId::FitText:
+    case CommandId::BringForward:
+    case CommandId::SendBackward:
+        return hasNonRootSelection;
+    case CommandId::AlignLeft:
+    case CommandId::AlignTop:
+    case CommandId::AlignRight:
+    case CommandId::AlignBottom:
+    case CommandId::CenterHorizontally:
+    case CommandId::CenterVertically:
+    case CommandId::SameWidth:
+    case CommandId::SameHeight:
+    case CommandId::DistributeHorizontally:
+    case CommandId::DistributeVertically:
+        return hasMultiSelection;
+    case CommandId::ShowValidationReport:
+        return std::filesystem::exists(projectRootPath() / "Generated" / "validation_report.md");
+    case CommandId::None:
+        return false;
+    default:
+        return true;
+    }
+}
+
+bool MainWindow::isCommandChecked(CommandId command) const
+{
+    switch (command) {
+    case CommandId::ToggleGrid:
+        return designerCanvas_.showGrid();
+    case CommandId::ToggleSnap:
+        return designerCanvas_.snapToGrid();
+    case CommandId::ToggleSmartGuides:
+        return settings_.smartGuidesEnabled;
+    case CommandId::ToggleMultiSelect:
+        return multiSelectMode_;
+    default:
+        return false;
+    }
+}
+
+std::vector<MainWindow::Menu> MainWindow::menus() const
+{
+    std::vector<Menu> result;
+
+    auto addCommand = [this](Menu& menu, CommandId command, const std::string& label) {
+        menu.items.push_back(MenuItem{
+            label,
+            label,
+            commandShortcutText(command),
+            command,
+            isCommandEnabled(command),
+            isCommandChecked(command)
+        });
+    };
+    auto addSeparator = [](Menu& menu) {
+        MenuItem item;
+        item.separator = true;
+        item.enabled = false;
+        menu.items.push_back(std::move(item));
+    };
+    auto addWidgetItem = [](Menu& menu, const std::string& id, const std::string& label, model::WidgetType widgetType) {
+        MenuItem item;
+        item.id = id;
+        item.label = label;
+        item.enabled = true;
+        item.widgetType = widgetType;
+        menu.items.push_back(std::move(item));
+    };
+
+    Menu fileMenu{ "File" };
+    addCommand(fileMenu, CommandId::NewProject, "New");
+    addCommand(fileMenu, CommandId::OpenProject, "Open");
+    addCommand(fileMenu, CommandId::OpenSample, "Open Sample");
+    addCommand(fileMenu, CommandId::SaveProject, "Save");
+    addCommand(fileMenu, CommandId::SaveProjectAsDialog, "Save As");
+    if (!settings_.recentFiles.empty()) {
+        addSeparator(fileMenu);
+        const std::size_t recentLimit = std::min<std::size_t>(5, settings_.recentFiles.size());
+        for (std::size_t index = 0; index < recentLimit; ++index) {
+            MenuItem item;
+            item.id = "recent-" + std::to_string(index);
+            item.label = normalizedPathText(settings_.recentFiles[index]);
+            item.enabled = std::filesystem::exists(settings_.recentFiles[index]);
+            item.filePath = settings_.recentFiles[index];
+            fileMenu.items.push_back(std::move(item));
+        }
+    }
+    result.push_back(std::move(fileMenu));
+
+    Menu editMenu{ "Edit" };
+    addCommand(editMenu, CommandId::UndoAction, "Undo");
+    addCommand(editMenu, CommandId::RedoAction, "Redo");
+    addSeparator(editMenu);
+    addCommand(editMenu, CommandId::CopyWidgets, "Copy");
+    addCommand(editMenu, CommandId::PasteWidgets, "Paste");
+    addCommand(editMenu, CommandId::DuplicateWidget, "Duplicate");
+    addCommand(editMenu, CommandId::DeleteWidget, "Delete");
+    result.push_back(std::move(editMenu));
+
+    Menu viewMenu{ "View" };
+    addCommand(viewMenu, CommandId::ToggleGrid, "Grid");
+    addCommand(viewMenu, CommandId::ToggleSnap, "Snap");
+    addCommand(viewMenu, CommandId::ToggleSmartGuides, "Guides");
+    addCommand(viewMenu, CommandId::ToggleMultiSelect, "Multi Select");
+    addSeparator(viewMenu);
+    addCommand(viewMenu, CommandId::ShowValidationReport, "Validation Report");
+    result.push_back(std::move(viewMenu));
+
+    Menu insertMenu{ "Insert" };
+    addWidgetItem(insertMenu, "insert-frame", "Frame", model::WidgetType::Frame);
+    addWidgetItem(insertMenu, "insert-label", "Label", model::WidgetType::Label);
+    addWidgetItem(insertMenu, "insert-button", "Button", model::WidgetType::Button);
+    addWidgetItem(insertMenu, "insert-text-box", "Text Box", model::WidgetType::TextBox);
+    addWidgetItem(insertMenu, "insert-check-box", "Check Box", model::WidgetType::CheckBox);
+    addWidgetItem(insertMenu, "insert-radio-button", "Radio Button", model::WidgetType::RadioButton);
+    addWidgetItem(insertMenu, "insert-slider", "Slider", model::WidgetType::Slider);
+    addWidgetItem(insertMenu, "insert-scroll-bar", "Scroll Bar", model::WidgetType::ScrollBar);
+    addWidgetItem(insertMenu, "insert-status-bar", "Status Bar", model::WidgetType::StatusBar);
+    addWidgetItem(insertMenu, "insert-progress-bar", "Progress Bar", model::WidgetType::ProgressBar);
+    addWidgetItem(insertMenu, "insert-color-picker", "Color Picker", model::WidgetType::ColorPicker);
+    addWidgetItem(insertMenu, "insert-modal-dialog", "Modal Dialog", model::WidgetType::ModalDialog);
+    addWidgetItem(insertMenu, "insert-image", "Image", model::WidgetType::Image);
+    addWidgetItem(insertMenu, "insert-spacer", "Spacer", model::WidgetType::Spacer);
+    result.push_back(std::move(insertMenu));
+
+    Menu layoutMenu{ "Layout" };
+    addCommand(layoutMenu, CommandId::AlignLeft, "Align Left");
+    addCommand(layoutMenu, CommandId::AlignTop, "Align Top");
+    addCommand(layoutMenu, CommandId::AlignRight, "Align Right");
+    addCommand(layoutMenu, CommandId::AlignBottom, "Align Bottom");
+    addCommand(layoutMenu, CommandId::CenterHorizontally, "Center Horizontally");
+    addCommand(layoutMenu, CommandId::CenterVertically, "Center Vertically");
+    addCommand(layoutMenu, CommandId::SameWidth, "Same Width");
+    addCommand(layoutMenu, CommandId::SameHeight, "Same Height");
+    addCommand(layoutMenu, CommandId::DistributeHorizontally, "Distribute Horizontally");
+    addCommand(layoutMenu, CommandId::DistributeVertically, "Distribute Vertically");
+    addCommand(layoutMenu, CommandId::BringForward, "Bring Forward");
+    addCommand(layoutMenu, CommandId::SendBackward, "Send Backward");
+    addSeparator(layoutMenu);
+    addCommand(layoutMenu, CommandId::FitText, "Fit Text");
+    result.push_back(std::move(layoutMenu));
+
+    Menu projectMenu{ "Project" };
+    addCommand(projectMenu, CommandId::ValidateProject, "Validate / Check");
+    addCommand(projectMenu, CommandId::ShowProjectSettings, "Project Settings");
+    addCommand(projectMenu, CommandId::ShowExportDependencies, "Export Dependencies");
+    result.push_back(std::move(projectMenu));
+
+    Menu exportMenu{ "Export" };
+    addCommand(exportMenu, CommandId::ExportCode, "Export");
+    MenuItem exportTodo;
+    exportTodo.id = "open-export-folder";
+    exportTodo.label = "Open Export Folder (TODO)";
+    exportTodo.enabled = false;
+    exportMenu.items.push_back(std::move(exportTodo));
+    result.push_back(std::move(exportMenu));
+
+    Menu helpMenu{ "Help" };
+    addCommand(helpMenu, CommandId::ShowAboutDialog, "About VisiForm");
+    addCommand(helpMenu, CommandId::ShowKeyboardShortcuts, "Keyboard Shortcuts");
+    addCommand(helpMenu, CommandId::ShowGeneratedCodeGuide, "Generated Code Guide");
+    result.push_back(std::move(helpMenu));
+
+    return result;
+}
+
+std::vector<MainWindow::MenuBarButton> MainWindow::menuBarButtons() const
+{
+    std::vector<MenuBarButton> buttons;
+    if (!layout_.menuBar.isVisible()) {
+        return buttons;
+    }
+
+    const auto allMenus = menus();
+    float left = layout_.menuBar.x + 8.0f;
+    buttons.reserve(allMenus.size());
+    for (std::size_t index = 0; index < allMenus.size(); ++index) {
+        const float buttonWidth = std::max(56.0f, 24.0f + static_cast<float>(allMenus[index].label.size()) * 8.0f);
+        buttons.push_back(MenuBarButton{
+            static_cast<int>(index),
+            { left, layout_.menuBar.y + 2.0f, buttonWidth, layout_.menuBar.height - 4.0f }
+        });
+        left += buttonWidth + kMenuBarButtonSpacing;
+    }
+
+    return buttons;
+}
+
+std::optional<int> MainWindow::menuIndexAt(float x, float y) const
+{
+    for (const auto& button : menuBarButtons()) {
+        if (pointInBounds(x, y, button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height)) {
+            return button.menuIndex;
+        }
+    }
+
+    return std::nullopt;
+}
+
+MainWindow::PanelBounds MainWindow::menuDropdownBounds(int menuIndex) const
+{
+    const auto allMenus = menus();
+    const auto buttons = menuBarButtons();
+    if (menuIndex < 0 || static_cast<std::size_t>(menuIndex) >= allMenus.size() || static_cast<std::size_t>(menuIndex) >= buttons.size()) {
+        return {};
+    }
+
+    float longestTextWidth = 0.0f;
+    float dropdownHeight = 8.0f;
+    for (const auto& item : allMenus[menuIndex].items) {
+        if (item.separator) {
+            dropdownHeight += kMenuBarSeparatorHeight;
+            continue;
+        }
+
+        const float itemWidthEstimate = static_cast<float>(item.label.size() + item.shortcut.size()) * 7.6f;
+        longestTextWidth = std::max(longestTextWidth, itemWidthEstimate);
+        dropdownHeight += kMenuBarItemHeight;
+    }
+    dropdownHeight += 8.0f;
+
+    const float dropdownWidth = std::min(width() - 16.0f,
+        std::max(kMenuBarDropdownMinWidth, 54.0f + longestTextWidth));
+    const float maxX = std::max(8.0f, width() - dropdownWidth - 8.0f);
+    const float dropdownX = std::clamp(buttons[menuIndex].bounds.x, 8.0f, maxX);
+
+    return {
+        dropdownX,
+        layout_.menuBar.y + layout_.menuBar.height - 1.0f,
+        dropdownWidth,
+        dropdownHeight
+    };
+}
+
+std::optional<MainWindow::MenuItemHit> MainWindow::menuItemAt(float x, float y) const
+{
+    const auto allMenus = menus();
+    if (openMenuIndex_ < 0 || static_cast<std::size_t>(openMenuIndex_) >= allMenus.size()) {
+        return std::nullopt;
+    }
+
+    const PanelBounds dropdownBounds = menuDropdownBounds(openMenuIndex_);
+    if (!pointInBounds(x, y, dropdownBounds.x, dropdownBounds.y, dropdownBounds.width, dropdownBounds.height)) {
+        return std::nullopt;
+    }
+
+    float top = dropdownBounds.y + 4.0f;
+    for (std::size_t index = 0; index < allMenus[openMenuIndex_].items.size(); ++index) {
+        const auto& item = allMenus[openMenuIndex_].items[index];
+        const float itemHeight = item.separator ? kMenuBarSeparatorHeight : kMenuBarItemHeight;
+        if (pointInBounds(x, y, dropdownBounds.x + 4.0f, top, dropdownBounds.width - 8.0f, itemHeight)) {
+            return MenuItemHit{ openMenuIndex_, static_cast<int>(index), { dropdownBounds.x + 4.0f, top, dropdownBounds.width - 8.0f, itemHeight } };
+        }
+        top += itemHeight;
+    }
+
+    return std::nullopt;
+}
+
+void MainWindow::drawMenuBar(visage::Canvas& canvas) const
+{
+    if (!layout_.menuBar.isVisible()) {
+        return;
+    }
+
+    canvas.setColor(0xff242a34);
+    canvas.fill(layout_.menuBar.x, layout_.menuBar.y, layout_.menuBar.width, layout_.menuBar.height);
+    canvas.setColor(0xff14161b);
+    canvas.fill(layout_.menuBar.x, layout_.menuBar.y + layout_.menuBar.height - 1.0f, layout_.menuBar.width, 1.0f);
+
+    if (!canDrawText()) {
+        return;
+    }
+
+    const auto allMenus = menus();
+    const auto buttons = menuBarButtons();
+    for (const auto& button : buttons) {
+        const bool isOpen = openMenuIndex_ == button.menuIndex;
+        canvas.setColor(isOpen ? 0xff355382 : 0xff2b313c);
+        canvas.fill(button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
+        canvas.setColor(0xfff3f5f8);
+        canvas.text(allMenus[button.menuIndex].label, labelFont_, visage::Font::kCenter,
+            button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
+    }
+
+    if (openMenuIndex_ < 0 || static_cast<std::size_t>(openMenuIndex_) >= allMenus.size()) {
+        return;
+    }
+
+    const PanelBounds dropdownBounds = menuDropdownBounds(openMenuIndex_);
+    canvas.setColor(0xff232a34);
+    canvas.fill(dropdownBounds.x, dropdownBounds.y, dropdownBounds.width, dropdownBounds.height);
+    canvas.setColor(0xff101318);
+    canvas.fill(dropdownBounds.x, dropdownBounds.y, dropdownBounds.width, 1.0f);
+    canvas.fill(dropdownBounds.x, dropdownBounds.y + dropdownBounds.height - 1.0f, dropdownBounds.width, 1.0f);
+    canvas.fill(dropdownBounds.x, dropdownBounds.y, 1.0f, dropdownBounds.height);
+    canvas.fill(dropdownBounds.x + dropdownBounds.width - 1.0f, dropdownBounds.y, 1.0f, dropdownBounds.height);
+
+    float top = dropdownBounds.y + 4.0f;
+    for (const auto& item : allMenus[openMenuIndex_].items) {
+        if (item.separator) {
+            const float separatorY = top + (kMenuBarSeparatorHeight * 0.5f);
+            canvas.setColor(0xff343c48);
+            canvas.fill(dropdownBounds.x + 10.0f, separatorY, dropdownBounds.width - 20.0f, 1.0f);
+            top += kMenuBarSeparatorHeight;
+            continue;
+        }
+
+        canvas.setColor(item.enabled ? 0xff2c3340 : 0xff262c36);
+        canvas.fill(dropdownBounds.x + 4.0f, top, dropdownBounds.width - 8.0f, kMenuBarItemHeight - 2.0f);
+        if (item.checked) {
+            canvas.setColor(0xff3c8c68);
+            canvas.fill(dropdownBounds.x + 8.0f, top + 6.0f, 10.0f, 10.0f);
+        }
+
+        canvas.setColor(item.enabled ? 0xffe2e6ed : 0xff808999);
+        canvas.text(item.label, labelFont_, visage::Font::kTopLeft,
+            dropdownBounds.x + 24.0f, top + 4.0f, dropdownBounds.width - 110.0f, kMenuBarItemHeight - 6.0f);
+        if (!item.shortcut.empty()) {
+            canvas.setColor(item.enabled ? 0xffaab4c3 : 0xff6d7685);
+            canvas.text(item.shortcut, labelFont_, visage::Font::kTopRight,
+                dropdownBounds.x + dropdownBounds.width - 18.0f, top + 4.0f, 84.0f, kMenuBarItemHeight - 6.0f);
+        }
+
+        top += kMenuBarItemHeight;
+    }
 }
 
 void MainWindow::drawToolbar(visage::Canvas& canvas) const
@@ -3088,8 +3497,7 @@ void MainWindow::setOperationStatus(std::string message)
 std::optional<MainWindow::ToolbarButton> MainWindow::toolbarButtonAt(float x, float y) const
 {
     for (const auto& button : toolbarButtons()) {
-        if (x >= button.bounds.x && x <= button.bounds.x + button.bounds.width
-            && y >= button.bounds.y && y <= button.bounds.y + button.bounds.height) {
+        if (pointInBounds(x, y, button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height)) {
             return button;
         }
     }
@@ -3097,19 +3505,18 @@ std::optional<MainWindow::ToolbarButton> MainWindow::toolbarButtonAt(float x, fl
     return std::nullopt;
 }
 
-MainWindow::ToolbarAction MainWindow::toolbarActionAt(float x, float y) const
-{
-    if (const auto button = toolbarButtonAt(x, y)) {
-        return button->action;
-    }
-
-    return ToolbarAction::None;
-}
-
 void MainWindow::updateHoverHint(float x, float y)
 {
     std::string nextHint;
-    if (const auto button = toolbarButtonAt(x, y)) {
+    if (const auto menuIndex = menuIndexAt(x, y)) {
+        nextHint = "Menu: " + menus()[*menuIndex].label;
+    }
+    else if (const auto itemHit = menuItemAt(x, y)) {
+        const auto allMenus = menus();
+        const auto& item = allMenus[itemHit->menuIndex].items[itemHit->itemIndex];
+        nextHint = item.enabled ? "Hint: " + item.label : "Hint: Not available in this phase";
+    }
+    else if (const auto button = toolbarButtonAt(x, y)) {
         nextHint = "Hint: " + button->hint;
     }
     else if (const auto hint = widgetPalette_.hitTestHint(x, y)) {
@@ -3117,9 +3524,9 @@ void MainWindow::updateHoverHint(float x, float y)
     }
     else if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, x, y)) {
         if (const auto* widget = document_.findWidgetById(*widgetId)) {
-            const std::string hint = widget->getStringProperty("hint", {});
-            if (!hint.empty()) {
-                nextHint = "Hint: " + hint;
+            const std::string widgetHint = widget->getStringProperty("hint", {});
+            if (!widgetHint.empty()) {
+                nextHint = "Hint: " + widgetHint;
             }
             else {
                 nextHint = widgetDisplayName(*widget) + " [" + widget->typeName() + "]";
@@ -3142,44 +3549,210 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
 
     const float top = layout_.toolbar.y + 8.0f;
     float left = layout_.toolbar.x + kPadding;
-    const auto addButton = [&](ToolbarAction action, std::string label, std::string hint, bool accent = false) {
-        buttons.push_back(ToolbarButton{ action, std::move(label), std::move(hint), { left, top, kToolbarButtonWidth, kToolbarButtonHeight }, accent });
-        left += kToolbarButtonWidth + kToolbarButtonSpacing;
+    const auto addButton = [&](CommandId command, std::string label) {
+        const float buttonWidth = std::max(kToolbarButtonMinWidth, 14.0f + static_cast<float>(label.size()) * 8.0f);
+        const bool accent = isCommandChecked(command) || command == CommandId::SaveProjectAsDialog || command == CommandId::ExportCode || command == CommandId::ValidateProject;
+        buttons.push_back(ToolbarButton{ command, std::move(label), commandHintText(command), { left, top, buttonWidth, kToolbarButtonHeight }, accent });
+        left += buttonWidth + kToolbarButtonSpacing;
     };
 
-    addButton(ToolbarAction::NewProject, "New", "Create a new VisiForm project");
-    addButton(ToolbarAction::OpenProject, "Open", "Open a .vfb.json project");
-    addButton(ToolbarAction::SaveProject, "Save", "Save the current project");
-    addButton(ToolbarAction::SaveProjectAsDialog, "SAs", "Save the project to a new .vfb.json file", true);
-    addButton(ToolbarAction::OpenSample, "Smp", "Open the sample project");
-    addButton(ToolbarAction::SaveProjectAsDebug, "Dbg", "Save to the debug test project path");
-    addButton(ToolbarAction::ExportCode, "Exp", "Export generated Visage C++ project");
-    addButton(ToolbarAction::ValidateProject, "Chk", "Validate the current project before export");
-    addButton(ToolbarAction::FitText, "Fit", "Fit the selected widget to its text");
-    addButton(ToolbarAction::CopyWidgets, "Cp", "Copy selected widgets");
-    addButton(ToolbarAction::PasteWidgets, "Pt", "Paste copied widgets");
-    addButton(ToolbarAction::ToggleMultiSelect, "Multi", "Toggle multi-select mode", multiSelectMode_);
-    addButton(ToolbarAction::AlignLeft, "L", "Align selected widgets left");
-    addButton(ToolbarAction::AlignTop, "T", "Align selected widgets top");
-    addButton(ToolbarAction::AlignRight, "R", "Align selected widgets right");
-    addButton(ToolbarAction::AlignBottom, "B", "Align selected widgets bottom");
-    addButton(ToolbarAction::CenterHorizontally, "CH", "Center selected widgets horizontally");
-    addButton(ToolbarAction::CenterVertically, "CV", "Center selected widgets vertically");
-    addButton(ToolbarAction::SameWidth, "W", "Match selected widget widths");
-    addButton(ToolbarAction::SameHeight, "H", "Match selected widget heights");
-    addButton(ToolbarAction::DistributeHorizontally, "DH", "Distribute selected widgets horizontally");
-    addButton(ToolbarAction::DistributeVertically, "DV", "Distribute selected widgets vertically");
-    addButton(ToolbarAction::ToggleSmartGuides, "Gde", "Toggle smart guides", settings_.smartGuidesEnabled);
-    addButton(ToolbarAction::BringForward, "Fr", "Bring the selected widget forward");
-    addButton(ToolbarAction::SendBackward, "Bk", "Send the selected widget backward");
-    addButton(ToolbarAction::ToggleGrid, "Grid", "Toggle grid visibility", designerCanvas_.showGrid());
-    addButton(ToolbarAction::ToggleSnap, "Snap", "Toggle snap-to-grid", designerCanvas_.snapToGrid());
-    addButton(ToolbarAction::DeleteWidget, "Del", "Delete the selected widget or widgets");
-    addButton(ToolbarAction::DuplicateWidget, "Dup", "Duplicate the primary selected widget");
-    addButton(ToolbarAction::UndoAction, "Undo", "Undo the last command");
-    addButton(ToolbarAction::RedoAction, "Redo", "Redo the last undone command");
+    addButton(CommandId::NewProject, "New");
+    addButton(CommandId::OpenProject, "Open");
+    addButton(CommandId::SaveProject, "Save");
+    addButton(CommandId::SaveProjectAsDialog, "Save As");
+    addButton(CommandId::ExportCode, "Export");
+    addButton(CommandId::ValidateProject, "Chk");
+    addButton(CommandId::UndoAction, "Undo");
+    addButton(CommandId::RedoAction, "Redo");
+    addButton(CommandId::CopyWidgets, "Copy");
+    addButton(CommandId::PasteWidgets, "Paste");
+    addButton(CommandId::DeleteWidget, "Delete");
+    addButton(CommandId::ToggleMultiSelect, "Multi");
+    addButton(CommandId::ToggleGrid, "Grid");
+    addButton(CommandId::ToggleSnap, "Snap");
+    addButton(CommandId::ToggleSmartGuides, "Guides");
 
     return buttons;
+}
+
+bool MainWindow::activateMenuItem(const MenuItem& item)
+{
+    if (item.separator || !item.enabled) {
+        return false;
+    }
+
+    if (item.filePath.has_value()) {
+        return openRecentFile(*item.filePath);
+    }
+
+    if (item.widgetType.has_value()) {
+        addWidgetFromPalette(*item.widgetType);
+        return true;
+    }
+
+    if (item.command != CommandId::None) {
+        return executeCommand(item.command);
+    }
+
+    return false;
+}
+
+bool MainWindow::handleMenuMouseDown(const visage::MouseEvent& e)
+{
+    if (const auto menuIndex = menuIndexAt(e.position.x, e.position.y)) {
+        openMenuIndex_ = openMenuIndex_ == *menuIndex ? -1 : *menuIndex;
+        redraw();
+        return true;
+    }
+
+    if (openMenuIndex_ < 0) {
+        return false;
+    }
+
+    if (const auto itemHit = menuItemAt(e.position.x, e.position.y)) {
+        const auto allMenus = menus();
+        if (static_cast<std::size_t>(itemHit->menuIndex) < allMenus.size()) {
+            const auto& menu = allMenus[itemHit->menuIndex];
+            if (static_cast<std::size_t>(itemHit->itemIndex) < menu.items.size()) {
+                activateMenuItem(menu.items[itemHit->itemIndex]);
+            }
+        }
+        openMenuIndex_ = -1;
+        redraw();
+        return true;
+    }
+
+    openMenuIndex_ = -1;
+    redraw();
+    return true;
+}
+
+bool MainWindow::executeCommand(CommandId command)
+{
+    switch (command) {
+    case CommandId::NewProject:
+        return newProject();
+    case CommandId::OpenProject:
+        return openProjectDialog();
+    case CommandId::OpenSample:
+        return openSampleProject();
+    case CommandId::SaveProject:
+        return saveProject();
+    case CommandId::SaveProjectAsDialog:
+        return saveProjectAsDialog();
+    case CommandId::ExportCode:
+        return exportGeneratedCode();
+    case CommandId::ValidateProject:
+        return validateProject();
+    case CommandId::ShowValidationReport:
+        showEditorMessageDialog("Validation Report",
+            "Full report written to Generated/validation_report.md\n"
+            "Open that file from the workspace to inspect the full markdown report.");
+        return true;
+    case CommandId::ShowAboutDialog:
+        showEditorMessageDialog("About VisiForm",
+            "VisiForm\n"
+            "Visage form builder editor\n"
+            "Phase 59 adds a menu bar, shared commands, and centered editor modals.");
+        return true;
+    case CommandId::ShowKeyboardShortcuts:
+        showEditorMessageDialog("Keyboard Shortcuts",
+            "Ctrl+N  New\n"
+            "Ctrl+O  Open\n"
+            "Ctrl+S  Save\n"
+            "Ctrl+Shift+S  Save As\n"
+            "Ctrl+C  Copy\n"
+            "Ctrl+V  Paste\n"
+            "Ctrl+Z  Undo\n"
+            "Ctrl+Y  Redo\n"
+            "Delete  Delete selection");
+        return true;
+    case CommandId::ShowGeneratedCodeGuide:
+        showEditorMessageDialog("Generated Code Guide",
+            "Use Export to write a generated Visage project to the selected export folder.\n"
+            "See docs/code_generation.md for generated files, presets, and validation behavior.");
+        return true;
+    case CommandId::ShowProjectSettings:
+        showEditorMessageDialog("Project Settings",
+            "Select the root FormWindow to edit project name, executable name, window title, and other project settings in the Property Inspector.");
+        return true;
+    case CommandId::ShowExportDependencies:
+        showEditorMessageDialog("Export Dependencies",
+            "Select the root FormWindow and review the Export / Dependencies section in the Property Inspector to adjust local Visage source and FetchContent settings.");
+        return true;
+    case CommandId::FitText:
+        fitSelectedWidgetToText();
+        return true;
+    case CommandId::CopyWidgets:
+        copySelectedWidgets();
+        return true;
+    case CommandId::PasteWidgets:
+        pasteWidgets();
+        return true;
+    case CommandId::DeleteWidget:
+        deleteSelectedWidget();
+        return true;
+    case CommandId::DuplicateWidget:
+        duplicateSelectedWidget();
+        return true;
+    case CommandId::ToggleMultiSelect:
+        toggleMultiSelectMode();
+        return true;
+    case CommandId::AlignLeft:
+        alignSelectedLeft();
+        return true;
+    case CommandId::AlignTop:
+        alignSelectedTop();
+        return true;
+    case CommandId::AlignRight:
+        alignSelectedRight();
+        return true;
+    case CommandId::AlignBottom:
+        alignSelectedBottom();
+        return true;
+    case CommandId::CenterHorizontally:
+        centerSelectedHorizontally();
+        return true;
+    case CommandId::CenterVertically:
+        centerSelectedVertically();
+        return true;
+    case CommandId::SameWidth:
+        makeSelectedSameWidth();
+        return true;
+    case CommandId::SameHeight:
+        makeSelectedSameHeight();
+        return true;
+    case CommandId::DistributeHorizontally:
+        distributeSelectedHorizontally();
+        return true;
+    case CommandId::DistributeVertically:
+        distributeSelectedVertically();
+        return true;
+    case CommandId::ToggleSmartGuides:
+        toggleSmartGuides();
+        return true;
+    case CommandId::BringForward:
+        bringSelectedForward();
+        return true;
+    case CommandId::SendBackward:
+        sendSelectedBackward();
+        return true;
+    case CommandId::ToggleGrid:
+        toggleGrid();
+        return true;
+    case CommandId::ToggleSnap:
+        toggleSnapToGrid();
+        return true;
+    case CommandId::UndoAction:
+        undo();
+        return true;
+    case CommandId::RedoAction:
+        redo();
+        return true;
+    case CommandId::None:
+    default:
+        return false;
+    }
 }
 
 bool MainWindow::isTemplateExamplePath(const std::filesystem::path& path) const
@@ -3498,7 +4071,7 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
         editorModal_.lines.push_back("Info messages: " + std::to_string(infoCount) + ".");
     }
 
-    constexpr std::size_t kPreviewMessageCount = 5;
+    constexpr std::size_t kPreviewMessageCount = 10;
     std::size_t previewCount = 0;
     for (const auto& message : report.messages) {
         if (previewCount >= kPreviewMessageCount) {
@@ -3533,7 +4106,7 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
     }
 
     if (!reportPathText.empty()) {
-        editorModal_.lines.push_back("Full report written to " + reportPathText + ".");
+        editorModal_.lines.push_back("Full report written to " + reportPathText);
     }
     if (!reportWriteError.empty()) {
         editorModal_.lines.push_back("Validation report write failed: " + reportWriteError);
@@ -3557,26 +4130,31 @@ bool MainWindow::isEditorModalVisible() const
 
 MainWindow::PanelBounds MainWindow::editorModalDialogBounds() const
 {
-    const float availableWidth = std::max(0.0f, width() - 32.0f);
-    const float maxWidth = std::min(kEditorModalMaxWidth, availableWidth);
+    const float maxWidth = std::max(0.0f, std::min(kEditorModalMaxWidth, width() - 120.0f));
+    const float minWidth = std::min(kEditorModalMinWidth, maxWidth);
     const float dialogWidth = maxWidth <= 0.0f
         ? 0.0f
-        : std::clamp(availableWidth * 0.7f, std::min(kEditorModalMinWidth, maxWidth), maxWidth);
+        : std::clamp(kEditorModalPreferredWidth, minWidth, maxWidth);
 
     std::vector<std::string> bodyLines = splitMessageLines(editorModal_.message);
     bodyLines.insert(bodyLines.end(), editorModal_.lines.begin(), editorModal_.lines.end());
 
-    const float visibleLineCount = std::min(kEditorModalMaxBodyLines,
-        static_cast<float>(std::max<std::size_t>(1, bodyLines.size())));
+    const float visibleLineCount = static_cast<float>(std::min<std::size_t>(kEditorModalMaxBodyLines,
+        std::max<std::size_t>(1, bodyLines.size())));
     const float bodyHeight = visibleLineCount * 22.0f;
     const float buttonSectionHeight = editorModal_.buttons.empty() ? 0.0f : (kEditorModalButtonHeight + 24.0f);
-    const float dialogHeight = std::max(kEditorModalMinHeight, 68.0f + bodyHeight + kEditorModalSectionSpacing + buttonSectionHeight);
+    const float maxHeight = std::max(0.0f, std::min(kEditorModalMaxHeight, height() - 120.0f));
+    const float minHeight = std::min(kEditorModalMinHeight, maxHeight);
+    const float desiredHeight = std::max(kEditorModalPreferredHeight, 68.0f + bodyHeight + kEditorModalSectionSpacing + buttonSectionHeight);
+    const float dialogHeight = maxHeight <= 0.0f
+        ? 0.0f
+        : std::clamp(desiredHeight, minHeight, maxHeight);
 
     return {
-        std::max(12.0f, (width() - dialogWidth) * 0.5f),
-        std::max(16.0f, (height() - dialogHeight) * 0.5f),
+        std::max(0.0f, (width() - dialogWidth) * 0.5f),
+        std::max(0.0f, (height() - dialogHeight) * 0.5f),
         dialogWidth,
-        std::min(dialogHeight, std::max(0.0f, height() - 32.0f))
+        dialogHeight
     };
 }
 
@@ -3612,10 +4190,12 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
         return;
     }
 
-    canvas.setColor(0xff0f1318);
+    canvas.setColor(0xc0101318);
     canvas.fill(0.0f, 0.0f, width(), height());
 
     const PanelBounds dialogBounds = editorModalDialogBounds();
+    canvas.setColor(0xff101318);
+    canvas.fill(dialogBounds.x + 6.0f, dialogBounds.y + 8.0f, dialogBounds.width, dialogBounds.height);
     canvas.setColor(0xff232a34);
     canvas.fill(dialogBounds.x, dialogBounds.y, dialogBounds.width, dialogBounds.height);
     canvas.setColor(0xff2f3948);
@@ -3642,7 +4222,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
     }
 
     float lineY = dialogBounds.y + 52.0f;
-    const std::size_t visibleCount = std::min(bodyLines.size(), static_cast<std::size_t>(kEditorModalMaxBodyLines));
+    const std::size_t visibleCount = std::min(bodyLines.size(), kEditorModalMaxBodyLines);
     for (std::size_t index = 0; index < visibleCount; ++index) {
         canvas.setColor(0xffdde2ea);
         canvas.text(bodyLines[index], labelFont_, visage::Font::kTopLeft,

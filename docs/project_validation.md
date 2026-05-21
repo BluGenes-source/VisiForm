@@ -1,6 +1,6 @@
 # Project validation
 
-`VisiForm` validates the current in-memory project before export and can also run the same checks on demand from the toolbar `Chk` action.
+`VisiForm` validates the current in-memory project before export and can also run the same checks on demand from the toolbar `Chk` action or from `Project > Validate / Check`.
 
 ## Validation report
 
@@ -113,7 +113,15 @@ The toolbar `Chk` action:
 - runs the validator
 - updates the status area with a summary
 - rewrites `Generated/validation_report.md`
-- shows a modal summary dialog with the validation result counts
+- shows a centered editor modal summary dialog with the validation result counts
+- uses a dimmed overlay behind the dialog panel
+- keeps the dialog within these bounds:
+  - max width `min(720, windowWidth - 120)`
+  - max height `min(520, windowHeight - 120)`
+  - min width `420`
+  - min height `240`
+- limits the inline preview to a short message list instead of expanding to full screen
+- includes `Full report written to Generated/validation_report.md` when the report file is written
 
 The export action:
 
@@ -122,3 +130,10 @@ The export action:
 - allows export when only warnings exist
 - reports warning counts after a successful export with warnings
 - shows a modal error summary when validation errors block export
+
+The modal dialog remains editor-modal for this phase:
+
+- underlying editor UI should not receive mouse clicks while the dialog is open
+- `OK` closes the dialog
+- `Escape` closes the dialog
+- `Enter` activates `OK`

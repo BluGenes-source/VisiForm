@@ -33,6 +33,9 @@ The registry stores:
 - event properties
 - event signature kinds used by export callback hooks and suggestions
 
+The editor exposes these widget types through both the `Widget Palette` and the `Insert` menu.
+Both entry points use the same add-widget flow in `MainWindow`.
+
 ## Look and feel foundation
 
 The editor now supports a project-level look and feel plus optional per-widget style overrides.

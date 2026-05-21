@@ -74,6 +74,7 @@ private:
     };
 
     struct WindowLayout {
+        PanelBounds menuBar{};
         PanelBounds toolbar{};
         PanelBounds widgetPalette{};
         PanelBounds designerCanvas{};
@@ -83,19 +84,26 @@ private:
         bool showProjectTree = false;
     };
 
-    enum class ToolbarAction {
+    enum class CommandId {
         None,
         NewProject,
         OpenProject,
+        OpenSample,
         SaveProject,
         SaveProjectAsDialog,
-        OpenSample,
-        SaveProjectAsDebug,
         ExportCode,
         ValidateProject,
+        ShowValidationReport,
+        ShowAboutDialog,
+        ShowKeyboardShortcuts,
+        ShowGeneratedCodeGuide,
+        ShowProjectSettings,
+        ShowExportDependencies,
         FitText,
         CopyWidgets,
         PasteWidgets,
+        DeleteWidget,
+        DuplicateWidget,
         ToggleMultiSelect,
         AlignLeft,
         AlignTop,
@@ -112,8 +120,6 @@ private:
         SendBackward,
         ToggleGrid,
         ToggleSnap,
-        DuplicateWidget,
-        DeleteWidget,
         UndoAction,
         RedoAction
     };
@@ -150,11 +156,39 @@ private:
     };
 
     struct ToolbarButton {
-        ToolbarAction action = ToolbarAction::None;
+        CommandId command = CommandId::None;
         std::string label{};
         std::string hint{};
         PanelBounds bounds{};
         bool accent = false;
+    };
+
+    struct MenuItem {
+        std::string id{};
+        std::string label{};
+        std::string shortcut{};
+        CommandId command = CommandId::None;
+        bool enabled = true;
+        bool checked = false;
+        bool separator = false;
+        std::optional<model::WidgetType> widgetType{};
+        std::optional<std::filesystem::path> filePath{};
+    };
+
+    struct Menu {
+        std::string label{};
+        std::vector<MenuItem> items{};
+    };
+
+    struct MenuBarButton {
+        int menuIndex = -1;
+        PanelBounds bounds{};
+    };
+
+    struct MenuItemHit {
+        int menuIndex = -1;
+        int itemIndex = -1;
+        PanelBounds bounds{};
     };
 
     struct EditorModalButton {
@@ -176,8 +210,21 @@ private:
     [[nodiscard]] WindowLayout calculateLayout(float windowWidth, float windowHeight) const;
     void applyLayout(const WindowLayout& layout);
     void updateWindowTitle();
+    void drawMenuBar(visage::Canvas& canvas) const;
     void drawToolbar(visage::Canvas& canvas) const;
     void drawStatusBar(visage::Canvas& canvas) const;
+    [[nodiscard]] std::vector<Menu> menus() const;
+    [[nodiscard]] std::vector<MenuBarButton> menuBarButtons() const;
+    [[nodiscard]] std::optional<int> menuIndexAt(float x, float y) const;
+    [[nodiscard]] std::optional<MenuItemHit> menuItemAt(float x, float y) const;
+    [[nodiscard]] PanelBounds menuDropdownBounds(int menuIndex) const;
+    bool handleMenuMouseDown(const visage::MouseEvent& e);
+    bool activateMenuItem(const MenuItem& item);
+    bool executeCommand(CommandId command);
+    [[nodiscard]] bool isCommandEnabled(CommandId command) const;
+    [[nodiscard]] bool isCommandChecked(CommandId command) const;
+    [[nodiscard]] std::string commandShortcutText(CommandId command) const;
+    [[nodiscard]] std::string commandHintText(CommandId command) const;
     bool openSampleProject();
     bool saveDebugProject();
     UnsavedChangesResult promptForUnsavedChanges();
@@ -222,7 +269,6 @@ private:
     void setOperationStatus(std::string message);
     [[nodiscard]] std::vector<ToolbarButton> toolbarButtons() const;
     [[nodiscard]] std::optional<ToolbarButton> toolbarButtonAt(float x, float y) const;
-    [[nodiscard]] ToolbarAction toolbarActionAt(float x, float y) const;
     [[nodiscard]] bool isTemplateExamplePath(const std::filesystem::path& path) const;
     [[nodiscard]] std::filesystem::path projectRootPath() const;
     [[nodiscard]] std::filesystem::path sampleProjectPath() const;
@@ -277,6 +323,7 @@ private:
     bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);
     std::vector<model::WidgetNode> clipboardWidgets_{};
     int pasteCount_ = 0;
+    int openMenuIndex_ = -1;
 };
 
 } // namespace visiform::ui

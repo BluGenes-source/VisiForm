@@ -21,6 +21,7 @@ Validation result behavior:
 - warnings do not block export
 - a clean validation pass keeps the generated export behavior unchanged
 - the toolbar `Chk` action runs the same validation flow on demand
+- the `Project > Validate / Check` menu command runs the same validation flow on demand
 - the editor now shows a modal validation summary after `Chk`
 - export-blocking validation errors also surface in an editor modal dialog before export stops
 
