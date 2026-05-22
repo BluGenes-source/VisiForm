@@ -99,6 +99,7 @@ private:
         ShowKeyboardShortcuts,
         ShowGeneratedCodeGuide,
         ShowProjectSettings,
+        ShowResourceManager,
         ShowExportDependencies,
         FitText,
         CopyWidgets,
@@ -200,7 +201,8 @@ private:
     enum class EditorModalMode {
         Message,
         NewProjectWizard,
-        ProjectSettings
+        ProjectSettings,
+        ResourceManager
     };
 
     struct EditorModalField {
@@ -245,6 +247,12 @@ private:
         std::string localVisageSourceDirectory{};
         std::string visageGitRepository{};
         std::string visageGitTag{};
+    };
+
+    struct ResourceManagerDialogState {
+        bool visible = false;
+        std::string selectedResourceId{};
+        bool confirmReferencedRemoval = false;
     };
 
     struct EditorModalDialog {
@@ -341,8 +349,12 @@ private:
     [[nodiscard]] bool canDrawText() const;
     bool openNewProjectWizard();
     bool openProjectSettingsDialog();
+    bool openResourceManagerDialog();
     void resetNewProjectWizard();
     void populateProjectSettingsDialog();
+    void populateResourceManagerDialog();
+    bool addResourceFromDialog(model::ProjectResourceType resourceType);
+    bool removeSelectedResourceFromManager();
     void showEditorMessageDialog(const std::string& title, const std::string& message);
     void showEditorValidationDialog(const validation::ValidationReport& report,
         const std::string& reportPathText = {},
@@ -398,6 +410,7 @@ private:
     EditorModalEditState editorModalEdit_{};
     NewProjectWizardState newProjectWizard_{};
     ProjectSettingsDialogState projectSettingsDialog_{};
+    ResourceManagerDialogState resourceManagerDialog_{};
 
     // Apply a callback suggestion directly to the selected widget property
     bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);

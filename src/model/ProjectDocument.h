@@ -3,6 +3,7 @@
 #pragma once
 
 #include "model/FormNode.h"
+#include "model/ProjectResource.h"
 
 #include <string>
 #include <vector>
@@ -23,6 +24,7 @@ public:
     std::string userSubclassName{};
     std::string windowTitle{};
     std::string lookAndFeelId = "VisiFormDark";
+    std::vector<ProjectResource> resources{};
     WidgetNode root{};
     std::string selectedWidgetId{};
     bool dirty = false;
@@ -42,6 +44,8 @@ public:
 
     [[nodiscard]] WidgetNode* findWidgetById(const std::string& id);
     [[nodiscard]] const WidgetNode* findWidgetById(const std::string& id) const;
+    [[nodiscard]] ProjectResource* findResourceById(const std::string& id);
+    [[nodiscard]] const ProjectResource* findResourceById(const std::string& id) const;
     [[nodiscard]] WidgetNode* findParentOf(const std::string& childId);
     [[nodiscard]] const WidgetNode* findParentOf(const std::string& childId) const;
     [[nodiscard]] WidgetNode* previousSiblingOf(const std::string& id);
@@ -50,6 +54,9 @@ public:
     bool sendWidgetBackward(const std::string& id);
     bool removeWidgetById(const std::string& id);
     [[nodiscard]] bool isRootWidgetId(const std::string& id) const;
+    [[nodiscard]] std::vector<std::string> widgetIdsReferencingResource(const std::string& resourceId) const;
+    [[nodiscard]] bool isResourceReferenced(const std::string& resourceId) const;
+    bool removeResourceById(const std::string& id);
     bool addChildToRoot(WidgetNode widget);
     bool addChildToParent(const std::string& parentId, WidgetNode widget);
     [[nodiscard]] WidgetNode* duplicateWidgetById(const std::string& id, utils::IdGenerator& idGenerator);

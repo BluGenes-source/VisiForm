@@ -62,6 +62,7 @@ add_executable(VisiForm
     src/ui/PropertyInspector.cpp
     src/ui/ProjectTree.cpp
     src/model/ProjectDocument.cpp
+    src/model/ProjectResource.cpp
     src/model/FormNode.cpp
     src/model/WidgetDefinition.cpp
     src/model/LookAndFeelRegistry.cpp

@@ -170,6 +170,80 @@ std::string templateDescription(const std::string& templateId)
     return "Template: custom";
 }
 
+std::string resourceTypeDisplayName(model::ProjectResourceType type)
+{
+    switch (type) {
+    case model::ProjectResourceType::Image:
+        return "image";
+    case model::ProjectResourceType::Font:
+        return "font";
+    case model::ProjectResourceType::Icon:
+        return "icon";
+    case model::ProjectResourceType::Theme:
+        return "theme";
+    case model::ProjectResourceType::Other:
+        return "resource";
+    }
+
+    return "resource";
+}
+
+std::string defaultResourceFolder(model::ProjectResourceType type)
+{
+    switch (type) {
+    case model::ProjectResourceType::Image:
+        return "assets/images";
+    case model::ProjectResourceType::Font:
+        return "assets/fonts";
+    case model::ProjectResourceType::Icon:
+        return "assets/icons";
+    case model::ProjectResourceType::Theme:
+        return "assets/themes";
+    case model::ProjectResourceType::Other:
+        return "assets/resources";
+    }
+
+    return "assets/resources";
+}
+
+std::string defaultResourceDisplayName(const std::filesystem::path& sourcePath)
+{
+    return utils::FileUtils::fileStem(sourcePath);
+}
+
+std::string defaultResourceExportRelativePath(model::ProjectResourceType type,
+    const std::filesystem::path& sourcePath,
+    const model::ProjectDocument& document)
+{
+    const std::string folder = defaultResourceFolder(type);
+    const std::string extension = sourcePath.extension().string();
+    const std::string baseName = utils::FileUtils::sanitizeFileName(utils::FileUtils::fileStem(sourcePath));
+
+    std::size_t suffix = 0;
+    while (true) {
+        std::string fileName = baseName;
+        if (suffix > 0) {
+            fileName += "_" + std::to_string(suffix + 1);
+        }
+        fileName += extension;
+
+        const std::string candidate = utils::FileUtils::sanitizeRelativeAssetPath(folder + "/" + fileName);
+        const auto iterator = std::find_if(document.resources.begin(), document.resources.end(), [&candidate](const model::ProjectResource& resource) {
+            return resource.exportRelativePath == candidate;
+        });
+        if (iterator == document.resources.end()) {
+            return candidate;
+        }
+
+        ++suffix;
+    }
+}
+
+std::string imageWidgetPath(const model::WidgetNode& widget)
+{
+    return widget.getStringProperty("imagePath", widget.getStringProperty("source", {}));
+}
+
 void updateDerivedProjectNames(const std::string& previousProjectName,
     const std::string& nextProjectName,
     std::string& executableName,
@@ -774,7 +848,31 @@ bool MainWindow::openProjectSettingsDialog()
     editorModal_.lines.clear();
     editorModal_.buttons = { { "apply", "Apply" }, { "cancel", "Cancel" } };
     editorModal_.result.clear();
-    editorModal_.statusText = "Update project naming, look and feel, and local Visage export settings.";
+    editorModal_.statusText = "Update project naming, look and feel, and local Visage export settings. Use Project > Resources to manage assets.";
+    editorModal_.preferredWidth = kProjectSettingsModalWidth;
+    editorModal_.preferredHeight = kProjectSettingsModalHeight;
+    redraw();
+    return true;
+}
+
+bool MainWindow::openResourceManagerDialog()
+{
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    populateResourceManagerDialog();
+    resourceManagerDialog_.visible = true;
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::ResourceManager;
+    editorModal_.title = "Resource Manager";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = { { "add_image", "Add Image" }, { "add_font", "Add Font" }, { "remove_resource", "Remove" }, { "close", "Close" } };
+    editorModal_.result.clear();
+    editorModal_.statusText = "Manage project assets and exported relative paths.";
     editorModal_.preferredWidth = kProjectSettingsModalWidth;
     editorModal_.preferredHeight = kProjectSettingsModalHeight;
     redraw();
@@ -797,6 +895,85 @@ void MainWindow::populateProjectSettingsDialog()
     projectSettingsDialog_.localVisageSourceDirectory = normalizedPathText(settings_.localVisageSourceDirectory);
     projectSettingsDialog_.visageGitRepository = settings_.visageGitRepository;
     projectSettingsDialog_.visageGitTag = settings_.visageGitTag;
+}
+
+void MainWindow::populateResourceManagerDialog()
+{
+    resourceManagerDialog_.confirmReferencedRemoval = false;
+    if (!resourceManagerDialog_.selectedResourceId.empty() && document_.findResourceById(resourceManagerDialog_.selectedResourceId) != nullptr) {
+        return;
+    }
+
+    resourceManagerDialog_.selectedResourceId = document_.resources.empty()
+        ? std::string{}
+        : document_.resources.front().id;
+}
+
+bool MainWindow::addResourceFromDialog(model::ProjectResourceType resourceType)
+{
+    const std::filesystem::path initialDirectory = !settings_.lastProjectDirectory.empty() && std::filesystem::exists(settings_.lastProjectDirectory)
+        ? settings_.lastProjectDirectory
+        : projectRootPath();
+
+    std::optional<std::filesystem::path> selectedPath;
+    if (resourceType == model::ProjectResourceType::Image) {
+        selectedPath = utils::showOpenImageResourceDialog(initialDirectory);
+    }
+    else if (resourceType == model::ProjectResourceType::Font) {
+        selectedPath = utils::showOpenFontResourceDialog(initialDirectory);
+    }
+
+    if (!selectedPath.has_value()) {
+        editorModal_.statusText = "Resource selection cancelled.";
+        redraw();
+        return false;
+    }
+
+    model::ProjectResource resource;
+    resource.id = idGenerator_.next(resourceType, document_);
+    resource.type = resourceType;
+    resource.displayName = defaultResourceDisplayName(*selectedPath);
+    resource.sourcePath = normalizedPathText(*selectedPath);
+    resource.exportRelativePath = defaultResourceExportRelativePath(resourceType, *selectedPath, document_);
+    document_.resources.push_back(resource);
+    document_.markDirty();
+
+    resourceManagerDialog_.selectedResourceId = resource.id;
+    resourceManagerDialog_.confirmReferencedRemoval = false;
+    editorModal_.statusText = "Added " + resourceTypeDisplayName(resourceType) + " resource: " + resource.displayName;
+    redraw();
+    return true;
+}
+
+bool MainWindow::removeSelectedResourceFromManager()
+{
+    populateResourceManagerDialog();
+    if (resourceManagerDialog_.selectedResourceId.empty()) {
+        editorModal_.statusText = "No resource is selected.";
+        redraw();
+        return false;
+    }
+
+    const auto referencedBy = document_.widgetIdsReferencingResource(resourceManagerDialog_.selectedResourceId);
+    if (!referencedBy.empty() && !resourceManagerDialog_.confirmReferencedRemoval) {
+        resourceManagerDialog_.confirmReferencedRemoval = true;
+        editorModal_.statusText = "Resource is used by " + std::to_string(referencedBy.size()) + " widget(s). Click Remove again to confirm.";
+        redraw();
+        return false;
+    }
+
+    const std::string removedResourceId = resourceManagerDialog_.selectedResourceId;
+    if (!document_.removeResourceById(removedResourceId)) {
+        editorModal_.statusText = "Failed to remove the selected resource.";
+        redraw();
+        return false;
+    }
+
+    resourceManagerDialog_.selectedResourceId.clear();
+    populateResourceManagerDialog();
+    editorModal_.statusText = "Removed resource: " + removedResourceId;
+    redraw();
+    return true;
 }
 
 std::string MainWindow::validateNewProjectWizard() const
@@ -3112,6 +3289,28 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return true;
     }
 
+    if (key == "scaleMode") {
+        static constexpr std::array<const char*, 4> kScaleModes = { "Stretch", "Fit", "Fill", "Center" };
+        const bool isValidScaleMode = std::any_of(kScaleModes.begin(), kScaleModes.end(), [&trimmedValue](const char* value) {
+            return trimmedValue == value;
+        });
+        if (!isValidScaleMode) {
+            setOperationStatus("Invalid image scale mode");
+            redraw();
+            return false;
+        }
+
+        return setSelectedWidgetProperty(key, trimmedValue);
+    }
+
+    if (key == "imagePath") {
+        const bool updated = setSelectedWidgetProperty(key, trimmedValue);
+        if (updated && widget->getProperty("source") != nullptr) {
+            setSelectedWidgetProperty("source", std::string{});
+        }
+        return updated;
+    }
+
     if (isWidgetColorProperty(*widget, key)) {
         if (!isValidColorValue(trimmedValue)) {
             setOperationStatus("Invalid color value");
@@ -3378,6 +3577,8 @@ std::string MainWindow::commandHintText(CommandId command) const
         return "Show a short guide to generated code output";
     case CommandId::ShowProjectSettings:
         return "Open the project settings dialog";
+    case CommandId::ShowResourceManager:
+        return "Open the project resource manager";
     case CommandId::ShowExportDependencies:
         return "Show where export dependency settings are edited";
     case CommandId::FitText:
@@ -3593,6 +3794,7 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     Menu projectMenu{ "Project" };
     addCommand(projectMenu, CommandId::ValidateProject, "Validate / Check");
     addCommand(projectMenu, CommandId::ShowProjectSettings, "Project Settings");
+    addCommand(projectMenu, CommandId::ShowResourceManager, "Resources");
     addCommand(projectMenu, CommandId::ShowExportDependencies, "Export Dependencies");
     result.push_back(std::move(projectMenu));
 
@@ -4102,6 +4304,8 @@ bool MainWindow::executeCommand(CommandId command)
         return true;
     case CommandId::ShowProjectSettings:
         return openProjectSettingsDialog();
+    case CommandId::ShowResourceManager:
+        return openResourceManagerDialog();
     case CommandId::ShowExportDependencies:
         showEditorMessageDialog("Export Dependencies",
             "Use Project Settings to adjust local Visage source, repository, and tag values used during export.");
@@ -4478,6 +4682,20 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
         fields.push_back({ "visageGitRepository", "Visage Git Repository", projectSettingsDialog_.visageGitRepository, PropertyInspector::PropertyEditKind::Text });
         fields.push_back({ "visageGitTag", "Visage Git Tag", projectSettingsDialog_.visageGitTag, PropertyInspector::PropertyEditKind::Text });
     }
+    else if (editorModal_.mode == EditorModalMode::ResourceManager) {
+        std::vector<std::string> resourceChoices;
+        resourceChoices.reserve(document_.resources.size());
+        for (const auto& resource : document_.resources) {
+            resourceChoices.push_back(resource.id);
+        }
+
+        const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId);
+        fields.push_back({ "selectedResourceId", "Resource", resourceManagerDialog_.selectedResourceId, PropertyInspector::PropertyEditKind::Choice, std::move(resourceChoices) });
+        fields.push_back({ "resourceType", "Type", selectedResource == nullptr ? std::string{} : model::toString(selectedResource->type), PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back({ "displayName", "Display Name", selectedResource == nullptr ? std::string{} : selectedResource->displayName, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back({ "sourcePath", "Source Path", selectedResource == nullptr ? std::string{} : selectedResource->sourcePath, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back({ "exportRelativePath", "Export Path", selectedResource == nullptr ? std::string{} : selectedResource->exportRelativePath, PropertyInspector::PropertyEditKind::ReadOnly });
+    }
     return fields;
 }
 
@@ -4620,7 +4838,24 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
             projectSettingsDialog_.visageGitTag = trimmedValue;
         }
 
-        editorModal_.statusText = "Update project naming, look and feel, and local Visage export settings.";
+        editorModal_.statusText = "Update project naming, look and feel, and local Visage export settings. Use Project > Resources to manage assets.";
+        return;
+    }
+
+    if (editorModal_.mode == EditorModalMode::ResourceManager) {
+        if (key == "selectedResourceId") {
+            resourceManagerDialog_.selectedResourceId = trimmedValue;
+            resourceManagerDialog_.confirmReferencedRemoval = false;
+            if (const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId)) {
+                editorModal_.statusText = "Selected " + resourceTypeDisplayName(selectedResource->type) + " resource: " + selectedResource->displayName;
+            }
+            else if (document_.resources.empty()) {
+                editorModal_.statusText = "No resources have been added yet.";
+            }
+            else {
+                editorModal_.statusText = "Select a resource to inspect its source and export path.";
+            }
+        }
     }
 }
 
@@ -4718,6 +4953,10 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
         closeEditorModalDialog(buttonId);
         return true;
     }
+    if (buttonId == "close") {
+        closeEditorModalDialog(buttonId);
+        return true;
+    }
 
     if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
         return false;
@@ -4728,6 +4967,15 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
     }
     if (buttonId == "apply" && editorModal_.mode == EditorModalMode::ProjectSettings) {
         return applyProjectSettingsDialog();
+    }
+    if (buttonId == "add_image" && editorModal_.mode == EditorModalMode::ResourceManager) {
+        return addResourceFromDialog(model::ProjectResourceType::Image);
+    }
+    if (buttonId == "add_font" && editorModal_.mode == EditorModalMode::ResourceManager) {
+        return addResourceFromDialog(model::ProjectResourceType::Font);
+    }
+    if (buttonId == "remove_resource" && editorModal_.mode == EditorModalMode::ResourceManager) {
+        return removeSelectedResourceFromManager();
     }
 
     closeEditorModalDialog(buttonId);
@@ -4753,6 +5001,7 @@ void MainWindow::showEditorMessageDialog(const std::string& title, const std::st
     editorModal_.preferredHeight = 0.0f;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    resourceManagerDialog_.visible = false;
     redraw();
 }
 
@@ -4776,6 +5025,7 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
     editorModal_.preferredHeight = 0.0f;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    resourceManagerDialog_.visible = false;
 
     if (report.hasErrors()) {
         editorModal_.title = "Validation Errors";
@@ -4852,6 +5102,7 @@ void MainWindow::closeEditorModalDialog(const std::string& result)
     editorModal_.preferredHeight = 0.0f;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    resourceManagerDialog_.visible = false;
     requestKeyboardFocus();
     redraw();
 }

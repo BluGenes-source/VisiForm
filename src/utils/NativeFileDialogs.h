@@ -14,6 +14,8 @@ namespace visiform::utils {
     const std::filesystem::path& initialDirectory = {});
 
 [[nodiscard]] std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::filesystem::path& initialDirectory = {});
+[[nodiscard]] std::optional<std::filesystem::path> showOpenImageResourceDialog(const std::filesystem::path& initialDirectory = {});
+[[nodiscard]] std::optional<std::filesystem::path> showOpenFontResourceDialog(const std::filesystem::path& initialDirectory = {});
 [[nodiscard]] std::optional<std::string> showColorPickerDialog(const std::string& initialColor = {});
 
 } // namespace visiform::utils

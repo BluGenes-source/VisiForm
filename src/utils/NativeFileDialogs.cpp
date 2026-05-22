@@ -27,6 +27,14 @@ constexpr wchar_t kProjectFilter[] =
     L"VisiForm Project (*.vfb.json)\0*.vfb.json\0"
     L"All Files (*.*)\0*.*\0\0";
 
+constexpr wchar_t kImageResourceFilter[] =
+    L"Image Assets (*.png;*.jpg;*.jpeg;*.bmp;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.webp\0"
+    L"All Files (*.*)\0*.*\0\0";
+
+constexpr wchar_t kFontResourceFilter[] =
+    L"Font Assets (*.ttf;*.otf)\0*.ttf;*.otf\0"
+    L"All Files (*.*)\0*.*\0\0";
+
 std::filesystem::path normalizeProjectSavePath(std::filesystem::path path)
 {
     if (FileUtils::hasProjectExtension(path)) {
@@ -80,6 +88,27 @@ std::optional<std::filesystem::path> showProjectDialog(bool saveDialog,
 
     std::filesystem::path selectedPath{ buffer.data() };
     return saveDialog ? normalizeProjectSavePath(std::move(selectedPath)) : selectedPath;
+}
+
+std::optional<std::filesystem::path> showOpenFilteredFileDialog(const wchar_t* filter, const std::filesystem::path& initialDirectory)
+{
+    std::vector<wchar_t> buffer(4096, L'\0');
+
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = nullptr;
+    dialog.lpstrFilter = filter;
+    dialog.nFilterIndex = 1;
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    dialog.lpstrInitialDir = initialDirectory.empty() ? nullptr : initialDirectory.c_str();
+    dialog.Flags = OFN_EXPLORER | OFN_HIDEREADONLY | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+    if (!GetOpenFileNameW(&dialog)) {
+        return std::nullopt;
+    }
+
+    return std::filesystem::path{ buffer.data() };
 }
 
 bool isValidColorText(const std::string& value)
@@ -160,6 +189,16 @@ std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::fil
     }
 
     return resultPath;
+}
+
+std::optional<std::filesystem::path> showOpenImageResourceDialog(const std::filesystem::path& initialDirectory)
+{
+    return showOpenFilteredFileDialog(kImageResourceFilter, initialDirectory);
+}
+
+std::optional<std::filesystem::path> showOpenFontResourceDialog(const std::filesystem::path& initialDirectory)
+{
+    return showOpenFilteredFileDialog(kFontResourceFilter, initialDirectory);
 }
 
 std::optional<std::string> showColorPickerDialog(const std::string& initialColor)

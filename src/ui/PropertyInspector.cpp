@@ -381,6 +381,9 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     if (selectedWidget->type == model::WidgetType::FormWindow) {
         drawnKeys.insert("title");
     }
+    else if (selectedWidget->type == model::WidgetType::Image) {
+        drawnKeys.insert("source");
+    }
 
     const auto addEventProperty = [&](const std::string& key, const std::string& label, const std::string& fallback = {}) {
         if (drawnKeys.contains(key)) {
@@ -401,9 +404,23 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 rows.push_back({ "__section_style", "Style", {}, PropertyEditKind::ReadOnly, true });
                 styleSectionInserted = true;
             }
+
+            std::vector<std::string> choices = property.choices;
+            if (selectedWidget->type == model::WidgetType::Image && property.key == "resourceId") {
+                choices.push_back({});
+                for (const auto& resource : document.resources) {
+                    if (resource.type == model::ProjectResourceType::Image) {
+                        choices.push_back(resource.id);
+                    }
+                }
+            }
+
             const auto* propertyValue = selectedWidget->getProperty(property.key);
-            const std::string displayValue = propertyValue != nullptr ? propertyValueText(*propertyValue) : property.defaultValue.toDisplayString();
-            rows.push_back({ property.key, property.label, displayValue, editKindForDefinition(property), false, property.choices });
+            std::string displayValue = propertyValue != nullptr ? propertyValueText(*propertyValue) : property.defaultValue.toDisplayString();
+            if (selectedWidget->type == model::WidgetType::Image && property.key == "imagePath" && displayValue.empty()) {
+                displayValue = selectedWidget->getStringProperty("source", {});
+            }
+            rows.push_back({ property.key, property.label, displayValue, editKindForDefinition(property), false, std::move(choices) });
             drawnKeys.insert(property.key);
         }
 

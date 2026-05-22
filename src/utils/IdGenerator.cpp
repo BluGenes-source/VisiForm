@@ -27,6 +27,25 @@ std::string IdGenerator::next(model::WidgetType widgetType, const model::Project
     }
 }
 
+std::string IdGenerator::next(model::ProjectResourceType resourceType, const model::ProjectDocument& document)
+{
+    auto& nextValue = nextResourceValues_[resourceType];
+    if (nextValue == 0) {
+        nextValue = 1;
+    }
+
+    const std::string prefix = prefixForType(resourceType);
+    while (true) {
+        std::ostringstream stream;
+        stream << prefix << nextValue++;
+        const std::string candidate = stream.str();
+
+        if (document.findResourceById(candidate) == nullptr) {
+            return candidate;
+        }
+    }
+}
+
 std::string IdGenerator::prefixForType(model::WidgetType widgetType)
 {
     switch (widgetType) {
@@ -55,6 +74,24 @@ std::string IdGenerator::prefixForType(model::WidgetType widgetType)
     }
 
     return "widget_";
+}
+
+std::string IdGenerator::prefixForType(model::ProjectResourceType resourceType)
+{
+    switch (resourceType) {
+    case model::ProjectResourceType::Image:
+        return "image_";
+    case model::ProjectResourceType::Font:
+        return "font_";
+    case model::ProjectResourceType::Icon:
+        return "icon_";
+    case model::ProjectResourceType::Theme:
+        return "theme_";
+    case model::ProjectResourceType::Other:
+        return "resource_";
+    }
+
+    return "resource_";
 }
 
 } // namespace visiform::utils

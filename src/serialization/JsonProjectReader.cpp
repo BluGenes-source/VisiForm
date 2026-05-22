@@ -224,6 +224,31 @@ bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::str
     return true;
 }
 
+bool parseResource(const nlohmann::json& json, model::ProjectResource& resource, std::string& errorMessage)
+{
+    if (!requireObject(json, "resources", errorMessage)) {
+        return false;
+    }
+
+    std::string typeString;
+    if (!tryReadString(json, "id", resource.id, errorMessage)
+        || !tryReadString(json, "type", typeString, errorMessage)
+        || !tryReadString(json, "displayName", resource.displayName, errorMessage)
+        || !tryReadString(json, "sourcePath", resource.sourcePath, errorMessage)
+        || !tryReadString(json, "exportRelativePath", resource.exportRelativePath, errorMessage)) {
+        return false;
+    }
+
+    const auto resourceType = model::projectResourceTypeFromString(typeString);
+    if (!resourceType.has_value()) {
+        errorMessage = "Unsupported resource type: " + typeString;
+        return false;
+    }
+
+    resource.type = *resourceType;
+    return true;
+}
+
 } // namespace
 
 std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const std::string& jsonText, std::string& errorMessage) const
@@ -294,6 +319,23 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
             (void)iterator;
         }
         document.mainFormClassName = document.userSubclassName;
+
+        document.resources.clear();
+        if (const auto iterator = json.find("resources"); iterator != json.end()) {
+            if (!iterator->is_array()) {
+                errorMessage = "resources must be an array when present.";
+                return std::nullopt;
+            }
+
+            for (const auto& resourceJson : *iterator) {
+                model::ProjectResource resource;
+                if (!parseResource(resourceJson, resource, errorMessage)) {
+                    return std::nullopt;
+                }
+
+                document.resources.push_back(std::move(resource));
+            }
+        }
 
         const auto rootIterator = json.find("root");
         if (rootIterator == json.end()) {

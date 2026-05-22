@@ -10,6 +10,7 @@ Current default export fallback folder:
 
 The export flow may also write to a user-selected folder.
 The generator overwrites only the files it owns inside the chosen export folder.
+Managed project resources are copied into generated `assets/` folders and are not compiled by CMake in this phase.
 
 Before export, `VisiForm` now validates the in-memory project document and writes a markdown report to:
 
@@ -47,6 +48,13 @@ The export currently writes:
 - `Generated/ExportedVisageProject/src/<UserSubclassName>.h`
 - `Generated/ExportedVisageProject/src/<UserSubclassName>.cpp`
 
+When resources exist, export also copies managed asset files such as:
+
+- `Generated/ExportedVisageProject/assets/images/<filename>`
+- `Generated/ExportedVisageProject/assets/fonts/<filename>`
+- `Generated/ExportedVisageProject/assets/icons/<filename>`
+- `Generated/ExportedVisageProject/assets/themes/<filename>`
+
 ## Generated project contents
 
 The generated project includes:
@@ -72,6 +80,22 @@ Dependency behavior:
 - if `VISIFORM_VISAGE_SOURCE_DIR` is non-empty and contains `CMakeLists.txt`, the generated project uses `add_subdirectory(...)` with the local Visage source tree
 - otherwise the generated project falls back to `FetchContent`
 - this avoids repeated dependency downloads when a developer keeps a local Visage checkout
+
+## Managed assets
+
+Project resources are exported with safe relative paths under `assets/`.
+
+Current behavior:
+
+- image resources default to `assets/images/<filename>`
+- font resources default to `assets/fonts/<filename>`
+- icon resources default to `assets/icons/<filename>`
+- theme resources default to `assets/themes/<filename>`
+- duplicate default export names are made unique when needed
+- export copies managed files into the generated project folder
+- export does not delete unknown user files
+
+Generated image widgets currently stay safe by using managed resource paths as placeholder text and generated comments until runtime image loading is expanded.
 
 ## Generated project naming
 
@@ -151,6 +175,8 @@ Current export validation highlights:
 
 - project naming checks for `projectName`, `executableName`, and `userSubclassName`
 - local Visage dependency-setting checks for `localVisageSourceDirectory`, `visageGitRepository`, and `visageGitTag`
+- project resource checks for unique ids, existing source files, safe `assets/` export paths, and duplicate export path conflicts
+- `Image` widget checks for `resourceId`, fallback `imagePath`, and `scaleMode`
 - widget validation for duplicate ids, duplicate names, empty ids, bounds, colors, enum values, and numeric ranges
 - callback validation for invalid handler names and incompatible signature reuse
 - `RadioButton` group validation for empty groups, missing selections, and conflicting selected states

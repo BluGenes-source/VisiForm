@@ -14,6 +14,17 @@
 namespace visiform::model {
 namespace {
 
+void collectWidgetsReferencingResource(const WidgetNode& widget, const std::string& resourceId, std::vector<std::string>& widgetIds)
+{
+    if (!resourceId.empty() && widget.getStringProperty("resourceId", {}) == resourceId) {
+        widgetIds.push_back(widget.id);
+    }
+
+    for (const auto& child : widget.children) {
+        collectWidgetsReferencingResource(child, resourceId, widgetIds);
+    }
+}
+
 template <typename ParentType>
 using SiblingPointer = std::conditional_t<
     std::is_const_v<ParentType>,
@@ -225,9 +236,25 @@ WidgetNode* ProjectDocument::findWidgetById(const std::string& id)
     return root.findById(id);
 }
 
+ProjectResource* ProjectDocument::findResourceById(const std::string& id)
+{
+    const auto iterator = std::find_if(resources.begin(), resources.end(), [&id](const ProjectResource& resource) {
+        return resource.id == id;
+    });
+    return iterator == resources.end() ? nullptr : &*iterator;
+}
+
 const WidgetNode* ProjectDocument::findWidgetById(const std::string& id) const
 {
     return root.findById(id);
+}
+
+const ProjectResource* ProjectDocument::findResourceById(const std::string& id) const
+{
+    const auto iterator = std::find_if(resources.begin(), resources.end(), [&id](const ProjectResource& resource) {
+        return resource.id == id;
+    });
+    return iterator == resources.end() ? nullptr : &*iterator;
 }
 
 WidgetNode* ProjectDocument::findParentOf(const std::string& childId)
@@ -300,6 +327,39 @@ bool ProjectDocument::removeWidgetById(const std::string& id)
 bool ProjectDocument::isRootWidgetId(const std::string& id) const
 {
     return !id.empty() && id == root.id;
+}
+
+std::vector<std::string> ProjectDocument::widgetIdsReferencingResource(const std::string& resourceId) const
+{
+    std::vector<std::string> widgetIds;
+    if (resourceId.empty()) {
+        return widgetIds;
+    }
+
+    collectWidgetsReferencingResource(root, resourceId, widgetIds);
+    return widgetIds;
+}
+
+bool ProjectDocument::isResourceReferenced(const std::string& resourceId) const
+{
+    return !widgetIdsReferencingResource(resourceId).empty();
+}
+
+bool ProjectDocument::removeResourceById(const std::string& id)
+{
+    if (id.empty()) {
+        return false;
+    }
+
+    const auto iterator = std::find_if(resources.begin(), resources.end(), [&id](const ProjectResource& resource) {
+        return resource.id == id;
+    });
+    if (iterator == resources.end()) {
+        return false;
+    }
+
+    resources.erase(iterator);
+    return true;
 }
 
 bool ProjectDocument::addChildToRoot(WidgetNode widget)

@@ -303,7 +303,9 @@ WidgetDefinition makeImageDefinition()
     definition.defaultHint = "Displays or reserves space for an image.";
     definition.size = { 200.0f, 140.0f, 100.0f, 80.0f };
     definition.properties = {
-        { "source", "source", "", PropertyEditKind::FilePath, true, "Image source path." },
+        { "resourceId", "resourceId", "", PropertyEditKind::Text, true, "Managed image resource id." },
+        { "imagePath", "imagePath", "", PropertyEditKind::FilePath, true, "Fallback image source path." },
+        { "scaleMode", "scaleMode", "Fit", PropertyEditKind::Text, true, "Image scale mode.", { "Stretch", "Fit", "Fill", "Center" } },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());

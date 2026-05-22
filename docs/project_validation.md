@@ -32,6 +32,10 @@ Current project-level validation includes:
 - `userSubclassName == MainWindow` rejection
 - generated source file safety checks for `userSubclassName`
 - project `lookAndFeelId` preset validation
+- project resource id uniqueness
+- project resource source-path existence checks
+- project resource export-path safety checks under `assets/`
+- duplicate project resource export-path conflict checks
 
 ## Dependency-setting checks
 
@@ -73,6 +77,9 @@ Current property validation includes:
 - `Slider`, `ScrollBar`, and `ProgressBar` require `max > min`
 - out-of-range `value` warnings for `Slider`, `ScrollBar`, and `ProgressBar`
 - `StatusBar.fields` must remain in the supported `1..4` range
+- `Image.scaleMode` must be `Stretch`, `Fit`, `Fill`, or `Center`
+- `Image.resourceId` must resolve to an `Image` project resource when set
+- direct `Image.imagePath` fallback values must exist when used without `resourceId`
 
 ## Callback and event checks
 
@@ -103,7 +110,9 @@ Current radio-group validation includes:
 
 Current export-compatibility validation includes:
 
-- warning when an `Image` widget has an empty `source` path
+- warning when an `Image` widget has neither `resourceId` nor `imagePath`
+- error when a managed project resource source file is missing
+- error when a managed project resource export path escapes `assets/`
 - warning that `ColorPicker` export is currently static-only and runtime interaction is not generated yet
 
 ## UI behavior

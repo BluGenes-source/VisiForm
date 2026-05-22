@@ -173,6 +173,30 @@ Current generated runtime limitations:
 - no full retained-mode widget framework yet
 - no generated layout manager yet
 
+## Image widget notes
+
+Current `Image` widget properties:
+
+- `resourceId`
+- `imagePath`
+- `scaleMode`
+- `hint`
+
+`scaleMode` choices:
+
+- `Stretch`
+- `Fit`
+- `Fill`
+- `Center`
+
+Current `Image` behavior:
+
+- `resourceId` points to a managed project resource of type `Image`
+- `imagePath` remains available as a direct-path fallback
+- older `source` values are treated as legacy fallback data
+- the designer currently renders a placeholder label for managed resources instead of full decoded image previews
+- generated export currently uses the managed relative asset path as safe placeholder text or comments
+
 ## Default editor sizes
 
 Current default editor widget sizes are tuned for readable text:

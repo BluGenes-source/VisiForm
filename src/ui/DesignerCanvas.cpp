@@ -69,6 +69,35 @@ struct GridColors {
     int majorLineColor = 0xff303744;
 };
 
+std::string imageWidgetDisplayText(const model::ProjectDocument& document, const model::WidgetNode& widget)
+{
+    const std::string resourceId = widget.getStringProperty("resourceId", {});
+    if (!resourceId.empty()) {
+        if (const auto* resource = document.findResourceById(resourceId)) {
+            return resource->displayName.empty()
+                ? resource->id
+                : resource->displayName + " (" + resource->id + ")";
+        }
+
+        return "Missing resource: " + resourceId;
+    }
+
+    const std::string imagePath = widget.getStringProperty("imagePath", widget.getStringProperty("source", {}));
+    if (imagePath.empty()) {
+        return "Image";
+    }
+
+    const std::filesystem::path path{ imagePath };
+    const std::string fileName = path.filename().string();
+    if (fileName.empty()) {
+        return imagePath;
+    }
+
+    return std::filesystem::exists(path)
+        ? fileName
+        : "Missing file: " + fileName;
+}
+
 PanelRect expandRect(const PanelRect& rect, float padding)
 {
     return { rect.x - padding, rect.y - padding, rect.width + padding * 2.0f, rect.height + padding * 2.0f };
@@ -932,8 +961,12 @@ void drawWidget(visage::Canvas& canvas,
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
+            const std::string resourceId = widget.getStringProperty("resourceId", {});
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "source", "Image"), widgetFont, visage::Font::kCenter,
+            if (!resourceId.empty() && document.findResourceById(resourceId) == nullptr) {
+                canvas.setColor(0xfff5c16c);
+            }
+            canvas.text(imageWidgetDisplayText(document, widget), widgetFont, visage::Font::kCenter,
                 bounds.x + 6.0f, bounds.y, std::max(0.0f, bounds.width - 12.0f), bounds.height);
         }
         break;

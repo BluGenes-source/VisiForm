@@ -21,6 +21,7 @@ Top-level fields:
 - `windowTitle` - generated runtime window title
 - `lookAndFeelId` - project-level look and feel preset id
 - `selectedWidgetId` - currently selected widget id
+- `resources` - array of managed project resources
 - `root` - root `WidgetNode`
 
 The `dirty` flag is runtime-only and is not stored in the file.
@@ -41,6 +42,7 @@ Stored in `.vfb.json`:
 - `userSubclassName`
 - `windowTitle`
 - `lookAndFeelId`
+- `resources`
 - root form `bounds.width` and `bounds.height` for the default form size
 
 Stored in `AppSettings`, not in `.vfb.json`:
@@ -117,6 +119,38 @@ Supported property JSON value types:
 
 Objects and arrays are not currently supported as property values.
 
+## Project resource format
+
+Managed project resources are stored in a top-level `resources` array.
+
+Each resource entry stores:
+
+- `id`
+- `type`
+- `displayName`
+- `sourcePath`
+- `exportRelativePath`
+
+Example:
+
+```json
+"resources": [
+  {
+    "id": "image_1",
+    "type": "Image",
+    "displayName": "Logo",
+    "sourcePath": "J:/Assets/logo.png",
+    "exportRelativePath": "assets/images/logo.png"
+  }
+]
+```
+
+Compatibility rules:
+
+- older `.vfb.json` files may omit `resources`
+- missing `resources` defaults to an empty list
+- managed resource export paths must stay under `assets/`
+
 ## Common style override properties
 
 Most widgets can also store optional style override properties inside `properties`:
@@ -180,6 +214,20 @@ Current export naming rule:
 
 - `generatedBaseClassName` is effectively fixed to `MainWindow`
 - `userSubclassName` is the editable user subclass name used by export
+
+## Image widget properties
+
+Current `Image` widget properties include:
+
+- `resourceId`
+- `imagePath`
+- `scaleMode`
+- `hint`
+
+Legacy compatibility:
+
+- older projects may still contain `source`
+- the editor treats `source` as a fallback image path when `imagePath` is empty
 
 ## RadioButton properties
 

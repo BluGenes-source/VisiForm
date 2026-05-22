@@ -63,6 +63,40 @@ bool writeGeneratedFile(const std::filesystem::path& outputDirectory,
     return utils::FileUtils::writeTextFile(targetPath, content, errorMessage);
 }
 
+bool copyManagedResources(const model::ProjectDocument& document,
+    const std::filesystem::path& outputDirectory,
+    std::string& errorMessage)
+{
+    for (const auto& resource : document.resources) {
+        if (resource.sourcePath.empty()) {
+            errorMessage = "Resource source path is empty for " + resource.id;
+            return false;
+        }
+        if (resource.exportRelativePath.empty()) {
+            errorMessage = "Resource export path is empty for " + resource.id;
+            return false;
+        }
+
+        const std::filesystem::path relativePath{ utils::FileUtils::sanitizeRelativeAssetPath(resource.exportRelativePath) };
+        if (!utils::FileUtils::isRelativePathWithinDirectory(relativePath, "assets")) {
+            errorMessage = "Resource export path must stay inside assets/: " + resource.exportRelativePath;
+            return false;
+        }
+
+        const std::filesystem::path targetPath = (outputDirectory / relativePath).lexically_normal();
+        if (!isPathInsideOutputDirectory(outputDirectory, targetPath)) {
+            errorMessage = "Refusing to copy resource outside export folder: " + targetPath.string();
+            return false;
+        }
+
+        if (!utils::FileUtils::copyFile(resource.sourcePath, targetPath, errorMessage)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 } // namespace
 
 bool CodeGenerator::generateProject(
@@ -163,6 +197,12 @@ bool CodeGenerator::generateProject(
         return false;
     }
     if (!writeGeneratedFile(outputDirectory, std::filesystem::path{"src"} / emittedSources.userSubclassCppFilename, emittedSources.userSubclassCpp, errorMessage)) {
+        return false;
+    }
+    if (progressCallback) {
+        progressCallback(90, "Copying asset files");
+    }
+    if (!copyManagedResources(document, outputDirectory, errorMessage)) {
         return false;
     }
 

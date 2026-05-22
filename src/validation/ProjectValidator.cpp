@@ -4,6 +4,7 @@
 #include "model/PropertyValue.h"
 #include "model/WidgetRegistry.h"
 #include "utils/CppIdentifier.h"
+#include "utils/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -182,6 +183,30 @@ bool propertyBool(const model::WidgetNode& widget, const std::string& key, bool 
     }
 
     return defaultValue;
+}
+
+std::string normalizedPathText(const std::filesystem::path& path)
+{
+    return utils::FileUtils::normalizeSeparators(path.lexically_normal().generic_string());
+}
+
+std::string imagePathProperty(const model::WidgetNode& widget)
+{
+    const std::string imagePath = trim(propertyString(widget, "imagePath"));
+    if (!imagePath.empty()) {
+        return imagePath;
+    }
+
+    return trim(propertyString(widget, "source"));
+}
+
+bool isKnownImageScaleMode(std::string_view value)
+{
+    return value.empty()
+        || value == "Stretch"
+        || value == "Fit"
+        || value == "Fill"
+        || value == "Center";
 }
 
 std::string widgetLabel(const model::WidgetNode& widget)
@@ -400,6 +425,84 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
             "Project look and feel id does not match a known preset and export will fall back to the default preset.",
             document.root.id,
             "lookAndFeelId");
+    }
+
+    std::unordered_map<std::string, int> resourceIdCounts;
+    std::unordered_map<std::string, std::string> exportPathSources;
+    for (const auto& resource : document.resources) {
+        if (!resource.id.empty()) {
+            ++resourceIdCounts[resource.id];
+        }
+    }
+
+    for (const auto& resource : document.resources) {
+        if (resource.id.empty()) {
+            addMessage(report, ValidationSeverity::Error,
+                "RESOURCE_ID_EMPTY",
+                "Project resource id must not be empty.",
+                document.root.id,
+                "resources.id");
+        }
+        else if (resourceIdCounts[resource.id] > 1) {
+            addMessage(report, ValidationSeverity::Error,
+                "RESOURCE_ID_DUPLICATE",
+                "Project resource id is duplicated.",
+                document.root.id,
+                "resources.id");
+        }
+
+        if (trim(resource.displayName).empty()) {
+            addMessage(report, ValidationSeverity::Warning,
+                "RESOURCE_DISPLAY_NAME_EMPTY",
+                "Project resource display name is empty.",
+                document.root.id,
+                resource.id);
+        }
+
+        if (trim(resource.sourcePath).empty()) {
+            addMessage(report, ValidationSeverity::Error,
+                "RESOURCE_SOURCE_EMPTY",
+                "Project resource source path must not be empty.",
+                document.root.id,
+                resource.id);
+        }
+        else if (!std::filesystem::exists(std::filesystem::path{ resource.sourcePath })) {
+            addMessage(report, ValidationSeverity::Error,
+                "RESOURCE_SOURCE_MISSING",
+                "Project resource source file does not exist.",
+                document.root.id,
+                resource.id);
+        }
+
+        if (trim(resource.exportRelativePath).empty()) {
+            addMessage(report, ValidationSeverity::Error,
+                "RESOURCE_EXPORT_PATH_EMPTY",
+                "Project resource export path must not be empty.",
+                document.root.id,
+                resource.id);
+        }
+        else {
+            const std::filesystem::path exportPath{ utils::FileUtils::sanitizeRelativeAssetPath(resource.exportRelativePath) };
+            if (!utils::FileUtils::isRelativePathWithinDirectory(exportPath, "assets")) {
+                addMessage(report, ValidationSeverity::Error,
+                    "RESOURCE_EXPORT_PATH_INVALID",
+                    "Project resource export path must stay inside assets/.",
+                    document.root.id,
+                    resource.id);
+            }
+            else {
+                const std::string normalizedExportPath = normalizedPathText(exportPath);
+                const std::string normalizedSourcePath = normalizedPathText(std::filesystem::path{ resource.sourcePath });
+                const auto [iterator, inserted] = exportPathSources.emplace(normalizedExportPath, normalizedSourcePath);
+                if (!inserted && iterator->second != normalizedSourcePath) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "RESOURCE_EXPORT_PATH_DUPLICATE",
+                        "Project resources cannot share an export path unless they use the same source file.",
+                        document.root.id,
+                        resource.id);
+                }
+            }
+        }
     }
 
     std::vector<const model::WidgetNode*> widgets;
@@ -621,12 +724,51 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
             }
         }
 
-        if (widget->type == model::WidgetType::Image && trim(propertyString(*widget, "source")).empty()) {
-            addMessage(report, ValidationSeverity::Warning,
-                "IMAGE_SOURCE_EMPTY",
-                "Image widget source path is empty.",
-                widget->id,
-                "source");
+        if (widget->type == model::WidgetType::Image) {
+            const std::string resourceId = trim(propertyString(*widget, "resourceId"));
+            const std::string imagePath = imagePathProperty(*widget);
+            const std::string scaleMode = trim(propertyString(*widget, "scaleMode"));
+
+            if (!isKnownImageScaleMode(scaleMode)) {
+                addMessage(report, ValidationSeverity::Error,
+                    "IMAGE_SCALE_MODE_INVALID",
+                    "Image scaleMode must be Stretch, Fit, Fill, or Center.",
+                    widget->id,
+                    "scaleMode");
+            }
+
+            if (!resourceId.empty()) {
+                const auto* resource = document.findResourceById(resourceId);
+                if (resource == nullptr) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "IMAGE_RESOURCE_MISSING",
+                        "Image widget resourceId does not match a project resource.",
+                        widget->id,
+                        "resourceId");
+                }
+                else if (resource->type != model::ProjectResourceType::Image) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "IMAGE_RESOURCE_TYPE_INVALID",
+                        "Image widget resourceId must point to an Image project resource.",
+                        widget->id,
+                        "resourceId");
+                }
+            }
+
+            if (resourceId.empty() && imagePath.empty()) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "IMAGE_SOURCE_EMPTY",
+                    "Image widget has neither a managed resourceId nor a fallback imagePath.",
+                    widget->id,
+                    "resourceId");
+            }
+            else if (resourceId.empty() && !imagePath.empty() && !std::filesystem::exists(std::filesystem::path{ imagePath })) {
+                addMessage(report, ValidationSeverity::Error,
+                    "IMAGE_PATH_MISSING",
+                    "Image widget fallback imagePath does not exist.",
+                    widget->id,
+                    "imagePath");
+            }
         }
 
         if (widget->type == model::WidgetType::ColorPicker) {

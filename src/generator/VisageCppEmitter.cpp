@@ -24,6 +24,8 @@ constexpr const char* kGeneratedFileHeader =
     "// This file is generated.\n"
     "// Manual changes may be overwritten.\n\n";
 
+std::string widgetLabel(const visiform::model::WidgetNode& widget);
+
 std::string sanitizeClassName(const std::string& value)
 {
     std::string sanitized = utils::sanitizeCppIdentifier(value);
@@ -106,6 +108,25 @@ std::string progressBarDisplayText(const visiform::model::WidgetNode& widget)
     const float currentValue = std::clamp(widget.getFloatProperty("value", minimum), minimum, safeMaximum);
     const float normalized = safeMaximum <= minimum ? 0.0f : std::clamp((currentValue - minimum) / (safeMaximum - minimum), 0.0f, 1.0f);
     return std::to_string(static_cast<int>(std::round(normalized * 100.0f))) + "%";
+}
+
+std::string imageWidgetDisplaySource(const visiform::model::ProjectDocument& document, const visiform::model::WidgetNode& widget)
+{
+    const std::string resourceId = widget.getStringProperty("resourceId", {});
+    if (!resourceId.empty()) {
+        if (const auto* resource = document.findResourceById(resourceId)) {
+            return resource->exportRelativePath.empty() ? resource->id : resource->exportRelativePath;
+        }
+
+        return "Missing resource: " + resourceId;
+    }
+
+    const std::string imagePath = widget.getStringProperty("imagePath", widget.getStringProperty("source", {}));
+    if (!imagePath.empty()) {
+        return imagePath;
+    }
+
+    return widgetLabel(widget);
 }
 
 std::string emitFloat(float value)
@@ -922,9 +943,10 @@ void emitWidgetDraw(std::ostringstream& stream,
         stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xffD3DAE6") << ");\n";
         stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
         stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "// Image resource: " << escapeCppStringLiteral(imageWidgetDisplaySource(document, widget)) << "\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
-        stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("source", widgetLabel(widget)))
+        stream << indent << "    canvas.text(" << emitStringLiteral(imageWidgetDisplaySource(document, widget))
                << ", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
         stream << indent << "}\n";
         break;

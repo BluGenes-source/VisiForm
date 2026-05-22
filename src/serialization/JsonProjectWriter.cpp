@@ -65,6 +65,17 @@ nlohmann::json widgetToJson(const model::WidgetNode& widget)
     return json;
 }
 
+nlohmann::json resourceToJson(const model::ProjectResource& resource)
+{
+    return {
+        { "id", resource.id },
+        { "type", model::toString(resource.type) },
+        { "displayName", resource.displayName },
+        { "sourcePath", resource.sourcePath },
+        { "exportRelativePath", resource.exportRelativePath }
+    };
+}
+
 } // namespace
 
 std::string JsonProjectWriter::writeToString(const model::ProjectDocument& document) const
@@ -80,6 +91,10 @@ std::string JsonProjectWriter::writeToString(const model::ProjectDocument& docum
     json["windowTitle"] = document.windowTitle.empty() ? document.projectName : document.windowTitle;
     json["lookAndFeelId"] = document.lookAndFeelId.empty() ? std::string{"VisiFormDark"} : document.lookAndFeelId;
     json["selectedWidgetId"] = document.selectedWidgetId;
+    json["resources"] = nlohmann::json::array();
+    for (const auto& resource : document.resources) {
+        json["resources"].push_back(resourceToJson(resource));
+    }
     json["root"] = widgetToJson(document.root);
 
     return json.dump(2);
