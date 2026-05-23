@@ -78,7 +78,9 @@ Current property validation includes:
 - out-of-range `value` warnings for `Slider`, `ScrollBar`, and `ProgressBar`
 - `StatusBar.fields` must remain in the supported `1..4` range
 - `Image.scaleMode` must be `Stretch`, `Fit`, `Fill`, or `Center`
-- `Image.resourceId` must resolve to an `Image` project resource when set
+- `Image.resourceId` must resolve to a managed project resource when set
+- `Image.resourceId` must resolve specifically to a project resource of type `Image`
+- managed image resources referenced by `Image.resourceId` still depend on the project-level resource source-path validation that blocks export when the source file is missing
 - direct `Image.imagePath` fallback values must exist when used without `resourceId`
 
 ## Callback and event checks
@@ -112,6 +114,7 @@ Current export-compatibility validation includes:
 
 - warning when an `Image` widget has neither `resourceId` nor `imagePath`
 - error when a managed project resource source file is missing
+- error when an `Image.resourceId` points to a missing or non-image project resource
 - error when a managed project resource export path escapes `assets/`
 - warning that `ColorPicker` export is currently static-only and runtime interaction is not generated yet
 

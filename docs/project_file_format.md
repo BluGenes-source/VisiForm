@@ -229,6 +229,12 @@ Legacy compatibility:
 - older projects may still contain `source`
 - the editor treats `source` as a fallback image path when `imagePath` is empty
 
+Managed image-reference behavior:
+
+- `resourceId` stores the stable managed project resource id such as `image_1`
+- editor dropdowns may show readable labels such as `Logo (image_1)`, but the saved value remains the resource id
+- `imagePath` remains a direct-path fallback for legacy or unmanaged image usage
+
 ## RadioButton properties
 
 Common `RadioButton` properties include:

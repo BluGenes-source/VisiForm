@@ -23,13 +23,24 @@ public:
         ReadOnly
     };
 
+    struct PropertyChoice {
+        std::string value;
+        std::string label;
+    };
+
     struct PropertyRow {
         std::string key;
         std::string label;
+        std::string hint;
         std::string displayValue;
         PropertyEditKind editKind = PropertyEditKind::ReadOnly;
         bool isSection = false;
-        std::vector<std::string> choices{};
+        std::vector<PropertyChoice> choices{};
+    };
+
+    struct SuggestionHit {
+        std::string value;
+        std::string label;
     };
 
     struct PendingEdit {
@@ -48,7 +59,7 @@ public:
     void setBounds(float x, float y, float width, float height);
     [[nodiscard]] bool contains(float x, float y) const;
     [[nodiscard]] std::optional<PropertyRow> hitTestRow(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
-    [[nodiscard]] std::optional<std::string> hitTestSuggestion(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
+    [[nodiscard]] std::optional<SuggestionHit> hitTestSuggestion(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
     [[nodiscard]] std::optional<std::string> hitTestColorSwatch(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
     [[nodiscard]] bool mouseDown(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
     [[nodiscard]] bool mouseDrag(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
@@ -74,10 +85,12 @@ private:
     [[nodiscard]] std::optional<ValueCellBounds> scrollBarThumbBounds() const;
     [[nodiscard]] std::optional<ValueCellBounds> colorSwatchBoundsForRow(const PropertyRow& row, float rowTop) const;
     [[nodiscard]] bool isWithinVisibleContent(float x, float y) const;
+    [[nodiscard]] float labelColumnWidth() const;
     [[nodiscard]] float valueCellWidth() const;
 
     struct CallbackSuggestionItem {
         std::string value;
+        std::string label;
         float x = 0.0f;
         float y = 0.0f;
         float width = 0.0f;

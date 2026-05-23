@@ -29,6 +29,7 @@ The editor exposes project assets from:
 Current `Resource Manager` behavior:
 
 - shows the current project resource list
+- shows readable resource entries including display name, id, type, and source filename
 - allows cycling the selected resource inside the existing modal dialog system
 - shows the selected resource type, display name, source path, and export path
 - supports `Add Image`
@@ -39,6 +40,7 @@ Current add flows:
 
 - image resources use the native file dialog with `png`, `jpg`, `jpeg`, `bmp`, and `webp` filters
 - font resources use the native file dialog with `ttf` and `otf` filters
+- adding an image resource reports a status message such as `Added image resource: Logo (image_1)`
 
 Default export folders:
 
@@ -61,10 +63,20 @@ The `Image` widget now uses these properties:
 
 Current editor behavior:
 
+- the property inspector shows `resourceId` as `Resource`
+- the `Resource` row uses a dropdown of project image resources with readable labels such as `Logo (image_1)`
+- the dropdown stores the stable resource id such as `image_1`, not the display name
 - the designer shows a placeholder label for the selected managed image resource
 - missing `resourceId` references are shown as missing-resource placeholders
 - direct `imagePath` fallback values are still accepted
 - older `source` values are treated as a legacy fallback path
+- hovering `Resource`, `Image Path`, and `Scale Mode` in the property inspector shows help text in the main status bar
+
+`resourceId` versus `imagePath`:
+
+- `resourceId` is the preferred managed reference to a project resource added through `Project > Resources`
+- `imagePath` is a direct file-path fallback used when no managed image resource is assigned
+- when both are present, the managed `resourceId` takes priority in the editor and export flow
 
 ## Export behavior
 
@@ -84,6 +96,8 @@ The exporter:
 - keeps copies inside the generated project folder
 - overwrites known copied asset files when exporting again
 - does not require assets to be compiled by CMake
+- uses `exportRelativePath` when a managed image `resourceId` is assigned
+- uses direct `imagePath` only as a fallback when no managed image resource is selected
 - keeps generated image placeholders safe by using the exported relative path as text or a generated comment
 
 ## Validation behavior

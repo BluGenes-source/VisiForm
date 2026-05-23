@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <iomanip>
 #include <map>
 #include <optional>
@@ -24,7 +25,10 @@ constexpr float kRowHeight = 30.0f;
 constexpr float kSuggestionRowHeight = 24.0f;
 constexpr float kSuggestionSpacing = 2.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kLabelColumnWidth = 104.0f;
+constexpr float kMinLabelColumnWidth = 128.0f;
+constexpr float kPreferredLabelColumnWidth = 152.0f;
+constexpr float kMaxLabelColumnWidth = 168.0f;
+constexpr float kMinimumValueCellWidth = 112.0f;
 constexpr float kScrollBarWidth = 18.0f;
 constexpr float kScrollBarGap = 6.0f;
 constexpr float kMinimumThumbSize = 18.0f;
@@ -68,6 +72,102 @@ std::string displayTextOrFallback(const model::WidgetNode* widget, const std::st
 
     const std::string value = widget->getStringProperty(key, {});
     return value.empty() ? fallback : value;
+}
+
+std::string fileNameFromPathText(const std::string& pathText)
+{
+    if (pathText.empty()) {
+        return {};
+    }
+
+    return std::filesystem::path{ pathText }.filename().string();
+}
+
+std::string fallbackHintForPropertyKey(const std::string& key)
+{
+    if (key == "resourceId") {
+        return "Selects a managed image resource from the project Resource Manager.";
+    }
+    if (key == "imagePath") {
+        return "Optional direct image file path used when no managed resource is selected.";
+    }
+    if (key == "scaleMode") {
+        return "Controls how the image is fitted inside the widget bounds.";
+    }
+    if (key == "lookAndFeelId") {
+        return "Optional widget look and feel override. Empty means inherit from the project.";
+    }
+    if (key == "fillColor") {
+        return "Overrides this widget's fill color.";
+    }
+    if (key == "textColor") {
+        return "Overrides this widget's text color.";
+    }
+    if (key == "borderColor") {
+        return "Overrides this widget's border color.";
+    }
+    if (key == "accentColor") {
+        return "Overrides this widget's accent color.";
+    }
+    if (key == "borderThickness") {
+        return "Overrides this widget's border thickness.";
+    }
+    if (key == "cornerRadius") {
+        return "Overrides this widget's corner radius.";
+    }
+    if (key == "fontSize") {
+        return "Overrides the widget text size.";
+    }
+    if (key == "fontFamily") {
+        return "Overrides the font family used for preview text when supported.";
+    }
+    if (key == "fontBold") {
+        return "Uses bold text when the preview font supports it.";
+    }
+    if (key == "fontItalic") {
+        return "Uses italic text when the preview font supports it.";
+    }
+
+    return {};
+}
+
+std::string resolvedPropertyHint(const std::string& definitionHint, const std::string& key)
+{
+    return definitionHint.empty() ? fallbackHintForPropertyKey(key) : definitionHint;
+}
+
+PropertyInspector::PropertyChoice makeChoice(std::string value, std::string label = {})
+{
+    if (label.empty()) {
+        label = value;
+    }
+
+    return PropertyInspector::PropertyChoice{ std::move(value), std::move(label) };
+}
+
+std::string choiceLabelForValue(const std::vector<PropertyInspector::PropertyChoice>& choices, const std::string& value)
+{
+    const auto iterator = std::find_if(choices.begin(), choices.end(), [&value](const PropertyInspector::PropertyChoice& choice) {
+        return choice.value == value;
+    });
+    if (iterator != choices.end()) {
+        return iterator->label;
+    }
+
+    return value;
+}
+
+std::string imageResourceChoiceLabel(const model::ProjectResource& resource)
+{
+    std::string name = resource.displayName;
+    if (name.empty()) {
+        name = fileNameFromPathText(resource.sourcePath);
+    }
+    if (name.empty()) {
+        name = resource.id;
+    }
+
+    return name + " (" + resource.id + ")";
 }
 
 bool isColorPropertyKey(const std::string& key);
@@ -332,7 +432,16 @@ bool PropertyInspector::isWithinVisibleContent(float x, float y) const
 float PropertyInspector::valueCellWidth() const
 {
     const ValueCellBounds bounds = contentBounds();
-    return std::max(0.0f, bounds.width - (kLabelColumnWidth - (bounds.x - x_)) - 12.0f);
+    const float labelWidth = labelColumnWidth();
+    return std::max(0.0f, bounds.width - (labelWidth - (bounds.x - x_)) - 12.0f);
+}
+
+float PropertyInspector::labelColumnWidth() const
+{
+    const ValueCellBounds bounds = contentBounds();
+    const float maxAllowedWidth = std::max(kMinLabelColumnWidth,
+        bounds.width - kMinimumValueCellWidth - 12.0f - (bounds.x - x_));
+    return std::clamp(kPreferredLabelColumnWidth, kMinLabelColumnWidth, std::min(kMaxLabelColumnWidth, maxAllowedWidth));
 }
 
 std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::colorSwatchBoundsForRow(const PropertyRow& row, float rowTop) const
@@ -342,7 +451,7 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::colorSwatch
     }
 
     const float swatchSize = std::max(0.0f, kRowHeight - 12.0f);
-    const float swatchX = x_ + kLabelColumnWidth + valueCellWidth() - swatchSize - 8.0f;
+    const float swatchX = x_ + labelColumnWidth() + valueCellWidth() - swatchSize - 8.0f;
     return ValueCellBounds{ swatchX, rowTop + 6.0f, swatchSize, swatchSize };
 }
 
@@ -354,25 +463,25 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         return rows;
     }
 
-    rows.push_back({ "id", "id", selectedWidget->id, PropertyEditKind::ReadOnly });
-    rows.push_back({ "type", "type", selectedWidget->typeName(), PropertyEditKind::ReadOnly });
-    rows.push_back({ "name", "name", selectedWidget->name, PropertyEditKind::Text });
+    rows.push_back({ "id", "Id", "Stable widget id used by the editor and generated code.", selectedWidget->id, PropertyEditKind::ReadOnly });
+    rows.push_back({ "type", "Type", "Registered widget type used for preview and export.", selectedWidget->typeName(), PropertyEditKind::ReadOnly });
+    rows.push_back({ "name", "Name", "Readable widget name used by the editor and generated helpers.", selectedWidget->name, PropertyEditKind::Text });
     if (selectedWidget->type == model::WidgetType::FormWindow) {
-        rows.push_back({ "projectName", "projectName", document.projectName, PropertyEditKind::Text });
-        rows.push_back({ "executableName", "executableName", document.executableName, PropertyEditKind::Text });
-        rows.push_back({ "generatedBaseClassName", "generatedBaseClassName", "MainWindow", PropertyEditKind::ReadOnly });
-        rows.push_back({ "userSubclassName", "userSubclassName", document.userSubclassName, PropertyEditKind::Text });
-        rows.push_back({ "windowTitle", "windowTitle", document.windowTitle, PropertyEditKind::Text });
-        rows.push_back({ "lookAndFeelId", "lookAndFeelId", document.lookAndFeelId, PropertyEditKind::Text });
-        rows.push_back({ "__section_export_dependencies", "Export / Dependencies", {}, PropertyEditKind::ReadOnly, true });
-        rows.push_back({ "localVisageSourceDirectory", "localVisageSourceDirectory", utils::FileUtils::normalizeSeparators(settings.localVisageSourceDirectory.string()), PropertyEditKind::Text });
-        rows.push_back({ "visageGitRepository", "visageGitRepository", settings.visageGitRepository, PropertyEditKind::Text });
-        rows.push_back({ "visageGitTag", "visageGitTag", settings.visageGitTag, PropertyEditKind::Text });
+        rows.push_back({ "projectName", "Project Name", "Project display name used by the editor and export.", document.projectName, PropertyEditKind::Text });
+        rows.push_back({ "executableName", "Executable Name", "Executable target name used for generated builds.", document.executableName, PropertyEditKind::Text });
+        rows.push_back({ "generatedBaseClassName", "Generated Base Class", "Generated base class name is fixed to MainWindow.", "MainWindow", PropertyEditKind::ReadOnly });
+        rows.push_back({ "userSubclassName", "User Subclass Name", "Editable generated user subclass name.", document.userSubclassName, PropertyEditKind::Text });
+        rows.push_back({ "windowTitle", "Window Title", "Generated runtime window title.", document.windowTitle, PropertyEditKind::Text });
+        rows.push_back({ "lookAndFeelId", "Look and Feel", resolvedPropertyHint({}, "lookAndFeelId"), document.lookAndFeelId, PropertyEditKind::Text });
+        rows.push_back({ "__section_export_dependencies", "Export / Dependencies", {}, {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({ "localVisageSourceDirectory", "Local Visage Source", "Optional local Visage source checkout used during export.", utils::FileUtils::normalizeSeparators(settings.localVisageSourceDirectory.string()), PropertyEditKind::Text });
+        rows.push_back({ "visageGitRepository", "Visage Git Repository", "Fallback Git repository used when no local Visage source is configured.", settings.visageGitRepository, PropertyEditKind::Text });
+        rows.push_back({ "visageGitTag", "Visage Git Tag", "Fallback Git tag or branch used when no local Visage source is configured.", settings.visageGitTag, PropertyEditKind::Text });
     }
-    rows.push_back({ "x", "x", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
-    rows.push_back({ "y", "y", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
-    rows.push_back({ "width", "width", formatFloat(selectedWidget->bounds.width), PropertyEditKind::Float });
-    rows.push_back({ "height", "height", formatFloat(selectedWidget->bounds.height), PropertyEditKind::Float });
+    rows.push_back({ "x", "X", "Widget left position in form coordinates.", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
+    rows.push_back({ "y", "Y", "Widget top position in form coordinates.", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
+    rows.push_back({ "width", "Width", "Widget width in form coordinates.", formatFloat(selectedWidget->bounds.width), PropertyEditKind::Float });
+    rows.push_back({ "height", "Height", "Widget height in form coordinates.", formatFloat(selectedWidget->bounds.height), PropertyEditKind::Float });
 
     std::set<std::string> drawnKeys;
     for (const auto& row : rows) {
@@ -385,7 +494,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         drawnKeys.insert("source");
     }
 
-    const auto addEventProperty = [&](const std::string& key, const std::string& label, const std::string& fallback = {}) {
+    const auto addEventProperty = [&](const std::string& key, const std::string& label, const std::string& hint, const std::string& fallback = {}) {
         if (drawnKeys.contains(key)) {
             return;
         }
@@ -393,7 +502,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         const std::string displayValue = fallback.empty()
             ? displayTextOrFallback(selectedWidget, key, {})
             : displayTextOrFallback(selectedWidget, key, fallback);
-        rows.push_back({ key, label, displayValue, PropertyEditKind::Text });
+        rows.push_back({ key, label, hint, displayValue, PropertyEditKind::Text });
         drawnKeys.insert(key);
     };
 
@@ -401,16 +510,21 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         bool styleSectionInserted = false;
         for (const auto& property : definition->properties) {
             if (isStylePropertyKey(property.key) && !styleSectionInserted) {
-                rows.push_back({ "__section_style", "Style", {}, PropertyEditKind::ReadOnly, true });
+                rows.push_back({ "__section_style", "Style", {}, {}, PropertyEditKind::ReadOnly, true });
                 styleSectionInserted = true;
             }
 
-            std::vector<std::string> choices = property.choices;
+            std::vector<PropertyChoice> choices;
+            choices.reserve(property.choices.size() + 1);
+            for (const auto& choice : property.choices) {
+                choices.push_back(makeChoice(choice));
+            }
             if (selectedWidget->type == model::WidgetType::Image && property.key == "resourceId") {
-                choices.push_back({});
+                choices.clear();
+                choices.push_back(makeChoice({}, "<none>"));
                 for (const auto& resource : document.resources) {
                     if (resource.type == model::ProjectResourceType::Image) {
-                        choices.push_back(resource.id);
+                        choices.push_back(makeChoice(resource.id, imageResourceChoiceLabel(resource)));
                     }
                 }
             }
@@ -420,18 +534,21 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             if (selectedWidget->type == model::WidgetType::Image && property.key == "imagePath" && displayValue.empty()) {
                 displayValue = selectedWidget->getStringProperty("source", {});
             }
-            rows.push_back({ property.key, property.label, displayValue, editKindForDefinition(property), false, std::move(choices) });
+            if (!choices.empty()) {
+                displayValue = choiceLabelForValue(choices, displayValue);
+            }
+            rows.push_back({ property.key, property.label, resolvedPropertyHint(property.hint, property.key), displayValue, editKindForDefinition(property), false, std::move(choices) });
             drawnKeys.insert(property.key);
         }
 
         const std::size_t propertyCountBeforeEvents = rows.size();
         for (const auto& event : definition->events) {
-            addEventProperty(event.key, event.label);
+            addEventProperty(event.key, event.label, event.hint);
         }
 
         if (rows.size() > propertyCountBeforeEvents) {
             rows.insert(rows.begin() + static_cast<std::ptrdiff_t>(propertyCountBeforeEvents),
-                PropertyRow{ "__section_events", "Events", {}, PropertyEditKind::ReadOnly, true });
+                PropertyRow{ "__section_events", "Events", {}, {}, PropertyEditKind::ReadOnly, true });
         }
     }
 
@@ -440,7 +557,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             continue;
         }
 
-        rows.push_back({ key, key, propertyValueText(value), editKindForProperty(key, value) });
+        rows.push_back({ key, key, fallbackHintForPropertyKey(key), propertyValueText(value), editKindForProperty(key, value) });
     }
 
     return rows;
@@ -465,7 +582,7 @@ void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& documen
         return;
     }
 
-    std::vector<std::string> suggestionValues;
+    std::vector<PropertyChoice> suggestionValues;
     if (!activeLayout->row.choices.empty()) {
         suggestionValues = activeLayout->row.choices;
     }
@@ -483,7 +600,10 @@ void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& documen
         activeCallbackPropertyKey_ = activeKey_;
         std::set<std::string> handlerNames;
         collectMatchingHandlers(document.root, eventDefinition->handlerSignatureKind, handlerNames);
-        suggestionValues.assign(handlerNames.begin(), handlerNames.end());
+        suggestionValues.reserve(handlerNames.size());
+        for (const auto& handlerName : handlerNames) {
+            suggestionValues.push_back(makeChoice(handlerName));
+        }
     }
 
     if (suggestionValues.empty()) {
@@ -496,7 +616,7 @@ void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& documen
         return;
     }
 
-    const float valueLeft = x_ + kLabelColumnWidth;
+    const float valueLeft = x_ + labelColumnWidth();
     const float valueWidth = valueCellWidth();
     const auto totalHeightForCount = [](std::size_t count) {
         if (count == 0) {
@@ -530,7 +650,8 @@ void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& documen
         : visibleRowTop + kRowHeight;
     for (std::size_t index = 0; index < visibleCount; ++index) {
         suggestions_.push_back(CallbackSuggestionItem{
-            suggestionValues[index],
+            suggestionValues[index].value,
+            suggestionValues[index].label,
             valueLeft,
             itemTop,
             valueWidth,
@@ -588,7 +709,7 @@ std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::Pr
     return std::nullopt;
 }
 
-std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
+std::optional<PropertyInspector::SuggestionHit> PropertyInspector::hitTestSuggestion(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
     if (!contains(x, y)) {
         return std::nullopt;
@@ -598,7 +719,7 @@ std::optional<std::string> PropertyInspector::hitTestSuggestion(const model::Pro
 
     for (const auto& item : suggestions_) {
         if (x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height) {
-            return item.value;
+            return SuggestionHit{ item.value, item.label };
         }
     }
 
@@ -770,7 +891,7 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEdito
                 return std::nullopt;
             }
 
-            const float valueLeft = x_ + kLabelColumnWidth;
+            const float valueLeft = x_ + labelColumnWidth();
             float editorWidth = valueCellWidth() - 4.0f;
             if (active->editKind == PropertyEditKind::Color) {
                 editorWidth -= (kRowHeight - 4.0f);
@@ -855,11 +976,13 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
         canvas.setColor(index % 2 == 0 ? 0xff2b313d : 0xff262c37);
         canvas.fill(bounds.x, rowTop, bounds.width, kRowHeight - 2.0f);
 
+        const float labelWidth = labelColumnWidth();
         const float labelLeft = x_ + 18.0f;
-        const float valueLeft = x_ + kLabelColumnWidth;
+        const float valueLeft = x_ + labelWidth;
         const float valueWidth = valueCellWidth();
         const bool isReadOnly = row.editKind == PropertyEditKind::ReadOnly;
         const bool isActive = isEditing() && row.key == activeKey_;
+        const bool isChoice = row.editKind == PropertyEditKind::Choice;
         const auto swatchBounds = colorSwatchBoundsForRow(row, rowTop);
         const float valueTextWidth = swatchBounds.has_value()
             ? std::max(0.0f, valueWidth - swatchBounds->width - 16.0f)
@@ -886,11 +1009,18 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
         if (drawText) {
             canvas.setColor(0xffc7cfda);
             canvas.text(row.label, font, visage::Font::kTopLeft,
-                labelLeft, rowTop + 5.0f, kLabelColumnWidth - 24.0f, kRowHeight - 8.0f);
+                labelLeft, rowTop + 5.0f, std::max(40.0f, labelWidth - 32.0f), kRowHeight - 8.0f);
 
             canvas.setColor(isReadOnly ? 0xffb3bcc9 : 0xffeef2f8);
             if (!isActive || row.editKind == PropertyEditKind::Choice) {
-                canvas.text(row.displayValue, font, visage::Font::kTopLeft,
+                std::string valueText = row.displayValue;
+                if (isChoice) {
+                    if (valueText.empty()) {
+                        valueText = "Select";
+                    }
+                    valueText += "  >";
+                }
+                canvas.text(valueText, font, visage::Font::kTopLeft,
                     valueLeft + 8.0f, rowTop + 5.0f, valueTextWidth - 12.0f, kRowHeight - 8.0f);
             }
 
@@ -921,7 +1051,7 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
             canvas.setColor(0xff92b9ff);
             canvas.fill(suggestion.x, suggestion.y + suggestion.height - 1.0f, suggestion.width, 1.0f);
             canvas.setColor(0xffeef2f8);
-            canvas.text(suggestion.value, font, visage::Font::kTopLeft,
+            canvas.text(suggestion.label, font, visage::Font::kTopLeft,
                 suggestion.x + 8.0f, suggestion.y + 4.0f, suggestion.width - 12.0f, suggestion.height - 6.0f);
         }
     }

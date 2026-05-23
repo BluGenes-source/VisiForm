@@ -404,6 +404,7 @@ std::string CMakeEmitter::emitReadme(const model::ProjectDocument& document, con
         stream << "- `assets/fonts/` for managed font resources\n";
         stream << "- `assets/icons/` for managed icon resources\n";
         stream << "- `assets/themes/` for managed theme resources\n\n";
+        stream << "Image widgets use managed `resourceId` values when assigned, and fall back to direct `imagePath` values only when no managed resource is selected.\n";
         stream << "Generated image placeholders use relative asset paths such as `assets/images/logo.png`.\n\n";
     }
     stream << "## Generated executable\n\n";

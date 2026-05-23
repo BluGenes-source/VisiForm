@@ -74,12 +74,18 @@ std::string imageWidgetDisplayText(const model::ProjectDocument& document, const
     const std::string resourceId = widget.getStringProperty("resourceId", {});
     if (!resourceId.empty()) {
         if (const auto* resource = document.findResourceById(resourceId)) {
-            return resource->displayName.empty()
-                ? resource->id
-                : resource->displayName + " (" + resource->id + ")";
+            std::string name = resource->displayName;
+            if (name.empty()) {
+                name = std::filesystem::path{ resource->sourcePath }.filename().string();
+            }
+            if (name.empty()) {
+                name = resource->id;
+            }
+
+            return "Image: " + name;
         }
 
-        return "Missing resource: " + resourceId;
+        return "Missing image resource";
     }
 
     const std::string imagePath = widget.getStringProperty("imagePath", widget.getStringProperty("source", {}));
@@ -90,12 +96,10 @@ std::string imageWidgetDisplayText(const model::ProjectDocument& document, const
     const std::filesystem::path path{ imagePath };
     const std::string fileName = path.filename().string();
     if (fileName.empty()) {
-        return imagePath;
+        return "Image: " + imagePath;
     }
 
-    return std::filesystem::exists(path)
-        ? fileName
-        : "Missing file: " + fileName;
+    return "Image: " + fileName;
 }
 
 PanelRect expandRect(const PanelRect& rect, float padding)
@@ -959,7 +963,11 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::Image:
         canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        {
+            const std::string resourceId = widget.getStringProperty("resourceId", {});
+            const bool missingManagedResource = !resourceId.empty() && document.findResourceById(resourceId) == nullptr;
+            drawBorder(canvas, bounds, missingManagedResource ? 0xfff5c16c : style.borderColor, style.borderThickness);
+        }
         if (drawText) {
             const std::string resourceId = widget.getStringProperty("resourceId", {});
             canvas.setColor(style.textColor);

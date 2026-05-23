@@ -210,7 +210,30 @@ private:
         std::string label{};
         std::string value{};
         PropertyInspector::PropertyEditKind editKind = PropertyInspector::PropertyEditKind::ReadOnly;
-        std::vector<std::string> choices{};
+        std::vector<PropertyInspector::PropertyChoice> choices{};
+
+        EditorModalField() = default;
+
+        EditorModalField(std::string fieldKey, std::string fieldLabel, std::string fieldValue, PropertyInspector::PropertyEditKind fieldEditKind)
+            : key(std::move(fieldKey))
+            , label(std::move(fieldLabel))
+            , value(std::move(fieldValue))
+            , editKind(fieldEditKind)
+        {
+        }
+
+        EditorModalField(std::string fieldKey,
+            std::string fieldLabel,
+            std::string fieldValue,
+            PropertyInspector::PropertyEditKind fieldEditKind,
+            std::vector<PropertyInspector::PropertyChoice> fieldChoices)
+            : key(std::move(fieldKey))
+            , label(std::move(fieldLabel))
+            , value(std::move(fieldValue))
+            , editKind(fieldEditKind)
+            , choices(std::move(fieldChoices))
+        {
+        }
     };
 
     struct EditorModalFieldHit {

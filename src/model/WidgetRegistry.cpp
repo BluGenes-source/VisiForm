@@ -17,24 +17,24 @@ std::vector<WidgetPropertyDefinition> commonStyleProperties(bool includeLookAndF
 {
     std::vector<WidgetPropertyDefinition> properties;
     if (includeLookAndFeelId) {
-        properties.push_back({ "lookAndFeelId", "lookAndFeelId", "", PropertyEditKind::Text, true, "Optional widget look and feel override. Empty means inherit from the project." });
+        properties.push_back({ "lookAndFeelId", "Look and Feel", "", PropertyEditKind::Text, true, "Optional widget look and feel override. Empty means inherit from the project." });
     }
-    properties.push_back({ "fillColor", "fillColor", "", PropertyEditKind::Color, true, "Optional fill color override. Empty means inherit." });
-    properties.push_back({ "textColor", "textColor", "", PropertyEditKind::Color, true, "Optional text color override. Empty means inherit." });
-    properties.push_back({ "borderColor", "borderColor", "", PropertyEditKind::Color, true, "Optional border color override. Empty means inherit." });
-    properties.push_back({ "accentColor", "accentColor", "", PropertyEditKind::Color, true, "Optional accent color override. Empty means inherit." });
-    properties.push_back({ "borderThickness", "borderThickness", PropertyValue{}, PropertyEditKind::Float, true, "Optional border thickness override. Empty means inherit." });
-    properties.push_back({ "cornerRadius", "cornerRadius", PropertyValue{}, PropertyEditKind::Float, true, "Optional corner radius override. Empty means inherit." });
-    properties.push_back({ "fontSize", "fontSize", PropertyValue{}, PropertyEditKind::Float, true, "Optional font size override. Empty means inherit." });
+    properties.push_back({ "fillColor", "Fill Color", "", PropertyEditKind::Color, true, "Optional fill color override. Empty means inherit." });
+    properties.push_back({ "textColor", "Text Color", "", PropertyEditKind::Color, true, "Optional text color override. Empty means inherit." });
+    properties.push_back({ "borderColor", "Border Color", "", PropertyEditKind::Color, true, "Optional border color override. Empty means inherit." });
+    properties.push_back({ "accentColor", "Accent Color", "", PropertyEditKind::Color, true, "Optional accent color override. Empty means inherit." });
+    properties.push_back({ "borderThickness", "Border Thickness", PropertyValue{}, PropertyEditKind::Float, true, "Optional border thickness override. Empty means inherit." });
+    properties.push_back({ "cornerRadius", "Corner Radius", PropertyValue{}, PropertyEditKind::Float, true, "Optional corner radius override. Empty means inherit." });
+    properties.push_back({ "fontSize", "Font Size", PropertyValue{}, PropertyEditKind::Float, true, "Optional font size override. Empty means inherit." });
     return properties;
 }
 
 std::vector<WidgetPropertyDefinition> commonFontProperties()
 {
     return {
-        { "fontFamily", "fontFamily", "Default", PropertyEditKind::Text, true, "Font family name. \"Default\" uses the editor fallback font." },
-        { "fontBold", "fontBold", false, PropertyEditKind::Bool, true, "Use bold text style when supported by the preview font." },
-        { "fontItalic", "fontItalic", false, PropertyEditKind::Bool, true, "Use italic text style when supported by the preview font." }
+        { "fontFamily", "Font Family", "Default", PropertyEditKind::Text, true, "Font family name. \"Default\" uses the editor fallback font." },
+        { "fontBold", "Bold", false, PropertyEditKind::Bool, true, "Use bold text style when supported by the preview font." },
+        { "fontItalic", "Italic", false, PropertyEditKind::Bool, true, "Use italic text style when supported by the preview font." }
     };
 }
 
@@ -303,10 +303,10 @@ WidgetDefinition makeImageDefinition()
     definition.defaultHint = "Displays or reserves space for an image.";
     definition.size = { 200.0f, 140.0f, 100.0f, 80.0f };
     definition.properties = {
-        { "resourceId", "resourceId", "", PropertyEditKind::Text, true, "Managed image resource id." },
-        { "imagePath", "imagePath", "", PropertyEditKind::FilePath, true, "Fallback image source path." },
-        { "scaleMode", "scaleMode", "Fit", PropertyEditKind::Text, true, "Image scale mode.", { "Stretch", "Fit", "Fill", "Center" } },
-        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+        { "resourceId", "Resource", "", PropertyEditKind::Text, true, "Selects a managed image resource from the project Resource Manager." },
+        { "imagePath", "Image Path", "", PropertyEditKind::FilePath, true, "Optional direct image file path used when no managed resource is selected." },
+        { "scaleMode", "Scale Mode", "Fit", PropertyEditKind::Text, true, "Controls how the image is fitted inside the widget bounds.", { "Stretch", "Fit", "Fill", "Center" } },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
     return definition;

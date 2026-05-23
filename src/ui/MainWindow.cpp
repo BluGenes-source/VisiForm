@@ -145,6 +145,16 @@ std::vector<std::string> newProjectTemplateIds()
     };
 }
 
+std::vector<PropertyInspector::PropertyChoice> propertyChoicesFromValues(const std::vector<std::string>& values)
+{
+    std::vector<PropertyInspector::PropertyChoice> choices;
+    choices.reserve(values.size());
+    for (const auto& value : values) {
+        choices.push_back({ value, value });
+    }
+    return choices;
+}
+
 bool containsText(const std::vector<std::string>& values, const std::string& value)
 {
     return std::find(values.begin(), values.end(), value) != values.end();
@@ -209,6 +219,38 @@ std::string defaultResourceFolder(model::ProjectResourceType type)
 std::string defaultResourceDisplayName(const std::filesystem::path& sourcePath)
 {
     return utils::FileUtils::fileStem(sourcePath);
+}
+
+std::string resourceDisplayName(const model::ProjectResource& resource)
+{
+    if (!resource.displayName.empty()) {
+        return resource.displayName;
+    }
+
+    const std::string fileName = std::filesystem::path{ resource.sourcePath }.filename().string();
+    if (!fileName.empty()) {
+        return fileName;
+    }
+
+    return resource.id;
+}
+
+std::string resourceDisplayLabel(const model::ProjectResource& resource)
+{
+    return resourceDisplayName(resource) + " (" + resource.id + ")";
+}
+
+std::string resourceManagerChoiceLabel(const model::ProjectResource& resource)
+{
+    std::string sourceName = std::filesystem::path{ resource.sourcePath }.filename().string();
+    if (sourceName.empty()) {
+        sourceName = normalizedPathText(std::filesystem::path{ resource.sourcePath });
+    }
+
+    return resourceDisplayName(resource)
+        + " | " + resource.id
+        + " | " + model::toString(resource.type)
+        + " | " + sourceName;
 }
 
 std::string defaultResourceExportRelativePath(model::ProjectResourceType type,
@@ -940,7 +982,7 @@ bool MainWindow::addResourceFromDialog(model::ProjectResourceType resourceType)
 
     resourceManagerDialog_.selectedResourceId = resource.id;
     resourceManagerDialog_.confirmReferencedRemoval = false;
-    editorModal_.statusText = "Added " + resourceTypeDisplayName(resourceType) + " resource: " + resource.displayName;
+    editorModal_.statusText = "Added " + resourceTypeDisplayName(resourceType) + " resource: " + resourceDisplayLabel(resource);
     redraw();
     return true;
 }
@@ -1622,11 +1664,33 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     // Check callback suggestion hit-test first so suggestion clicks are applied before committing edits.
     if (const auto suggestion = propertyInspector_.hitTestSuggestion(document_, settings_, e.position.x, e.position.y)) {
-        // Only apply suggestion when we are actively editing an event property.
         if (propertyInspector_.isEditing()) {
             const auto active = propertyInspector_.activeRow(document_, settings_);
             if (active.has_value()) {
-                if (applySelectedWidgetCallbackProperty(active->key, *suggestion)) {
+                if (active->editKind == PropertyInspector::PropertyEditKind::Choice) {
+                    if (setSelectedWidgetPropertyFromString(active->key, suggestion->value)) {
+                        propertyInspector_.clearEditing();
+                        propertyEditor_.setVisible(false);
+                        requestKeyboardFocus();
+                        if (active->key == "resourceId") {
+                            if (suggestion->value.empty()) {
+                                setOperationStatus("Image resource cleared");
+                            }
+                            else if (const auto* resource = document_.findResourceById(suggestion->value)) {
+                                setOperationStatus("Image resource selected: " + resourceDisplayName(*resource));
+                            }
+                            else {
+                                setOperationStatus("Image resource selected: " + suggestion->label);
+                            }
+                        }
+                        else {
+                            setOperationStatus("Selected " + active->label + ": " + suggestion->label);
+                        }
+                        updatePropertyEditorBounds();
+                        redraw();
+                    }
+                }
+                else if (applySelectedWidgetCallbackProperty(active->key, suggestion->value)) {
                     suggestionAppliedThisClick_ = true;
                 }
                 return;
@@ -4151,6 +4215,13 @@ void MainWindow::updateHoverHint(float x, float y)
     else if (const auto hint = widgetPalette_.hitTestHint(x, y)) {
         nextHint = "Hint: " + *hint;
     }
+    else if (propertyInspector_.contains(x, y)) {
+        if (const auto row = propertyInspector_.hitTestRow(document_, settings_, x, y)) {
+            if (!row->isSection && !row->hint.empty()) {
+                nextHint = "Hint: " + row->hint;
+            }
+        }
+    }
     else if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, x, y)) {
         if (const auto* widget = document_.findWidgetById(*widgetId)) {
             const std::string widgetHint = widget->getStringProperty("hint", {});
@@ -4661,40 +4732,41 @@ void MainWindow::clearCanvasInteraction()
 std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
 {
     std::vector<EditorModalField> fields;
-    const std::vector<std::string> lookAndFeelChoices = availableLookAndFeelIds();
+    const std::vector<PropertyInspector::PropertyChoice> lookAndFeelChoices = propertyChoicesFromValues(availableLookAndFeelIds());
+    const std::vector<PropertyInspector::PropertyChoice> templateChoices = propertyChoicesFromValues(newProjectTemplateIds());
     if (editorModal_.mode == EditorModalMode::NewProjectWizard) {
-        fields.push_back({ "projectName", "Project Name", newProjectWizard_.projectName, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "executableName", "Executable Name", newProjectWizard_.executableName, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "windowTitle", "Window Title", newProjectWizard_.windowTitle, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "userSubclassName", "User Subclass Name", newProjectWizard_.userSubclassName, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "formWidth", "Form Width", std::to_string(newProjectWizard_.formWidth), PropertyInspector::PropertyEditKind::Integer });
-        fields.push_back({ "formHeight", "Form Height", std::to_string(newProjectWizard_.formHeight), PropertyInspector::PropertyEditKind::Integer });
-        fields.push_back({ "lookAndFeelId", "Look And Feel", newProjectWizard_.lookAndFeelId, PropertyInspector::PropertyEditKind::Choice, lookAndFeelChoices });
-        fields.push_back({ "templateId", "Template", newProjectWizard_.templateId, PropertyInspector::PropertyEditKind::Choice, newProjectTemplateIds() });
+        fields.push_back(EditorModalField{ "projectName", "Project Name", newProjectWizard_.projectName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "executableName", "Executable Name", newProjectWizard_.executableName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "windowTitle", "Window Title", newProjectWizard_.windowTitle, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "userSubclassName", "User Subclass Name", newProjectWizard_.userSubclassName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "formWidth", "Form Width", std::to_string(newProjectWizard_.formWidth), PropertyInspector::PropertyEditKind::Integer });
+        fields.push_back(EditorModalField{ "formHeight", "Form Height", std::to_string(newProjectWizard_.formHeight), PropertyInspector::PropertyEditKind::Integer });
+        fields.push_back(EditorModalField{ "lookAndFeelId", "Look And Feel", newProjectWizard_.lookAndFeelId, PropertyInspector::PropertyEditKind::Choice, lookAndFeelChoices });
+        fields.push_back(EditorModalField{ "templateId", "Template", newProjectWizard_.templateId, PropertyInspector::PropertyEditKind::Choice, templateChoices });
     }
     else if (editorModal_.mode == EditorModalMode::ProjectSettings) {
-        fields.push_back({ "projectName", "Project Name", projectSettingsDialog_.projectName, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "executableName", "Executable Name", projectSettingsDialog_.executableName, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "windowTitle", "Window Title", projectSettingsDialog_.windowTitle, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "userSubclassName", "User Subclass Name", projectSettingsDialog_.userSubclassName, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "lookAndFeelId", "Look And Feel", projectSettingsDialog_.lookAndFeelId, PropertyInspector::PropertyEditKind::Choice, lookAndFeelChoices });
-        fields.push_back({ "localVisageSourceDirectory", "Local Visage Source", projectSettingsDialog_.localVisageSourceDirectory, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "visageGitRepository", "Visage Git Repository", projectSettingsDialog_.visageGitRepository, PropertyInspector::PropertyEditKind::Text });
-        fields.push_back({ "visageGitTag", "Visage Git Tag", projectSettingsDialog_.visageGitTag, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "projectName", "Project Name", projectSettingsDialog_.projectName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "executableName", "Executable Name", projectSettingsDialog_.executableName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "windowTitle", "Window Title", projectSettingsDialog_.windowTitle, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "userSubclassName", "User Subclass Name", projectSettingsDialog_.userSubclassName, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "lookAndFeelId", "Look And Feel", projectSettingsDialog_.lookAndFeelId, PropertyInspector::PropertyEditKind::Choice, lookAndFeelChoices });
+        fields.push_back(EditorModalField{ "localVisageSourceDirectory", "Local Visage Source", projectSettingsDialog_.localVisageSourceDirectory, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "visageGitRepository", "Visage Git Repository", projectSettingsDialog_.visageGitRepository, PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "visageGitTag", "Visage Git Tag", projectSettingsDialog_.visageGitTag, PropertyInspector::PropertyEditKind::Text });
     }
     else if (editorModal_.mode == EditorModalMode::ResourceManager) {
-        std::vector<std::string> resourceChoices;
+        std::vector<PropertyInspector::PropertyChoice> resourceChoices;
         resourceChoices.reserve(document_.resources.size());
         for (const auto& resource : document_.resources) {
-            resourceChoices.push_back(resource.id);
+            resourceChoices.push_back({ resource.id, resourceManagerChoiceLabel(resource) });
         }
 
         const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId);
-        fields.push_back({ "selectedResourceId", "Resource", resourceManagerDialog_.selectedResourceId, PropertyInspector::PropertyEditKind::Choice, std::move(resourceChoices) });
-        fields.push_back({ "resourceType", "Type", selectedResource == nullptr ? std::string{} : model::toString(selectedResource->type), PropertyInspector::PropertyEditKind::ReadOnly });
-        fields.push_back({ "displayName", "Display Name", selectedResource == nullptr ? std::string{} : selectedResource->displayName, PropertyInspector::PropertyEditKind::ReadOnly });
-        fields.push_back({ "sourcePath", "Source Path", selectedResource == nullptr ? std::string{} : selectedResource->sourcePath, PropertyInspector::PropertyEditKind::ReadOnly });
-        fields.push_back({ "exportRelativePath", "Export Path", selectedResource == nullptr ? std::string{} : selectedResource->exportRelativePath, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "selectedResourceId", "Resource", resourceManagerDialog_.selectedResourceId, PropertyInspector::PropertyEditKind::Choice, std::move(resourceChoices) });
+        fields.push_back(EditorModalField{ "resourceType", "Type", selectedResource == nullptr ? std::string{} : model::toString(selectedResource->type), PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "displayName", "Display Name", selectedResource == nullptr ? std::string{} : selectedResource->displayName, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "sourcePath", "Source Path", selectedResource == nullptr ? std::string{} : selectedResource->sourcePath, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "exportRelativePath", "Export Path", selectedResource == nullptr ? std::string{} : selectedResource->exportRelativePath, PropertyInspector::PropertyEditKind::ReadOnly });
     }
     return fields;
 }
@@ -4847,7 +4919,7 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
             resourceManagerDialog_.selectedResourceId = trimmedValue;
             resourceManagerDialog_.confirmReferencedRemoval = false;
             if (const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId)) {
-                editorModal_.statusText = "Selected " + resourceTypeDisplayName(selectedResource->type) + " resource: " + selectedResource->displayName;
+                editorModal_.statusText = "Selected " + resourceTypeDisplayName(selectedResource->type) + " resource: " + resourceDisplayLabel(*selectedResource);
             }
             else if (document_.resources.empty()) {
                 editorModal_.statusText = "No resources have been added yet.";
@@ -5246,6 +5318,12 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                 valueText = hit.field.editKind == PropertyInspector::PropertyEditKind::Choice ? "Select" : "";
             }
             if (hit.field.editKind == PropertyInspector::PropertyEditKind::Choice) {
+                const auto iterator = std::find_if(hit.field.choices.begin(), hit.field.choices.end(), [&hit](const PropertyInspector::PropertyChoice& choice) {
+                    return choice.value == hit.field.value;
+                });
+                if (iterator != hit.field.choices.end()) {
+                    valueText = iterator->label;
+                }
                 valueText += "  >";
             }
 
@@ -5305,12 +5383,14 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
     if (editorModal_.mode != EditorModalMode::Message) {
         if (const auto fieldHit = editorModalFieldAt(e.position.x, e.position.y)) {
             if (fieldHit->field.editKind == PropertyInspector::PropertyEditKind::Choice && !fieldHit->field.choices.empty()) {
-                const auto iterator = std::find(fieldHit->field.choices.begin(), fieldHit->field.choices.end(), fieldHit->field.value);
+                const auto iterator = std::find_if(fieldHit->field.choices.begin(), fieldHit->field.choices.end(), [&fieldHit](const PropertyInspector::PropertyChoice& choice) {
+                    return choice.value == fieldHit->field.value;
+                });
                 const std::size_t currentIndex = iterator == fieldHit->field.choices.end()
                     ? 0
                     : static_cast<std::size_t>(std::distance(fieldHit->field.choices.begin(), iterator));
                 const std::size_t nextIndex = (currentIndex + 1) % fieldHit->field.choices.size();
-                setEditorModalFieldValue(fieldHit->field.key, fieldHit->field.choices[nextIndex]);
+                setEditorModalFieldValue(fieldHit->field.key, fieldHit->field.choices[nextIndex].value);
                 redraw();
                 return true;
             }

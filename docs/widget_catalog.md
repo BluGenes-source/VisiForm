@@ -110,6 +110,7 @@ All widgets can also use a common string property:
 - `hint`
 
 This help text is used by the editor for status-bar hints and property inspector editing.
+Property rows also show property-definition hints in the main status pane when hovered.
 
 ## Callback suggestions
 
@@ -191,10 +192,15 @@ Current `Image` widget properties:
 
 Current `Image` behavior:
 
+- the property inspector shows `resourceId` with the display label `Resource`
+- the `Resource` row uses a dropdown of available managed image resources
+- dropdown entries show readable labels such as `Logo (image_1)` while the stored value remains the stable id such as `image_1`
 - `resourceId` points to a managed project resource of type `Image`
 - `imagePath` remains available as a direct-path fallback
+- `imagePath` is used only when no managed image resource is assigned
 - older `source` values are treated as legacy fallback data
-- the designer currently renders a placeholder label for managed resources instead of full decoded image previews
+- the designer renders a placeholder label such as `Image: Logo` or `Image: background.png` instead of full decoded image previews
+- missing managed image resources are shown with a warning-style placeholder state
 - generated export currently uses the managed relative asset path as safe placeholder text or comments
 
 ## Default editor sizes
