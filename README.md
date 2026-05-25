@@ -2,6 +2,10 @@
 
 *A C++ / Visage UI form builder that generates Visage-based C++ projects.*
 
+## Screenshot
+
+   <img src="docs/screenshots/visiform-main-window.jpg" alt="VisiForm main window" width="900">
+
 ## What VisiForm does
 
 `VisiForm` is a form builder inspired by tools like `wxFormBuilder`.
