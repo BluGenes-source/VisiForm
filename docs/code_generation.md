@@ -64,8 +64,9 @@ The generated project includes:
 - optional local-source support for `visage` via `VISIFORM_VISAGE_SOURCE_DIR`
 - `FetchContent` fallback for `visage` when no valid local source is configured
 - the same core Visage options currently used by `VisiForm`
-- static MSVC runtime settings for Debug and Release
-- generated `CMakePresets.json` presets for static Debug and Release builds
+- static MSVC runtime settings for Debug and Release on Windows
+- generated `CMakePresets.json` presets for Windows static Debug and Release builds
+- generated generic `Ninja` Debug and Release presets for contributor-oriented non-Windows builds
 - helper `.cmd` scripts that locate Visual Studio with `vswhere`, load `VsDevCmd.bat`, and call those presets from the generated project root
 - optional `.ps1` wrappers that perform the same Visual Studio environment bootstrap
 
@@ -123,18 +124,24 @@ The exported project currently includes these configure presets:
 
 - `vs2022-x64-static-debug`
 - `vs2022-x64-static-release`
+- `ninja-debug`
+- `ninja-release`
 
 And these build presets:
 
 - `build-static-debug`
 - `build-static-release`
+- `build-ninja-debug`
+- `build-ninja-release`
 
-The generated presets use `Ninja` and keep the static MSVC runtime strategy:
+The Windows presets use `Ninja` and keep the static MSVC runtime strategy:
 
 - `MultiThreadedDebug` for Debug
 - `MultiThreaded` for Release
 
-Because the generated presets use `Ninja`, `cl.exe` must already be available in the environment when CMake configures the project. `Visual Studio 2022` and the `x64 Native Tools Command Prompt for VS 2022` provide that environment automatically. A normal PowerShell session does not, so direct `cmake --preset ...` commands can fail with `No CMAKE_CXX_COMPILER could be found` unless `VsDevCmd.bat` is loaded first.
+The generic `ninja-debug` and `ninja-release` presets do not force a Windows triplet or a user-specific `Ninja` path. They exist to make contributor builds safer on macOS and Linux, but those platforms are still not the primary validated export path.
+
+Because the Windows presets use `Ninja`, `cl.exe` must already be available in the environment when CMake configures the project. `Visual Studio 2022` and the `x64 Native Tools Command Prompt for VS 2022` provide that environment automatically. A normal PowerShell session does not, so direct `cmake --preset ...` commands can fail with `No CMAKE_CXX_COMPILER could be found` unless `VsDevCmd.bat` is loaded first.
 
 The exported helper scripts solve that by locating the latest `Visual Studio 2022` installation with `vswhere`, calling `VsDevCmd.bat -arch=x64 -host_arch=x64`, and then running the matching configure or build preset.
 
@@ -143,6 +150,7 @@ Recommended generated-project workflows:
 - `Visual Studio 2022` - use `File > Open > Folder`, choose the exported project folder, select `vs2022-x64-static-debug` or `vs2022-x64-static-release`, then build from the IDE
 - `x64 Native Tools Command Prompt for VS 2022` - run `cmake --preset ...` and `cmake --build --preset ...` directly
 - normal PowerShell - run the generated scripts in `scripts/`, such as `configure_static_debug.cmd` and `build_static_debug.cmd`
+- macOS or Linux contributor shells - run the generic `ninja-debug` or `ninja-release` presets, or equivalent direct `cmake -S . -B ... -G Ninja` commands
 
 Generated configure presets also include these dependency cache variables:
 
@@ -155,7 +163,9 @@ If `AppSettings.localVisageSourceDirectory` is configured before export, the gen
 
 The emitted path uses forward slashes, for example:
 
-- `J:/Dev/CeePlusPlus/visage`
+- `C:/dev/visage`
+
+You can also use Unix-like paths such as `/Users/you/dev/visage` or `/home/you/dev/visage`.
 
 That local source path is still controlled by `VISIFORM_VISAGE_SOURCE_DIR`. If it is unset or invalid, the generated project still falls back to `FetchContent` using the configured repository and tag values.
 
@@ -166,6 +176,8 @@ That means:
 - `localVisageSourceDirectory` remains machine-specific and is read from `AppSettings` during export
 - `visageGitRepository` remains machine-specific and is read from `AppSettings` during export
 - `visageGitTag` remains machine-specific and is read from `AppSettings` during export
+
+Repository and generated-project documentation should continue to state that Windows is the primary tested export path. macOS and Linux instructions can be provided for contributors, but should remain clearly marked as dependent on `Visage` platform support and platform validation.
 
 ## Validation before export
 

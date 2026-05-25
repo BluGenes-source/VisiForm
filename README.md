@@ -1,19 +1,32 @@
 # VisiForm
+# VisiForm
 
 *A C++ / Visage UI form builder that generates Visage-based C++ projects.*
 
 ## What VisiForm does
 
-`VisiForm` is a Windows-focused form builder inspired by tools like `wxFormBuilder`.
-It uses the `Visage` graphics/UI library to let you design UI forms visually, save those projects as `.vfb.json`, validate the in-memory project model, and export complete generated C++ projects.
+`VisiForm` is a form builder inspired by tools like `wxFormBuilder`.
+It uses the `Visage` graphics and UI library to let you design forms visually, save projects as `.vfb.json`, validate the in-memory project model, and export complete generated C++ projects.
 
-Exported projects are intended to open cleanly in `Visual Studio 2022` and include:
+Exported projects include:
 
 - generated `MainWindow` base class files
 - generated user subclass files
 - `USER CODE BEGIN` / `USER CODE END` preservation blocks
-- generated CMake presets and helper scripts
+- generated `CMakeLists.txt`, `CMakePresets.json`, and helper scripts
 - optional local `Visage` source support with `FetchContent` fallback
+
+## Platform status
+
+| Platform | Status | Notes |
+| --- | --- | --- |
+| Windows 10/11 | Primary supported | Developed and tested with `Visual Studio 2022`. |
+| macOS | Experimental/build instructions provided | Requires `Clang`, `CMake`, `Ninja`, `vcpkg`, `Visage` platform support, and additional native dialog work. |
+| Linux | Experimental/build instructions provided | Requires `GCC` or `Clang`, `CMake`, `Ninja`, `vcpkg`, `Visage` platform support, and additional native dialog work. |
+
+Windows is the primary tested platform.
+macOS and Linux instructions are provided for contributors, but may require additional native dialog or platform package work.
+These non-Windows build paths were not verified in this Windows agent environment, so this README should not be treated as a claim of full production support there.
 
 ## Current status
 
@@ -32,110 +45,117 @@ Current major features include:
 - Interactive generated widgets
 - Local `Visage` dependency support
 
-## OS requirements
+## Core build requirements
 
-- Primary supported OS: `Windows 10` or `Windows 11`, 64-bit
-- Primary IDE: `Visual Studio 2022`
-- The project is currently developed and tested on Windows
-- Other platforms may be possible later, but they are not the primary target yet
-
-## Required software
-
-- `Visual Studio 2022` Community, Professional, or Enterprise
-  - workload: `Desktop development with C++`
-  - `MSVC v143` toolset
-  - `Windows 10/11 SDK`
-  - `CMake tools for Windows` if you want to use Visual Studio's bundled CMake support
-- `Git`
 - `CMake 3.24` or newer
 - `Ninja`
+- `Git`
 - `vcpkg`
-- Recommended local `Visage` source clone: `J:\Dev\CeePlusPlus\visage`
+- local `Visage` source checkout recommended for faster iteration
+- C++20-capable compiler toolchain
 
-`VisiForm` uses static runtime settings.
-The configured `vcpkg` triplet is `x64-windows-static`.
-Current runtime settings are:
+Current repository dependencies from `vcpkg.json` include:
 
-- Debug: `MultiThreadedDebug` / `/MTd`
-- Release: `MultiThreaded` / `/MT`
+- `nlohmann_json`
+- `fmt`
+- `spdlog`
+- `Catch2`
 
-## Suggested `winget` installs
+The primary Windows presets keep the static runtime strategy and use the `x64-windows-static` triplet.
+That Windows triplet does not apply to macOS or Linux.
 
-```powershell
-winget install --id Git.Git -e
-winget install --id Kitware.CMake -e
-winget install --id Ninja-build.Ninja -e
-winget install --id Microsoft.VisualStudio.2022.Community -e
-```
+## Clone the repositories
 
-After installing Visual Studio, make sure the `Desktop development with C++` workload is selected in the Visual Studio Installer.
-You can also install Visual Studio manually instead of using `winget`.
+Repository URL:
 
-## Recommended development folder layout
+- `https://github.com/BluGenes-source/VisiForm.git`
 
-```text
-J:\Dev\CeePlusPlus\VisiForm
-J:\Dev\CeePlusPlus\visage
-J:\Dev\vcpkg
-```
-
-Recommended layout notes:
-
-- the `VisiForm` repository is separate from `Visage`
-- `Visage` is commonly used as a local source dependency during development
-- `vcpkg` provides third-party packages used by the repository
-- `CMakeUserPresets.json` stores machine-specific paths and should stay local
-
-## Clone VisiForm
-
-Replace the placeholder URL with your actual repository URL:
+### Windows PowerShell example
 
 ```powershell
-git clone <your-visiform-repo-url> J:\Dev\CeePlusPlus\VisiForm
+git clone https://github.com/BluGenes-source/VisiForm.git $env:USERPROFILE\dev\VisiForm
+git clone https://github.com/VitalAudio/visage.git $env:USERPROFILE\dev\visage
 ```
 
-## Clone Visage
+### macOS or Linux example
 
-```powershell
-git clone https://github.com/VitalAudio/visage.git J:\Dev\CeePlusPlus\visage
+```bash
+git clone https://github.com/BluGenes-source/VisiForm.git ~/dev/VisiForm
+git clone https://github.com/VitalAudio/visage.git ~/dev/visage
 ```
 
 ## `vcpkg` setup
 
+### Windows
+
 Clone and bootstrap `vcpkg`:
 
 ```powershell
-git clone https://github.com/microsoft/vcpkg.git J:\Dev\vcpkg
-J:\Dev\vcpkg\bootstrap-vcpkg.bat
+git clone https://github.com/microsoft/vcpkg.git $env:USERPROFILE\dev\vcpkg
+& $env:USERPROFILE\dev\vcpkg\bootstrap-vcpkg.bat
 ```
 
-Set `VCPKG_ROOT` to the same location:
+Set `VCPKG_ROOT`:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("VCPKG_ROOT", "J:\Dev\vcpkg", "User")
+[Environment]::SetEnvironmentVariable("VCPKG_ROOT", "$env:USERPROFILE/dev/vcpkg", "User")
 ```
 
-After setting `VCPKG_ROOT`, restart your terminal and `Visual Studio 2022` so the environment variable is visible to CMake and `vcpkg` integration.
+Restart your terminal and `Visual Studio 2022` after setting `VCPKG_ROOT`.
+
+The committed Windows presets use:
+
+- `CMAKE_TOOLCHAIN_FILE=$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`
+- `VCPKG_TARGET_TRIPLET=x64-windows-static`
+
+### macOS and Linux
+
+Clone and bootstrap `vcpkg`:
+
+```bash
+git clone https://github.com/microsoft/vcpkg.git ~/dev/vcpkg
+~/dev/vcpkg/bootstrap-vcpkg.sh
+export VCPKG_ROOT=~/dev/vcpkg
+```
+
+Use the vcpkg toolchain when configuring CMake:
+
+```bash
+-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+```
+
+Common non-Windows triplets depend on your platform:
+
+- Linux: `x64-linux`
+- macOS Intel: `x64-osx`
+- macOS Apple Silicon: `arm64-osx`
+
+If needed, pass the triplet explicitly with `-DVCPKG_TARGET_TRIPLET=<triplet>`.
 
 ## `CMakePresets.json`
 
-`CMakePresets.json` is committed to the repository.
-It contains the shared base presets used for the main app:
+Committed repository presets include:
 
-- `vs2022-x64-static-debug`
-- `vs2022-x64-static-release`
-- `build-static-debug`
-- `build-static-release`
+- Windows primary presets
+  - `vs2022-x64-static-debug`
+  - `vs2022-x64-static-release`
+  - `build-static-debug`
+  - `build-static-release`
+- Generic Ninja presets
+  - `ninja-debug`
+  - `ninja-release`
+  - `build-ninja-debug`
+  - `build-ninja-release`
 
-These presets use `Ninja`, keep the static runtime settings, and use the repository's `x64-windows-static` `vcpkg` configuration.
+The Windows presets keep the current static MSVC runtime and `x64-windows-static` configuration.
+The generic Ninja presets avoid a forced Windows triplet and avoid user-specific `Ninja` paths.
 
 ## `CMakeUserPresets.json`
 
-`CMakeUserPresets.json` is local-only.
-Do not commit it.
-Use it to store machine-specific values such as your local `Visage` source path.
+`CMakeUserPresets.json` is local-only and should not be committed.
+Use it for machine-specific values such as `VISIFORM_VISAGE_SOURCE_DIR`.
 
-Example `CMakeUserPresets.json`:
+Example Windows local preset file:
 
 ```json
 {
@@ -143,19 +163,17 @@ Example `CMakeUserPresets.json`:
   "configurePresets": [
     {
       "name": "vs2022-x64-static-debug-local-visage",
-      "displayName": "VS2022 x64 Static Debug - Local Visage",
       "inherits": "vs2022-x64-static-debug",
       "cacheVariables": {
-        "VISIFORM_VISAGE_SOURCE_DIR": "J:/Dev/CeePlusPlus/visage",
+        "VISIFORM_VISAGE_SOURCE_DIR": "C:/dev/visage",
         "VISIFORM_VISAGE_GIT_TAG": "main"
       }
     },
     {
       "name": "vs2022-x64-static-release-local-visage",
-      "displayName": "VS2022 x64 Static Release - Local Visage",
       "inherits": "vs2022-x64-static-release",
       "cacheVariables": {
-        "VISIFORM_VISAGE_SOURCE_DIR": "J:/Dev/CeePlusPlus/visage",
+        "VISIFORM_VISAGE_SOURCE_DIR": "C:/dev/visage",
         "VISIFORM_VISAGE_GIT_TAG": "main"
       }
     }
@@ -173,62 +191,70 @@ Example `CMakeUserPresets.json`:
 }
 ```
 
-If you prefer to let the project download `Visage` through `FetchContent`, you can skip the local-user presets and use the shared committed presets directly.
+On macOS or Linux you can use the same `VISIFORM_VISAGE_SOURCE_DIR` variable in a local preset, or pass it directly on the command line.
 
-## `.gitignore` note
+## `.gitignore`
 
-`CMakeUserPresets.json` should be ignored by Git because it contains machine-specific paths.
-The repository `.gitignore` already includes this ignore rule.
+`CMakeUserPresets.json` is ignored by the repository because it stores machine-specific paths.
 
-## Build from Visual Studio 2022
+## Windows 10/11 build instructions
 
-Recommended `Visual Studio 2022` workflow:
+### Required software
+
+- `Visual Studio 2022`
+  - workload: `Desktop development with C++`
+  - `MSVC v143` toolset
+  - `Windows 10/11 SDK`
+- `Git`
+- `CMake`
+- `Ninja`
+- `vcpkg`
+- optional local `Visage` checkout
+
+### Suggested `winget` installs
+
+```powershell
+winget install --id Git.Git -e
+winget install --id Kitware.CMake -e
+winget install --id Ninja-build.Ninja -e
+winget install --id Microsoft.VisualStudio.2022.Community -e
+```
+
+### Build from `Visual Studio 2022`
 
 1. Open `Visual Studio 2022`.
 2. Select `File > Open > Folder`.
-3. Open `J:\Dev\CeePlusPlus\VisiForm`.
-4. Select the CMake preset `vs2022-x64-static-debug-local-visage`.
+3. Open your local `VisiForm` repository folder.
+4. Select `vs2022-x64-static-debug` or your local `vs2022-x64-static-debug-local-visage` preset.
 5. If needed, use `Project > Delete Cache and Reconfigure`.
 6. Use `Build > Build All`.
-7. Select `VisiForm.exe` as the startup item if needed.
-8. Run with the green button.
+7. If needed, set `VisiForm.exe` as the startup item from `Solution Explorer > CMake Targets`.
+8. Run manually from Visual Studio when you want to test the app.
 
-If you are not using a local `Visage` checkout, select the committed `vs2022-x64-static-debug` preset instead.
-
-## If the startup target is missing
-
-If `VisiForm.exe` does not appear as the active startup item:
-
-- open `Solution Explorer > CMake Targets`
-- right-click `VisiForm.exe`
-- choose `Set as Startup Item`
-
-## Build from command line
-
-Use the `x64 Native Tools Command Prompt for VS 2022` for the smoothest command-line workflow.
+### Build from `x64 Native Tools Command Prompt for VS 2022`
 
 Debug:
 
 ```bat
-cd /d J:\Dev\CeePlusPlus\VisiForm
-cmake --preset vs2022-x64-static-debug-local-visage
-cmake --build --preset build-static-debug-local-visage
+cd /d %USERPROFILE%\dev\VisiForm
+cmake --preset vs2022-x64-static-debug
+cmake --build --preset build-static-debug
 ```
 
 Release:
 
 ```bat
-cd /d J:\Dev\CeePlusPlus\VisiForm
-cmake --preset vs2022-x64-static-release-local-visage
-cmake --build --preset build-static-release-local-visage
+cd /d %USERPROFILE%\dev\VisiForm
+cmake --preset vs2022-x64-static-release
+cmake --build --preset build-static-release
 ```
 
-If you are not using a local `Visage` checkout, use the committed base presets instead of the `-local-visage` presets.
+If you created local-user presets for a local `Visage` checkout, use the `-local-visage` preset names instead.
 
-## Normal PowerShell warning
+### Normal PowerShell warning
 
-Because the project uses `Ninja`, the Visual Studio C++ compiler environment must already be available.
-A normal PowerShell session may fail with an error like:
+Because the project uses `Ninja`, the MSVC compiler environment must already be available.
+A normal PowerShell session may fail with:
 
 ```text
 No CMAKE_CXX_COMPILER could be found.
@@ -238,19 +264,113 @@ Use one of these instead:
 
 - `Visual Studio 2022`
 - `x64 Native Tools Command Prompt for VS 2022`
-- scripts that call `VsDevCmd` before running CMake when such scripts are available
+- scripts that call `VsDevCmd` before invoking CMake
 
-## Running VisiForm
+## macOS build instructions
 
-Run the app from the `Visual Studio 2022` green button after a successful build.
-In Debug builds, a console window may also appear depending on build settings.
-The GUI window is the actual `VisiForm` application.
+macOS contributor builds depend on `Visage` platform support and local platform packages.
+If native file dialogs are not implemented on macOS yet, some open and save workflows may be unavailable until that work is completed.
 
-## Console window note
+### Prerequisites
 
-- a console window may appear in Debug builds
-- it is useful for logs and diagnostics
-- Release builds can hide it later with `WIN32_EXECUTABLE` or another CMake option if that becomes desirable
+- Xcode Command Line Tools
+- `Clang`
+- `CMake`
+- `Ninja`
+- `Git`
+- `vcpkg`
+- optional local `Visage` checkout
+
+Install command line tools:
+
+```bash
+xcode-select --install
+```
+
+Optional `Homebrew` installs:
+
+```bash
+brew install cmake ninja git
+```
+
+### Configure and build
+
+Debug:
+
+```bash
+cd ~/dev/VisiForm
+cmake -S . -B build/macos-debug -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+  -DVISIFORM_VISAGE_SOURCE_DIR=$HOME/dev/visage
+
+cmake --build build/macos-debug
+```
+
+Release:
+
+```bash
+cd ~/dev/VisiForm
+cmake -S . -B build/macos-release -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+  -DVISIFORM_VISAGE_SOURCE_DIR=$HOME/dev/visage
+
+cmake --build build/macos-release
+```
+
+If you need an explicit vcpkg triplet, add one such as `-DVCPKG_TARGET_TRIPLET=arm64-osx` or `-DVCPKG_TARGET_TRIPLET=x64-osx`.
+
+## Linux build instructions
+
+Linux contributor builds depend on `Visage` platform support and the required graphics or windowing packages for your distro.
+If native file dialogs are not implemented on Linux yet, some open and save workflows may be unavailable until that work is completed.
+
+### Ubuntu or Debian example prerequisites
+
+```bash
+sudo apt update
+sudo apt install -y build-essential git cmake ninja-build pkg-config
+```
+
+You may also choose `Clang` instead of `GCC`.
+If `Visage` reports additional missing platform packages, install the required graphics and windowing dependencies documented by `Visage`.
+
+### Configure and build
+
+Debug:
+
+```bash
+cd ~/dev/VisiForm
+cmake -S . -B build/linux-debug -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+  -DVISIFORM_VISAGE_SOURCE_DIR=$HOME/dev/visage
+
+cmake --build build/linux-debug
+```
+
+Release:
+
+```bash
+cd ~/dev/VisiForm
+cmake -S . -B build/linux-release -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+  -DVISIFORM_VISAGE_SOURCE_DIR=$HOME/dev/visage
+
+cmake --build build/linux-release
+```
+
+If you need an explicit vcpkg triplet, add `-DVCPKG_TARGET_TRIPLET=x64-linux`.
+
+## Running `VisiForm`
+
+On Windows, run the app manually from `Visual Studio 2022` after a successful build.
+In Debug builds, a console window may also appear for logs.
+
+macOS and Linux runtime behavior has not been validated in this environment.
+Even if those builds configure successfully, final runtime support depends on `Visage` and the remaining native dialog work.
 
 ## Export workflow
 
@@ -261,7 +381,7 @@ To generate a standalone C++ app:
 2. Use the `File` or `Export` menu to export.
 3. Select the export folder.
 
-The generated project currently includes files such as:
+Generated projects currently include files such as:
 
 - `CMakeLists.txt`
 - `CMakePresets.json`
@@ -277,46 +397,63 @@ The generated project currently includes files such as:
 The generated base class keeps the `MainWindow` naming rule, while the user-edit layer is emitted through the configured user subclass files.
 Generated `USER CODE` blocks are preserved across re-export for recognized handler regions.
 
-## Generated project build
+## Generated project build notes
 
-After export, you can build the generated project by:
+Exported projects use similar CMake logic:
 
-- opening the exported folder in `Visual Studio 2022`
-- selecting the generated Debug or Release preset
-- building and running from the IDE
+- optional `VISIFORM_VISAGE_SOURCE_DIR` local source support
+- `FetchContent` fallback for `Visage`
+- Windows-specific static presets for the main tested path
+- generic Ninja presets for contributor-oriented cross-platform builds
 
-You can also use the generated helper scripts in the exported `scripts/` folder.
+Windows generated-project builds are the primary tested export workflow.
+macOS and Linux generated-project builds depend on the same `Visage` platform support and toolchain availability as the main repository.
 
-## Local Visage in exports
+## Local `Visage` support
 
-`VisiForm` can write `VISIFORM_VISAGE_SOURCE_DIR` into the exported project's `CMakePresets.json`.
-That allows exported projects to reuse a local `Visage` checkout instead of downloading the dependency each time.
+`VISIFORM_VISAGE_SOURCE_DIR` can be used in both the main repository and exported projects.
+If the path is empty or invalid, CMake falls back to `FetchContent` using the configured repository and tag.
 
-If the local path is empty or invalid, the exported project falls back to `FetchContent` using the configured repository and tag.
-
-## VisiForm project files
+## Project files
 
 - `VisiForm` projects are saved as `.vfb.json`
 - the default project folder may be `Generated/Projects`
 - exported generated C++ projects are separate from the `.vfb.json` source project files
 
-## Common troubleshooting
+## Troubleshooting
 
-### CMake error: Unrecognized `version` field
+### `CMake` error: unrecognized preset `version`
 
-Use `CMakePresets` version `3` support or update your CMake installation.
+Use a `CMake` release that supports preset `version` `3`.
 
-### No `CMAKE_CXX_COMPILER` could be found
+### Windows: no `CMAKE_CXX_COMPILER` could be found
 
 Use `Visual Studio 2022` or the `x64 Native Tools Command Prompt for VS 2022` so the MSVC toolchain is available.
 
-### `vcpkg` toolchain not found
+### macOS: `xcrun` error or compiler not found
 
-Check that `VCPKG_ROOT` is set correctly and that `${env:VCPKG_ROOT}` points to a valid `vcpkg` checkout.
+Run:
+
+```bash
+xcode-select --install
+```
+
+### Linux: compiler not found
+
+Install `build-essential` or `clang`.
 
 ### `Ninja` not found
 
 Install `Ninja` and make sure it is available in `PATH`.
+On Ubuntu or Debian the package name is commonly `ninja-build`.
+
+### `vcpkg` toolchain or packages fail
+
+Verify:
+
+- `VCPKG_ROOT` points to a valid `vcpkg` checkout
+- `CMAKE_TOOLCHAIN_FILE` points to `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`
+- your selected triplet matches the current platform
 
 ### Visual Studio instance not found by `vcpkg`
 
@@ -324,13 +461,19 @@ Install the `Desktop development with C++` workload in `Visual Studio 2022`.
 
 ### `Visage` downloads every time
 
-Configure `VISIFORM_VISAGE_SOURCE_DIR` in your local preset so the project can use a local `Visage` checkout.
+Set `VISIFORM_VISAGE_SOURCE_DIR` to a valid local `Visage` checkout.
 
-### Generated project uses `FetchContent`
+### Native file dialogs are missing on macOS or Linux
 
-Check the generated `CMakePresets.json` and confirm that `VISIFORM_VISAGE_SOURCE_DIR` is present and points to a valid `Visage` source tree.
+Non-Windows dialog support is currently limited.
+Some project, export, image, font, or color-picker workflows may remain unavailable until native dialog implementations are added.
 
-### Duplicate console window
+### `Visage` platform dependency errors
+
+Install the graphics and windowing packages required by `Visage` for your platform.
+If platform-specific packages are missing, use `Visage` documentation for the required dependency list.
+
+### Duplicate console window in Debug
 
 Debug builds may create a console window in addition to the main GUI window.
 

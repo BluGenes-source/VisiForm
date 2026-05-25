@@ -42,6 +42,11 @@ Current add flows:
 - font resources use the native file dialog with `ttf` and `otf` filters
 - adding an image resource reports a status message such as `Added image resource: Logo (image_1)`
 
+Current platform note:
+
+- Windows currently has the native dialog implementation used by these flows
+- non-Windows builds currently compile with safe dialog fallbacks that return no selection until native macOS or Linux dialog support is implemented
+
 Default export folders:
 
 - images -> `assets/images/`

@@ -9,8 +9,10 @@
 #include <cctype>
 #include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 
+#ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -19,10 +21,12 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <objbase.h>
+#endif
 
 namespace visiform::utils {
 namespace {
 
+#ifdef _WIN32
 constexpr wchar_t kProjectFilter[] =
     L"VisiForm Project (*.vfb.json)\0*.vfb.json\0"
     L"All Files (*.*)\0*.*\0\0";
@@ -133,22 +137,35 @@ COLORREF parseInitialColor(const std::string& initialColor)
     const unsigned int blue = std::stoul(initialColor.substr(5, 2), nullptr, 16);
     return RGB(red, green, blue);
 }
+#endif
 
 } // namespace
 
 std::optional<std::filesystem::path> showOpenProjectDialog(const std::filesystem::path& initialDirectory)
 {
+#ifdef _WIN32
     return showProjectDialog(false, {}, initialDirectory);
+#else
+    static_cast<void>(initialDirectory);
+    return std::nullopt;
+#endif
 }
 
 std::optional<std::filesystem::path> showSaveProjectDialog(const std::filesystem::path& suggestedPath,
     const std::filesystem::path& initialDirectory)
 {
+#ifdef _WIN32
     return showProjectDialog(true, suggestedPath, initialDirectory);
+#else
+    static_cast<void>(suggestedPath);
+    static_cast<void>(initialDirectory);
+    return std::nullopt;
+#endif
 }
 
 std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::filesystem::path& initialDirectory)
 {
+#ifdef _WIN32
     std::optional<std::filesystem::path> resultPath;
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     const bool comInitialized = SUCCEEDED(hr);
@@ -189,20 +206,35 @@ std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::fil
     }
 
     return resultPath;
+#else
+    static_cast<void>(initialDirectory);
+    return std::nullopt;
+#endif
 }
 
 std::optional<std::filesystem::path> showOpenImageResourceDialog(const std::filesystem::path& initialDirectory)
 {
+#ifdef _WIN32
     return showOpenFilteredFileDialog(kImageResourceFilter, initialDirectory);
+#else
+    static_cast<void>(initialDirectory);
+    return std::nullopt;
+#endif
 }
 
 std::optional<std::filesystem::path> showOpenFontResourceDialog(const std::filesystem::path& initialDirectory)
 {
+#ifdef _WIN32
     return showOpenFilteredFileDialog(kFontResourceFilter, initialDirectory);
+#else
+    static_cast<void>(initialDirectory);
+    return std::nullopt;
+#endif
 }
 
 std::optional<std::string> showColorPickerDialog(const std::string& initialColor)
 {
+#ifdef _WIN32
     static COLORREF customColors[16] = {};
 
     CHOOSECOLORW dialog{};
@@ -223,6 +255,10 @@ std::optional<std::string> showColorPickerDialog(const std::string& initialColor
     char buffer[8] = {};
     std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X", red, green, blue);
     return std::string{ buffer };
+#else
+    static_cast<void>(initialColor);
+    return std::nullopt;
+#endif
 }
 
 } // namespace visiform::utils

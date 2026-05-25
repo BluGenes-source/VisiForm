@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <optional>
 #include <nlohmann/json.hpp>
 
 namespace visiform::utils {
@@ -14,6 +15,16 @@ constexpr std::size_t kMaxRecentFiles = 10;
 std::filesystem::path normalizePath(const std::filesystem::path& path)
 {
     return path.lexically_normal();
+}
+
+std::optional<std::filesystem::path> environmentVariablePath(const char* variableName)
+{
+    const char* value = std::getenv(variableName);
+    if (value == nullptr || *value == '\0') {
+        return std::nullopt;
+    }
+
+    return normalizePath(std::filesystem::path{ value });
 }
 
 } // namespace
@@ -94,13 +105,22 @@ bool RecentFiles::removePath(const std::filesystem::path& path, std::string& err
 
 std::filesystem::path RecentFiles::storagePath()
 {
-    char* localAppData = nullptr;
-    std::size_t length = 0;
-    if (_dupenv_s(&localAppData, &length, "LOCALAPPDATA") == 0 && localAppData != nullptr) {
-        const std::filesystem::path path = std::filesystem::path{ localAppData } / "VisiForm" / "recent_files.json";
-        free(localAppData);
-        return path;
+    if (const auto localAppData = environmentVariablePath("LOCALAPPDATA")) {
+        return *localAppData / "VisiForm" / "recent_files.json";
     }
+
+#ifdef __APPLE__
+    if (const auto home = environmentVariablePath("HOME")) {
+        return *home / "Library" / "Application Support" / "VisiForm" / "recent_files.json";
+    }
+#else
+    if (const auto xdgConfigHome = environmentVariablePath("XDG_CONFIG_HOME")) {
+        return *xdgConfigHome / "VisiForm" / "recent_files.json";
+    }
+    if (const auto home = environmentVariablePath("HOME")) {
+        return *home / ".config" / "VisiForm" / "recent_files.json";
+    }
+#endif
 
     return std::filesystem::current_path() / "Generated" / "recent_files.json";
 }

@@ -4,9 +4,12 @@
 
 ## Settings file location
 
-Preferred location:
+Preferred locations:
 
-- `%APPDATA%/VisiForm/settings.json`
+- Windows: `%APPDATA%/VisiForm/settings.json`
+- macOS: `$HOME/Library/Application Support/VisiForm/settings.json`
+- Linux and other Unix-like environments: `$XDG_CONFIG_HOME/VisiForm/settings.json`
+- Linux fallback when `XDG_CONFIG_HOME` is unavailable: `$HOME/.config/VisiForm/settings.json`
 
 Fallback location when `APPDATA` is unavailable:
 
@@ -74,7 +77,7 @@ Generated-project export also stores dependency settings used for emitted CMake 
 - `localVisageSourceDirectory`
   - default: empty
   - when non-empty, generated `CMakePresets.json` can prefill `VISIFORM_VISAGE_SOURCE_DIR`
-  - use forward slashes for Windows paths, for example `J:/Dev/CeePlusPlus/visage`
+- use forward slashes for configured paths, for example `C:/dev/visage` or `/home/you/dev/visage`
   - the root `FormWindow` property inspector now exposes this as an app-level `Export / Dependencies` field
 - `visageGitRepository`
   - default: `https://github.com/VitalAudio/visage.git`

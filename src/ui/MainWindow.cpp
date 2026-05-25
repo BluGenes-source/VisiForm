@@ -26,10 +26,12 @@
 #include <sstream>
 #include <string>
 
+#ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
+#endif
 
 namespace visiform::ui {
 namespace {
@@ -90,6 +92,16 @@ bool pointInBounds(float x, float y, float left, float top, float width, float h
 std::string normalizedPathText(const std::filesystem::path& path)
 {
     return utils::FileUtils::normalizeSeparators(path.string());
+}
+
+bool isAdditiveSelectionModifierDown()
+{
+#ifdef _WIN32
+    return (GetKeyState(VK_CONTROL) & 0x8000) != 0
+        || (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+#else
+    return false;
+#endif
 }
 
 bool isValidColorValue(const std::string& value)
@@ -1801,9 +1813,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (layout_.showProjectTree) {
-        const bool additiveSelection = multiSelectMode_
-            || (GetKeyState(VK_CONTROL) & 0x8000) != 0
-            || (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+        const bool additiveSelection = multiSelectMode_ || isAdditiveSelectionModifierDown();
         if (const auto widgetId = projectTree_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
             handleWidgetClicked(*widgetId, additiveSelection);
             return;
@@ -1827,10 +1837,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             return;
         }
 
-        // TODO: Replace Win32 key-state probing if the Visage mouse input layer later exposes reliable modifier state.
-        const bool modifierAdditive = (GetKeyState(VK_CONTROL) & 0x8000) != 0
-            || (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-        const bool additiveSelection = multiSelectMode_ || modifierAdditive;
+        const bool additiveSelection = multiSelectMode_ || isAdditiveSelectionModifierDown();
         const bool clickedPrimarySelected = document_.selectedWidgetId == *widgetId;
         const bool keepMultiSelectionForDrag = multiSelectMode_ && clickedPrimarySelected;
         const bool wasSelected = clickedPrimarySelected;
