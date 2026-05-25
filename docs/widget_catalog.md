@@ -149,7 +149,7 @@ These values drive generated CMake naming, executable naming, user subclass file
 
 Current exported generated runtime behavior by widget type:
 
-- `Button` - clickable, fires `onClick`, and callback code can update other generated widgets through protected `MainWindow` helpers such as `setText(...)` or `setStatusBarField(...)`
+- `Button` - click completion fires `onClick`, release-over-button fires `onRelease`, double-click fires `onDoubleClick`, toggle buttons preserve a checked state, and callback code can update other generated widgets through protected `MainWindow` helpers such as `setText(...)`, `setChecked(...)`, or `setStatusBarField(...)`
 - `CheckBox` - toggles and fires `onToggle`, and callback code can read or write checkbox state with `getChecked(...)` and `setChecked(...)`
 - `RadioButton` - enforces single selection per group and fires `onSelected` for the clicked item; callback code can also use `setSelected(...)` to apply group-aware selection changes
 - `Slider` - supports mouse dragging and fires `onChanged`; callback code can read or write numeric state with `getValue(...)` and `setValue(...)`

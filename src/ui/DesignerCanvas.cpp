@@ -829,15 +829,22 @@ void drawWidget(visage::Canvas& canvas,
         }
         break;
     case model::WidgetType::Button:
-        canvas.setColor(style.fillColor);
+    {
+        const bool pressedState = widget.getBoolProperty("toggleMode", false) && widget.getBoolProperty("checked", false);
+        const std::string normalText = getStringProperty(widget, "normalText", getStringProperty(widget, "text", widgetLabel(widget)));
+        const std::string pressedText = getStringProperty(widget, "pressedText", normalText);
+        const int normalFillColor = parseColorOrDefault(getStringProperty(widget, "normalFillColor", {}), style.fillColor);
+        const int pressedFillColor = parseColorOrDefault(getStringProperty(widget, "pressedFillColor", {}), blendColor(style.fillColor, style.accentColor, 0.18f));
+        canvas.setColor(pressedState ? pressedFillColor : normalFillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), widgetFont, visage::Font::kCenter,
+            canvas.text(pressedState ? pressedText : normalText, widgetFont, visage::Font::kCenter,
                 bounds.x, bounds.y, bounds.width, bounds.height);
         }
         break;
+    }
     case model::WidgetType::TextBox:
         canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);

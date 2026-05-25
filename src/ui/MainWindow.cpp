@@ -72,6 +72,10 @@ constexpr float kEditorModalFormRowHeight = 34.0f;
 constexpr float kEditorModalFormRowSpacing = 10.0f;
 constexpr float kEditorModalFormLabelWidth = 190.0f;
 constexpr float kEditorModalFormStatusHeight = 40.0f;
+constexpr float kResourceManagerSplitGap = 14.0f;
+constexpr float kResourceManagerPreviewMinWidth = 210.0f;
+constexpr float kResourceManagerPreviewMaxWidth = 250.0f;
+constexpr float kResourceManagerFieldLabelWidth = 140.0f;
 constexpr float kWizardModalWidth = 640.0f;
 constexpr float kWizardModalHeight = 520.0f;
 constexpr float kProjectSettingsModalWidth = 640.0f;
@@ -818,27 +822,6 @@ MainWindow::MainWindow()
 {
     setTitle(kWindowTitle);
     loadLabelFont();
-    propertyEditor_.setTextFieldEntry();
-    propertyEditor_.setMargin(8.0f, 0.0f);
-    if (canDrawText()) {
-        propertyEditor_.setFont(labelFont_);
-    }
-    propertyEditor_.setVisible(false);
-    propertyEditor_.onEnterKey() = [this] {
-        if (editorModalEdit_.active) {
-            commitEditorModalFieldEdit();
-            return;
-        }
-        commitInspectorEdit();
-    };
-    propertyEditor_.onEscapeKey() = [this] {
-        if (editorModalEdit_.active) {
-            cancelEditorModalFieldEdit();
-            return;
-        }
-        cancelInspectorEdit();
-    };
-    addChild(&propertyEditor_);
     loadAppSettings();
     applyCanvasSettings();
     updateLayout();
@@ -942,13 +925,53 @@ void MainWindow::populateProjectSettingsDialog()
 void MainWindow::populateResourceManagerDialog()
 {
     resourceManagerDialog_.confirmReferencedRemoval = false;
-    if (!resourceManagerDialog_.selectedResourceId.empty() && document_.findResourceById(resourceManagerDialog_.selectedResourceId) != nullptr) {
+    if (resourceManagerDialog_.selectedResourceId.empty()
+        || document_.findResourceById(resourceManagerDialog_.selectedResourceId) == nullptr) {
+        resourceManagerDialog_.selectedResourceId = document_.resources.empty()
+            ? std::string{}
+            : document_.resources.front().id;
+    }
+
+    refreshResourceManagerPreview();
+}
+
+void MainWindow::refreshResourceManagerPreview()
+{
+    resourceManagerDialog_.previewImageBytes.clear();
+    resourceManagerDialog_.previewImageAvailable = false;
+    resourceManagerDialog_.previewStatus.clear();
+
+    if (resourceManagerDialog_.selectedResourceId.empty()) {
+        resourceManagerDialog_.previewStatus = "No resource selected.";
         return;
     }
 
-    resourceManagerDialog_.selectedResourceId = document_.resources.empty()
-        ? std::string{}
-        : document_.resources.front().id;
+    const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId);
+    if (selectedResource == nullptr) {
+        resourceManagerDialog_.previewStatus = "Selected resource is no longer available.";
+        return;
+    }
+
+    if (selectedResource->type != model::ProjectResourceType::Image) {
+        resourceManagerDialog_.previewStatus = "Preview is available for image resources only.";
+        return;
+    }
+
+    const std::filesystem::path sourcePath{ selectedResource->sourcePath };
+    std::ifstream stream(sourcePath, std::ios::binary);
+    if (!stream.good()) {
+        resourceManagerDialog_.previewStatus = "Image source file is missing: " + normalizedPathText(sourcePath);
+        return;
+    }
+
+    resourceManagerDialog_.previewImageBytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+    if (resourceManagerDialog_.previewImageBytes.empty()) {
+        resourceManagerDialog_.previewStatus = "Image source file is empty: " + normalizedPathText(sourcePath);
+        return;
+    }
+
+    resourceManagerDialog_.previewImageAvailable = true;
+    resourceManagerDialog_.previewStatus = "Scaled preview from " + normalizedPathText(sourcePath.filename());
 }
 
 bool MainWindow::addResourceFromDialog(model::ProjectResourceType resourceType)
@@ -982,6 +1005,7 @@ bool MainWindow::addResourceFromDialog(model::ProjectResourceType resourceType)
 
     resourceManagerDialog_.selectedResourceId = resource.id;
     resourceManagerDialog_.confirmReferencedRemoval = false;
+    refreshResourceManagerPreview();
     editorModal_.statusText = "Added " + resourceTypeDisplayName(resourceType) + " resource: " + resourceDisplayLabel(resource);
     redraw();
     return true;
@@ -1463,7 +1487,8 @@ bool MainWindow::saveProjectAsDialog()
         : currentProjectPath_;
     const std::filesystem::path defaultProjectDir = projectRootPath() / "Generated" / "Projects";
     std::string ensureDirectoryError;
-    utils::FileUtils::ensureDirectoryExists(defaultProjectDir, ensureDirectoryError);
+    const bool defaultProjectDirectoryReady = utils::FileUtils::ensureDirectoryExists(defaultProjectDir, ensureDirectoryError);
+    (void)defaultProjectDirectoryReady;
     const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() && std::filesystem::exists(settings_.lastProjectDirectory)
         ? settings_.lastProjectDirectory
         : defaultProjectDir;
@@ -1618,6 +1643,8 @@ void MainWindow::draw(visage::Canvas& canvas)
     if (isEditorModalVisible()) {
         drawEditorModalDialog(canvas);
     }
+    textEditControl_.draw(canvas, labelFont_, canDrawText());
+    dropdownControl_.draw(canvas, labelFont_, canDrawText());
 }
 
 void MainWindow::mouseDown(const visage::MouseEvent& e)
@@ -1631,6 +1658,25 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     if (isEditorModalVisible()) {
         handleEditorModalMouseDown(e);
         return;
+    }
+
+    if (dropdownControl_.isOpen()) {
+        const bool handledDropdownClick = dropdownControl_.mouseDown(e.position.x, e.position.y);
+        handleDropdownSelection();
+        if (handledDropdownClick) {
+            redraw();
+            return;
+        }
+    }
+
+    if (textEditControl_.isActive()) {
+        if (textEditControl_.mouseDown(e.position.x, e.position.y)) {
+            redraw();
+            return;
+        }
+        if (!commitInspectorEdit()) {
+            return;
+        }
     }
 
     if (handleMenuMouseDown(e)) {
@@ -1662,42 +1708,6 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
-    // Check callback suggestion hit-test first so suggestion clicks are applied before committing edits.
-    if (const auto suggestion = propertyInspector_.hitTestSuggestion(document_, settings_, e.position.x, e.position.y)) {
-        if (propertyInspector_.isEditing()) {
-            const auto active = propertyInspector_.activeRow(document_, settings_);
-            if (active.has_value()) {
-                if (active->editKind == PropertyInspector::PropertyEditKind::Choice) {
-                    if (setSelectedWidgetPropertyFromString(active->key, suggestion->value)) {
-                        propertyInspector_.clearEditing();
-                        propertyEditor_.setVisible(false);
-                        requestKeyboardFocus();
-                        if (active->key == "resourceId") {
-                            if (suggestion->value.empty()) {
-                                setOperationStatus("Image resource cleared");
-                            }
-                            else if (const auto* resource = document_.findResourceById(suggestion->value)) {
-                                setOperationStatus("Image resource selected: " + resourceDisplayName(*resource));
-                            }
-                            else {
-                                setOperationStatus("Image resource selected: " + suggestion->label);
-                            }
-                        }
-                        else {
-                            setOperationStatus("Selected " + active->label + ": " + suggestion->label);
-                        }
-                        updatePropertyEditorBounds();
-                        redraw();
-                    }
-                }
-                else if (applySelectedWidgetCallbackProperty(active->key, suggestion->value)) {
-                    suggestionAppliedThisClick_ = true;
-                }
-                return;
-            }
-        }
-    }
-
     if (const auto colorPropertyKey = propertyInspector_.hitTestColorSwatch(document_, settings_, e.position.x, e.position.y)) {
         if (propertyInspector_.isEditing() && !commitInspectorEdit()) {
             return;
@@ -1714,7 +1724,8 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
         if (setSelectedWidgetPropertyFromString(*colorPropertyKey, *selectedColor)) {
             propertyInspector_.clearEditing();
-            propertyEditor_.setVisible(false);
+            textEditControl_.clear();
+            dropdownControl_.close();
             requestKeyboardFocus();
             updatePropertyEditorBounds();
             redraw();
@@ -1737,7 +1748,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             setSelectedWidgetProperty(row->key, !currentValue);
         }
         else if (row->editKind != PropertyInspector::PropertyEditKind::ReadOnly) {
-            beginInspectorEdit(*row);
+            if (row->editKind == PropertyInspector::PropertyEditKind::Choice) {
+                beginInspectorEdit(*row);
+            }
+            else {
+                beginInspectorEdit(*row);
+            }
         }
         return;
     }
@@ -1988,12 +2004,6 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         return;
     }
 
-    // If a suggestion was applied during mouse down, consume this mouseUp and clear guard.
-    if (suggestionAppliedThisClick_) {
-        suggestionAppliedThisClick_ = false;
-        return;
-    }
-
     if (canvasInteraction_.mode == CanvasInteractionState::Mode::MarqueeSelect) {
         const DesignerCanvas::SelectionRect selectionRect = normalizedSelectionRect(canvasInteraction_.dragStart, canvasInteraction_.currentPoint);
         if (!isMeaningfulMarquee(selectionRect)) {
@@ -2063,6 +2073,12 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 
 bool MainWindow::mouseWheel(const visage::MouseEvent& e)
 {
+    const float deltaY = e.precise_wheel_delta_y != 0.0f ? e.precise_wheel_delta_y : e.wheel_delta_y;
+    if (dropdownControl_.mouseWheel(deltaY, e.position.x, e.position.y)) {
+        redraw();
+        return true;
+    }
+
     if (isEditorModalVisible()) {
         return true;
     }
@@ -2071,7 +2087,6 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
         return true;
     }
 
-    const float deltaY = e.precise_wheel_delta_y != 0.0f ? e.precise_wheel_delta_y : e.wheel_delta_y;
     if (layout_.showProjectTree && projectTree_.mouseWheel(document_, deltaY, e.position.x, e.position.y)) {
         redraw();
         return true;
@@ -2089,6 +2104,18 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
 bool MainWindow::keyPress(const visage::KeyEvent& e)
 {
     using KeyCode = visage::KeyCode;
+    if (dropdownControl_.isOpen() && dropdownControl_.keyPress(e)) {
+        handleDropdownSelection();
+        redraw();
+        return true;
+    }
+
+    if (textEditControl_.isActive() && textEditControl_.keyPress(e)) {
+        handleTextEditPendingAction();
+        redraw();
+        return true;
+    }
+
     if (isEditorModalVisible()) {
         if (editorModalEdit_.active) {
             return false;
@@ -2192,12 +2219,14 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
 
 bool MainWindow::receivesTextInput()
 {
-    return false;
+    return textEditControl_.isActive();
 }
 
 void MainWindow::textInput(const std::string& text)
 {
-    (void)text;
+    if (textEditControl_.textInput(text)) {
+        redraw();
+    }
 }
 
 void MainWindow::toggleMultiSelectMode()
@@ -2489,7 +2518,7 @@ bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const 
         minimumHeight = std::max(metrics.minHeight, lineHeight + 18.0f);
         break;
     case model::WidgetType::Button:
-        if (key != "text") {
+        if (key != "text" && key != "normalText" && key != "pressedText") {
             return false;
         }
         padding = 80.0f;
@@ -4558,7 +4587,8 @@ void MainWindow::saveAppSettings()
     settings_.removeMissingRecentFiles();
     projectTree_.setRecentFiles(settings_.recentFiles);
     std::string errorMessage;
-    settings_.save(errorMessage);
+    const bool saved = settings_.save(errorMessage);
+    (void)saved;
 }
 
 void MainWindow::applyCanvasSettings()
@@ -4628,6 +4658,28 @@ std::string MainWindow::trimWhitespace(const std::string& value)
     return std::string(first, last);
 }
 
+std::string MainWindow::inspectorPropertyLabel(const std::string& key) const
+{
+    if (const auto row = propertyInspector_.activeRow(document_, settings_)) {
+        if (row->key == key && !row->label.empty()) {
+            return row->label;
+        }
+    }
+
+    return key;
+}
+
+std::string MainWindow::editorModalFieldLabel(const std::string& key) const
+{
+    for (const auto& field : editorModalFields()) {
+        if (field.key == key && !field.label.empty()) {
+            return field.label;
+        }
+    }
+
+    return key;
+}
+
 bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
 {
     if (row.editKind == PropertyInspector::PropertyEditKind::ReadOnly
@@ -4639,18 +4691,17 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
         return false;
     }
 
-    propertyEditor_.setText(row.displayValue);
     if (row.editKind == PropertyInspector::PropertyEditKind::Choice) {
-        propertyEditor_.setVisible(false);
-        requestKeyboardFocus();
+        openInspectorDropdown(row);
         redraw();
         return true;
     }
 
+    textEditControl_.begin(row.displayValue);
     updatePropertyEditorBounds();
-    propertyEditor_.setVisible(true);
-    propertyEditor_.selectAll();
-    propertyEditor_.requestKeyboardFocus();
+    if (!row.choices.empty()) {
+        openInspectorDropdown(row);
+    }
     redraw();
     return true;
 }
@@ -4661,20 +4712,28 @@ bool MainWindow::commitInspectorEdit()
         return true;
     }
 
-    const auto pendingEdit = propertyInspector_.buildPendingEdit(propertyEditor_.text().toUtf8());
+    std::string propertyLabel;
+    if (const auto activeRow = propertyInspector_.activeRow(document_, settings_)) {
+        propertyLabel = activeRow->label.empty() ? activeRow->key : activeRow->label;
+    }
+    const auto pendingEdit = propertyInspector_.buildPendingEdit(textEditControl_.text());
     if (!pendingEdit.has_value()) {
         cancelInspectorEdit();
         return true;
     }
 
     if (!setSelectedWidgetPropertyFromString(pendingEdit->key, pendingEdit->valueText)) {
-        propertyEditor_.requestKeyboardFocus();
+        redraw();
         return false;
     }
 
     propertyInspector_.clearEditing();
-    propertyEditor_.setVisible(false);
+    textEditControl_.clear();
+    dropdownControl_.close();
     requestKeyboardFocus();
+    if (!propertyLabel.empty()) {
+        setOperationStatus("Property changed: " + propertyLabel);
+    }
     redraw();
     return true;
 }
@@ -4682,7 +4741,8 @@ bool MainWindow::commitInspectorEdit()
 void MainWindow::cancelInspectorEdit()
 {
     propertyInspector_.cancelEditing();
-    propertyEditor_.setVisible(false);
+    textEditControl_.clear();
+    dropdownControl_.close();
     requestKeyboardFocus();
     redraw();
 }
@@ -4696,7 +4756,8 @@ bool MainWindow::applySelectedWidgetCallbackProperty(const std::string& property
     }
 
     propertyInspector_.clearEditing();
-    propertyEditor_.setVisible(false);
+    textEditControl_.clear();
+    dropdownControl_.close();
     requestKeyboardFocus();
     setOperationStatus(std::string("Callback selected: ") + callbackName);
     redraw();
@@ -4711,17 +4772,101 @@ void MainWindow::updatePropertyEditorBounds()
     }
 
     if (!propertyInspector_.isEditing()) {
-        propertyEditor_.setVisible(false);
         return;
     }
 
     const auto bounds = propertyInspector_.activeEditorBounds(document_, settings_);
     if (!bounds.has_value()) {
-        propertyEditor_.setVisible(false);
         return;
     }
 
-    propertyEditor_.setBounds(bounds->x, bounds->y, bounds->width, bounds->height);
+    textEditControl_.setBounds(bounds->x, bounds->y, bounds->width, bounds->height);
+}
+
+void MainWindow::openInspectorDropdown(const PropertyInspector::PropertyRow& row)
+{
+    const auto anchor = propertyInspector_.activeEditorBounds(document_, settings_);
+    const auto viewport = activeDropdownViewportBounds();
+    if (!anchor.has_value() || !viewport.has_value() || row.choices.empty()) {
+        dropdownControl_.close();
+        return;
+    }
+
+    dropdownControl_.open(row.key,
+        { anchor->x, anchor->y, anchor->width, anchor->height },
+        *viewport,
+        dropdownItemsFromChoices(row.choices),
+        document_.selectedWidget() != nullptr ? document_.selectedWidget()->getStringProperty(row.key, row.displayValue) : row.displayValue);
+}
+
+bool MainWindow::applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label)
+{
+    const std::string propertyLabel = inspectorPropertyLabel(key);
+    if (!setSelectedWidgetPropertyFromString(key, value)) {
+        redraw();
+        return false;
+    }
+
+    propertyInspector_.clearEditing();
+    textEditControl_.clear();
+    dropdownControl_.close();
+    requestKeyboardFocus();
+    if (key == "resourceId") {
+        if (value.empty()) {
+            setOperationStatus(propertyLabel + ": cleared");
+        }
+        else if (const auto* resource = document_.findResourceById(value)) {
+            setOperationStatus(propertyLabel + ": " + resourceDisplayName(*resource));
+        }
+        else {
+            setOperationStatus(propertyLabel + ": " + label);
+        }
+    }
+    else {
+        setOperationStatus(propertyLabel + ": " + label);
+    }
+    redraw();
+    return true;
+}
+
+void MainWindow::handleTextEditPendingAction()
+{
+    const auto action = textEditControl_.consumePendingAction();
+    if (!action.has_value()) {
+        return;
+    }
+
+    if (*action == editors::TextEditControl::PendingAction::Commit) {
+        if (editorModalEdit_.active) {
+            commitEditorModalFieldEdit();
+        }
+        else {
+            commitInspectorEdit();
+        }
+        return;
+    }
+
+    if (editorModalEdit_.active) {
+        cancelEditorModalFieldEdit();
+    }
+    else {
+        cancelInspectorEdit();
+    }
+}
+
+void MainWindow::handleDropdownSelection()
+{
+    const auto selection = dropdownControl_.consumeSelection();
+    if (!selection.has_value()) {
+        return;
+    }
+
+    if (isEditorModalVisible()) {
+        applyEditorModalDropdownSelection(selection->key, selection->value, selection->label);
+    }
+    else {
+        applyInspectorDropdownSelection(selection->key, selection->value, selection->label);
+    }
 }
 
 void MainWindow::clearCanvasInteraction()
@@ -4763,6 +4908,7 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
 
         const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId);
         fields.push_back(EditorModalField{ "selectedResourceId", "Resource", resourceManagerDialog_.selectedResourceId, PropertyInspector::PropertyEditKind::Choice, std::move(resourceChoices) });
+        fields.push_back(EditorModalField{ "resourceIdValue", "Resource ID", selectedResource == nullptr ? std::string{} : selectedResource->id, PropertyInspector::PropertyEditKind::ReadOnly });
         fields.push_back(EditorModalField{ "resourceType", "Type", selectedResource == nullptr ? std::string{} : model::toString(selectedResource->type), PropertyInspector::PropertyEditKind::ReadOnly });
         fields.push_back(EditorModalField{ "displayName", "Display Name", selectedResource == nullptr ? std::string{} : selectedResource->displayName, PropertyInspector::PropertyEditKind::ReadOnly });
         fields.push_back(EditorModalField{ "sourcePath", "Source Path", selectedResource == nullptr ? std::string{} : selectedResource->sourcePath, PropertyInspector::PropertyEditKind::ReadOnly });
@@ -4782,6 +4928,38 @@ MainWindow::PanelBounds MainWindow::editorModalBodyBounds() const
         top,
         dialogBounds.width - 28.0f,
         std::max(0.0f, bottom - top)
+    };
+}
+
+MainWindow::PanelBounds MainWindow::resourceManagerDetailBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::ResourceManager) {
+        return bodyBounds;
+    }
+
+    const PanelBounds previewBounds = resourceManagerPreviewBounds();
+    return {
+        bodyBounds.x,
+        bodyBounds.y,
+        std::max(0.0f, previewBounds.x - bodyBounds.x - kResourceManagerSplitGap),
+        bodyBounds.height
+    };
+}
+
+MainWindow::PanelBounds MainWindow::resourceManagerPreviewBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::ResourceManager) {
+        return {};
+    }
+
+    const float previewWidth = std::clamp(bodyBounds.width * 0.38f, kResourceManagerPreviewMinWidth, kResourceManagerPreviewMaxWidth);
+    return {
+        bodyBounds.x + std::max(0.0f, bodyBounds.width - previewWidth),
+        bodyBounds.y,
+        previewWidth,
+        bodyBounds.height
     };
 }
 
@@ -4805,14 +4983,19 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
         return hits;
     }
 
-    const PanelBounds bodyBounds = editorModalBodyBounds();
+    const PanelBounds bodyBounds = editorModal_.mode == EditorModalMode::ResourceManager
+        ? resourceManagerDetailBounds()
+        : editorModalBodyBounds();
+    const float labelWidth = editorModal_.mode == EditorModalMode::ResourceManager
+        ? kResourceManagerFieldLabelWidth
+        : kEditorModalFormLabelWidth;
     float top = bodyBounds.y;
     hits.reserve(fields.size());
     for (const auto& field : fields) {
         const PanelBounds valueBounds{
-            bodyBounds.x + kEditorModalFormLabelWidth,
+            bodyBounds.x + labelWidth,
             top,
-            std::max(0.0f, bodyBounds.width - kEditorModalFormLabelWidth),
+            std::max(0.0f, bodyBounds.width - labelWidth),
             kEditorModalFormRowHeight
         };
         hits.push_back({ field, valueBounds });
@@ -4918,6 +5101,7 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
         if (key == "selectedResourceId") {
             resourceManagerDialog_.selectedResourceId = trimmedValue;
             resourceManagerDialog_.confirmReferencedRemoval = false;
+            refreshResourceManagerPreview();
             if (const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId)) {
                 editorModal_.statusText = "Selected " + resourceTypeDisplayName(selectedResource->type) + " resource: " + resourceDisplayLabel(*selectedResource);
             }
@@ -4934,19 +5118,22 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
 bool MainWindow::beginEditorModalFieldEdit(const EditorModalField& field)
 {
     if (field.editKind == PropertyInspector::PropertyEditKind::ReadOnly
-        || field.editKind == PropertyInspector::PropertyEditKind::Bool
-        || field.editKind == PropertyInspector::PropertyEditKind::Choice) {
+        || field.editKind == PropertyInspector::PropertyEditKind::Bool) {
         return false;
+    }
+
+    if (field.editKind == PropertyInspector::PropertyEditKind::Choice) {
+        editorModalEdit_ = {};
+        openEditorModalDropdown(field);
+        redraw();
+        return true;
     }
 
     editorModalEdit_.active = true;
     editorModalEdit_.key = field.key;
     editorModalEdit_.editKind = field.editKind;
-    propertyEditor_.setText(field.value);
+    textEditControl_.begin(field.value);
     updateEditorModalEditorBounds();
-    propertyEditor_.setVisible(true);
-    propertyEditor_.selectAll();
-    propertyEditor_.requestKeyboardFocus();
     redraw();
     return true;
 }
@@ -4966,7 +5153,7 @@ bool MainWindow::commitEditorModalFieldEdit()
         return true;
     }
 
-    const std::string valueText = trimWhitespace(propertyEditor_.text().toUtf8());
+    const std::string valueText = trimWhitespace(textEditControl_.text());
     if (iterator->editKind == PropertyInspector::PropertyEditKind::Integer) {
         try {
             const int value = std::stoi(valueText);
@@ -4974,7 +5161,6 @@ bool MainWindow::commitEditorModalFieldEdit()
         }
         catch (...) {
             editorModal_.statusText = "Invalid integer value for " + iterator->label + ".";
-            propertyEditor_.requestKeyboardFocus();
             redraw();
             return false;
         }
@@ -4984,7 +5170,8 @@ bool MainWindow::commitEditorModalFieldEdit()
     }
 
     editorModalEdit_ = {};
-    propertyEditor_.setVisible(false);
+    textEditControl_.clear();
+    dropdownControl_.close();
     requestKeyboardFocus();
     redraw();
     return true;
@@ -4997,7 +5184,8 @@ void MainWindow::cancelEditorModalFieldEdit()
     }
 
     editorModalEdit_ = {};
-    propertyEditor_.setVisible(false);
+    textEditControl_.clear();
+    dropdownControl_.close();
     requestKeyboardFocus();
     redraw();
 }
@@ -5005,18 +5193,78 @@ void MainWindow::cancelEditorModalFieldEdit()
 void MainWindow::updateEditorModalEditorBounds()
 {
     if (!editorModalEdit_.active) {
-        propertyEditor_.setVisible(false);
         return;
     }
 
     for (const auto& hit : editorModalFieldHits()) {
         if (hit.field.key == editorModalEdit_.key) {
-            propertyEditor_.setBounds(hit.bounds.x + 1.0f, hit.bounds.y + 1.0f, hit.bounds.width - 2.0f, hit.bounds.height - 2.0f);
+            textEditControl_.setBounds(hit.bounds.x + 1.0f, hit.bounds.y + 1.0f, hit.bounds.width - 2.0f, hit.bounds.height - 2.0f);
             return;
         }
     }
+}
 
-    propertyEditor_.setVisible(false);
+void MainWindow::openEditorModalDropdown(const EditorModalField& field)
+{
+    const auto viewport = activeDropdownViewportBounds();
+    if (!viewport.has_value()) {
+        dropdownControl_.close();
+        return;
+    }
+
+    for (const auto& hit : editorModalFieldHits()) {
+        if (hit.field.key != field.key) {
+            continue;
+        }
+
+        dropdownControl_.open(field.key,
+            { hit.bounds.x, hit.bounds.y, hit.bounds.width, hit.bounds.height },
+            *viewport,
+            dropdownItemsFromChoices(field.choices),
+            field.value);
+        return;
+    }
+
+    dropdownControl_.close();
+}
+
+bool MainWindow::applyEditorModalDropdownSelection(const std::string& key, const std::string& value, const std::string& label)
+{
+    const std::string fieldLabel = editorModalFieldLabel(key);
+    setEditorModalFieldValue(key, value);
+    dropdownControl_.close();
+    editorModal_.statusText = fieldLabel + ": " + label;
+    redraw();
+    return true;
+}
+
+std::optional<editors::DropdownControl::Bounds> MainWindow::activeDropdownViewportBounds() const
+{
+    if (isEditorModalVisible()) {
+        const PanelBounds bodyBounds = editorModalBodyBounds();
+        return editors::DropdownControl::Bounds{ bodyBounds.x, bodyBounds.y, bodyBounds.width, bodyBounds.height };
+    }
+
+    if (!layout_.propertyInspector.isVisible()) {
+        return std::nullopt;
+    }
+
+    return editors::DropdownControl::Bounds{
+        layout_.propertyInspector.x + 8.0f,
+        layout_.propertyInspector.y + 42.0f,
+        layout_.propertyInspector.width - 16.0f,
+        layout_.propertyInspector.height - 50.0f
+    };
+}
+
+std::vector<editors::DropdownControl::Item> MainWindow::dropdownItemsFromChoices(const std::vector<PropertyInspector::PropertyChoice>& choices) const
+{
+    std::vector<editors::DropdownControl::Item> items;
+    items.reserve(choices.size());
+    for (const auto& choice : choices) {
+        items.push_back({ choice.value, choice.label, choice.hint });
+    }
+    return items;
 }
 
 bool MainWindow::activateEditorModalButton(const std::string& buttonId)
@@ -5165,7 +5413,8 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
 void MainWindow::closeEditorModalDialog(const std::string& result)
 {
     editorModalEdit_ = {};
-    propertyEditor_.setVisible(false);
+    textEditControl_.clear();
+    dropdownControl_.close();
     editorModal_.result = result;
     editorModal_.visible = false;
     editorModal_.mode = EditorModalMode::Message;
@@ -5298,12 +5547,18 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
         }
     }
     else {
-        const PanelBounds bodyBounds = editorModalBodyBounds();
+        const PanelBounds bodyBounds = editorModal_.mode == EditorModalMode::ResourceManager
+            ? resourceManagerDetailBounds()
+            : editorModalBodyBounds();
+        const float fieldLabelWidth = editorModal_.mode == EditorModalMode::ResourceManager
+            ? kResourceManagerFieldLabelWidth
+            : kEditorModalFormLabelWidth;
         for (const auto& hit : editorModalFieldHits()) {
             const bool active = editorModalEdit_.active && editorModalEdit_.key == hit.field.key;
+            const bool drawInlineValue = !active || hit.field.editKind == PropertyInspector::PropertyEditKind::Choice;
             canvas.setColor(0xffd6dbe4);
             canvas.text(hit.field.label, labelFont_, visage::Font::kTopLeft,
-                bodyBounds.x, hit.bounds.y + 6.0f, kEditorModalFormLabelWidth - 14.0f, hit.bounds.height - 8.0f);
+                bodyBounds.x, hit.bounds.y + 6.0f, fieldLabelWidth - 14.0f, hit.bounds.height - 8.0f);
 
             canvas.setColor(active ? 0xff355382 : 0xff1a2028);
             canvas.fill(hit.bounds.x, hit.bounds.y, hit.bounds.width, hit.bounds.height);
@@ -5327,9 +5582,70 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                 valueText += "  >";
             }
 
-            canvas.setColor(0xffeef2f8);
-            canvas.text(valueText, labelFont_, visage::Font::kTopLeft,
-                hit.bounds.x + 10.0f, hit.bounds.y + 6.0f, hit.bounds.width - 20.0f, hit.bounds.height - 8.0f);
+            if (drawInlineValue) {
+                canvas.setColor(0xffeef2f8);
+                canvas.text(valueText, labelFont_, visage::Font::kTopLeft,
+                    hit.bounds.x + 10.0f, hit.bounds.y + 6.0f, hit.bounds.width - 20.0f, hit.bounds.height - 8.0f);
+            }
+        }
+
+        if (editorModal_.mode == EditorModalMode::ResourceManager) {
+            const PanelBounds previewBounds = resourceManagerPreviewBounds();
+            const float previewHeaderHeight = 28.0f;
+            const float previewFooterHeight = 44.0f;
+            const PanelBounds previewContent{
+                previewBounds.x + 10.0f,
+                previewBounds.y + previewHeaderHeight + 8.0f,
+                std::max(0.0f, previewBounds.width - 20.0f),
+                std::max(0.0f, previewBounds.height - previewHeaderHeight - previewFooterHeight - 16.0f)
+            };
+
+            canvas.setColor(0xff1a2028);
+            canvas.fill(previewBounds.x, previewBounds.y, previewBounds.width, previewBounds.height);
+            canvas.setColor(0xff12161c);
+            canvas.fill(previewBounds.x, previewBounds.y, previewBounds.width, 1.0f);
+            canvas.fill(previewBounds.x, previewBounds.y + previewBounds.height - 1.0f, previewBounds.width, 1.0f);
+            canvas.fill(previewBounds.x, previewBounds.y, 1.0f, previewBounds.height);
+            canvas.fill(previewBounds.x + previewBounds.width - 1.0f, previewBounds.y, 1.0f, previewBounds.height);
+            canvas.setColor(0xffd6dbe4);
+            canvas.text("Preview", labelFont_, visage::Font::kTopLeft,
+                previewBounds.x + 10.0f, previewBounds.y + 5.0f, previewBounds.width - 20.0f, previewHeaderHeight - 8.0f);
+
+            canvas.setColor(0xff11151c);
+            canvas.fill(previewContent.x, previewContent.y, previewContent.width, previewContent.height);
+            canvas.setColor(0xff2b3340);
+            canvas.fill(previewContent.x, previewContent.y, previewContent.width, 1.0f);
+            canvas.fill(previewContent.x, previewContent.y + previewContent.height - 1.0f, previewContent.width, 1.0f);
+            canvas.fill(previewContent.x, previewContent.y, 1.0f, previewContent.height);
+            canvas.fill(previewContent.x + previewContent.width - 1.0f, previewContent.y, 1.0f, previewContent.height);
+
+            const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId);
+            if (resourceManagerDialog_.previewImageAvailable && !resourceManagerDialog_.previewImageBytes.empty()) {
+                canvas.image(resourceManagerDialog_.previewImageBytes.data(),
+                    static_cast<int>(resourceManagerDialog_.previewImageBytes.size()),
+                    previewContent.x + 4.0f,
+                    previewContent.y + 4.0f,
+                    std::max(0.0f, previewContent.width - 8.0f),
+                    std::max(0.0f, previewContent.height - 8.0f));
+            }
+            else {
+                std::string placeholderText = resourceManagerDialog_.previewStatus.empty()
+                    ? std::string{ "No preview available." }
+                    : resourceManagerDialog_.previewStatus;
+                if (selectedResource != nullptr && selectedResource->type != model::ProjectResourceType::Image) {
+                    placeholderText = "Preview available for image resources only.";
+                }
+
+                canvas.setColor(0xff9eabbc);
+                canvas.text(placeholderText, labelFont_, visage::Font::kCenter,
+                    previewContent.x + 10.0f, previewContent.y + 10.0f,
+                    std::max(0.0f, previewContent.width - 20.0f), std::max(0.0f, previewContent.height - 20.0f));
+            }
+
+            canvas.setColor(0xffb8c3d1);
+            canvas.text(resourceManagerDialog_.previewStatus, labelFont_, visage::Font::kTopLeft,
+                previewBounds.x + 10.0f, previewBounds.y + previewBounds.height - previewFooterHeight + 6.0f,
+                previewBounds.width - 20.0f, previewFooterHeight - 10.0f);
         }
 
         const PanelBounds statusBounds = editorModalStatusBounds();
@@ -5360,11 +5676,22 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
         return false;
     }
 
+    if (dropdownControl_.isOpen()) {
+        const bool handledDropdownClick = dropdownControl_.mouseDown(e.position.x, e.position.y);
+        handleDropdownSelection();
+        if (handledDropdownClick) {
+            redraw();
+            return true;
+        }
+    }
+
     if (editorModalEdit_.active) {
         const auto activeField = editorModalFieldAt(e.position.x, e.position.y);
         if (activeField.has_value() && activeField->field.key == editorModalEdit_.key) {
-            propertyEditor_.requestKeyboardFocus();
-            return true;
+            if (textEditControl_.mouseDown(e.position.x, e.position.y)) {
+                redraw();
+                return true;
+            }
         }
         if (!commitEditorModalFieldEdit()) {
             return true;
@@ -5383,14 +5710,7 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
     if (editorModal_.mode != EditorModalMode::Message) {
         if (const auto fieldHit = editorModalFieldAt(e.position.x, e.position.y)) {
             if (fieldHit->field.editKind == PropertyInspector::PropertyEditKind::Choice && !fieldHit->field.choices.empty()) {
-                const auto iterator = std::find_if(fieldHit->field.choices.begin(), fieldHit->field.choices.end(), [&fieldHit](const PropertyInspector::PropertyChoice& choice) {
-                    return choice.value == fieldHit->field.value;
-                });
-                const std::size_t currentIndex = iterator == fieldHit->field.choices.end()
-                    ? 0
-                    : static_cast<std::size_t>(std::distance(fieldHit->field.choices.begin(), iterator));
-                const std::size_t nextIndex = (currentIndex + 1) % fieldHit->field.choices.size();
-                setEditorModalFieldValue(fieldHit->field.key, fieldHit->field.choices[nextIndex].value);
+                beginEditorModalFieldEdit(fieldHit->field);
                 redraw();
                 return true;
             }

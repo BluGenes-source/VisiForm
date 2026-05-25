@@ -257,7 +257,7 @@ The exported `MainWindow` now generates a lightweight runtime widget list, hit t
 
 Current generated interactive behavior:
 
-- `Button` - click fires `onClick`
+- `Button` - click completion fires `onClick`, release-over-button fires `onRelease`, double-click fires `onDoubleClick`, and toggle-mode buttons keep exported checked-state visuals
 - `CheckBox` - click toggles and fires `onToggle`
 - `RadioButton` - click selects within its group and fires `onSelected`
 - `Slider` - drag updates value and fires `onChanged`
@@ -315,7 +315,7 @@ Current setter coverage:
 - `setText(...)`
   - supported: `Label`, `Button`, `TextBox`, `CheckBox`, `RadioButton`, `ProgressBar`, `StatusBar` field 0, `Frame`, `ModalDialog`, `ColorPicker`
 - `setChecked(...)`
-  - supported: `CheckBox`
+  - supported: `CheckBox`, `Button`
 - `setSelected(...)`
   - supported: `RadioButton`
   - selecting `true` enforces single selection for the matching radio `group`
@@ -354,6 +354,8 @@ Current generated C++ export supports event metadata stored as widget properties
 Supported event properties:
 
 - `Button.onClick`
+- `Button.onRelease`
+- `Button.onDoubleClick`
 - `CheckBox.onToggle`
 - `RadioButton.onSelected`
 - `Slider.onChanged`
@@ -418,6 +420,8 @@ The generated runtime now also emits shared dispatch helpers per signature kind 
 Generated handler signatures now use sender-aware forms:
 
 - `onClick` -> `void handlerName(const WidgetEvent& event)`
+- `onRelease` -> `void handlerName(const WidgetEvent& event)`
+- `onDoubleClick` -> `void handlerName(const WidgetEvent& event)`
 - `onToggle` -> `void handlerName(const WidgetEvent& event, bool value)`
 - `onSelected` -> `void handlerName(const WidgetEvent& event, bool value)`
 - `onChanged` -> `void handlerName(const WidgetEvent& event, float value)`
@@ -492,6 +496,8 @@ Current limitation:
 Current generated signatures:
 
 - `onClick` -> `void handlerName(const WidgetEvent& event)`
+- `onRelease` -> `void handlerName(const WidgetEvent& event)`
+- `onDoubleClick` -> `void handlerName(const WidgetEvent& event)`
 - `onToggle` -> `void handlerName(const WidgetEvent& event, bool value)`
 - `onSelected` -> `void handlerName(const WidgetEvent& event, bool value)`
 - `onChanged` -> `void handlerName(const WidgetEvent& event, float value)`

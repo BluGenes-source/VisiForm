@@ -165,12 +165,20 @@ WidgetDefinition makeButtonDefinition()
     definition.size = { 260.0f, 56.0f, 140.0f, 52.0f };
     definition.properties = {
         { "text", "text", "Button", PropertyEditKind::Text, true, "Button label text." },
+        { "normalText", "normalText", "", PropertyEditKind::Text, true, "Optional label shown when the button is not pressed or toggled on." },
+        { "pressedText", "pressedText", "", PropertyEditKind::Text, true, "Optional label shown while the button is pressed or toggled on." },
+        { "toggleMode", "toggleMode", false, PropertyEditKind::Bool, true, "Keeps the button in a checked state after click." },
+        { "checked", "checked", false, PropertyEditKind::Bool, true, "Initial checked state used when toggle mode is enabled." },
+        { "normalFillColor", "normalFillColor", "", PropertyEditKind::Color, true, "Optional fill color used for the normal button state." },
+        { "pressedFillColor", "pressedFillColor", "", PropertyEditKind::Color, true, "Optional fill color used for the pressed or checked button state." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
-        { "onClick", "onClick", "void_event", "Called when the button is clicked." }
+        { "onClick", "onClick", "void_event", "Called when the button click is completed." },
+        { "onRelease", "onRelease", "void_event", "Called when the left mouse button is released over the button." },
+        { "onDoubleClick", "onDoubleClick", "void_event", "Called when the button is double-clicked." }
     };
     return definition;
 }

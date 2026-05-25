@@ -10,6 +10,8 @@
 #include "ui/PropertyInspector.h"
 #include "ui/WidgetMetrics.h"
 #include "ui/WidgetPalette.h"
+#include "ui/editors/DropdownControl.h"
+#include "ui/editors/TextEditControl.h"
 #include "utils/AppSettings.h"
 #include "utils/IdGenerator.h"
 #include "validation/ProjectValidator.h"
@@ -276,6 +278,9 @@ private:
         bool visible = false;
         std::string selectedResourceId{};
         bool confirmReferencedRemoval = false;
+        std::vector<unsigned char> previewImageBytes{};
+        bool previewImageAvailable = false;
+        std::string previewStatus{};
     };
 
     struct EditorModalDialog {
@@ -363,10 +368,16 @@ private:
     void removeRecentFile(const std::filesystem::path& path);
     bool openRecentFile(const std::filesystem::path& path);
     [[nodiscard]] static std::string trimWhitespace(const std::string& value);
+    [[nodiscard]] std::string inspectorPropertyLabel(const std::string& key) const;
+    [[nodiscard]] std::string editorModalFieldLabel(const std::string& key) const;
     bool beginInspectorEdit(const PropertyInspector::PropertyRow& row);
     bool commitInspectorEdit();
     void cancelInspectorEdit();
     void updatePropertyEditorBounds();
+    void openInspectorDropdown(const PropertyInspector::PropertyRow& row);
+    bool applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
+    void handleTextEditPendingAction();
+    void handleDropdownSelection();
     void updateHoverHint(float x, float y);
     void clearCanvasInteraction();
     [[nodiscard]] bool canDrawText() const;
@@ -376,6 +387,7 @@ private:
     void resetNewProjectWizard();
     void populateProjectSettingsDialog();
     void populateResourceManagerDialog();
+    void refreshResourceManagerPreview();
     bool addResourceFromDialog(model::ProjectResourceType resourceType);
     bool removeSelectedResourceFromManager();
     void showEditorMessageDialog(const std::string& title, const std::string& message);
@@ -387,6 +399,8 @@ private:
     [[nodiscard]] bool isEditorModalVisible() const;
     [[nodiscard]] PanelBounds editorModalDialogBounds() const;
     [[nodiscard]] PanelBounds editorModalBodyBounds() const;
+    [[nodiscard]] PanelBounds resourceManagerDetailBounds() const;
+    [[nodiscard]] PanelBounds resourceManagerPreviewBounds() const;
     [[nodiscard]] PanelBounds editorModalStatusBounds() const;
     [[nodiscard]] std::vector<EditorModalField> editorModalFields() const;
     [[nodiscard]] std::vector<EditorModalFieldHit> editorModalFieldHits() const;
@@ -397,6 +411,10 @@ private:
     bool commitEditorModalFieldEdit();
     void cancelEditorModalFieldEdit();
     void updateEditorModalEditorBounds();
+    void openEditorModalDropdown(const EditorModalField& field);
+    bool applyEditorModalDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
+    [[nodiscard]] std::optional<editors::DropdownControl::Bounds> activeDropdownViewportBounds() const;
+    [[nodiscard]] std::vector<editors::DropdownControl::Item> dropdownItemsFromChoices(const std::vector<PropertyInspector::PropertyChoice>& choices) const;
     [[nodiscard]] std::string validateNewProjectWizard() const;
     [[nodiscard]] std::string validateProjectSettingsDialog() const;
     bool applyNewProjectWizard();
@@ -420,7 +438,8 @@ private:
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};
     ProjectTree projectTree_{};
-    visage::TextEditor propertyEditor_{ "propertyEditor" };
+    editors::TextEditControl textEditControl_{};
+    editors::DropdownControl dropdownControl_{};
     visage::Font labelFont_{};
     bool autoSizeTextWidgets_ = true;
     bool multiSelectMode_ = false;
@@ -428,7 +447,6 @@ private:
     bool exportInProgress_ = false;
     int exportProgressPercent_ = 0;
     std::string exportProgressText_{};
-    bool suggestionAppliedThisClick_ = false;
     EditorModalDialog editorModal_{};
     EditorModalEditState editorModalEdit_{};
     NewProjectWizardState newProjectWizard_{};

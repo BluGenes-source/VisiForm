@@ -61,6 +61,8 @@ add_executable(VisiForm
     src/ui/WidgetPalette.cpp
     src/ui/PropertyInspector.cpp
     src/ui/ProjectTree.cpp
+    src/ui/editors/TextEditControl.cpp
+    src/ui/editors/DropdownControl.cpp
     src/model/ProjectDocument.cpp
     src/model/ProjectResource.cpp
     src/model/FormNode.cpp

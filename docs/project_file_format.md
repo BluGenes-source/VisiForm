@@ -287,6 +287,26 @@ Common `ProgressBar` properties include:
 - if `showText` is `true` and `text` is non-empty, the custom `text` value is displayed
 - if `showText` is `false`, no ProgressBar text is displayed
 
+## Button properties
+
+Common `Button` properties include:
+
+- `text`
+- `normalText`
+- `pressedText`
+- `toggleMode`
+- `checked`
+- `normalFillColor`
+- `pressedFillColor`
+- `hint`
+- `onClick`
+- `onRelease`
+- `onDoubleClick`
+
+`text` remains the basic button label. `normalText` and `normalFillColor` optionally override the exported default state, while `pressedText` and `pressedFillColor` optionally override the pressed or toggle-on state.
+
+`toggleMode` keeps the button in a checked state after activation. When `toggleMode` is enabled, `checked` stores the initial exported toggle state and is also used by the editor preview.
+
 ## ModalDialog properties
 
 Common `ModalDialog` properties include:
@@ -332,6 +352,8 @@ Color-related keys currently validated include:
 
 - `backgroundColor`
 - `fillColor`
+- `normalFillColor`
+- `pressedFillColor`
 - `textColor`
 - `borderColor`
 - `accentColor`

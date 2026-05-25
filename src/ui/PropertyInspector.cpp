@@ -2,6 +2,7 @@
 
 #include "ui/PropertyInspector.h"
 
+#include "model/LookAndFeelRegistry.h"
 #include "model/WidgetRegistry.h"
 #include "utils/FileUtils.h"
 
@@ -136,14 +137,18 @@ std::string resolvedPropertyHint(const std::string& definitionHint, const std::s
     return definitionHint.empty() ? fallbackHintForPropertyKey(key) : definitionHint;
 }
 
-PropertyInspector::PropertyChoice makeChoice(std::string value, std::string label = {})
+PropertyInspector::PropertyChoice makeChoice(std::string value, std::string label = {}, std::string hint = {})
 {
     if (label.empty()) {
         label = value;
     }
 
-    return PropertyInspector::PropertyChoice{ std::move(value), std::move(label) };
+    return PropertyInspector::PropertyChoice{ std::move(value), std::move(label), std::move(hint) };
 }
+
+void collectMatchingHandlers(const model::WidgetNode& widget,
+    const std::string& signatureKind,
+    std::set<std::string>& handlerNames);
 
 std::string choiceLabelForValue(const std::vector<PropertyInspector::PropertyChoice>& choices, const std::string& value)
 {
@@ -168,6 +173,30 @@ std::string imageResourceChoiceLabel(const model::ProjectResource& resource)
     }
 
     return name + " (" + resource.id + ")";
+}
+
+std::vector<PropertyInspector::PropertyChoice> lookAndFeelChoices()
+{
+    std::vector<PropertyInspector::PropertyChoice> choices;
+    choices.push_back(makeChoice({}, "<inherit>", "Uses the project look and feel setting."));
+    for (const auto& definition : model::LookAndFeelRegistry::instance().definitions()) {
+        choices.push_back(makeChoice(definition.id, definition.id, "Applies this registered look and feel preset."));
+    }
+    return choices;
+}
+
+std::vector<PropertyInspector::PropertyChoice> callbackChoices(const model::ProjectDocument& document,
+    const model::WidgetEventDefinition& eventDefinition)
+{
+    std::set<std::string> handlerNames;
+    collectMatchingHandlers(document.root, eventDefinition.handlerSignatureKind, handlerNames);
+
+    std::vector<PropertyInspector::PropertyChoice> choices;
+    choices.reserve(handlerNames.size());
+    for (const auto& handlerName : handlerNames) {
+        choices.push_back(makeChoice(handlerName, handlerName, "Compatible callback with signature kind " + eventDefinition.handlerSignatureKind + "."));
+    }
+    return choices;
 }
 
 bool isColorPropertyKey(const std::string& key);
@@ -472,7 +501,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         rows.push_back({ "generatedBaseClassName", "Generated Base Class", "Generated base class name is fixed to MainWindow.", "MainWindow", PropertyEditKind::ReadOnly });
         rows.push_back({ "userSubclassName", "User Subclass Name", "Editable generated user subclass name.", document.userSubclassName, PropertyEditKind::Text });
         rows.push_back({ "windowTitle", "Window Title", "Generated runtime window title.", document.windowTitle, PropertyEditKind::Text });
-        rows.push_back({ "lookAndFeelId", "Look and Feel", resolvedPropertyHint({}, "lookAndFeelId"), document.lookAndFeelId, PropertyEditKind::Text });
+        rows.push_back({ "lookAndFeelId", "Look and Feel", resolvedPropertyHint({}, "lookAndFeelId"), document.lookAndFeelId, PropertyEditKind::Choice, false, lookAndFeelChoices() });
         rows.push_back({ "__section_export_dependencies", "Export / Dependencies", {}, {}, PropertyEditKind::ReadOnly, true });
         rows.push_back({ "localVisageSourceDirectory", "Local Visage Source", "Optional local Visage source checkout used during export.", utils::FileUtils::normalizeSeparators(settings.localVisageSourceDirectory.string()), PropertyEditKind::Text });
         rows.push_back({ "visageGitRepository", "Visage Git Repository", "Fallback Git repository used when no local Visage source is configured.", settings.visageGitRepository, PropertyEditKind::Text });
@@ -519,12 +548,17 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             for (const auto& choice : property.choices) {
                 choices.push_back(makeChoice(choice));
             }
+            if (property.key == "lookAndFeelId") {
+                choices = lookAndFeelChoices();
+            }
             if (selectedWidget->type == model::WidgetType::Image && property.key == "resourceId") {
                 choices.clear();
-                choices.push_back(makeChoice({}, "<none>"));
+                choices.push_back(makeChoice({}, "<none>", "Clears the managed image resource binding."));
                 for (const auto& resource : document.resources) {
                     if (resource.type == model::ProjectResourceType::Image) {
-                        choices.push_back(makeChoice(resource.id, imageResourceChoiceLabel(resource)));
+                        choices.push_back(makeChoice(resource.id,
+                            imageResourceChoiceLabel(resource),
+                            "Source: " + utils::FileUtils::normalizeSeparators(resource.sourcePath)));
                     }
                 }
             }
@@ -543,7 +577,17 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
 
         const std::size_t propertyCountBeforeEvents = rows.size();
         for (const auto& event : definition->events) {
-            addEventProperty(event.key, event.label, event.hint);
+            const std::string displayValue = displayTextOrFallback(selectedWidget, event.key, {});
+            rows.push_back({
+                event.key,
+                event.label,
+                event.hint,
+                displayValue,
+                PropertyEditKind::Text,
+                false,
+                callbackChoices(document, event)
+            });
+            drawnKeys.insert(event.key);
         }
 
         if (rows.size() > propertyCountBeforeEvents) {
@@ -561,104 +605,6 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     }
 
     return rows;
-}
-
-void PropertyInspector::rebuildSuggestions(const model::ProjectDocument& document, const utils::AppSettings& settings)
-{
-    suggestions_.clear();
-    activeCallbackPropertyKey_.clear();
-
-    if (!isEditing()) {
-        return;
-    }
-
-    const auto rows = buildRows(document, settings);
-    updateScrollMetrics(rows);
-    const auto layouts = buildRowLayouts(contentBounds().y, rows);
-    const auto activeLayout = std::find_if(layouts.begin(), layouts.end(), [this](const RowLayout& layout) {
-        return layout.row.key == activeCallbackPropertyKey_;
-    });
-    if (activeLayout == layouts.end()) {
-        return;
-    }
-
-    std::vector<PropertyChoice> suggestionValues;
-    if (!activeLayout->row.choices.empty()) {
-        suggestionValues = activeLayout->row.choices;
-    }
-    else {
-        const model::WidgetNode* selectedWidget = document.selectedWidget();
-        if (selectedWidget == nullptr) {
-            return;
-        }
-
-        const auto* eventDefinition = findEventDefinition(selectedWidget->type, activeKey_);
-        if (eventDefinition == nullptr) {
-            return;
-        }
-
-        activeCallbackPropertyKey_ = activeKey_;
-        std::set<std::string> handlerNames;
-        collectMatchingHandlers(document.root, eventDefinition->handlerSignatureKind, handlerNames);
-        suggestionValues.reserve(handlerNames.size());
-        for (const auto& handlerName : handlerNames) {
-            suggestionValues.push_back(makeChoice(handlerName));
-        }
-    }
-
-    if (suggestionValues.empty()) {
-        return;
-    }
-
-    const ValueCellBounds bounds = contentBounds();
-    const float visibleRowTop = rowYWithScroll(activeLayout->top);
-    if (visibleRowTop + kRowHeight < bounds.y || visibleRowTop > bounds.y + bounds.height) {
-        return;
-    }
-
-    const float valueLeft = x_ + labelColumnWidth();
-    const float valueWidth = valueCellWidth();
-    const auto totalHeightForCount = [](std::size_t count) {
-        if (count == 0) {
-            return 0.0f;
-        }
-
-        return static_cast<float>(count) * kSuggestionRowHeight
-            + static_cast<float>(count - 1) * kSuggestionSpacing;
-    };
-    const auto fitCountForSpace = [&](float availableSpace) {
-        std::size_t count = 0;
-        while (count < suggestionValues.size() && totalHeightForCount(count + 1) <= availableSpace) {
-            ++count;
-        }
-        return count;
-    };
-
-    const float spaceBelow = std::max(0.0f, bounds.y + bounds.height - (visibleRowTop + kRowHeight));
-    const float spaceAbove = std::max(0.0f, visibleRowTop - bounds.y);
-    std::size_t visibleCountBelow = fitCountForSpace(spaceBelow);
-    std::size_t visibleCountAbove = fitCountForSpace(spaceAbove);
-    const bool drawUpward = visibleCountAbove > visibleCountBelow;
-    std::size_t visibleCount = drawUpward ? visibleCountAbove : visibleCountBelow;
-    if (visibleCount == 0) {
-        return;
-    }
-
-    const float totalHeight = totalHeightForCount(visibleCount);
-    float itemTop = drawUpward
-        ? std::max(bounds.y, visibleRowTop - kSuggestionSpacing - totalHeight)
-        : visibleRowTop + kRowHeight;
-    for (std::size_t index = 0; index < visibleCount; ++index) {
-        suggestions_.push_back(CallbackSuggestionItem{
-            suggestionValues[index].value,
-            suggestionValues[index].label,
-            valueLeft,
-            itemTop,
-            valueWidth,
-            kSuggestionRowHeight
-        });
-        itemTop += kSuggestionRowHeight + kSuggestionSpacing;
-    }
 }
 
 std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
@@ -709,23 +655,6 @@ std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::Pr
     return std::nullopt;
 }
 
-std::optional<PropertyInspector::SuggestionHit> PropertyInspector::hitTestSuggestion(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
-{
-    if (!contains(x, y)) {
-        return std::nullopt;
-    }
-
-    rebuildSuggestions(document, settings);
-
-    for (const auto& item : suggestions_) {
-        if (x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height) {
-            return SuggestionHit{ item.value, item.label };
-        }
-    }
-
-    return std::nullopt;
-}
-
 bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
     const auto rows = buildRows(document, settings);
@@ -757,7 +686,6 @@ bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const 
     }
 
     clampScrollOffset();
-    rebuildSuggestions(document, settings);
     return true;
 }
 
@@ -789,7 +717,6 @@ bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, const 
     }
 
     clampScrollOffset();
-    rebuildSuggestions(document, settings);
     return true;
 }
 
@@ -815,24 +742,17 @@ bool PropertyInspector::mouseWheel(const model::ProjectDocument& document, const
 
     scrollOffsetY_ += -deltaY * kMouseWheelSensitivity;
     clampScrollOffset();
-    rebuildSuggestions(document, settings);
     return true;
 }
 
 bool PropertyInspector::beginEditing(const model::ProjectDocument& document, const utils::AppSettings& settings, const std::string& key)
 {
     const auto rows = buildRows(document, settings);
-    const model::WidgetNode* selectedWidget = document.selectedWidget();
     for (const auto& row : rows) {
         if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool) {
             activeKey_ = key;
             activeEditKind_ = row.editKind;
             editBuffer_ = row.displayValue;
-            activeCallbackPropertyKey_.clear();
-            if (row.choices.empty() && selectedWidget != nullptr && findEventDefinition(selectedWidget->type, key) != nullptr) {
-                activeCallbackPropertyKey_ = key;
-            }
-            rebuildSuggestions(document, settings);
             return true;
         }
     }
@@ -859,8 +779,6 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const
 void PropertyInspector::clearEditing()
 {
     activeKey_.clear();
-    activeCallbackPropertyKey_.clear();
-    suggestions_.clear();
     activeEditKind_ = PropertyEditKind::ReadOnly;
 }
 
@@ -873,10 +791,6 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEdito
 {
     const auto active = activeRow(document, settings);
     if (!active.has_value()) {
-        return std::nullopt;
-    }
-
-    if (active->editKind == PropertyEditKind::Choice) {
         return std::nullopt;
     }
 
@@ -962,7 +876,6 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
     updateScrollMetrics(rows);
     const ValueCellBounds bounds = contentBounds();
     const auto layouts = buildRowLayouts(bounds.y, rows);
-    rebuildSuggestions(document, settings);
 
     canvas.saveState();
     canvas.setClampBounds(bounds.x, bounds.y, bounds.width, bounds.height);
@@ -1042,17 +955,6 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                 canvas.fill(swatchBounds->x, swatchBounds->y, 1.0f, swatchBounds->height);
                 canvas.fill(swatchBounds->x + swatchBounds->width - 1.0f, swatchBounds->y, 1.0f, swatchBounds->height);
             }
-        }
-    }
-    if (drawText && !suggestions_.empty()) {
-        for (const auto& suggestion : suggestions_) {
-            canvas.setColor(0xff314055);
-            canvas.fill(suggestion.x, suggestion.y, suggestion.width, suggestion.height);
-            canvas.setColor(0xff92b9ff);
-            canvas.fill(suggestion.x, suggestion.y + suggestion.height - 1.0f, suggestion.width, 1.0f);
-            canvas.setColor(0xffeef2f8);
-            canvas.text(suggestion.label, font, visage::Font::kTopLeft,
-                suggestion.x + 8.0f, suggestion.y + 4.0f, suggestion.width - 12.0f, suggestion.height - 6.0f);
         }
     }
     canvas.restoreState();

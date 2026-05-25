@@ -399,7 +399,7 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
 {
     switch (type) {
     case visiform::model::WidgetType::Button:
-        return { "onClick" };
+        return { "onClick", "onRelease", "onDoubleClick" };
     case visiform::model::WidgetType::CheckBox:
         return { "onToggle" };
     case visiform::model::WidgetType::RadioButton:
@@ -598,6 +598,12 @@ std::string runtimeEventHandlerAccessor(std::string_view eventKey)
     if (eventKey == "onClick") {
         return "widget.events.onClick";
     }
+    if (eventKey == "onRelease") {
+        return "widget.events.onRelease";
+    }
+    if (eventKey == "onDoubleClick") {
+        return "widget.events.onDoubleClick";
+    }
     if (eventKey == "onToggle") {
         return "widget.events.onToggle";
     }
@@ -776,15 +782,22 @@ void emitWidgetDraw(std::ostringstream& stream,
         stream << indent << "}\n";
         break;
     case visiform::model::WidgetType::Button:
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
+    {
+        const bool pressedState = widget.getBoolProperty("toggleMode", false) && widget.getBoolProperty("checked", false);
+        const std::string normalText = widget.getStringProperty("normalText", widget.getStringProperty("text", widgetLabel(widget)));
+        const std::string pressedText = widget.getStringProperty("pressedText", normalText);
+        const std::string normalFillColor = emitColorExpression(widget.getStringProperty("normalFillColor", {}), emitColorExpression(style.fillColor, "0xff2B313D"));
+        const std::string pressedFillColor = emitColorExpression(widget.getStringProperty("pressedFillColor", {}), emitColorExpression(style.accentColor, normalFillColor));
+        stream << indent << "canvas.setColor(" << (pressedState ? pressedFillColor : normalFillColor) << ");\n";
         stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
         stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
-        stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("text", widgetLabel(widget)))
+        stream << indent << "    canvas.text(" << emitStringLiteral(pressedState ? pressedText : normalText)
                << ", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
         stream << indent << "}\n";
         break;
+    }
     case visiform::model::WidgetType::TextBox:
         stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xffFFFFFF") << ");\n";
         stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
@@ -1071,6 +1084,8 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.range.pageSize = " << emitFloat(widget.getFloatProperty("pageSize", 10.0f)) << ";\n";
     stream << innerIndent << "widget.range.orientation = " << runtimeOrientationLiteral(widget.getStringProperty("orientation", "Horizontal")) << ";\n";
     stream << innerIndent << "widget.events.onClick = " << emitStringLiteral(widget.getStringProperty("onClick", {})) << ";\n";
+    stream << innerIndent << "widget.events.onRelease = " << emitStringLiteral(widget.getStringProperty("onRelease", {})) << ";\n";
+    stream << innerIndent << "widget.events.onDoubleClick = " << emitStringLiteral(widget.getStringProperty("onDoubleClick", {})) << ";\n";
     stream << innerIndent << "widget.events.onToggle = " << emitStringLiteral(widget.getStringProperty("onToggle", {})) << ";\n";
     stream << innerIndent << "widget.events.onSelected = " << emitStringLiteral(widget.getStringProperty("onSelected", {})) << ";\n";
     stream << innerIndent << "widget.events.onChanged = " << emitStringLiteral(widget.getStringProperty("onChanged", {})) << ";\n";
@@ -1089,6 +1104,15 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
 
     if (widget.type == visiform::model::WidgetType::Frame) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::Button) {
+        const std::string normalText = widget.getStringProperty("normalText", widget.getStringProperty("text", widgetLabel(widget)));
+        const std::string pressedText = widget.getStringProperty("pressedText", normalText);
+        stream << innerIndent << "widget.text.value = " << emitStringLiteral(normalText) << ";\n";
+        stream << innerIndent << "widget.button.toggleMode = " << (widget.getBoolProperty("toggleMode", false) ? "true" : "false") << ";\n";
+        stream << innerIndent << "widget.button.pressedText = " << emitStringLiteral(pressedText) << ";\n";
+        stream << innerIndent << "widget.style.fillColor = " << emitRuntimeColorLiteral(widget.getStringProperty("normalFillColor", {}), emitRuntimeColorLiteral(spec.style.fillColor, "makeColor(0x2B, 0x31, 0x3D)")) << ";\n";
+        stream << innerIndent << "widget.button.pressedFillColor = " << emitRuntimeColorLiteral(widget.getStringProperty("pressedFillColor", {}), "blendColor(widget.style.fillColor, widget.style.accentColor, 0.18f)") << ";\n";
     }
     else if (widget.type == visiform::model::WidgetType::TextBox) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
@@ -1251,6 +1275,11 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string value;\n";
     stream << "    bool showText = true;\n";
     stream << "};\n\n";
+    stream << "struct RuntimeButtonState {\n";
+    stream << "    bool toggleMode = false;\n";
+    stream << "    std::string pressedText;\n";
+    stream << "    RuntimeColor pressedFillColor = makeColor(0x35, 0x53, 0x82);\n";
+    stream << "};\n\n";
     stream << "struct RuntimeToggleState {\n";
     stream << "    bool checked = false;\n";
     stream << "    bool selected = false;\n";
@@ -1276,6 +1305,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "};\n\n";
     stream << "struct RuntimeEventHandlers {\n";
     stream << "    std::string onClick;\n";
+    stream << "    std::string onRelease;\n";
+    stream << "    std::string onDoubleClick;\n";
     stream << "    std::string onToggle;\n";
     stream << "    std::string onSelected;\n";
     stream << "    std::string onChanged;\n";
@@ -1300,6 +1331,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    bool modal = true;\n";
     stream << "    bool visibleAtStartup = false;\n";
     stream << "    RuntimeTextState text;\n";
+    stream << "    RuntimeButtonState button;\n";
     stream << "    RuntimeToggleState toggle;\n";
     stream << "    RuntimeRangeState range;\n";
     stream << "    RuntimeStyleState style;\n";
@@ -1320,6 +1352,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    void showWindow();\n";
     stream << "    void draw(visage::Canvas& canvas) override;\n\n";
     stream << "    void mouseDown(const visage::MouseEvent& e) override;\n";
+    stream << "    void mouseDoubleClick(const visage::MouseEvent& e) override;\n";
     stream << "    void mouseMove(const visage::MouseEvent& e) override;\n";
     stream << "    void mouseDrag(const visage::MouseEvent& e) override;\n";
     stream << "    void mouseUp(const visage::MouseEvent& e) override;\n";
@@ -1659,14 +1692,19 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Button:\n";
-    stream << "        canvas.setColor(canvasColor(widget.interaction.pressed ? blendColor(widget.style.fillColor, widget.style.accentColor, 0.18f) : widget.style.fillColor));\n";
+    stream << "    {\n";
+    stream << "        const bool buttonPressed = widget.interaction.pressed || (widget.button.toggleMode && widget.toggle.checked);\n";
+    stream << "        const RuntimeColor fillColor = buttonPressed ? widget.button.pressedFillColor : widget.style.fillColor;\n";
+    stream << "        const std::string& buttonText = buttonPressed && !widget.button.pressedText.empty() ? widget.button.pressedText : widget.text.value;\n";
+    stream << "        canvas.setColor(canvasColor(fillColor));\n";
     stream << "        canvas.fill(x, y, width, height);\n";
     stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "            canvas.text(buttonText, font, visage::Font::kCenter, x, y, width, height);\n";
     stream << "        }\n";
     stream << "        break;\n";
+    stream << "    }\n";
     stream << "    case RuntimeWidgetType::TextBox:\n";
     stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
     stream << "        canvas.fill(x, y, width, height);\n";
@@ -2662,8 +2700,16 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        case RuntimeWidgetType::Unknown:\n";
     stream << "            break;\n";
     stream << "        case RuntimeWidgetType::Button:\n";
-    stream << "            if (triggered && !pressedWidget->events.onClick.empty()) {\n";
-    stream << "                emitVoidEvent(*pressedWidget, \"onClick\");\n";
+    stream << "            if (triggered) {\n";
+    stream << "                if (pressedWidget->button.toggleMode) {\n";
+    stream << "                    pressedWidget->toggle.checked = !pressedWidget->toggle.checked;\n";
+    stream << "                }\n";
+    stream << "                if (!pressedWidget->events.onRelease.empty()) {\n";
+    stream << "                    emitVoidEvent(*pressedWidget, \"onRelease\");\n";
+    stream << "                }\n";
+    stream << "                if (!pressedWidget->events.onClick.empty()) {\n";
+    stream << "                    emitVoidEvent(*pressedWidget, \"onClick\");\n";
+    stream << "                }\n";
     stream << "            }\n";
     stream << "            break;\n";
     stream << "        case RuntimeWidgetType::CheckBox:\n";
@@ -2700,6 +2746,20 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "    }\n";
     stream << "    pressedWidgetId_.clear();\n";
+    stream << "    redraw();\n";
+    stream << "}\n\n";
+    stream << "void " << className << "::mouseDoubleClick(const visage::MouseEvent& e)\n";
+    stream << "{\n";
+    stream << "    if (!e.isLeftButton() || modalState_.visible) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    RuntimeWidget* widget = formBounds_.contains(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
+    stream << "        ? hitTest(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
+    stream << "        : nullptr;\n";
+    stream << "    if (widget == nullptr || widget->type != RuntimeWidgetType::Button || widget->events.onDoubleClick.empty()) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    emitVoidEvent(*widget, \"onDoubleClick\");\n";
     stream << "    redraw();\n";
     stream << "}\n\n";
     stream << "bool " << className << "::keyPress(const visage::KeyEvent& e)\n";
