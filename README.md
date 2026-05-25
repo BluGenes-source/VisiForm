@@ -1,5 +1,4 @@
 # VisiForm
-# VisiForm
 
 *A C++ / Visage UI form builder that generates Visage-based C++ projects.*
 
@@ -56,7 +55,7 @@ Current major features include:
 
 Current repository dependencies from `vcpkg.json` include:
 
-- `nlohmann_json`
+- `nlohmann-json`
 - `fmt`
 - `spdlog`
 - `Catch2`
@@ -479,13 +478,72 @@ Debug builds may create a console window in addition to the main GUI window.
 
 ## Documentation index
 
-Additional repository documentation:
+Additional repository documentation (quick links):
 
-- `docs/code_generation.md`
-- `docs/project_validation.md`
-- `docs/resources.md`
-- `docs/menu_bar.md`
-- `docs/new_project_wizard.md`
-- `docs/widget_catalog.md`
-- `docs/widget_registry.md`
-- `docs/copilot_rules.md`
+- [docs/code_generation.md](docs/code_generation.md)
+- [docs/project_validation.md](docs/project_validation.md)
+- [docs/resources.md](docs/resources.md)
+- [docs/menu_bar.md](docs/menu_bar.md)
+- [docs/new_project_wizard.md](docs/new_project_wizard.md)
+- [docs/widget_catalog.md](docs/widget_catalog.md)
+- [docs/widget_registry.md](docs/widget_registry.md)
+- [docs/copilot_rules.md](docs/copilot_rules.md)
+
+## Full Documentation (docs/)
+
+This repository contains a more extensive set of documentation files under `docs/`. The list below includes all markdown files found in `docs/` and `docs/agent_plans/` for easy navigation.
+
+- [docs/widget_registry.md](docs/widget_registry.md)
+- [docs/widget_catalog.md](docs/widget_catalog.md)
+- [docs/settings.md](docs/settings.md)
+- [docs/resources.md](docs/resources.md)
+- [docs/project_validation.md](docs/project_validation.md)
+- [docs/project_file_format.md](docs/project_file_format.md)
+- [docs/new_project_wizard.md](docs/new_project_wizard.md)
+- [docs/menu_bar.md](docs/menu_bar.md)
+- [docs/look_and_feel.md](docs/look_and_feel.md)
+- [docs/layout_tools.md](docs/layout_tools.md)
+- [docs/file_workflow.md](docs/file_workflow.md)
+- [docs/copilot_rules.md](docs/copilot_rules.md)
+- [docs/code_generation.md](docs/code_generation.md)
+- [docs/agent_plans/phase_65_cross_platform_build_readme_plan.md](docs/agent_plans/phase_65_cross_platform_build_readme_plan.md)
+- [docs/agent_plans/phase_64_repo_readme_setup_guide_plan.md](docs/agent_plans/phase_64_repo_readme_setup_guide_plan.md)
+- [docs/agent_plans/phase_63_property_editor_controls_and_button_events_plan.md](docs/agent_plans/phase_63_property_editor_controls_and_button_events_plan.md)
+- [docs/agent_plans/phase_63_bug_fix_property_editors_button_style_plan.md](docs/agent_plans/phase_63_bug_fix_property_editors_button_style_plan.md)
+- [docs/agent_plans/phase_62_resource_binding_dropdown_and_property_hints_plan.md](docs/agent_plans/phase_62_resource_binding_dropdown_and_property_hints_plan.md)
+- [docs/agent_plans/phase_61_resource_manager_and_export_assets_plan.md](docs/agent_plans/phase_61_resource_manager_and_export_assets_plan.md)
+- [docs/agent_plans/phase_60_new_project_wizard_and_project_settings_plan.md](docs/agent_plans/phase_60_new_project_wizard_and_project_settings_plan.md)
+- [docs/agent_plans/phase_59_modal_size_and_menu_bar_toolbar_cleanup_plan.md](docs/agent_plans/phase_59_modal_size_and_menu_bar_toolbar_cleanup_plan.md)
+- [docs/agent_plans/phase_58_modal_dialog_widget_and_validation_dialog_plan.md](docs/agent_plans/phase_58_modal_dialog_widget_and_validation_dialog_plan.md)
+- [docs/agent_plans/phase_57_project_validation_before_export_plan.md](docs/agent_plans/phase_57_project_validation_before_export_plan.md)
+- [docs/agent_plans/phase_56_generated_runtime_api_type_safety_plan.md](docs/agent_plans/phase_56_generated_runtime_api_type_safety_plan.md)
+- [docs/agent_plans/phase_55_generated_vs_dev_environment_scripts_plan.md](docs/agent_plans/phase_55_generated_vs_dev_environment_scripts_plan.md)
+- [docs/agent_plans/phase_53_export_local_visage_setting_propagation_plan.md](docs/agent_plans/phase_53_export_local_visage_setting_propagation_plan.md)
+- [docs/agent_plans/phase_52_generated_local_visage_export_support_plan.md](docs/agent_plans/phase_52_generated_local_visage_export_support_plan.md)
+- [docs/agent_plans/phase_50_generated_widget_state_api_plan.md](docs/agent_plans/phase_50_generated_widget_state_api_plan.md)
+- [docs/agent_plans/phase_49_repair_generated_interactivity_and_project_naming_plan.md](docs/agent_plans/phase_49_repair_generated_interactivity_and_project_naming_plan.md)
+- [docs/agent_plans/phase_47_generated_interactive_widgets_plan.md](docs/agent_plans/phase_47_generated_interactive_widgets_plan.md)
+- [docs/agent_plans/phase_47_editor_bugfix_stabilization_plan.md](docs/agent_plans/phase_47_editor_bugfix_stabilization_plan.md)
+- [docs/agent_plans/phase_46_property_inspector_scroll_color_picker_export_repair_plan.md](docs/agent_plans/phase_46_property_inspector_scroll_color_picker_export_repair_plan.md)
+- [docs/agent_plans/phase_46_generated_listener_api_plan.md](docs/agent_plans/phase_46_generated_listener_api_plan.md)
+- [docs/agent_plans/phase_45_repair_progressbar_text_rendering_plan.md](docs/agent_plans/phase_45_repair_progressbar_text_rendering_plan.md)
+- [docs/agent_plans/phase_45_look_and_feel_style_system_plan.md](docs/agent_plans/phase_45_look_and_feel_style_system_plan.md)
+- [docs/agent_plans/phase_44_repair_callbacks_progress_project_paths_plan.md](docs/agent_plans/phase_44_repair_callbacks_progress_project_paths_plan.md)
+- [docs/agent_plans/phase_41_copilot_rules_callback_dropdown_status_progress_widgets_plan.md](docs/agent_plans/phase_41_copilot_rules_callback_dropdown_status_progress_widgets_plan.md)
+- [docs/agent_plans/phase_40_callback_dropdown_export_folder_plan.md](docs/agent_plans/phase_40_callback_dropdown_export_folder_plan.md)
+- [docs/agent_plans/phase_39_export_build_radio_scrollbar_callbacks_plan.md](docs/agent_plans/phase_39_export_build_radio_scrollbar_callbacks_plan.md)
+- [docs/agent_plans/phase_38_widget_registry_generated_base_subclass_plan.md](docs/agent_plans/phase_38_widget_registry_generated_base_subclass_plan.md)
+- [docs/agent_plans/phase_37_hints_tooltips_todo.md](docs/agent_plans/phase_37_hints_tooltips_todo.md)
+- [docs/agent_plans/phase_36_smart_guides_snap_tools_plan.md](docs/agent_plans/phase_36_smart_guides_snap_tools_plan.md)
+- [docs/agent_plans/phase_35_advanced_layout_nudge_tools_plan.md](docs/agent_plans/phase_35_advanced_layout_nudge_tools_plan.md)
+- [docs/agent_plans/phase_34_fix_box_selection_plan.md](docs/agent_plans/phase_34_fix_box_selection_plan.md)
+- [docs/agent_plans/phase_33_box_select_group_move_copy_paste_plan.md](docs/agent_plans/phase_33_box_select_group_move_copy_paste_plan.md)
+- [docs/agent_plans/phase_32_multi_select_visual_polish_plan.md](docs/agent_plans/phase_32_multi_select_visual_polish_plan.md)
+- [docs/agent_plans/multi_select_foundation_plan.md](docs/agent_plans/multi_select_foundation_plan.md)
+- [docs/agent_plans/layout_tools_plan.md](docs/agent_plans/layout_tools_plan.md)
+- [docs/agent_plans/fix_z_order_tools_plan.md](docs/agent_plans/fix_z_order_tools_plan.md)
+- [docs/agent_plans/fix_text_widget_heights_plan.md](docs/agent_plans/fix_text_widget_heights_plan.md)
+- [docs/agent_plans/fix_multi_select_input_plan.md](docs/agent_plans/fix_multi_select_input_plan.md)
+- [docs/agent_plans/fix_label_checkbox_height_source_of_truth_plan.md](docs/agent_plans/fix_label_checkbox_height_source_of_truth_plan.md)
+- [docs/agent_plans/fix_actual_label_checkbox_bounds_path_plan.md](docs/agent_plans/fix_actual_label_checkbox_bounds_path_plan.md)
+- [docs/agent_plans/final_text_widget_height_pass_plan.md](docs/agent_plans/final_text_widget_height_pass_plan.md)
