@@ -23,8 +23,8 @@ std::vector<WidgetPropertyDefinition> commonStyleProperties(bool includeLookAndF
     properties.push_back({ "textColor", "Text Color", "", PropertyEditKind::Color, true, "Optional text color override. Empty means inherit." });
     properties.push_back({ "borderColor", "Border Color", "", PropertyEditKind::Color, true, "Optional border color override. Empty means inherit." });
     properties.push_back({ "accentColor", "Accent Color", "", PropertyEditKind::Color, true, "Optional accent color override. Empty means inherit." });
-    properties.push_back({ "borderThickness", "Border Thickness", PropertyValue{}, PropertyEditKind::Float, true, "Optional border thickness override. Empty means inherit." });
-    properties.push_back({ "cornerRadius", "Corner Radius", PropertyValue{}, PropertyEditKind::Float, true, "Optional corner radius override. Empty means inherit." });
+    properties.push_back({ "borderThickness", "Border Thickness", 1.0f, PropertyEditKind::Slider, true, "Border thickness override.", {}, 1.0f, 25.0f, 1.0f });
+    properties.push_back({ "cornerRadius", "Corner Radius", 1.0f, PropertyEditKind::Slider, true, "Corner radius override.", {}, 1.0f, 25.0f, 1.0f });
     properties.push_back({ "fontSize", "Font Size", PropertyValue{}, PropertyEditKind::Float, true, "Optional font size override. Empty means inherit." });
     return properties;
 }
@@ -164,21 +164,21 @@ WidgetDefinition makeButtonDefinition()
     definition.defaultHint = "Runs an action when clicked.";
     definition.size = { 260.0f, 56.0f, 140.0f, 52.0f };
     definition.properties = {
-        { "text", "text", "Button", PropertyEditKind::Text, true, "Button label text." },
-        { "normalText", "normalText", "", PropertyEditKind::Text, true, "Optional label shown when the button is not pressed or toggled on." },
-        { "pressedText", "pressedText", "", PropertyEditKind::Text, true, "Optional label shown while the button is pressed or toggled on." },
-        { "toggleMode", "toggleMode", false, PropertyEditKind::Bool, true, "Keeps the button in a checked state after click." },
-        { "checked", "checked", false, PropertyEditKind::Bool, true, "Initial checked state used when toggle mode is enabled." },
-        { "normalFillColor", "normalFillColor", "", PropertyEditKind::Color, true, "Optional fill color used for the normal button state." },
-        { "pressedFillColor", "pressedFillColor", "", PropertyEditKind::Color, true, "Optional fill color used for the pressed or checked button state." },
-        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+        { "text", "Text", "Button", PropertyEditKind::Text, true, "Button label text." },
+        { "normalText", "Normal Text", "Button", PropertyEditKind::Text, true, "Optional label shown when the button is not pressed or toggled on." },
+        { "pressedText", "Pressed Text", "", PropertyEditKind::Text, true, "Optional label shown while the button is pressed or toggled on." },
+        { "toggleMode", "Toggle Mode", false, PropertyEditKind::Bool, true, "Keeps the button in a checked state after click." },
+        { "checked", "Checked", false, PropertyEditKind::Bool, true, "Initial checked state used when toggle mode is enabled." },
+        { "normalFillColor", "Normal Fill Color", "", PropertyEditKind::Color, true, "Optional fill color used for the normal button state." },
+        { "pressedFillColor", "Pressed Fill Color", "", PropertyEditKind::Color, true, "Optional fill color used for the pressed or checked button state." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
-        { "onClick", "onClick", "void_event", "Called when the button click is completed." },
-        { "onRelease", "onRelease", "void_event", "Called when the left mouse button is released over the button." },
-        { "onDoubleClick", "onDoubleClick", "void_event", "Called when the button is double-clicked." }
+        { "onClick", "On Click", "void_event", "Called when the button click is completed." },
+        { "onRelease", "On Release", "void_event", "Called when the left mouse button is released over the button." },
+        { "onDoubleClick", "On Double Click", "void_event", "Called when the button is double-clicked." }
     };
     return definition;
 }

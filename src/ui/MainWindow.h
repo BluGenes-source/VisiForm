@@ -376,6 +376,7 @@ private:
     void updatePropertyEditorBounds();
     void openInspectorDropdown(const PropertyInspector::PropertyRow& row);
     bool applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
+    bool applyPendingInspectorInteractionEdit();
     void handleTextEditPendingAction();
     void handleDropdownSelection();
     void updateHoverHint(float x, float y);

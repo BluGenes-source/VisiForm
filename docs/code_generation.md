@@ -257,7 +257,7 @@ The exported `MainWindow` now generates a lightweight runtime widget list, hit t
 
 Current generated interactive behavior:
 
-- `Button` - click completion fires `onClick`, release-over-button fires `onRelease`, double-click fires `onDoubleClick`, and toggle-mode buttons keep exported checked-state visuals
+- `Button` - click completion fires `onClick`, release-over-button fires `onRelease`, double-click fires `onDoubleClick`, toggle-mode buttons keep exported checked-state visuals, and generated button text now follows the same fallback order used by the editor preview
 - `CheckBox` - click toggles and fires `onToggle`
 - `RadioButton` - click selects within its group and fires `onSelected`
 - `Slider` - drag updates value and fires `onChanged`
@@ -429,6 +429,13 @@ Generated handler signatures now use sender-aware forms:
 - `onTextChanged` -> `void handlerName(const WidgetEvent& event, const std::string& value)`
 - `onLoad` -> `void handlerName(const WidgetEvent& event)`
 - `onClose` -> `void handlerName(const WidgetEvent& event)`
+
+Generated `Button` text fallback order:
+
+1. if the button is pressed or toggle-checked and `pressedText` is non-empty, generated runtime drawing uses `pressedText`
+2. otherwise if `normalText` is non-empty, generated runtime drawing uses `normalText`
+3. otherwise if `text` is non-empty, generated runtime drawing uses `text`
+4. otherwise generated runtime drawing uses `Button`
 
 The generated base class also emits per-widget helper methods for future interactive dispatch.
 

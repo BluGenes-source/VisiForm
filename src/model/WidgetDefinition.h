@@ -12,6 +12,7 @@ enum class PropertyEditKind {
     Text,
     Integer,
     Float,
+    Slider,
     Bool,
     Color,
     FilePath,
@@ -26,6 +27,9 @@ struct WidgetPropertyDefinition {
     bool editable = true;
     std::string hint{};
     std::vector<std::string> choices{};
+    float minimumValue = 0.0f;
+    float maximumValue = 0.0f;
+    float stepValue = 1.0f;
 };
 
 struct WidgetEventDefinition {

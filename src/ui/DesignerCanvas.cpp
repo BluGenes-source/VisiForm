@@ -269,6 +269,24 @@ std::string widgetLabel(const model::WidgetNode& widget)
     return widget.typeName();
 }
 
+std::optional<float> tryParseFloatText(const std::string& text)
+{
+    if (text.empty() || text == "<unset>") {
+        return std::nullopt;
+    }
+
+    std::istringstream stream(text);
+    float value = 0.0f;
+    char trailing = '\0';
+    if (!(stream >> value)) {
+        return std::nullopt;
+    }
+    if (stream >> trailing) {
+        return std::nullopt;
+    }
+    return value;
+}
+
 float getNumericProperty(const model::WidgetNode& widget, const std::string& key, float defaultValue)
 {
     const auto* property = widget.getProperty(key);
@@ -283,15 +301,8 @@ float getNumericProperty(const model::WidgetNode& widget, const std::string& key
         return static_cast<float>(property->asInt(static_cast<int>(defaultValue)));
     }
     if (property->isString()) {
-        try {
-            const std::string text = property->asString({});
-            std::size_t parsedCharacters = 0;
-            const float parsedValue = std::stof(text, &parsedCharacters);
-            if (parsedCharacters == text.size()) {
-                return parsedValue;
-            }
-        }
-        catch (...) {
+        if (const auto parsedValue = tryParseFloatText(property->asString({}))) {
+            return *parsedValue;
         }
     }
 
@@ -831,8 +842,13 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::Button:
     {
         const bool pressedState = widget.getBoolProperty("toggleMode", false) && widget.getBoolProperty("checked", false);
-        const std::string normalText = getStringProperty(widget, "normalText", getStringProperty(widget, "text", widgetLabel(widget)));
-        const std::string pressedText = getStringProperty(widget, "pressedText", normalText);
+        const std::string text = getStringProperty(widget, "text", {});
+        const std::string configuredNormalText = getStringProperty(widget, "normalText", {});
+        const std::string configuredPressedText = getStringProperty(widget, "pressedText", {});
+        const std::string normalText = !configuredNormalText.empty()
+            ? configuredNormalText
+            : (!text.empty() ? text : std::string{ "Button" });
+        const std::string pressedText = !configuredPressedText.empty() ? configuredPressedText : normalText;
         const int normalFillColor = parseColorOrDefault(getStringProperty(widget, "normalFillColor", {}), style.fillColor);
         const int pressedFillColor = parseColorOrDefault(getStringProperty(widget, "pressedFillColor", {}), blendColor(style.fillColor, style.accentColor, 0.18f));
         canvas.setColor(pressedState ? pressedFillColor : normalFillColor);

@@ -105,6 +105,47 @@ bool isValidColorValue(const std::string& value)
     });
 }
 
+bool isUnsetValueText(std::string_view value)
+{
+    return value.empty() || value == "<unset>";
+}
+
+std::optional<float> tryParseFloat(std::string_view text)
+{
+    if (isUnsetValueText(text)) {
+        return std::nullopt;
+    }
+
+    std::istringstream stream(std::string{ text });
+    float value = 0.0f;
+    char trailing = '\0';
+    if (!(stream >> value)) {
+        return std::nullopt;
+    }
+    if (stream >> trailing) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+std::optional<int> tryParseInt(std::string_view text)
+{
+    if (isUnsetValueText(text)) {
+        return std::nullopt;
+    }
+
+    std::istringstream stream(std::string{ text });
+    int value = 0;
+    char trailing = '\0';
+    if (!(stream >> value)) {
+        return std::nullopt;
+    }
+    if (stream >> trailing) {
+        return std::nullopt;
+    }
+    return value;
+}
+
 std::string sanitizeExecutableName(const std::string& value, const std::string& fallback)
 {
     const std::string source = value.empty() ? fallback : value;
@@ -1698,6 +1739,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (e.isLeftButton() && propertyInspector_.mouseDown(document_, settings_, e.position.x, e.position.y)) {
+        applyPendingInspectorInteractionEdit();
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -1876,6 +1918,7 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
     }
 
     if (propertyInspector_.mouseDrag(document_, settings_, e.position.x, e.position.y)) {
+        applyPendingInspectorInteractionEdit();
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -1989,6 +2032,7 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 
     const bool releasedInspectorScrollBar = propertyInspector_.mouseUp();
     if (releasedInspectorScrollBar && canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        applyPendingInspectorInteractionEdit();
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -3205,26 +3249,6 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
     }
 
     const std::string trimmedValue = trimWhitespace(valueText);
-    auto parseFloat = [](const std::string& text, float& output) -> bool {
-        try {
-            std::size_t parsedCharacters = 0;
-            output = std::stof(text, &parsedCharacters);
-            return parsedCharacters == text.size();
-        }
-        catch (...) {
-            return false;
-        }
-    };
-    auto parseInt = [](const std::string& text, int& output) -> bool {
-        try {
-            std::size_t parsedCharacters = 0;
-            output = std::stoi(text, &parsedCharacters);
-            return parsedCharacters == text.size();
-        }
-        catch (...) {
-            return false;
-        }
-    };
     auto parseBool = [](const std::string& text, bool& output) -> bool {
         std::string normalized = text;
         std::transform(normalized.begin(), normalized.end(), normalized.begin(),
@@ -3415,32 +3439,47 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
     }
 
     if (isStyleFloatProperty(key)) {
-        float parsedValue = 0.0f;
-        if (!trimmedValue.empty() && !parseFloat(trimmedValue, parsedValue)) {
-            setOperationStatus("Invalid value for " + key);
-            redraw();
-            return false;
-        }
-
         if (key == "fontSize") {
-            parsedValue = std::clamp(parsedValue, 8.0f, 72.0f);
-        }
-        else if (key == "borderThickness") {
-            parsedValue = std::clamp(parsedValue, 0.0f, 20.0f);
-        }
-        else if (key == "cornerRadius") {
-            parsedValue = std::clamp(parsedValue, 0.0f, 50.0f);
+            const auto parsedValue = tryParseFloat(trimmedValue);
+            if (!parsedValue.has_value()) {
+                return setSelectedWidgetProperty(key, model::PropertyValue{});
+            }
+
+            return setSelectedWidgetProperty(key, std::clamp(*parsedValue, 8.0f, 72.0f));
         }
 
-        if (trimmedValue.empty()) {
+        if (key == "borderThickness" || key == "cornerRadius") {
+            const auto parsedValue = tryParseFloat(trimmedValue);
+            if (!parsedValue.has_value()) {
+                if (isUnsetValueText(trimmedValue)) {
+                    return setSelectedWidgetProperty(key, 1.0f);
+                }
+
+                setOperationStatus("Invalid value for " + key + ". Use 1 to 25.");
+                redraw();
+                return false;
+            }
+
+            const float clampedValue = std::clamp(*parsedValue, 1.0f, 25.0f);
+            const bool updated = setSelectedWidgetProperty(key, clampedValue);
+            if (updated) {
+                setOperationStatus("Property changed: " + key + " = " + std::to_string(static_cast<int>(std::round(clampedValue))));
+                redraw();
+            }
+            return updated;
+        }
+
+        const auto parsedValue = tryParseFloat(trimmedValue);
+        if (!parsedValue.has_value()) {
             return setSelectedWidgetProperty(key, model::PropertyValue{});
         }
 
-        return setSelectedWidgetProperty(key, parsedValue);
+        return setSelectedWidgetProperty(key, *parsedValue);
     }
 
     if (key == "onClick" || key == "onToggle" || key == "onChanged"
         || key == "onTextChanged" || key == "onLoad" || key == "onClose" || key == "onSelected"
+        || key == "onRelease" || key == "onDoubleClick"
         || key == "onAccepted" || key == "onCancelled") {
         if (!trimmedValue.empty() && !utils::isValidCppIdentifier(trimmedValue)) {
             setOperationStatus("Invalid event handler name");
@@ -3452,8 +3491,8 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
     }
 
     if (key == "x" || key == "y" || key == "width" || key == "height") {
-        float numericValue = 0.0f;
-        if (!parseFloat(trimmedValue, numericValue)) {
+        const auto numericValue = tryParseFloat(trimmedValue);
+        if (!numericValue.has_value()) {
             setOperationStatus("Invalid value for " + key);
             redraw();
             return false;
@@ -3464,16 +3503,16 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         float width = widget->bounds.width;
         float height = widget->bounds.height;
         if (key == "x") {
-            x = numericValue;
+            x = *numericValue;
         }
         else if (key == "y") {
-            y = numericValue;
+            y = *numericValue;
         }
         else if (key == "width") {
-            width = numericValue;
+            width = *numericValue;
         }
         else {
-            height = numericValue;
+            height = *numericValue;
         }
 
         if (!setSelectedWidgetBounds(x, y, width, height)) {
@@ -3499,24 +3538,24 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
             return setSelectedWidgetProperty(key, parsedValue);
         }
         if (existingProperty->isInt()) {
-            int parsedValue = 0;
-            if (!parseInt(trimmedValue, parsedValue)) {
+            const auto parsedValue = tryParseInt(trimmedValue);
+            if (!parsedValue.has_value()) {
                 setOperationStatus("Invalid value for " + key);
                 redraw();
                 return false;
             }
 
-            return setSelectedWidgetProperty(key, parsedValue);
+            return setSelectedWidgetProperty(key, *parsedValue);
         }
         if (existingProperty->isFloat()) {
-            float parsedValue = 0.0f;
-            if (!parseFloat(trimmedValue, parsedValue)) {
+            const auto parsedValue = tryParseFloat(trimmedValue);
+            if (!parsedValue.has_value()) {
                 setOperationStatus("Invalid value for " + key);
                 redraw();
                 return false;
             }
 
-            return setSelectedWidgetProperty(key, parsedValue);
+            return setSelectedWidgetProperty(key, *parsedValue);
         }
     }
 
@@ -4683,7 +4722,8 @@ std::string MainWindow::editorModalFieldLabel(const std::string& key) const
 bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
 {
     if (row.editKind == PropertyInspector::PropertyEditKind::ReadOnly
-        || row.editKind == PropertyInspector::PropertyEditKind::Bool) {
+        || row.editKind == PropertyInspector::PropertyEditKind::Bool
+        || row.editKind == PropertyInspector::PropertyEditKind::Slider) {
         return false;
     }
 
@@ -4704,6 +4744,16 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
     }
     redraw();
     return true;
+}
+
+bool MainWindow::applyPendingInspectorInteractionEdit()
+{
+    const auto pendingEdit = propertyInspector_.consumeInteractionEdit();
+    if (!pendingEdit.has_value()) {
+        return false;
+    }
+
+    return setSelectedWidgetPropertyFromString(pendingEdit->key, pendingEdit->valueText);
 }
 
 bool MainWindow::commitInspectorEdit()
@@ -5045,10 +5095,10 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
             newProjectWizard_.userSubclassName = trimmedValue;
         }
         else if (key == "formWidth") {
-            newProjectWizard_.formWidth = std::max(1, std::stoi(trimmedValue));
+            newProjectWizard_.formWidth = std::max(1, tryParseInt(trimmedValue).value_or(newProjectWizard_.formWidth));
         }
         else if (key == "formHeight") {
-            newProjectWizard_.formHeight = std::max(1, std::stoi(trimmedValue));
+            newProjectWizard_.formHeight = std::max(1, tryParseInt(trimmedValue).value_or(newProjectWizard_.formHeight));
         }
         else if (key == "lookAndFeelId" && containsText(availableLookAndFeelIds(), trimmedValue)) {
             newProjectWizard_.lookAndFeelId = trimmedValue;
@@ -5155,11 +5205,10 @@ bool MainWindow::commitEditorModalFieldEdit()
 
     const std::string valueText = trimWhitespace(textEditControl_.text());
     if (iterator->editKind == PropertyInspector::PropertyEditKind::Integer) {
-        try {
-            const int value = std::stoi(valueText);
-            setEditorModalFieldValue(iterator->key, std::to_string(value));
+        if (const auto value = tryParseInt(valueText)) {
+            setEditorModalFieldValue(iterator->key, std::to_string(*value));
         }
-        catch (...) {
+        else {
             editorModal_.statusText = "Invalid integer value for " + iterator->label + ".";
             redraw();
             return false;

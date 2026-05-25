@@ -7,7 +7,8 @@ namespace visiform::ui::editors {
 namespace {
 
 constexpr float kHorizontalPadding = 8.0f;
-constexpr float kSelectionInsetY = 4.0f;
+constexpr float kVerticalPadding = 4.0f;
+constexpr float kEstimatedTextHeight = 18.0f;
 constexpr float kApproximateCharacterWidth = 8.0f;
 
 bool isPrintableInput(const std::string& text)
@@ -217,8 +218,9 @@ void TextEditControl::draw(visage::Canvas& canvas, const visage::Font& font, boo
     }
 
     const float textLeft = bounds_.x + kHorizontalPadding;
-    const float baselineY = bounds_.y + 5.0f;
     const float textWidth = std::max(0.0f, bounds_.width - kHorizontalPadding * 2.0f);
+    const float textHeight = std::min(kEstimatedTextHeight, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
+    const float textTop = bounds_.y + std::max(kVerticalPadding, (bounds_.height - textHeight) * 0.5f);
     const float selectionLeft = textLeft - scrollX_ + static_cast<float>(selectionMin()) * characterAdvance();
     const float selectionWidth = static_cast<float>(selectionMax() - selectionMin()) * characterAdvance();
     const float cursorX = textLeft - scrollX_ + static_cast<float>(cursorIndex_) * characterAdvance();
@@ -227,15 +229,15 @@ void TextEditControl::draw(visage::Canvas& canvas, const visage::Font& font, boo
     canvas.setClampBounds(bounds_.x + 1.0f, bounds_.y + 1.0f, std::max(0.0f, bounds_.width - 2.0f), std::max(0.0f, bounds_.height - 2.0f));
     if (hasSelection() && selectionWidth > 0.0f) {
         canvas.setColor(0x66355382);
-        canvas.fill(selectionLeft, bounds_.y + kSelectionInsetY, selectionWidth, std::max(0.0f, bounds_.height - kSelectionInsetY * 2.0f));
+        canvas.fill(selectionLeft, bounds_.y + kVerticalPadding, selectionWidth, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
     }
 
     canvas.setColor(0xffeef2f8);
-    canvas.text(text_, font, visage::Font::kTopLeft, textLeft - scrollX_, baselineY, std::max(textWidth + scrollX_, textWidth), std::max(0.0f, bounds_.height - 8.0f));
+    canvas.text(text_, font, visage::Font::kTopLeft, textLeft - scrollX_, textTop, std::max(textWidth + scrollX_, textWidth), textHeight);
 
     if (focused_) {
         canvas.setColor(0xff92b9ff);
-        canvas.fill(cursorX, bounds_.y + 4.0f, 1.0f, std::max(0.0f, bounds_.height - 8.0f));
+        canvas.fill(cursorX, bounds_.y + kVerticalPadding, 1.0f, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
     }
     canvas.restoreState();
 }

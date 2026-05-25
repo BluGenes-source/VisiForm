@@ -139,6 +139,8 @@ bool isValidColorValue(std::string_view value)
 bool isColorPropertyKey(std::string_view key)
 {
     return key == "fillColor"
+        || key == "normalFillColor"
+        || key == "pressedFillColor"
         || key == "textColor"
         || key == "borderColor"
         || key == "accentColor"
@@ -162,6 +164,23 @@ std::optional<double> propertyNumber(const model::WidgetNode& widget, const std:
     }
     if (property->isFloat()) {
         return static_cast<double>(property->asFloat());
+    }
+    if (property->isString()) {
+        const std::string text = trim(property->asString());
+        if (text.empty() || text == "<unset>") {
+            return std::nullopt;
+        }
+
+        std::istringstream stream(text);
+        double value = 0.0;
+        char trailing = '\0';
+        if (!(stream >> value)) {
+            return std::nullopt;
+        }
+        if (stream >> trailing) {
+            return std::nullopt;
+        }
+        return value;
     }
 
     return std::nullopt;
@@ -675,20 +694,40 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                 "fontSize");
         }
 
-        if (const auto borderThickness = propertyNumber(*widget, "borderThickness"); borderThickness.has_value() && (*borderThickness < 0.0 || *borderThickness > 20.0)) {
+        if (const auto borderThickness = propertyNumber(*widget, "borderThickness"); borderThickness.has_value() && (*borderThickness < 1.0 || *borderThickness > 25.0)) {
             addMessage(report, ValidationSeverity::Warning,
                 "WIDGET_BORDER_THICKNESS_RANGE",
-                "borderThickness is outside the supported 0-20 range and export will clamp it.",
+                "borderThickness is outside the supported 1-25 range and export will clamp it.",
                 widget->id,
                 "borderThickness");
         }
+        if (const auto* borderThicknessProperty = widget->getProperty("borderThickness"); borderThicknessProperty != nullptr && borderThicknessProperty->isString()) {
+            const std::string text = trim(borderThicknessProperty->asString());
+            if (!text.empty() && text != "<unset>" && !propertyNumber(*widget, "borderThickness").has_value()) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_BORDER_THICKNESS_INVALID",
+                    "borderThickness must be a numeric value from 1 to 25.",
+                    widget->id,
+                    "borderThickness");
+            }
+        }
 
-        if (const auto cornerRadius = propertyNumber(*widget, "cornerRadius"); cornerRadius.has_value() && (*cornerRadius < 0.0 || *cornerRadius > 50.0)) {
+        if (const auto cornerRadius = propertyNumber(*widget, "cornerRadius"); cornerRadius.has_value() && (*cornerRadius < 1.0 || *cornerRadius > 25.0)) {
             addMessage(report, ValidationSeverity::Warning,
                 "WIDGET_CORNER_RADIUS_RANGE",
-                "cornerRadius is outside the supported 0-50 range and export will clamp it.",
+                "cornerRadius is outside the supported 1-25 range and export will clamp it.",
                 widget->id,
                 "cornerRadius");
+        }
+        if (const auto* cornerRadiusProperty = widget->getProperty("cornerRadius"); cornerRadiusProperty != nullptr && cornerRadiusProperty->isString()) {
+            const std::string text = trim(cornerRadiusProperty->asString());
+            if (!text.empty() && text != "<unset>" && !propertyNumber(*widget, "cornerRadius").has_value()) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_CORNER_RADIUS_INVALID",
+                    "cornerRadius must be a numeric value from 1 to 25.",
+                    widget->id,
+                    "cornerRadius");
+            }
         }
 
         if (widget->type == model::WidgetType::Slider

@@ -22,7 +22,7 @@ namespace visiform::ui {
 namespace {
 
 constexpr float kHeaderHeight = 34.0f;
-constexpr float kRowHeight = 30.0f;
+constexpr float kRowHeight = 32.0f;
 constexpr float kSuggestionRowHeight = 24.0f;
 constexpr float kSuggestionSpacing = 2.0f;
 constexpr float kPadding = 12.0f;
@@ -34,6 +34,10 @@ constexpr float kScrollBarWidth = 18.0f;
 constexpr float kScrollBarGap = 6.0f;
 constexpr float kMinimumThumbSize = 18.0f;
 constexpr float kMouseWheelSensitivity = 40.0f;
+constexpr float kSliderTrackHeight = 4.0f;
+constexpr float kSliderThumbWidth = 10.0f;
+constexpr float kSliderThumbHeight = 16.0f;
+constexpr float kSliderValueWidth = 56.0f;
 
 struct RowLayout {
     PropertyInspector::PropertyRow row;
@@ -58,6 +62,42 @@ std::string formatFloat(float value)
         text.pop_back();
     }
     return text.empty() ? "0" : text;
+}
+
+std::optional<float> tryParseFloatText(const std::string& text)
+{
+    if (text.empty() || text == "<unset>") {
+        return std::nullopt;
+    }
+
+    std::istringstream stream(text);
+    float value = 0.0f;
+    char trailing = '\0';
+    if (!(stream >> value)) {
+        return std::nullopt;
+    }
+    if (stream >> trailing) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+float clampAndStepSliderValue(float value, float minimumValue, float maximumValue, float stepValue)
+{
+    const float safeMaximum = std::max(minimumValue, maximumValue);
+    const float safeStep = stepValue <= 0.0f ? 1.0f : stepValue;
+    const float clamped = std::clamp(value, minimumValue, safeMaximum);
+    const float stepped = minimumValue + std::round((clamped - minimumValue) / safeStep) * safeStep;
+    return std::clamp(stepped, minimumValue, safeMaximum);
+}
+
+std::string formatSliderValue(float value, float stepValue)
+{
+    if (stepValue >= 1.0f) {
+        return std::to_string(static_cast<int>(std::round(value)));
+    }
+
+    return formatFloat(value);
 }
 
 std::string propertyValueText(const model::PropertyValue& value)
@@ -342,6 +382,8 @@ PropertyInspector::PropertyEditKind editKindForDefinition(const model::WidgetPro
         return PropertyInspector::PropertyEditKind::Integer;
     case model::PropertyEditKind::Float:
         return PropertyInspector::PropertyEditKind::Float;
+    case model::PropertyEditKind::Slider:
+        return PropertyInspector::PropertyEditKind::Slider;
     case model::PropertyEditKind::Bool:
         return PropertyInspector::PropertyEditKind::Bool;
     case model::PropertyEditKind::ReadOnly:
@@ -484,6 +526,42 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::colorSwatch
     return ValueCellBounds{ swatchX, rowTop + 6.0f, swatchSize, swatchSize };
 }
 
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::sliderTrackBoundsForRow(const PropertyRow& row, float rowTop) const
+{
+    if (row.editKind != PropertyEditKind::Slider || row.isSection) {
+        return std::nullopt;
+    }
+
+    const float valueLeft = x_ + labelColumnWidth();
+    const float trackLeft = valueLeft + 10.0f;
+    const float trackWidth = std::max(36.0f, valueCellWidth() - kSliderValueWidth - 20.0f);
+    return ValueCellBounds{
+        trackLeft,
+        rowTop + (kRowHeight - kSliderTrackHeight) * 0.5f,
+        trackWidth,
+        kSliderTrackHeight
+    };
+}
+
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::sliderThumbBoundsForRow(const PropertyRow& row, float rowTop, float value) const
+{
+    const auto track = sliderTrackBoundsForRow(row, rowTop);
+    if (!track.has_value()) {
+        return std::nullopt;
+    }
+
+    const float safeMaximum = std::max(row.minimumValue, row.maximumValue);
+    const float range = std::max(0.001f, safeMaximum - row.minimumValue);
+    const float normalized = std::clamp((value - row.minimumValue) / range, 0.0f, 1.0f);
+    const float thumbCenterX = track->x + normalized * track->width;
+    return ValueCellBounds{
+        thumbCenterX - kSliderThumbWidth * 0.5f,
+        rowTop + (kRowHeight - kSliderThumbHeight) * 0.5f,
+        kSliderThumbWidth,
+        kSliderThumbHeight
+    };
+}
+
 std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const model::ProjectDocument& document, const utils::AppSettings& settings) const
 {
     std::vector<PropertyRow> rows;
@@ -564,14 +642,50 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             }
 
             const auto* propertyValue = selectedWidget->getProperty(property.key);
-            std::string displayValue = propertyValue != nullptr ? propertyValueText(*propertyValue) : property.defaultValue.toDisplayString();
+            std::string displayValue;
+            if (property.editKind == model::PropertyEditKind::Slider) {
+                float sliderValue = property.minimumValue;
+                if (propertyValue != nullptr) {
+                    if (propertyValue->isInt()) {
+                        sliderValue = static_cast<float>(propertyValue->asInt(static_cast<int>(property.minimumValue)));
+                    }
+                    else if (propertyValue->isFloat()) {
+                        sliderValue = propertyValue->asFloat(property.minimumValue);
+                    }
+                    else if (propertyValue->isString()) {
+                        sliderValue = tryParseFloatText(propertyValue->asString()).value_or(property.minimumValue);
+                    }
+                }
+                else if (property.defaultValue.isInt()) {
+                    sliderValue = static_cast<float>(property.defaultValue.asInt(static_cast<int>(property.minimumValue)));
+                }
+                else if (property.defaultValue.isFloat()) {
+                    sliderValue = property.defaultValue.asFloat(property.minimumValue);
+                }
+
+                sliderValue = clampAndStepSliderValue(sliderValue, property.minimumValue, property.maximumValue, property.stepValue);
+                displayValue = formatSliderValue(sliderValue, property.stepValue);
+            }
+            else {
+                displayValue = propertyValue != nullptr ? propertyValueText(*propertyValue) : property.defaultValue.toDisplayString();
+            }
             if (selectedWidget->type == model::WidgetType::Image && property.key == "imagePath" && displayValue.empty()) {
                 displayValue = selectedWidget->getStringProperty("source", {});
             }
             if (!choices.empty()) {
                 displayValue = choiceLabelForValue(choices, displayValue);
             }
-            rows.push_back({ property.key, property.label, resolvedPropertyHint(property.hint, property.key), displayValue, editKindForDefinition(property), false, std::move(choices) });
+            rows.push_back({
+                property.key,
+                property.label,
+                resolvedPropertyHint(property.hint, property.key),
+                displayValue,
+                editKindForDefinition(property),
+                false,
+                std::move(choices),
+                property.minimumValue,
+                property.maximumValue,
+                property.stepValue });
             drawnKeys.insert(property.key);
         }
 
@@ -660,40 +774,82 @@ bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const 
     const auto rows = buildRows(document, settings);
     updateScrollMetrics(rows);
     const auto scrollBar = scrollBarBounds();
-    if (!scrollBar.has_value() || !containsPoint(*scrollBar, x, y)) {
-        return false;
-    }
+    if (scrollBar.has_value() && containsPoint(*scrollBar, x, y)) {
+        const float arrowSize = std::min(scrollBar->width, 20.0f);
+        const auto thumb = scrollBarThumbBounds();
+        if (thumb.has_value() && containsPoint(*thumb, x, y)) {
+            draggingScrollBarThumb_ = true;
+            scrollBarDragOffsetY_ = y - thumb->y;
+            return true;
+        }
 
-    const float arrowSize = std::min(scrollBar->width, 20.0f);
-    const auto thumb = scrollBarThumbBounds();
-    if (thumb.has_value() && containsPoint(*thumb, x, y)) {
-        draggingScrollBarThumb_ = true;
-        scrollBarDragOffsetY_ = y - thumb->y;
+        if (y < scrollBar->y + arrowSize) {
+            scrollOffsetY_ -= kRowHeight;
+        }
+        else if (y > scrollBar->y + scrollBar->height - arrowSize) {
+            scrollOffsetY_ += kRowHeight;
+        }
+        else if (thumb.has_value() && y < thumb->y) {
+            scrollOffsetY_ -= std::max(kRowHeight, visibleHeight_ * 0.85f);
+        }
+        else {
+            scrollOffsetY_ += std::max(kRowHeight, visibleHeight_ * 0.85f);
+        }
+
+        clampScrollOffset();
         return true;
     }
 
-    if (y < scrollBar->y + arrowSize) {
-        scrollOffsetY_ -= kRowHeight;
-    }
-    else if (y > scrollBar->y + scrollBar->height - arrowSize) {
-        scrollOffsetY_ += kRowHeight;
-    }
-    else if (thumb.has_value() && y < thumb->y) {
-        scrollOffsetY_ -= std::max(kRowHeight, visibleHeight_ * 0.85f);
-    }
-    else {
-        scrollOffsetY_ += std::max(kRowHeight, visibleHeight_ * 0.85f);
+    if (!isWithinVisibleContent(x, y)) {
+        return false;
     }
 
-    clampScrollOffset();
-    return true;
+    pendingInteractionEdit_.reset();
+    const auto layouts = buildRowLayouts(contentBounds().y, rows);
+    for (const auto& layout : layouts) {
+        const float rowTop = rowYWithScroll(layout.top);
+        if (rowTop + kRowHeight < contentBounds().y || rowTop > contentBounds().y + contentBounds().height) {
+            continue;
+        }
+        if (layout.row.editKind != PropertyEditKind::Slider) {
+            continue;
+        }
+
+        const auto track = sliderTrackBoundsForRow(layout.row, rowTop);
+        if (!track.has_value()) {
+            continue;
+        }
+
+        const ValueCellBounds sliderHitBounds{
+            track->x,
+            rowTop + 4.0f,
+            track->width + kSliderValueWidth,
+            kRowHeight - 8.0f
+        };
+        if (!containsPoint(sliderHitBounds, x, y)) {
+            continue;
+        }
+
+        draggingSlider_ = true;
+        draggingSliderKey_ = layout.row.key;
+        pendingInteractionEdit_ = sliderEditAtPoint(rows, x, y);
+        return true;
+    }
+
+    return false;
 }
 
 bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
-    (void)x;
     if (!draggingScrollBarThumb_) {
-        return false;
+        if (!draggingSlider_) {
+            return false;
+        }
+
+        const auto rows = buildRows(document, settings);
+        updateScrollMetrics(rows);
+        pendingInteractionEdit_ = sliderEditAtPoint(rows, x, y);
+        return pendingInteractionEdit_.has_value();
     }
 
     const auto scrollBar = scrollBarBounds();
@@ -722,9 +878,11 @@ bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, const 
 
 bool PropertyInspector::mouseUp()
 {
-    const bool wasDragging = draggingScrollBarThumb_;
+    const bool wasDragging = draggingScrollBarThumb_ || draggingSlider_;
     draggingScrollBarThumb_ = false;
     scrollBarDragOffsetY_ = 0.0f;
+    draggingSlider_ = false;
+    draggingSliderKey_.clear();
     return wasDragging;
 }
 
@@ -749,7 +907,7 @@ bool PropertyInspector::beginEditing(const model::ProjectDocument& document, con
 {
     const auto rows = buildRows(document, settings);
     for (const auto& row : rows) {
-        if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool) {
+        if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool && row.editKind != PropertyEditKind::Slider) {
             activeKey_ = key;
             activeEditKind_ = row.editKind;
             editBuffer_ = row.displayValue;
@@ -790,7 +948,7 @@ void PropertyInspector::cancelEditing()
 std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::ProjectDocument& document, const utils::AppSettings& settings)
 {
     const auto active = activeRow(document, settings);
-    if (!active.has_value()) {
+    if (!active.has_value() || active->editKind == PropertyEditKind::Slider) {
         return std::nullopt;
     }
 
@@ -823,11 +981,47 @@ std::optional<PropertyInspector::PendingEdit> PropertyInspector::buildPendingEdi
         return std::nullopt;
     }
 
-    if (activeEditKind_ == PropertyEditKind::Choice) {
+    if (activeEditKind_ == PropertyEditKind::Choice || activeEditKind_ == PropertyEditKind::Slider) {
         return std::nullopt;
     }
 
     return PendingEdit{ activeKey_, valueText, activeEditKind_ };
+}
+
+std::optional<PropertyInspector::PendingEdit> PropertyInspector::consumeInteractionEdit()
+{
+    if (!pendingInteractionEdit_.has_value()) {
+        return std::nullopt;
+    }
+
+    auto edit = pendingInteractionEdit_;
+    pendingInteractionEdit_.reset();
+    return edit;
+}
+
+std::optional<PropertyInspector::PendingEdit> PropertyInspector::sliderEditAtPoint(const std::vector<PropertyRow>& rows, float x, float y)
+{
+    const auto layouts = buildRowLayouts(contentBounds().y, rows);
+    for (const auto& layout : layouts) {
+        if (layout.row.key != draggingSliderKey_) {
+            continue;
+        }
+
+        const float rowTop = rowYWithScroll(layout.top);
+        const auto track = sliderTrackBoundsForRow(layout.row, rowTop);
+        if (!track.has_value()) {
+            return std::nullopt;
+        }
+
+        const float relative = std::clamp(x - track->x, 0.0f, track->width);
+        const float safeMaximum = std::max(layout.row.minimumValue, layout.row.maximumValue);
+        const float ratio = track->width <= 0.0f ? 0.0f : (relative / track->width);
+        const float rawValue = layout.row.minimumValue + ratio * (safeMaximum - layout.row.minimumValue);
+        const float value = clampAndStepSliderValue(rawValue, layout.row.minimumValue, layout.row.maximumValue, layout.row.stepValue);
+        return PendingEdit{ layout.row.key, formatSliderValue(value, layout.row.stepValue), layout.row.editKind };
+    }
+
+    return std::nullopt;
 }
 
 bool PropertyInspector::isEditing() const
@@ -896,6 +1090,7 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
         const bool isReadOnly = row.editKind == PropertyEditKind::ReadOnly;
         const bool isActive = isEditing() && row.key == activeKey_;
         const bool isChoice = row.editKind == PropertyEditKind::Choice;
+        const bool isSlider = row.editKind == PropertyEditKind::Slider;
         const auto swatchBounds = colorSwatchBoundsForRow(row, rowTop);
         const float valueTextWidth = swatchBounds.has_value()
             ? std::max(0.0f, valueWidth - swatchBounds->width - 16.0f)
@@ -925,7 +1120,29 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                 labelLeft, rowTop + 5.0f, std::max(40.0f, labelWidth - 32.0f), kRowHeight - 8.0f);
 
             canvas.setColor(isReadOnly ? 0xffb3bcc9 : 0xffeef2f8);
-            if (!isActive || row.editKind == PropertyEditKind::Choice) {
+            if (isSlider) {
+                const auto track = sliderTrackBoundsForRow(row, rowTop);
+                const float sliderValue = tryParseFloatText(row.displayValue).value_or(row.minimumValue);
+                const auto thumb = sliderThumbBoundsForRow(row, rowTop, sliderValue);
+                if (track.has_value()) {
+                    canvas.setColor(0xff1d222b);
+                    canvas.fill(track->x, track->y, track->width, track->height);
+
+                    if (thumb.has_value()) {
+                        const float fillWidth = std::max(0.0f, thumb->x + thumb->width * 0.5f - track->x);
+                        canvas.setColor(0xff4b79bc);
+                        canvas.fill(track->x, track->y, fillWidth, track->height);
+                        canvas.setColor((draggingSlider_ && draggingSliderKey_ == row.key) ? 0xff92b9ff : 0xffd7e6ff);
+                        canvas.fill(thumb->x, thumb->y, thumb->width, thumb->height);
+                    }
+                }
+
+                const std::string valueLabel = formatSliderValue(sliderValue, row.stepValue)
+                    + " / " + formatSliderValue(std::max(row.minimumValue, row.maximumValue), row.stepValue);
+                canvas.text(valueLabel, font, visage::Font::kTopLeft,
+                    valueLeft + valueWidth - kSliderValueWidth, rowTop + 5.0f, kSliderValueWidth - 6.0f, kRowHeight - 8.0f);
+            }
+            else if (!isActive || row.editKind == PropertyEditKind::Choice) {
                 std::string valueText = row.displayValue;
                 if (isChoice) {
                     if (valueText.empty()) {
@@ -937,7 +1154,7 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                     valueLeft + 8.0f, rowTop + 5.0f, valueTextWidth - 12.0f, kRowHeight - 8.0f);
             }
 
-            if (isActive && row.editKind != PropertyEditKind::Choice) {
+            if (isActive && row.editKind != PropertyEditKind::Choice && row.editKind != PropertyEditKind::Slider) {
                 canvas.setColor(0xff92b9ff);
                 canvas.text("Enter=Apply  Esc=Cancel", font, visage::Font::kTopLeft,
                     valueLeft + 8.0f, rowTop + kRowHeight - 2.0f, valueTextWidth - 12.0f, 16.0f);

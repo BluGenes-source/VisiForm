@@ -1106,10 +1106,16 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
     }
     else if (widget.type == visiform::model::WidgetType::Button) {
-        const std::string normalText = widget.getStringProperty("normalText", widget.getStringProperty("text", widgetLabel(widget)));
-        const std::string pressedText = widget.getStringProperty("pressedText", normalText);
-        stream << innerIndent << "widget.text.value = " << emitStringLiteral(normalText) << ";\n";
+        const std::string text = widget.getStringProperty("text", {});
+        const std::string configuredNormalText = widget.getStringProperty("normalText", {});
+        const std::string configuredPressedText = widget.getStringProperty("pressedText", {});
+        const std::string normalText = !configuredNormalText.empty()
+            ? configuredNormalText
+            : (!text.empty() ? text : std::string{ "Button" });
+        const std::string pressedText = !configuredPressedText.empty() ? configuredPressedText : normalText;
+        stream << innerIndent << "widget.text.value = " << emitStringLiteral(text) << ";\n";
         stream << innerIndent << "widget.button.toggleMode = " << (widget.getBoolProperty("toggleMode", false) ? "true" : "false") << ";\n";
+        stream << innerIndent << "widget.button.normalText = " << emitStringLiteral(normalText) << ";\n";
         stream << innerIndent << "widget.button.pressedText = " << emitStringLiteral(pressedText) << ";\n";
         stream << innerIndent << "widget.style.fillColor = " << emitRuntimeColorLiteral(widget.getStringProperty("normalFillColor", {}), emitRuntimeColorLiteral(spec.style.fillColor, "makeColor(0x2B, 0x31, 0x3D)")) << ";\n";
         stream << innerIndent << "widget.button.pressedFillColor = " << emitRuntimeColorLiteral(widget.getStringProperty("pressedFillColor", {}), "blendColor(widget.style.fillColor, widget.style.accentColor, 0.18f)") << ";\n";
@@ -1277,6 +1283,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "};\n\n";
     stream << "struct RuntimeButtonState {\n";
     stream << "    bool toggleMode = false;\n";
+    stream << "    std::string normalText;\n";
     stream << "    std::string pressedText;\n";
     stream << "    RuntimeColor pressedFillColor = makeColor(0x35, 0x53, 0x82);\n";
     stream << "};\n\n";
@@ -1695,7 +1702,10 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    {\n";
     stream << "        const bool buttonPressed = widget.interaction.pressed || (widget.button.toggleMode && widget.toggle.checked);\n";
     stream << "        const RuntimeColor fillColor = buttonPressed ? widget.button.pressedFillColor : widget.style.fillColor;\n";
-    stream << "        const std::string& buttonText = buttonPressed && !widget.button.pressedText.empty() ? widget.button.pressedText : widget.text.value;\n";
+    stream << "        const std::string normalText = !widget.button.normalText.empty()\n";
+    stream << "            ? widget.button.normalText\n";
+    stream << "            : (!widget.text.value.empty() ? widget.text.value : std::string{ \"Button\" });\n";
+    stream << "        const std::string& buttonText = buttonPressed && !widget.button.pressedText.empty() ? widget.button.pressedText : normalText;\n";
     stream << "        canvas.setColor(canvasColor(fillColor));\n";
     stream << "        canvas.fill(x, y, width, height);\n";
     stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";

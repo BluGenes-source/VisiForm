@@ -65,6 +65,13 @@ Common widget style overrides:
 
 Empty override values inherit from the active project look and feel.
 
+Current style editor behavior:
+
+- `borderThickness` uses a Property Inspector slider editor
+- `cornerRadius` uses a Property Inspector slider editor
+- both sliders use the numeric range `1..25`
+- legacy empty or `<unset>` values are treated safely as `1` in the editor and validation flow
+
 ## Event metadata
 
 For this phase, event handler names are stored as normal widget string properties.
@@ -76,6 +83,8 @@ Supported event properties:
   - `onClose`
 - `Button`
   - `onClick`
+  - `onRelease`
+  - `onDoubleClick`
 - `CheckBox`
   - `onToggle`
 - `RadioButton`
