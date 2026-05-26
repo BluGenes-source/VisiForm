@@ -10,6 +10,7 @@
 #include "ui/PropertyInspector.h"
 #include "ui/WidgetMetrics.h"
 #include "ui/WidgetPalette.h"
+#include "ui/resources/ImageResourceCache.h"
 #include "ui/editors/DropdownControl.h"
 #include "ui/editors/TextEditControl.h"
 #include "utils/AppSettings.h"
@@ -278,8 +279,10 @@ private:
         bool visible = false;
         std::string selectedResourceId{};
         bool confirmReferencedRemoval = false;
-        std::vector<unsigned char> previewImageBytes{};
+        std::string previewSourcePath{};
         bool previewImageAvailable = false;
+        int previewImageWidth = 0;
+        int previewImageHeight = 0;
         std::string previewStatus{};
     };
 
@@ -445,6 +448,7 @@ private:
     editors::TextEditControl textEditControl_{};
     editors::DropdownControl dropdownControl_{};
     visage::Font labelFont_{};
+    resources::ImageResourceCache imageResourceCache_{};
     bool autoSizeTextWidgets_ = true;
     bool multiSelectMode_ = false;
     // Export progress state

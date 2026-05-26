@@ -990,8 +990,10 @@ void MainWindow::populateResourceManagerDialog()
 
 void MainWindow::refreshResourceManagerPreview()
 {
-    resourceManagerDialog_.previewImageBytes.clear();
+    resourceManagerDialog_.previewSourcePath.clear();
     resourceManagerDialog_.previewImageAvailable = false;
+    resourceManagerDialog_.previewImageWidth = 0;
+    resourceManagerDialog_.previewImageHeight = 0;
     resourceManagerDialog_.previewStatus.clear();
 
     if (resourceManagerDialog_.selectedResourceId.empty()) {
@@ -1011,20 +1013,26 @@ void MainWindow::refreshResourceManagerPreview()
     }
 
     const std::filesystem::path sourcePath{ selectedResource->sourcePath };
-    std::ifstream stream(sourcePath, std::ios::binary);
-    if (!stream.good()) {
-        resourceManagerDialog_.previewStatus = "Image source file is missing: " + normalizedPathText(sourcePath);
+    resourceManagerDialog_.previewSourcePath = normalizedPathText(sourcePath);
+
+    const auto cachedImage = imageResourceCache_.getOrLoad(sourcePath);
+    resourceManagerDialog_.previewImageAvailable = cachedImage.info.available
+        && cachedImage.encodedBytes != nullptr
+        && !cachedImage.encodedBytes->empty();
+    resourceManagerDialog_.previewImageWidth = cachedImage.info.width;
+    resourceManagerDialog_.previewImageHeight = cachedImage.info.height;
+
+    if (resourceManagerDialog_.previewImageAvailable) {
+        resourceManagerDialog_.previewStatus = "Scaled preview from " + normalizedPathText(sourcePath.filename());
         return;
     }
 
-    resourceManagerDialog_.previewImageBytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-    if (resourceManagerDialog_.previewImageBytes.empty()) {
-        resourceManagerDialog_.previewStatus = "Image source file is empty: " + normalizedPathText(sourcePath);
+    if (!cachedImage.info.error.empty()) {
+        resourceManagerDialog_.previewStatus = cachedImage.info.error;
         return;
     }
 
-    resourceManagerDialog_.previewImageAvailable = true;
-    resourceManagerDialog_.previewStatus = "Scaled preview from " + normalizedPathText(sourcePath.filename());
+    resourceManagerDialog_.previewStatus = "No preview available for " + normalizedPathText(sourcePath.filename());
 }
 
 bool MainWindow::addResourceFromDialog(model::ProjectResourceType resourceType)
@@ -1684,7 +1692,7 @@ void MainWindow::draw(visage::Canvas& canvas)
     drawMenuBar(canvas);
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
-    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, marqueeRect, canvasInteraction_.smartGuides);
+    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, &imageResourceCache_, marqueeRect, canvasInteraction_.smartGuides);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, settings_, document_.selectedWidgetIds().size());
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
@@ -5725,15 +5733,26 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             canvas.fill(previewContent.x + previewContent.width - 1.0f, previewContent.y, 1.0f, previewContent.height);
 
             const auto* selectedResource = document_.findResourceById(resourceManagerDialog_.selectedResourceId);
-            if (resourceManagerDialog_.previewImageAvailable && !resourceManagerDialog_.previewImageBytes.empty()) {
-                canvas.image(resourceManagerDialog_.previewImageBytes.data(),
-                    static_cast<int>(resourceManagerDialog_.previewImageBytes.size()),
-                    previewContent.x + 4.0f,
-                    previewContent.y + 4.0f,
-                    std::max(0.0f, previewContent.width - 8.0f),
-                    std::max(0.0f, previewContent.height - 8.0f));
+            if (resourceManagerDialog_.previewImageAvailable && !resourceManagerDialog_.previewSourcePath.empty()) {
+                const auto cachedImage = imageResourceCache_.getOrLoad(resourceManagerDialog_.previewSourcePath);
+                if (cachedImage.info.available && cachedImage.encodedBytes != nullptr && !cachedImage.encodedBytes->empty()) {
+                    const auto drawRect = resources::ImageResourceCache::computeDrawRect(
+                        previewContent.x + 4.0f,
+                        previewContent.y + 4.0f,
+                        std::max(0.0f, previewContent.width - 8.0f),
+                        std::max(0.0f, previewContent.height - 8.0f),
+                        cachedImage.info.width,
+                        cachedImage.info.height,
+                        resources::ImageScaleMode::Fit);
+                    canvas.image(cachedImage.encodedBytes->data(),
+                        static_cast<int>(cachedImage.encodedBytes->size()),
+                        drawRect.x,
+                        drawRect.y,
+                        drawRect.width,
+                        drawRect.height);
+                }
             }
-            else {
+            if (!resourceManagerDialog_.previewImageAvailable) {
                 std::string placeholderText = resourceManagerDialog_.previewStatus.empty()
                     ? std::string{ "No preview available." }
                     : resourceManagerDialog_.previewStatus;

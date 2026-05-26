@@ -57,6 +57,7 @@ add_executable(VisiForm
     src/app/main.cpp
     src/ui/MainWindow.cpp
     src/ui/DesignerCanvas.cpp
+    src/ui/resources/ImageResourceCache.cpp
     src/ui/WidgetMetrics.cpp
     src/ui/WidgetPalette.cpp
     src/ui/PropertyInspector.cpp

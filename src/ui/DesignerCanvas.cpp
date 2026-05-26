@@ -4,6 +4,7 @@
 
 #include "model/LookAndFeelRegistry.h"
 #include "ui/WidgetMetrics.h"
+#include "ui/resources/ImageResourceCache.h"
 
 #include <algorithm>
 #include <array>
@@ -69,37 +70,28 @@ struct GridColors {
     int majorLineColor = 0xff303744;
 };
 
-std::string imageWidgetDisplayText(const model::ProjectDocument& document, const model::WidgetNode& widget)
+std::string imageWidgetPlaceholderText(const resources::ResolvedImageSource& resolvedSource,
+    const resources::ImageResourceCache::CachedImageData* cachedImage = nullptr)
 {
-    const std::string resourceId = widget.getStringProperty("resourceId", {});
-    if (!resourceId.empty()) {
-        if (const auto* resource = document.findResourceById(resourceId)) {
-            std::string name = resource->displayName;
-            if (name.empty()) {
-                name = std::filesystem::path{ resource->sourcePath }.filename().string();
-            }
-            if (name.empty()) {
-                name = resource->id;
-            }
-
-            return "Image: " + name;
-        }
-
+    if (resolvedSource.missingResource) {
         return "Missing image resource";
     }
-
-    const std::string imagePath = widget.getStringProperty("imagePath", widget.getStringProperty("source", {}));
-    if (imagePath.empty()) {
+    if (!resolvedSource.hasImage) {
         return "Image";
     }
-
-    const std::filesystem::path path{ imagePath };
-    const std::string fileName = path.filename().string();
-    if (fileName.empty()) {
-        return "Image: " + imagePath;
+    if (cachedImage == nullptr) {
+        return resolvedSource.displayText.empty() ? std::string{ "Image" } : "Image: " + resolvedSource.displayText;
     }
-
-    return "Image: " + fileName;
+    if (cachedImage->info.available && cachedImage->encodedBytes != nullptr && !cachedImage->encodedBytes->empty()) {
+        return {};
+    }
+    if (cachedImage->info.error == "Image source file does not exist.") {
+        return "Missing image file";
+    }
+    if (!cachedImage->info.error.empty()) {
+        return "Image load failed";
+    }
+    return "Image";
 }
 
 PanelRect expandRect(const PanelRect& rect, float padding)
@@ -665,6 +657,7 @@ void drawWidget(visage::Canvas& canvas,
     const visage::Font& font,
     bool drawText,
     const model::ProjectDocument& document,
+    resources::ImageResourceCache* imageCache,
     const model::WidgetNode& widget,
     float formScreenX,
     float formScreenY,
@@ -986,23 +979,57 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::Image:
+    {
         canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        {
-            const std::string resourceId = widget.getStringProperty("resourceId", {});
-            const bool missingManagedResource = !resourceId.empty() && document.findResourceById(resourceId) == nullptr;
-            drawBorder(canvas, bounds, missingManagedResource ? 0xfff5c16c : style.borderColor, style.borderThickness);
+
+        const auto resolvedSource = resources::ImageResourceCache::resolveWidgetImageSource(document, widget);
+        const auto scaleMode = resources::ImageResourceCache::parseScaleMode(widget.getStringProperty("scaleMode", "Fit"));
+        const int warningBorderColor = 0xfff5c16c;
+        const int errorBorderColor = 0xffe17d7d;
+        int borderColor = style.borderColor;
+        std::string placeholderText = imageWidgetPlaceholderText(resolvedSource);
+        bool drewImage = false;
+
+        if (resolvedSource.missingResource) {
+            borderColor = warningBorderColor;
         }
-        if (drawText) {
-            const std::string resourceId = widget.getStringProperty("resourceId", {});
-            canvas.setColor(style.textColor);
-            if (!resourceId.empty() && document.findResourceById(resourceId) == nullptr) {
-                canvas.setColor(0xfff5c16c);
+        else if (resolvedSource.hasImage && imageCache != nullptr) {
+            const auto cachedImage = imageCache->getOrLoad(resolvedSource.sourcePath);
+            placeholderText = imageWidgetPlaceholderText(resolvedSource, &cachedImage);
+            if (cachedImage.info.available && cachedImage.encodedBytes != nullptr && !cachedImage.encodedBytes->empty()) {
+                const auto drawRect = resources::ImageResourceCache::computeDrawRect(
+                    bounds.x + 4.0f,
+                    bounds.y + 4.0f,
+                    std::max(0.0f, bounds.width - 8.0f),
+                    std::max(0.0f, bounds.height - 8.0f),
+                    cachedImage.info.width,
+                    cachedImage.info.height,
+                    scaleMode);
+                canvas.image(cachedImage.encodedBytes->data(),
+                    static_cast<int>(cachedImage.encodedBytes->size()),
+                    drawRect.x,
+                    drawRect.y,
+                    drawRect.width,
+                    drawRect.height);
+                drewImage = true;
             }
-            canvas.text(imageWidgetDisplayText(document, widget), widgetFont, visage::Font::kCenter,
+            else if (placeholderText == "Missing image file") {
+                borderColor = warningBorderColor;
+            }
+            else if (placeholderText == "Image load failed") {
+                borderColor = errorBorderColor;
+            }
+        }
+
+        drawBorder(canvas, bounds, borderColor, style.borderThickness);
+        if (drawText && !drewImage) {
+            canvas.setColor(borderColor == style.borderColor ? style.textColor : borderColor);
+            canvas.text(placeholderText, widgetFont, visage::Font::kCenter,
                 bounds.x + 6.0f, bounds.y, std::max(0.0f, bounds.width - 12.0f), bounds.height);
         }
         break;
+    }
     case model::WidgetType::Spacer:
         canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
@@ -1016,7 +1043,7 @@ void drawWidget(visage::Canvas& canvas,
 
     // Draw children from back to front so later children appear on top.
     for (const auto& child : widget.children) {
-        drawWidget(canvas, font, drawText, document, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
+        drawWidget(canvas, font, drawText, document, imageCache, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
             scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
     }
 
@@ -1238,6 +1265,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     const visage::Font& font,
     bool drawText,
     const model::ProjectDocument& document,
+    resources::ImageResourceCache* imageCache,
     const std::optional<SelectionRect>& marqueeRect,
     const std::vector<SmartGuide>& smartGuides) const
 {
@@ -1278,7 +1306,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
         return;
     }
 
-    drawWidget(canvas, font, drawText, document, document.root, previewLayout.form.x, previewLayout.form.y,
+    drawWidget(canvas, font, drawText, document, imageCache, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
         resizeHandleVisualSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
 

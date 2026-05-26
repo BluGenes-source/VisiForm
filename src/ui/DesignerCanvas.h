@@ -13,6 +13,10 @@
 
 namespace visiform::ui {
 
+namespace resources {
+class ImageResourceCache;
+}
+
 class DesignerCanvas {
 public:
     enum class HitRegion {
@@ -71,6 +75,7 @@ public:
         const visage::Font& font,
         bool drawText,
         const model::ProjectDocument& document,
+        resources::ImageResourceCache* imageCache,
         const std::optional<SelectionRect>& marqueeRect = std::nullopt,
         const std::vector<SmartGuide>& smartGuides = {}) const;
 
