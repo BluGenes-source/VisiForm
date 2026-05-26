@@ -2,6 +2,8 @@ find_package(Catch2 CONFIG REQUIRED)
 
 add_executable(VisiFormTests
     test_project_serialization.cpp
+    test_undo_redo_stack.cpp
+    ${CMAKE_SOURCE_DIR}/src/commands/UndoRedoStack.cpp
     ${CMAKE_SOURCE_DIR}/src/model/ProjectDocument.cpp
     ${CMAKE_SOURCE_DIR}/src/model/FormNode.cpp
     ${CMAKE_SOURCE_DIR}/src/model/WidgetNode.cpp

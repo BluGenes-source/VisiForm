@@ -2461,15 +2461,13 @@ void MainWindow::deleteSelectedWidget()
 
     const std::string widgetId = selectedWidget->id;
     const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
-    if (!document_.removeWidgetById(widgetId)) {
+    undoRedo_.executeCommand(std::make_unique<commands::DeleteWidgetCommand>(document_, widgetId));
+    if (document_.findWidgetById(widgetId) != nullptr) {
         setOperationStatus("Delete failed: " + widgetId);
         redraw();
         return;
     }
 
-    // TODO: Reconnect delete to `DeleteWidgetCommand` after the direct flow is verified stable.
-    undoRedo_.clear();
-    document_.selectWidget(document_.root.id);
     document_.markDirty();
     setOperationStatus("Deleted widget: " + displayName + " (" + widgetId + ")");
     redraw();
