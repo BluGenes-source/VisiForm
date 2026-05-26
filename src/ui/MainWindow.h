@@ -323,6 +323,9 @@ private:
     void loadAppSettings();
     void saveAppSettings();
     void applyCanvasSettings();
+    [[nodiscard]] bool hasSelectedNonRootWidgets(std::size_t minimumCount) const;
+    [[nodiscard]] model::WidgetNode* selectedNonRootWidget();
+    bool requireSelectedNonRootWidgets(std::size_t minimumCount, std::vector<model::WidgetNode*>& selectedWidgets);
     void fitSelectedWidgetToText();
     void copySelectedWidgets();
     void pasteWidgets();

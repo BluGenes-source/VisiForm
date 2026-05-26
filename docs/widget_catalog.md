@@ -183,6 +183,20 @@ Current generated runtime limitations:
 - no full retained-mode widget framework yet
 - no generated layout manager yet
 
+## StatusBar defaults
+
+Current editor-facing `StatusBar` defaults:
+
+- height `50`
+- `fields = 3`
+- `text0 = Ready`
+- `text1 = This`
+- `text2 = Cool`
+- `dock = Bottom`
+- `fillWidth = true`
+
+The `Property Inspector` now presents the editable field labels as `Section 1`, `Section 2`, `Section 3`, and `Section 4` instead of raw `text0`-style keys.
+
 ## Image widget notes
 
 Current `Image` widget properties:

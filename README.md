@@ -2,6 +2,8 @@
 
 *A C++ / Visage UI form builder that generates Visage-based C++ projects.*
 
+Current version: `1.0.0`
+
 ## Screenshot
 
    <img src="docs/screenshots/visiform-main-window.jpg" alt="VisiForm main window" width="900">

@@ -2,6 +2,8 @@
 
 #include "app/App.h"
 
+#include "app/Version.h"
+
 #include "ui/MainWindow.h"
 
 #include <stdexcept>
@@ -54,7 +56,7 @@ void App::shutdown() noexcept
 
 std::string App::applicationName() const
 {
-    return "VisiForm";
+    return std::string{ BuildName };
 }
 
 } // namespace visiform

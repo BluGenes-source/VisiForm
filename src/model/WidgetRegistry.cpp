@@ -77,14 +77,15 @@ WidgetDefinition makeStatusBarDefinition()
     definition.defaultHint = "Displays status messages in one or more fields.";
     definition.size = { 600.0f, 50.0f, 200.0f, 44.0f };
     definition.properties = {
-        { "fields", "fields", 1, PropertyEditKind::Integer, true, "Number of status fields (1-4)." },
-        { "text0", "text0", "Ready", PropertyEditKind::Text, true, "Text for field 0." },
-        { "text1", "text1", "", PropertyEditKind::Text, true, "Text for field 1." },
-        { "text2", "text2", "", PropertyEditKind::Text, true, "Text for field 2." },
-        { "fieldWidths", "fieldWidths", "1", PropertyEditKind::Text, true, "Relative field widths e.g. \"1,2,1\"." },
-        { "dock", "dock", "Bottom", PropertyEditKind::Text, true, "Simple docking mode for the editor.", { "Bottom", "None" } },
-        { "fillWidth", "fillWidth", true, PropertyEditKind::Bool, true, "Stretch the status bar to the root form width when docked." },
-        { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+        { "fields", "Sections", 3, PropertyEditKind::Integer, true, "Number of status sections (1-4)." },
+        { "text0", "Section 1", "Ready", PropertyEditKind::Text, true, "Text for section 1." },
+        { "text1", "Section 2", "This", PropertyEditKind::Text, true, "Text for section 2." },
+        { "text2", "Section 3", "Cool", PropertyEditKind::Text, true, "Text for section 3." },
+        { "text3", "Section 4", "", PropertyEditKind::Text, true, "Text for section 4." },
+        { "fieldWidths", "Section Widths", "1,1,1", PropertyEditKind::Text, true, "Relative section widths e.g. \"1,2,1\"." },
+        { "dock", "Dock", "Bottom", PropertyEditKind::Text, true, "Simple docking mode for the editor.", { "Bottom", "None" } },
+        { "fillWidth", "Fill Width", true, PropertyEditKind::Bool, true, "Stretch the status bar to the root form width when docked." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());

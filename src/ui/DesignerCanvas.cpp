@@ -710,7 +710,6 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::StatusBar: {
-        // Draw a horizontal status bar divided into fields
         canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
@@ -718,6 +717,9 @@ void drawWidget(visage::Canvas& canvas,
         int fields = static_cast<int>(getNumericProperty(widget, "fields", 1.0f));
         fields = std::clamp(fields, 1, 4);
         const float fieldWidth = bounds.width / static_cast<float>(fields);
+        const float fieldInset = std::min(10.0f, std::max(6.0f, bounds.height * 0.16f));
+        const float textTop = centeredTextTop(bounds.y + 1.0f, std::max(0.0f, bounds.height - 2.0f), fontSize);
+        const float textHeight = std::max(0.0f, bounds.height - 4.0f);
         for (int i = 0; i < fields; ++i) {
             const float fx = bounds.x + fieldWidth * static_cast<float>(i);
             const float fw = fieldWidth;
@@ -726,11 +728,11 @@ void drawWidget(visage::Canvas& canvas,
                 const std::string text = getDisplayTextOrFallback(widget, key, i == 0 ? "Ready" : "");
                 canvas.setColor(style.textColor);
                 canvas.text(text, widgetFont, visage::Font::kTopLeft,
-                    fx + 6.0f, centeredTextTop(bounds.y, bounds.height, fontSize), fw - 12.0f, bounds.height - 8.0f);
+                    fx + fieldInset, textTop, std::max(0.0f, fw - fieldInset * 2.0f), textHeight);
             }
             if (i + 1 < fields) {
                 canvas.setColor(style.borderColor);
-                canvas.fill(fx + fw - 1.0f, bounds.y + 4.0f, 1.0f, bounds.height - 8.0f);
+                canvas.fill(fx + fw - 1.0f, bounds.y + fieldInset * 0.5f, 1.0f, std::max(0.0f, bounds.height - fieldInset));
             }
         }
         break;

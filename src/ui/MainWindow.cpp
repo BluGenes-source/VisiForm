@@ -2,6 +2,7 @@
 
 #include "ui/MainWindow.h"
 
+#include "app/Version.h"
 #include "commands/Command.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetRegistry.h"
@@ -36,7 +37,6 @@
 namespace visiform::ui {
 namespace {
 
-constexpr auto kWindowTitle = "VisiForm - Visage Form Builder";
 constexpr float kMenuBarHeight = 30.0f;
 constexpr float kToolbarHeight = 42.0f;
 constexpr float kStatusBarHeight = 28.0f;
@@ -873,7 +873,7 @@ std::filesystem::path suggestedProjectPath(const model::ProjectDocument& documen
 
 MainWindow::MainWindow()
 {
-    setTitle(kWindowTitle);
+    setTitle(makeWindowTitle(false));
     loadLabelFont();
     loadAppSettings();
     applyCanvasSettings();
@@ -2295,6 +2295,51 @@ void MainWindow::toggleSmartGuides()
     redraw();
 }
 
+bool MainWindow::hasSelectedNonRootWidgets(std::size_t minimumCount) const
+{
+    if (minimumCount == 0) {
+        return true;
+    }
+
+    std::size_t count = 0;
+    for (const auto* widget : document_.selectedWidgets()) {
+        if (widget == nullptr || document_.isRootWidgetId(widget->id)) {
+            continue;
+        }
+
+        ++count;
+        if (count >= minimumCount) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+model::WidgetNode* MainWindow::selectedNonRootWidget()
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr || document_.isRootWidgetId(widget->id)) {
+        return nullptr;
+    }
+
+    return widget;
+}
+
+bool MainWindow::requireSelectedNonRootWidgets(std::size_t minimumCount, std::vector<model::WidgetNode*>& selectedWidgets)
+{
+    selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() >= minimumCount) {
+        return true;
+    }
+
+    setOperationStatus(minimumCount <= 1
+            ? "Select one or more widgets first."
+            : "Select two or more widgets for this layout command.");
+    redraw();
+    return false;
+}
+
 bool MainWindow::isMultiSelectModeEnabled() const
 {
     return multiSelectMode_;
@@ -2309,8 +2354,9 @@ void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveS
 
     clearCanvasInteraction();
     if (!additiveSelection) {
-        statusMessage_.clear();
         document_.setSelection(widgetId);
+        updatePropertyEditorBounds();
+        setOperationStatus("Selected: " + widgetDisplayName(*widget) + " (" + widgetId + ")");
         redraw();
         return;
     }
@@ -2331,6 +2377,7 @@ void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveS
     else {
         setOperationStatus("Removed from selection: " + widgetDisplayName(*widget) + " (" + widgetId + ")");
     }
+    updatePropertyEditorBounds();
     redraw();
 }
 
@@ -2615,9 +2662,9 @@ bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const 
 
 void MainWindow::fitSelectedWidgetToText()
 {
-    auto* widget = document_.selectedWidget();
+    auto* widget = selectedNonRootWidget();
     if (widget == nullptr) {
-        setOperationStatus("No widget selected");
+        setOperationStatus("Select one or more widgets first.");
         redraw();
         return;
     }
@@ -3660,7 +3707,7 @@ void MainWindow::applyLayout(const WindowLayout& layout)
 
 void MainWindow::updateWindowTitle()
 {
-    setTitle(document_.dirty ? "VisiForm - Visage Form Builder *" : kWindowTitle);
+    setTitle(makeWindowTitle(document_.dirty));
 }
 
 std::string MainWindow::commandShortcutText(CommandId command) const
@@ -3774,9 +3821,8 @@ std::string MainWindow::commandHintText(CommandId command) const
 
 bool MainWindow::isCommandEnabled(CommandId command) const
 {
-    const auto* selectedWidget = document_.selectedWidget();
-    const bool hasNonRootSelection = selectedWidget != nullptr && !document_.isRootWidgetId(selectedWidget->id);
-    const bool hasMultiSelection = document_.selectedWidgetIds().size() >= 2;
+    const bool hasNonRootSelection = hasSelectedNonRootWidgets(1);
+    const bool hasMultiSelection = hasSelectedNonRootWidgets(2);
 
     switch (command) {
     case CommandId::UndoAction:
@@ -4216,10 +4262,16 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
 
 void MainWindow::selectWidget(const std::string& widgetId)
 {
-    statusMessage_.clear();
     hoverHint_.clear();
     cancelInspectorEdit();
     document_.selectWidget(widgetId);
+    updatePropertyEditorBounds();
+    if (const auto* widget = document_.selectedWidget()) {
+        setOperationStatus("Selected: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    }
+    else {
+        statusMessage_.clear();
+    }
     redraw();
 }
 
@@ -4425,10 +4477,7 @@ bool MainWindow::executeCommand(CommandId command)
             "Open that file from the workspace to inspect the full markdown report.");
         return true;
     case CommandId::ShowAboutDialog:
-        showEditorMessageDialog("About VisiForm",
-            "VisiForm\n"
-            "Visage form builder editor\n"
-            "Phase 59 adds a menu bar, shared commands, and centered editor modals.");
+        showEditorMessageDialog("About VisiForm", visiform::aboutDialogText());
         return true;
     case CommandId::ShowKeyboardShortcuts:
         showEditorMessageDialog("Keyboard Shortcuts",
