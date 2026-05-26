@@ -1,6 +1,8 @@
 #include "ui/resources/ImageResourceCache.h"
 
 #include <algorithm>
+#include <bimg/decode.h>
+#include <bx/allocator.h>
 #include <cmath>
 #include <fstream>
 
@@ -16,6 +18,12 @@ std::string imageDisplayText(const std::filesystem::path& sourcePath)
 {
     const std::string fileName = sourcePath.filename().string();
     return fileName.empty() ? sourcePath.string() : fileName;
+}
+
+bx::DefaultAllocator* allocator()
+{
+    static bx::DefaultAllocator allocator;
+    return &allocator;
 }
 
 } // namespace
@@ -179,6 +187,16 @@ ImageResourceCache::CachedImageData ImageResourceCache::loadImage(const std::fil
         data.info.error = "Failed to read image source file.";
         return data;
     }
+
+    bimg::ImageContainer* imageContainer = bimg::imageParse(allocator(), bytes->data(), static_cast<uint32_t>(bytes->size()));
+    if (imageContainer == nullptr) {
+        data.info.error = "Failed to decode image source file.";
+        return data;
+    }
+
+    data.info.width = imageContainer->m_width;
+    data.info.height = imageContainer->m_height;
+    bimg::imageFree(imageContainer);
 
     data.info.available = !bytes->empty();
     data.encodedBytes = std::move(bytes);

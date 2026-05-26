@@ -5,6 +5,17 @@
 #include <utility>
 
 namespace visiform::commands {
+namespace {
+
+void restoreSelection(model::ProjectDocument& document, const std::vector<std::string>& selectedWidgetIds)
+{
+    document.clearSelection();
+    for (const auto& widgetId : selectedWidgetIds) {
+        document.addToSelection(widgetId);
+    }
+}
+
+} // namespace
 
 AddWidgetCommand::AddWidgetCommand(model::ProjectDocument& document, std::string parentId, model::WidgetNode widget, std::string selectionAfterExecute)
     : document_(document)
@@ -98,6 +109,40 @@ void MoveWidgetCommand::undo()
 std::string MoveWidgetCommand::description() const
 {
     return "Move widget";
+}
+
+MoveWidgetsCommand::MoveWidgetsCommand(model::ProjectDocument& document,
+    std::vector<WidgetBoundsChange> boundsChanges,
+    std::vector<std::string> selectedWidgetIds)
+    : document_(document)
+    , boundsChanges_(std::move(boundsChanges))
+    , selectedWidgetIds_(std::move(selectedWidgetIds))
+{
+}
+
+void MoveWidgetsCommand::execute()
+{
+    for (const auto& change : boundsChanges_) {
+        if (auto* widget = document_.findWidgetById(change.widgetId)) {
+            widget->bounds = change.afterBounds;
+        }
+    }
+    restoreSelection(document_, selectedWidgetIds_);
+}
+
+void MoveWidgetsCommand::undo()
+{
+    for (const auto& change : boundsChanges_) {
+        if (auto* widget = document_.findWidgetById(change.widgetId)) {
+            widget->bounds = change.beforeBounds;
+        }
+    }
+    restoreSelection(document_, selectedWidgetIds_);
+}
+
+std::string MoveWidgetsCommand::description() const
+{
+    return boundsChanges_.size() > 1 ? "Move widgets" : "Move widget";
 }
 
 ResizeWidgetCommand::ResizeWidgetCommand(model::ProjectDocument& document, std::string widgetId, model::Rect beforeBounds, model::Rect afterBounds)

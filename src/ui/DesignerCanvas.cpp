@@ -1006,6 +1006,7 @@ void drawWidget(visage::Canvas& canvas,
                     cachedImage.info.width,
                     cachedImage.info.height,
                     scaleMode);
+                canvas.setColor(0xffffffff);
                 canvas.image(cachedImage.encodedBytes->data(),
                     static_cast<int>(cachedImage.encodedBytes->size()),
                     drawRect.x,

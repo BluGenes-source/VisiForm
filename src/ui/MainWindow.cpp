@@ -2093,7 +2093,22 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
     auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
     if (canvasInteraction_.changed && widget != nullptr) {
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move && canvasInteraction_.selectionBounds.size() > 1) {
-            undoRedo_.clear();
+            std::vector<commands::MoveWidgetsCommand::WidgetBoundsChange> boundsChanges;
+            boundsChanges.reserve(canvasInteraction_.selectionBounds.size());
+            for (const auto& snapshot : canvasInteraction_.selectionBounds) {
+                auto* selectedWidget = document_.findWidgetById(snapshot.widgetId);
+                if (selectedWidget == nullptr) {
+                    continue;
+                }
+
+                boundsChanges.push_back({ snapshot.widgetId, snapshot.originalBounds, selectedWidget->bounds });
+                selectedWidget->bounds = snapshot.originalBounds;
+            }
+
+            if (!boundsChanges.empty()) {
+                undoRedo_.executeCommand(std::make_unique<commands::MoveWidgetsCommand>(
+                    document_, std::move(boundsChanges), document_.selectedWidgetIds()));
+            }
             document_.markDirty();
             setOperationStatus(canvasInteraction_.smartGuideSnapUsed
                 ? "Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets with smart guide snap"
@@ -5744,6 +5759,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                         cachedImage.info.width,
                         cachedImage.info.height,
                         resources::ImageScaleMode::Fit);
+                    canvas.setColor(0xffffffff);
                     canvas.image(cachedImage.encodedBytes->data(),
                         static_cast<int>(cachedImage.encodedBytes->size()),
                         drawRect.x,
