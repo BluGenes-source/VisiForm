@@ -1,9 +1,9 @@
 #include "ui/MainWindow.h"
 
-#include "ui/MainWindow.h"
-
 #include "app/Version.h"
 #include "commands/Command.h"
+#include "commands/CommandIds.h"
+#include "commands/CommandRegistry.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetRegistry.h"
 #include "serialization/JsonProjectReader.h"
@@ -909,6 +909,30 @@ bool MainWindow::openNewProjectWizard()
     return true;
 }
 
+bool MainWindow::openKeyboardShortcutsDialog()
+{
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    populateKeyboardShortcutsDialog();
+    keyboardShortcutDialog_.visible = true;
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::KeyboardShortcuts;
+    editorModal_.title = "Keyboard Shortcuts";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = { { "apply_shortcuts", "Apply" }, { "reset_shortcut", "Reset" }, { "close", "Close" } };
+    editorModal_.result.clear();
+    editorModal_.statusText = "Edit shortcuts using forms like Ctrl+S, Ctrl+Shift+S, Delete, or Alt+F4. Leave a shortcut empty to disable it.";
+    editorModal_.preferredWidth = kProjectSettingsModalWidth;
+    editorModal_.preferredHeight = kProjectSettingsModalHeight;
+    redraw();
+    return true;
+}
+
 bool MainWindow::openProjectSettingsDialog()
 {
     cancelInspectorEdit();
@@ -988,6 +1012,16 @@ void MainWindow::populateResourceManagerDialog()
     refreshResourceManagerPreview();
 }
 
+void MainWindow::populateKeyboardShortcutsDialog()
+{
+    keyboardShortcutDialog_ = {};
+    keyboardShortcutDialog_.pendingShortcuts = settings_.keyboardShortcuts;
+    const auto& definitions = commands::CommandRegistry::definitions();
+    if (!definitions.empty()) {
+        keyboardShortcutDialog_.selectedCommandId = std::string{ definitions.front().id };
+    }
+}
+
 void MainWindow::refreshResourceManagerPreview()
 {
     resourceManagerDialog_.previewSourcePath.clear();
@@ -1061,8 +1095,10 @@ bool MainWindow::addResourceFromDialog(model::ProjectResourceType resourceType)
     resource.displayName = defaultResourceDisplayName(*selectedPath);
     resource.sourcePath = normalizedPathText(*selectedPath);
     resource.exportRelativePath = defaultResourceExportRelativePath(resourceType, *selectedPath, document_);
-    document_.resources.push_back(resource);
-    document_.markDirty();
+    applyUndoableDocumentChange("Add resource", [this, &resource]() {
+        document_.resources.push_back(resource);
+        return true;
+    });
 
     resourceManagerDialog_.selectedResourceId = resource.id;
     resourceManagerDialog_.confirmReferencedRemoval = false;
@@ -1070,6 +1106,107 @@ bool MainWindow::addResourceFromDialog(model::ProjectResourceType resourceType)
     editorModal_.statusText = "Added " + resourceTypeDisplayName(resourceType) + " resource: " + resourceDisplayLabel(resource);
     redraw();
     return true;
+}
+
+std::string MainWindow::keyboardShortcutDialogEffectiveText(const std::string& commandId) const
+{
+    if (commandId.empty()) {
+        return {};
+    }
+
+    if (const auto iterator = keyboardShortcutDialog_.pendingShortcuts.find(commandId); iterator != keyboardShortcutDialog_.pendingShortcuts.end()) {
+        return iterator->second;
+    }
+
+    if (const auto* definition = commands::CommandRegistry::find(commandId)) {
+        return std::string{ definition->defaultShortcut };
+    }
+
+    return {};
+}
+
+std::string MainWindow::validateKeyboardShortcutDialog() const
+{
+    std::map<std::string, std::string> normalizedByGesture;
+    for (const auto& definition : commands::CommandRegistry::definitions()) {
+        const std::string commandId{ definition.id };
+        std::string shortcut = keyboardShortcutDialogEffectiveText(commandId);
+        if (shortcut.empty()) {
+            continue;
+        }
+
+        const auto parsedShortcut = commands::CommandRegistry::parseShortcutString(shortcut);
+        if (!parsedShortcut.has_value()) {
+            return std::string{ definition.displayName } + ": invalid shortcut format.";
+        }
+
+        shortcut = commands::CommandRegistry::formatShortcut(*parsedShortcut);
+        if (const auto iterator = normalizedByGesture.find(shortcut); iterator != normalizedByGesture.end()) {
+            const auto* existingDefinition = commands::CommandRegistry::find(iterator->second);
+            const std::string existingName = existingDefinition != nullptr
+                ? std::string{ existingDefinition->displayName }
+                : iterator->second;
+            return std::string{ definition.displayName } + " conflicts with " + existingName + ".";
+        }
+
+        normalizedByGesture.emplace(shortcut, commandId);
+    }
+
+    return {};
+}
+
+bool MainWindow::applyKeyboardShortcutsDialog()
+{
+    const std::string validationError = validateKeyboardShortcutDialog();
+    if (!validationError.empty()) {
+        editorModal_.statusText = validationError;
+        redraw();
+        return false;
+    }
+
+    std::map<std::string, std::string> normalizedOverrides;
+    for (const auto& definition : commands::CommandRegistry::definitions()) {
+        const std::string commandId{ definition.id };
+        const std::string pendingShortcut = keyboardShortcutDialogEffectiveText(commandId);
+        const auto parsedShortcut = pendingShortcut.empty()
+            ? std::optional<commands::ShortcutGesture>{}
+            : commands::CommandRegistry::parseShortcutString(pendingShortcut);
+        const std::string normalizedShortcut = parsedShortcut.has_value()
+            ? commands::CommandRegistry::formatShortcut(*parsedShortcut)
+            : std::string{};
+        const auto parsedDefault = std::string{ definition.defaultShortcut }.empty()
+            ? std::optional<commands::ShortcutGesture>{}
+            : commands::CommandRegistry::parseShortcutString(definition.defaultShortcut);
+        const std::string normalizedDefault = parsedDefault.has_value()
+            ? commands::CommandRegistry::formatShortcut(*parsedDefault)
+            : std::string{};
+
+        if (normalizedShortcut == normalizedDefault) {
+            continue;
+        }
+
+        if (normalizedShortcut.empty() || !pendingShortcut.empty()) {
+            normalizedOverrides[commandId] = normalizedShortcut;
+        }
+    }
+
+    settings_.keyboardShortcuts = normalizedOverrides;
+    saveAppSettings();
+    keyboardShortcutDialog_.pendingShortcuts = settings_.keyboardShortcuts;
+    editorModal_.statusText = "Keyboard shortcuts updated.";
+    redraw();
+    return true;
+}
+
+void MainWindow::resetSelectedKeyboardShortcut()
+{
+    if (keyboardShortcutDialog_.selectedCommandId.empty()) {
+        return;
+    }
+
+    keyboardShortcutDialog_.pendingShortcuts.erase(keyboardShortcutDialog_.selectedCommandId);
+    editorModal_.statusText = "Shortcut reset to default.";
+    redraw();
 }
 
 bool MainWindow::removeSelectedResourceFromManager()
@@ -1090,7 +1227,9 @@ bool MainWindow::removeSelectedResourceFromManager()
     }
 
     const std::string removedResourceId = resourceManagerDialog_.selectedResourceId;
-    if (!document_.removeResourceById(removedResourceId)) {
+    if (!applyUndoableDocumentChange("Remove resource", [this, &removedResourceId]() {
+            return document_.removeResourceById(removedResourceId);
+        })) {
         editorModal_.statusText = "Failed to remove the selected resource.";
         redraw();
         return false;
@@ -1100,6 +1239,24 @@ bool MainWindow::removeSelectedResourceFromManager()
     populateResourceManagerDialog();
     editorModal_.statusText = "Removed resource: " + removedResourceId;
     redraw();
+    return true;
+}
+
+bool MainWindow::applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange)
+{
+    model::ProjectDocument beforeDocument = document_;
+    if (!applyChange()) {
+        return false;
+    }
+
+    model::ProjectDocument afterDocument = document_;
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        description,
+        std::move(beforeDocument),
+        std::move(afterDocument)));
+    document_.markDirty();
     return true;
 }
 
@@ -1692,7 +1849,9 @@ void MainWindow::draw(visage::Canvas& canvas)
     drawMenuBar(canvas);
     drawToolbar(canvas);
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
-    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, &imageResourceCache_, marqueeRect, canvasInteraction_.smartGuides);
+    const bool simplifySelectedImages = canvasInteraction_.mode == CanvasInteractionState::Mode::Move
+        || canvasInteraction_.mode == CanvasInteractionState::Mode::Resize;
+    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, &imageResourceCache_, simplifySelectedImages, marqueeRect, canvasInteraction_.smartGuides);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, settings_, document_.selectedWidgetIds().size());
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
@@ -2093,7 +2252,20 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
     auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
     if (canvasInteraction_.changed && widget != nullptr) {
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move && canvasInteraction_.selectionBounds.size() > 1) {
-            undoRedo_.clear();
+            model::ProjectDocument afterDocument = document_;
+            model::ProjectDocument beforeDocument = document_;
+            for (const auto& snapshot : canvasInteraction_.selectionBounds) {
+                if (auto* selectedWidget = beforeDocument.findWidgetById(snapshot.widgetId)) {
+                    selectedWidget->bounds = snapshot.originalBounds;
+                }
+            }
+
+            document_ = beforeDocument;
+            undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+                document_,
+                "Move widgets",
+                std::move(beforeDocument),
+                std::move(afterDocument)));
             document_.markDirty();
             setOperationStatus(canvasInteraction_.smartGuideSnapUsed
                 ? "Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets with smart guide snap"
@@ -2207,11 +2379,6 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
         return false;
     }
 
-    if (e.keyCode() == KeyCode::Delete) {
-        deleteSelectedWidget();
-        return true;
-    }
-
     if (e.keyCode() == KeyCode::Left || e.keyCode() == KeyCode::Right
         || e.keyCode() == KeyCode::Up || e.keyCode() == KeyCode::Down) {
         const float amount = e.isShiftDown() ? static_cast<float>(std::max(1, designerCanvas_.gridSize())) : 1.0f;
@@ -2230,47 +2397,50 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
         return true;
     }
 
-    if (!e.isCtrlDown()) {
-        return false;
+    const auto matchesCommandShortcut = [this, &e](CommandId command) {
+        const std::string shortcutText = commandShortcutText(command);
+        if (shortcutText.empty()) {
+            return false;
+        }
+
+        const auto shortcut = commands::CommandRegistry::parseShortcutString(shortcutText);
+        return shortcut.has_value() && commands::CommandRegistry::matchesShortcut(*shortcut, e);
+    };
+
+    constexpr std::array<CommandId, 20> shortcutCommands = {
+        CommandId::DeleteWidget,
+        CommandId::NewProject,
+        CommandId::OpenProject,
+        CommandId::SaveProject,
+        CommandId::SaveProjectAsDialog,
+        CommandId::ExportCode,
+        CommandId::UndoAction,
+        CommandId::RedoAction,
+        CommandId::CopyWidgets,
+        CommandId::PasteWidgets,
+        CommandId::DuplicateWidget,
+        CommandId::ToggleGrid,
+        CommandId::ToggleSmartGuides,
+        CommandId::ToggleSnap,
+        CommandId::ValidateProject,
+        CommandId::ShowResourceManager,
+        CommandId::ShowKeyboardShortcuts,
+        CommandId::AlignLeft,
+        CommandId::AlignRight,
+        CommandId::FitText
+    };
+
+    for (CommandId command : shortcutCommands) {
+        if (!matchesCommandShortcut(command) || !isCommandEnabled(command)) {
+            continue;
+        }
+
+        return executeCommand(command);
     }
 
-    if (e.isShiftDown() && e.keyCode() == KeyCode::S) {
-        return saveProjectAsDialog();
-    }
-
-    if (e.keyCode() == KeyCode::N) {
-        return newProject();
-    }
-    if (e.keyCode() == KeyCode::O) {
-        return openProjectDialog();
-    }
-    if (e.keyCode() == KeyCode::S) {
-        return saveProject();
-    }
-    if (e.keyCode() == KeyCode::D) {
-        duplicateSelectedWidget();
-        return true;
-    }
-    if (e.keyCode() == KeyCode::C) {
-        copySelectedWidgets();
-        return true;
-    }
-    if (e.keyCode() == KeyCode::V) {
-        pasteWidgets();
-        return true;
-    }
-    if (e.keyCode() == KeyCode::Z) {
-        if (e.isShiftDown()) {
-            redo();
-        }
-        else {
-            undo();
-        }
-        return true;
-    }
-    if (e.keyCode() == KeyCode::Y) {
-        redo();
-        return true;
+    if (const auto redoAlternate = commands::CommandRegistry::parseShortcutString("Ctrl+Shift+Z");
+        redoAlternate.has_value() && commands::CommandRegistry::matchesShortcut(*redoAlternate, e) && isCommandEnabled(CommandId::RedoAction)) {
+        return executeCommand(CommandId::RedoAction);
     }
 
     return false;
@@ -2428,6 +2598,7 @@ void MainWindow::deleteSelectedWidget()
         });
 
         int removedCount = 0;
+        model::ProjectDocument beforeDocument = document_;
         for (const auto& id : ids) {
             if (document_.findWidgetById(id) != nullptr && document_.removeWidgetById(id)) {
                 ++removedCount;
@@ -2436,7 +2607,13 @@ void MainWindow::deleteSelectedWidget()
 
         document_.setSelection(document_.root.id);
         if (removedCount > 0) {
-            undoRedo_.clear();
+            model::ProjectDocument afterDocument = document_;
+            document_ = beforeDocument;
+            undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+                document_,
+                removedCount == 1 ? std::string{ "Delete widget" } : std::string{ "Delete widgets" },
+                std::move(beforeDocument),
+                std::move(afterDocument)));
             document_.markDirty();
             setOperationStatus("Deleted " + std::to_string(removedCount) + " widgets");
         }
@@ -2461,15 +2638,21 @@ void MainWindow::deleteSelectedWidget()
 
     const std::string widgetId = selectedWidget->id;
     const std::string displayName = selectedWidget->name.empty() ? selectedWidget->id : selectedWidget->name;
+    model::ProjectDocument beforeDocument = document_;
     if (!document_.removeWidgetById(widgetId)) {
         setOperationStatus("Delete failed: " + widgetId);
         redraw();
         return;
     }
 
-    // TODO: Reconnect delete to `DeleteWidgetCommand` after the direct flow is verified stable.
-    undoRedo_.clear();
     document_.selectWidget(document_.root.id);
+    model::ProjectDocument afterDocument = document_;
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Delete widget",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus("Deleted widget: " + displayName + " (" + widgetId + ")");
     redraw();
@@ -2492,6 +2675,7 @@ void MainWindow::duplicateSelectedWidget()
 
     const std::string selectedId = selectedWidget->id;
     const bool hadMultiSelection = document_.hasMultiSelection();
+    model::ProjectDocument beforeDocument = document_;
 
     auto* duplicate = document_.duplicateWidgetById(selectedId, idGenerator_);
     if (duplicate == nullptr) {
@@ -2504,9 +2688,14 @@ void MainWindow::duplicateSelectedWidget()
     const std::string displayName = duplicate->name.empty() ? duplicate->id : duplicate->name;
     document_.normalizeRadioGroups();
 
-    // TODO: Reconnect duplicate to `AddWidgetCommand` or a dedicated duplicate command after the direct flow is verified stable.
-    undoRedo_.clear();
     document_.setSelection(duplicateId);
+    model::ProjectDocument afterDocument = document_;
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Duplicate widget",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus(hadMultiSelection
         ? "Duplicated primary widget: " + displayName + " (" + duplicateId + ")"
@@ -2517,6 +2706,8 @@ void MainWindow::duplicateSelectedWidget()
 void MainWindow::undo()
 {
     if (!undoRedo_.canUndo()) {
+        setOperationStatus("Nothing to undo");
+        redraw();
         return;
     }
 
@@ -2530,6 +2721,8 @@ void MainWindow::undo()
 void MainWindow::redo()
 {
     if (!undoRedo_.canRedo()) {
+        setOperationStatus("Nothing to redo");
+        redraw();
         return;
     }
 
@@ -2704,18 +2897,24 @@ void MainWindow::fitSelectedWidgetToText()
 
     const float oldWidth = widget->bounds.width;
     const float oldHeight = widget->bounds.height;
-    if (!autoSizeWidgetForTextProperty(*widget, key, valueText)) {
+    float newWidth = oldWidth;
+    float newHeight = oldHeight;
+    const std::string displayName = widget->name.empty() ? widget->id : widget->name;
+    if (!applyUndoableDocumentChange("Fit text", [this, widget, &key, &valueText, &newWidth, &newHeight]() {
+            const bool changed = autoSizeWidgetForTextProperty(*widget, key, valueText);
+            newWidth = widget->bounds.width;
+            newHeight = widget->bounds.height;
+            return changed;
+        })) {
         setOperationStatus("Fit text: already large enough");
         redraw();
         return;
     }
 
-    document_.markDirty();
-    const std::string displayName = widget->name.empty() ? widget->id : widget->name;
     setOperationStatus("Fit text: " + displayName + " width " + std::to_string(static_cast<int>(oldWidth))
-        + " -> " + std::to_string(static_cast<int>(widget->bounds.width))
+        + " -> " + std::to_string(static_cast<int>(newWidth))
         + ", height " + std::to_string(static_cast<int>(oldHeight))
-        + " -> " + std::to_string(static_cast<int>(widget->bounds.height)));
+        + " -> " + std::to_string(static_cast<int>(newHeight)));
     updatePropertyEditorBounds();
     redraw();
 }
@@ -2751,6 +2950,7 @@ void MainWindow::pasteWidgets()
     }
 
     ++pasteCount_;
+    model::ProjectDocument beforeDocument = document_;
     const float offset = static_cast<float>(pasteCount_ * 20);
     std::set<std::string> generatedIds;
     std::vector<std::string> pastedIds;
@@ -2779,7 +2979,13 @@ void MainWindow::pasteWidgets()
 
     normalizeWidgetBoundsForEditor();
     document_.normalizeRadioGroups();
-    undoRedo_.clear();
+    model::ProjectDocument afterDocument = document_;
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        pastedIds.size() == 1 ? std::string{ "Paste widget" } : std::string{ "Paste widgets" },
+        std::move(beforeDocument),
+        std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus("Pasted " + std::to_string(pastedIds.size()) + " widgets");
     redraw();
@@ -2801,6 +3007,7 @@ void MainWindow::alignSelectedLeft()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         float targetX = selectedWidgets.front()->bounds.x;
         for (const auto* selected : selectedWidgets) {
             if (!document_.isRootWidgetId(selected->id)) {
@@ -2808,21 +3015,27 @@ void MainWindow::alignSelectedLeft()
             }
         }
         targetX = snapToCanvasGrid(designerCanvas_, targetX);
-        for (auto* selected : selectedWidgets) {
-            if (!document_.isRootWidgetId(selected->id)) {
-                selected->bounds.x = targetX;
+        applyUndoableDocumentChange("Align left", [this, &selectedWidgets, targetX]() {
+            for (auto* selected : selectedWidgets) {
+                if (!document_.isRootWidgetId(selected->id)) {
+                    selected->bounds.x = targetX;
+                }
             }
-        }
-        document_.markDirty();
-        setOperationStatus("Aligned left: " + std::to_string(selectedWidgets.size()) + " widgets");
+            return true;
+        });
+        setOperationStatus("Aligned left: " + std::to_string(selectedCount) + " widgets");
         updatePropertyEditorBounds();
         redraw();
         return;
     }
 
-    widget->bounds.x = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
-    document_.markDirty();
-    setOperationStatus("Aligned left: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    const std::string displayName = widgetDisplayName(*widget);
+    const std::string widgetId = widget->id;
+    applyUndoableDocumentChange("Align left", [this, widget]() {
+        widget->bounds.x = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
+        return true;
+    });
+    setOperationStatus("Aligned left: " + displayName + " (" + widgetId + ")");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -2843,6 +3056,7 @@ void MainWindow::alignSelectedTop()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         float targetY = selectedWidgets.front()->bounds.y;
         for (const auto* selected : selectedWidgets) {
             if (!document_.isRootWidgetId(selected->id)) {
@@ -2850,21 +3064,27 @@ void MainWindow::alignSelectedTop()
             }
         }
         targetY = snapToCanvasGrid(designerCanvas_, targetY);
-        for (auto* selected : selectedWidgets) {
-            if (!document_.isRootWidgetId(selected->id)) {
-                selected->bounds.y = targetY;
+        applyUndoableDocumentChange("Align top", [this, &selectedWidgets, targetY]() {
+            for (auto* selected : selectedWidgets) {
+                if (!document_.isRootWidgetId(selected->id)) {
+                    selected->bounds.y = targetY;
+                }
             }
-        }
-        document_.markDirty();
-        setOperationStatus("Aligned top: " + std::to_string(selectedWidgets.size()) + " widgets");
+            return true;
+        });
+        setOperationStatus("Aligned top: " + std::to_string(selectedCount) + " widgets");
         updatePropertyEditorBounds();
         redraw();
         return;
     }
 
-    widget->bounds.y = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
-    document_.markDirty();
-    setOperationStatus("Aligned top: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    const std::string displayName = widgetDisplayName(*widget);
+    const std::string widgetId = widget->id;
+    applyUndoableDocumentChange("Align top", [this, widget]() {
+        widget->bounds.y = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
+        return true;
+    });
+    setOperationStatus("Aligned top: " + displayName + " (" + widgetId + ")");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -2879,23 +3099,28 @@ void MainWindow::alignSelectedRight()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         float targetRight = selectedWidgets.front()->bounds.x + selectedWidgets.front()->bounds.width;
         for (const auto* selected : selectedWidgets) {
             targetRight = std::max(targetRight, selected->bounds.x + selected->bounds.width);
         }
-        for (auto* selected : selectedWidgets) {
-            selected->bounds.x = snapToCanvasGrid(designerCanvas_, targetRight - selected->bounds.width);
-        }
-        document_.markDirty();
-        setOperationStatus("Aligned right: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        applyUndoableDocumentChange("Align right", [this, &selectedWidgets, targetRight]() {
+            for (auto* selected : selectedWidgets) {
+                selected->bounds.x = snapToCanvasGrid(designerCanvas_, targetRight - selected->bounds.width);
+            }
+            return true;
+        });
+        setOperationStatus("Aligned right: " + std::to_string(selectedCount) + " widget(s)");
         updatePropertyEditorBounds();
         redraw();
         return;
     }
 
     auto* widget = selectedWidgets.front();
-    widget->bounds.x = snapToCanvasGrid(designerCanvas_, document_.root.bounds.width - kLayoutMargin - widget->bounds.width);
-    document_.markDirty();
+    applyUndoableDocumentChange("Align right", [this, widget]() {
+        widget->bounds.x = snapToCanvasGrid(designerCanvas_, document_.root.bounds.width - kLayoutMargin - widget->bounds.width);
+        return true;
+    });
     setOperationStatus("Aligned right: 1 widget(s)");
     updatePropertyEditorBounds();
     redraw();
@@ -2911,23 +3136,28 @@ void MainWindow::alignSelectedBottom()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         float targetBottom = selectedWidgets.front()->bounds.y + selectedWidgets.front()->bounds.height;
         for (const auto* selected : selectedWidgets) {
             targetBottom = std::max(targetBottom, selected->bounds.y + selected->bounds.height);
         }
-        for (auto* selected : selectedWidgets) {
-            selected->bounds.y = snapToCanvasGrid(designerCanvas_, targetBottom - selected->bounds.height);
-        }
-        document_.markDirty();
-        setOperationStatus("Aligned bottom: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        applyUndoableDocumentChange("Align bottom", [this, &selectedWidgets, targetBottom]() {
+            for (auto* selected : selectedWidgets) {
+                selected->bounds.y = snapToCanvasGrid(designerCanvas_, targetBottom - selected->bounds.height);
+            }
+            return true;
+        });
+        setOperationStatus("Aligned bottom: " + std::to_string(selectedCount) + " widget(s)");
         updatePropertyEditorBounds();
         redraw();
         return;
     }
 
     auto* widget = selectedWidgets.front();
-    widget->bounds.y = snapToCanvasGrid(designerCanvas_, document_.root.bounds.height - kLayoutMargin - widget->bounds.height);
-    document_.markDirty();
+    applyUndoableDocumentChange("Align bottom", [this, widget]() {
+        widget->bounds.y = snapToCanvasGrid(designerCanvas_, document_.root.bounds.height - kLayoutMargin - widget->bounds.height);
+        return true;
+    });
     setOperationStatus("Aligned bottom: 1 widget(s)");
     updatePropertyEditorBounds();
     redraw();
@@ -2943,21 +3173,26 @@ void MainWindow::centerSelectedHorizontally()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         const SelectionBoundsInfo bounds = calculateSelectionBounds(selectedWidgets);
         const float centerX = (bounds.left + bounds.right) * 0.5f;
-        for (auto* selected : selectedWidgets) {
-            selected->bounds.x = snapToCanvasGrid(designerCanvas_, centerX - selected->bounds.width * 0.5f);
-        }
-        document_.markDirty();
-        setOperationStatus("Centered horizontally: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        applyUndoableDocumentChange("Center horizontally", [this, &selectedWidgets, centerX]() {
+            for (auto* selected : selectedWidgets) {
+                selected->bounds.x = snapToCanvasGrid(designerCanvas_, centerX - selected->bounds.width * 0.5f);
+            }
+            return true;
+        });
+        setOperationStatus("Centered horizontally: " + std::to_string(selectedCount) + " widget(s)");
         updatePropertyEditorBounds();
         redraw();
         return;
     }
 
     auto* widget = selectedWidgets.front();
-    widget->bounds.x = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.width - widget->bounds.width) * 0.5f);
-    document_.markDirty();
+    applyUndoableDocumentChange("Center horizontally", [this, widget]() {
+        widget->bounds.x = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.width - widget->bounds.width) * 0.5f);
+        return true;
+    });
     setOperationStatus("Centered horizontally: 1 widget(s)");
     updatePropertyEditorBounds();
     redraw();
@@ -2973,21 +3208,26 @@ void MainWindow::centerSelectedVertically()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         const SelectionBoundsInfo bounds = calculateSelectionBounds(selectedWidgets);
         const float centerY = (bounds.top + bounds.bottom) * 0.5f;
-        for (auto* selected : selectedWidgets) {
-            selected->bounds.y = snapToCanvasGrid(designerCanvas_, centerY - selected->bounds.height * 0.5f);
-        }
-        document_.markDirty();
-        setOperationStatus("Centered vertically: " + std::to_string(selectedWidgets.size()) + " widget(s)");
+        applyUndoableDocumentChange("Center vertically", [this, &selectedWidgets, centerY]() {
+            for (auto* selected : selectedWidgets) {
+                selected->bounds.y = snapToCanvasGrid(designerCanvas_, centerY - selected->bounds.height * 0.5f);
+            }
+            return true;
+        });
+        setOperationStatus("Centered vertically: " + std::to_string(selectedCount) + " widget(s)");
         updatePropertyEditorBounds();
         redraw();
         return;
     }
 
     auto* widget = selectedWidgets.front();
-    widget->bounds.y = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.height - widget->bounds.height) * 0.5f);
-    document_.markDirty();
+    applyUndoableDocumentChange("Center vertically", [this, widget]() {
+        widget->bounds.y = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.height - widget->bounds.height) * 0.5f);
+        return true;
+    });
     setOperationStatus("Centered vertically: 1 widget(s)");
     updatePropertyEditorBounds();
     redraw();
@@ -3009,16 +3249,20 @@ void MainWindow::makeSelectedSameWidth()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         const float referenceWidth = widget->bounds.width;
-        for (auto* selected : selectedWidgets) {
-            if (selected->id == widget->id || document_.isRootWidgetId(selected->id)) {
-                continue;
+        const std::string selectedId = widget->id;
+        applyUndoableDocumentChange("Match width", [this, &selectedWidgets, referenceWidth, &selectedId]() {
+            for (auto* selected : selectedWidgets) {
+                if (selected->id == selectedId || document_.isRootWidgetId(selected->id)) {
+                    continue;
+                }
+                const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
+                selected->bounds.width = std::max(metrics.minWidth, referenceWidth);
             }
-            const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
-            selected->bounds.width = std::max(metrics.minWidth, referenceWidth);
-        }
-        document_.markDirty();
-        setOperationStatus("Same width: " + std::to_string(selectedWidgets.size()) + " widgets");
+            return true;
+        });
+        setOperationStatus("Same width: " + std::to_string(selectedCount) + " widgets");
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -3027,9 +3271,14 @@ void MainWindow::makeSelectedSameWidth()
     const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
     const model::WidgetNode* reference = document_.previousSiblingOf(widget->id);
     const float fallbackWidth = std::max(metrics.minWidth, document_.root.bounds.width - 40.0f);
-    widget->bounds.width = std::max(metrics.minWidth, reference != nullptr ? reference->bounds.width : fallbackWidth);
-    document_.markDirty();
-    setOperationStatus("Same width: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    const float targetWidth = std::max(metrics.minWidth, reference != nullptr ? reference->bounds.width : fallbackWidth);
+    const std::string displayName = widgetDisplayName(*widget);
+    const std::string widgetId = widget->id;
+    applyUndoableDocumentChange("Match width", [widget, targetWidth]() {
+        widget->bounds.width = targetWidth;
+        return true;
+    });
+    setOperationStatus("Same width: " + displayName + " (" + widgetId + ")");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -3050,16 +3299,20 @@ void MainWindow::makeSelectedSameHeight()
     }
 
     if (selectedWidgets.size() > 1) {
+        const std::size_t selectedCount = selectedWidgets.size();
         const float referenceHeight = widget->bounds.height;
-        for (auto* selected : selectedWidgets) {
-            if (selected->id == widget->id || document_.isRootWidgetId(selected->id)) {
-                continue;
+        const std::string selectedId = widget->id;
+        applyUndoableDocumentChange("Match height", [this, &selectedWidgets, referenceHeight, &selectedId]() {
+            for (auto* selected : selectedWidgets) {
+                if (selected->id == selectedId || document_.isRootWidgetId(selected->id)) {
+                    continue;
+                }
+                const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
+                selected->bounds.height = std::max(metrics.minHeight, referenceHeight);
             }
-            const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
-            selected->bounds.height = std::max(metrics.minHeight, referenceHeight);
-        }
-        document_.markDirty();
-        setOperationStatus("Same height: " + std::to_string(selectedWidgets.size()) + " widgets");
+            return true;
+        });
+        setOperationStatus("Same height: " + std::to_string(selectedCount) + " widgets");
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -3067,9 +3320,14 @@ void MainWindow::makeSelectedSameHeight()
 
     const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
     const model::WidgetNode* reference = document_.previousSiblingOf(widget->id);
-    widget->bounds.height = std::max(metrics.minHeight, reference != nullptr ? reference->bounds.height : metrics.defaultHeight);
-    document_.markDirty();
-    setOperationStatus("Same height: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
+    const float targetHeight = std::max(metrics.minHeight, reference != nullptr ? reference->bounds.height : metrics.defaultHeight);
+    const std::string displayName = widgetDisplayName(*widget);
+    const std::string widgetId = widget->id;
+    applyUndoableDocumentChange("Match height", [widget, targetHeight]() {
+        widget->bounds.height = targetHeight;
+        return true;
+    });
+    setOperationStatus("Same height: " + displayName + " (" + widgetId + ")");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -3091,12 +3349,15 @@ void MainWindow::distributeSelectedHorizontally()
     const float leftX = selectedWidgets.front()->bounds.x;
     const float rightX = selectedWidgets.back()->bounds.x;
     const float step = (rightX - leftX) / static_cast<float>(selectedWidgets.size() - 1);
-    for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
-        selectedWidgets[index]->bounds.x = snapToCanvasGrid(designerCanvas_, leftX + step * static_cast<float>(index));
-    }
+    const std::size_t selectedCount = selectedWidgets.size();
+    applyUndoableDocumentChange("Distribute horizontally", [this, &selectedWidgets, leftX, step]() {
+        for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
+            selectedWidgets[index]->bounds.x = snapToCanvasGrid(designerCanvas_, leftX + step * static_cast<float>(index));
+        }
+        return true;
+    });
 
-    document_.markDirty();
-    setOperationStatus("Distributed horizontally: " + std::to_string(selectedWidgets.size()) + " widgets");
+    setOperationStatus("Distributed horizontally: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -3118,12 +3379,15 @@ void MainWindow::distributeSelectedVertically()
     const float topY = selectedWidgets.front()->bounds.y;
     const float bottomY = selectedWidgets.back()->bounds.y;
     const float step = (bottomY - topY) / static_cast<float>(selectedWidgets.size() - 1);
-    for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
-        selectedWidgets[index]->bounds.y = snapToCanvasGrid(designerCanvas_, topY + step * static_cast<float>(index));
-    }
+    const std::size_t selectedCount = selectedWidgets.size();
+    applyUndoableDocumentChange("Distribute vertically", [this, &selectedWidgets, topY, step]() {
+        for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
+            selectedWidgets[index]->bounds.y = snapToCanvasGrid(designerCanvas_, topY + step * static_cast<float>(index));
+        }
+        return true;
+    });
 
-    document_.markDirty();
-    setOperationStatus("Distributed vertically: " + std::to_string(selectedWidgets.size()) + " widgets");
+    setOperationStatus("Distributed vertically: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -3137,13 +3401,16 @@ void MainWindow::nudgeSelectedWidgets(float dx, float dy)
         return;
     }
 
-    for (auto* selected : selectedWidgets) {
-        selected->bounds.x += dx;
-        selected->bounds.y += dy;
-    }
+    const std::size_t selectedCount = selectedWidgets.size();
+    applyUndoableDocumentChange("Nudge widgets", [&selectedWidgets, dx, dy]() {
+        for (auto* selected : selectedWidgets) {
+            selected->bounds.x += dx;
+            selected->bounds.y += dy;
+        }
+        return true;
+    });
 
-    document_.markDirty();
-    setOperationStatus("Nudged " + std::to_string(selectedWidgets.size()) + " widget(s)");
+    setOperationStatus("Nudged " + std::to_string(selectedCount) + " widget(s)");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -3164,7 +3431,9 @@ void MainWindow::bringSelectedForward()
     }
 
     const std::string displayName = widgetDisplayName(*widget);
-    if (!document_.bringWidgetForward(selectedId)) {
+    if (!applyUndoableDocumentChange("Bring forward", [this, &selectedId]() {
+            return document_.bringWidgetForward(selectedId);
+        })) {
         setOperationStatus(document_.hasMultiSelection()
             ? "Already in front: " + displayName + " (" + selectedId + ") - primary only"
             : "Already in front: " + displayName + " (" + selectedId + ")");
@@ -3173,7 +3442,6 @@ void MainWindow::bringSelectedForward()
     }
 
     document_.selectWidget(selectedId);
-    document_.markDirty();
     setOperationStatus(document_.hasMultiSelection()
         ? "Brought forward: " + displayName + " (" + selectedId + ") - primary only"
         : "Brought forward: " + displayName + " (" + selectedId + ")");
@@ -3196,7 +3464,9 @@ void MainWindow::sendSelectedBackward()
     }
 
     const std::string displayName = widgetDisplayName(*widget);
-    if (!document_.sendWidgetBackward(selectedId)) {
+    if (!applyUndoableDocumentChange("Send backward", [this, &selectedId]() {
+            return document_.sendWidgetBackward(selectedId);
+        })) {
         setOperationStatus(document_.hasMultiSelection()
             ? "Already in back: " + displayName + " (" + selectedId + ") - primary only"
             : "Already in back: " + displayName + " (" + selectedId + ")");
@@ -3205,7 +3475,6 @@ void MainWindow::sendSelectedBackward()
     }
 
     document_.selectWidget(selectedId);
-    document_.markDirty();
     setOperationStatus(document_.hasMultiSelection()
         ? "Sent backward: " + displayName + " (" + selectedId + ") - primary only"
         : "Sent backward: " + displayName + " (" + selectedId + ")");
@@ -3228,7 +3497,19 @@ bool MainWindow::setSelectedWidgetName(const std::string& name)
         return false;
     }
 
+    if (widget->name == trimmedName) {
+        return true;
+    }
+
+    model::ProjectDocument beforeDocument = document_;
     widget->name = trimmedName;
+    model::ProjectDocument afterDocument = document_;
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Rename widget",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus("Widget renamed: " + trimmedName);
     updatePropertyEditorBounds();
@@ -3254,7 +3535,19 @@ bool MainWindow::setSelectedWidgetBounds(float x, float y, float width, float he
         return false;
     }
 
+    if (widget->bounds.x == x && widget->bounds.y == y && widget->bounds.width == clampedWidth && widget->bounds.height == clampedHeight) {
+        return true;
+    }
+
+    model::ProjectDocument beforeDocument = document_;
     widget->bounds = { x, y, clampedWidth, clampedHeight };
+    model::ProjectDocument afterDocument = document_;
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Edit widget bounds",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
     document_.markDirty();
     if (height < metrics.minHeight && widget->type == model::WidgetType::Label) {
         setOperationStatus("Height clamped to minimum for Label");
@@ -3276,6 +3569,7 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
         return false;
     }
 
+    model::ProjectDocument beforeDocument = document_;
     const bool radioSelectedTrue = widget->type == model::WidgetType::RadioButton
         && key == "selected" && value.isBool() && value.asBool(false);
     widget->setProperty(key, std::move(value));
@@ -3290,12 +3584,20 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     }
     const float previousWidth = widget->bounds.width;
     const bool autoSized = autoSizeWidgetForTextProperty(*widget, key, widget->getStringProperty(key, {}));
-    document_.markDirty();
     const std::string displayName = widget->name.empty() ? widget->id : widget->name;
-    setOperationStatus(autoSized
+    const std::string operationStatus = autoSized
         ? "Auto-sized " + displayName + ": width " + std::to_string(static_cast<int>(previousWidth))
             + " -> " + std::to_string(static_cast<int>(widget->bounds.width))
-        : "Property changed: " + key);
+        : "Property changed: " + key;
+    model::ProjectDocument afterDocument = document_;
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Edit property: " + key,
+        std::move(beforeDocument),
+        std::move(afterDocument)));
+    document_.markDirty();
+    setOperationStatus(operationStatus);
     updatePropertyEditorBounds();
     redraw();
     return true;
@@ -3720,111 +4022,201 @@ void MainWindow::updateWindowTitle()
 
 std::string MainWindow::commandShortcutText(CommandId command) const
 {
-    switch (command) {
-    case CommandId::NewProject:
-        return "Ctrl+N";
-    case CommandId::OpenProject:
-        return "Ctrl+O";
-    case CommandId::SaveProject:
-        return "Ctrl+S";
-    case CommandId::SaveProjectAsDialog:
-        return "Ctrl+Shift+S";
-    case CommandId::CopyWidgets:
-        return "Ctrl+C";
-    case CommandId::PasteWidgets:
-        return "Ctrl+V";
-    case CommandId::DeleteWidget:
-        return "Delete";
-    case CommandId::UndoAction:
-        return "Ctrl+Z";
-    case CommandId::RedoAction:
-        return "Ctrl+Y";
-    default:
+    const auto commandRegistryId = [command]() -> std::string_view {
+        using namespace commands::ids;
+        switch (command) {
+        case CommandId::NewProject:
+            return kFileNew;
+        case CommandId::OpenProject:
+            return kFileOpen;
+        case CommandId::OpenSample:
+            return kFileOpenSample;
+        case CommandId::SaveProject:
+            return kFileSave;
+        case CommandId::SaveProjectAsDialog:
+            return kFileSaveAs;
+        case CommandId::ExportCode:
+            return kFileExport;
+        case CommandId::ValidateProject:
+            return kProjectValidate;
+        case CommandId::ShowValidationReport:
+            return kViewValidationReport;
+        case CommandId::ShowAboutDialog:
+            return kHelpAbout;
+        case CommandId::ShowKeyboardShortcuts:
+            return kProjectKeyboardShortcuts;
+        case CommandId::ShowGeneratedCodeGuide:
+            return kHelpGeneratedCodeGuide;
+        case CommandId::ShowProjectSettings:
+            return kProjectSettings;
+        case CommandId::ShowResourceManager:
+            return kProjectResources;
+        case CommandId::ShowExportDependencies:
+            return kProjectExportDependencies;
+        case CommandId::FitText:
+            return kLayoutFitText;
+        case CommandId::CopyWidgets:
+            return kEditCopy;
+        case CommandId::PasteWidgets:
+            return kEditPaste;
+        case CommandId::DeleteWidget:
+            return kEditDelete;
+        case CommandId::DuplicateWidget:
+            return kEditDuplicate;
+        case CommandId::ToggleMultiSelect:
+            return kViewMultiSelect;
+        case CommandId::AlignLeft:
+            return kLayoutAlignLeft;
+        case CommandId::AlignTop:
+            return kLayoutAlignTop;
+        case CommandId::AlignRight:
+            return kLayoutAlignRight;
+        case CommandId::AlignBottom:
+            return kLayoutAlignBottom;
+        case CommandId::CenterHorizontally:
+            return kLayoutCenterHorizontal;
+        case CommandId::CenterVertically:
+            return kLayoutCenterVertical;
+        case CommandId::SameWidth:
+            return kLayoutSameWidth;
+        case CommandId::SameHeight:
+            return kLayoutSameHeight;
+        case CommandId::DistributeHorizontally:
+            return kLayoutDistributeHorizontal;
+        case CommandId::DistributeVertically:
+            return kLayoutDistributeVertical;
+        case CommandId::ToggleSmartGuides:
+            return kViewGuides;
+        case CommandId::BringForward:
+            return kLayoutBringForward;
+        case CommandId::SendBackward:
+            return kLayoutSendBackward;
+        case CommandId::ToggleGrid:
+            return kViewGrid;
+        case CommandId::ToggleSnap:
+            return kViewSnap;
+        case CommandId::UndoAction:
+            return kEditUndo;
+        case CommandId::RedoAction:
+            return kEditRedo;
+        case CommandId::None:
+        default:
+            return {};
+        }
+    };
+
+    const std::string_view registryId = commandRegistryId();
+    if (registryId.empty()) {
         return {};
     }
+
+    if (const auto iterator = settings_.keyboardShortcuts.find(std::string{ registryId }); iterator != settings_.keyboardShortcuts.end()) {
+        return iterator->second;
+    }
+
+    if (const auto* definition = commands::CommandRegistry::find(registryId)) {
+        return std::string{ definition->defaultShortcut };
+    }
+
+    return {};
 }
 
 std::string MainWindow::commandHintText(CommandId command) const
 {
-    switch (command) {
-    case CommandId::NewProject:
-        return "Create a new VisiForm project";
-    case CommandId::OpenProject:
-        return "Open a .vfb.json project";
-    case CommandId::OpenSample:
-        return "Open the sample project";
-    case CommandId::SaveProject:
-        return "Save the current project";
-    case CommandId::SaveProjectAsDialog:
-        return "Save the project to a new .vfb.json file";
-    case CommandId::ExportCode:
-        return "Export generated Visage C++ project";
-    case CommandId::ValidateProject:
-        return "Validate the current project before export";
-    case CommandId::ShowValidationReport:
-        return "Show where the latest validation report was written";
-    case CommandId::ShowAboutDialog:
-        return "Show information about VisiForm";
-    case CommandId::ShowKeyboardShortcuts:
-        return "Show the currently supported editor shortcuts";
-    case CommandId::ShowGeneratedCodeGuide:
-        return "Show a short guide to generated code output";
-    case CommandId::ShowProjectSettings:
-        return "Open the project settings dialog";
-    case CommandId::ShowResourceManager:
-        return "Open the project resource manager";
-    case CommandId::ShowExportDependencies:
-        return "Show where export dependency settings are edited";
-    case CommandId::FitText:
-        return "Fit the selected widget to its text";
-    case CommandId::CopyWidgets:
-        return "Copy selected widgets";
-    case CommandId::PasteWidgets:
-        return "Paste copied widgets";
-    case CommandId::DeleteWidget:
-        return "Delete the selected widget or widgets";
-    case CommandId::DuplicateWidget:
-        return "Duplicate the primary selected widget";
-    case CommandId::ToggleMultiSelect:
-        return "Toggle multi-select mode";
-    case CommandId::AlignLeft:
-        return "Align selected widgets left";
-    case CommandId::AlignTop:
-        return "Align selected widgets top";
-    case CommandId::AlignRight:
-        return "Align selected widgets right";
-    case CommandId::AlignBottom:
-        return "Align selected widgets bottom";
-    case CommandId::CenterHorizontally:
-        return "Center selected widgets horizontally";
-    case CommandId::CenterVertically:
-        return "Center selected widgets vertically";
-    case CommandId::SameWidth:
-        return "Match selected widget widths";
-    case CommandId::SameHeight:
-        return "Match selected widget heights";
-    case CommandId::DistributeHorizontally:
-        return "Distribute selected widgets horizontally";
-    case CommandId::DistributeVertically:
-        return "Distribute selected widgets vertically";
-    case CommandId::ToggleSmartGuides:
-        return "Toggle smart guides";
-    case CommandId::BringForward:
-        return "Bring the selected widget forward";
-    case CommandId::SendBackward:
-        return "Send the selected widget backward";
-    case CommandId::ToggleGrid:
-        return "Toggle grid visibility";
-    case CommandId::ToggleSnap:
-        return "Toggle snap-to-grid";
-    case CommandId::UndoAction:
-        return "Undo the last command";
-    case CommandId::RedoAction:
-        return "Redo the last undone command";
-    case CommandId::None:
-    default:
-        return {};
-    }
+    const auto baseHint = [this, command]() -> std::string {
+        const std::string shortcutText = commandShortcutText(command);
+        if (shortcutText.empty()) {
+            switch (command) {
+            case CommandId::ShowKeyboardShortcuts:
+                return "Open keyboard shortcut settings";
+            default:
+                break;
+            }
+        }
+
+        const auto shortcutSuffix = shortcutText.empty() ? std::string{} : " (" + shortcutText + ")";
+        switch (command) {
+        case CommandId::NewProject:
+            return "Create a new VisiForm project" + shortcutSuffix;
+        case CommandId::OpenProject:
+            return "Open a .vfb.json project" + shortcutSuffix;
+        case CommandId::OpenSample:
+            return "Open the sample project" + shortcutSuffix;
+        case CommandId::SaveProject:
+            return "Save the current project" + shortcutSuffix;
+        case CommandId::SaveProjectAsDialog:
+            return "Save the project to a new .vfb.json file" + shortcutSuffix;
+        case CommandId::ExportCode:
+            return "Export generated Visage C++ project" + shortcutSuffix;
+        case CommandId::ValidateProject:
+            return "Validate the current project before export" + shortcutSuffix;
+        case CommandId::ShowValidationReport:
+            return "Show where the latest validation report was written" + shortcutSuffix;
+        case CommandId::ShowAboutDialog:
+            return "Show information about VisiForm" + shortcutSuffix;
+        case CommandId::ShowKeyboardShortcuts:
+            return "Open keyboard shortcut settings" + shortcutSuffix;
+        case CommandId::ShowGeneratedCodeGuide:
+            return "Show a short guide to generated code output" + shortcutSuffix;
+        case CommandId::ShowProjectSettings:
+            return "Open the project settings dialog" + shortcutSuffix;
+        case CommandId::ShowResourceManager:
+            return "Open the project resource manager" + shortcutSuffix;
+        case CommandId::ShowExportDependencies:
+            return "Show where export dependency settings are edited" + shortcutSuffix;
+        case CommandId::FitText:
+            return "Fit the selected widget to its text" + shortcutSuffix;
+        case CommandId::CopyWidgets:
+            return "Copy selected widgets" + shortcutSuffix;
+        case CommandId::PasteWidgets:
+            return "Paste copied widgets" + shortcutSuffix;
+        case CommandId::DeleteWidget:
+            return "Delete the selected widget or widgets" + shortcutSuffix;
+        case CommandId::DuplicateWidget:
+            return "Duplicate the primary selected widget" + shortcutSuffix;
+        case CommandId::ToggleMultiSelect:
+            return "Toggle multi-select mode" + shortcutSuffix;
+        case CommandId::AlignLeft:
+            return "Align selected widgets left" + shortcutSuffix;
+        case CommandId::AlignTop:
+            return "Align selected widgets top" + shortcutSuffix;
+        case CommandId::AlignRight:
+            return "Align selected widgets right" + shortcutSuffix;
+        case CommandId::AlignBottom:
+            return "Align selected widgets bottom" + shortcutSuffix;
+        case CommandId::CenterHorizontally:
+            return "Center selected widgets horizontally" + shortcutSuffix;
+        case CommandId::CenterVertically:
+            return "Center selected widgets vertically" + shortcutSuffix;
+        case CommandId::SameWidth:
+            return "Match selected widget widths" + shortcutSuffix;
+        case CommandId::SameHeight:
+            return "Match selected widget heights" + shortcutSuffix;
+        case CommandId::DistributeHorizontally:
+            return "Distribute selected widgets horizontally" + shortcutSuffix;
+        case CommandId::DistributeVertically:
+            return "Distribute selected widgets vertically" + shortcutSuffix;
+        case CommandId::ToggleSmartGuides:
+            return "Toggle smart guides" + shortcutSuffix;
+        case CommandId::BringForward:
+            return "Bring the selected widget forward" + shortcutSuffix;
+        case CommandId::SendBackward:
+            return "Send the selected widget backward" + shortcutSuffix;
+        case CommandId::ToggleGrid:
+            return "Toggle grid visibility" + shortcutSuffix;
+        case CommandId::ToggleSnap:
+            return "Toggle snap-to-grid" + shortcutSuffix;
+        case CommandId::UndoAction:
+            return "Undo the last command" + shortcutSuffix;
+        case CommandId::RedoAction:
+            return "Redo the last undone command" + shortcutSuffix;
+        case CommandId::None:
+        default:
+            return {};
+        }
+    };
+
+    return baseHint();
 }
 
 bool MainWindow::isCommandEnabled(CommandId command) const
@@ -3988,6 +4380,7 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     addCommand(projectMenu, CommandId::ValidateProject, "Validate / Check");
     addCommand(projectMenu, CommandId::ShowProjectSettings, "Project Settings");
     addCommand(projectMenu, CommandId::ShowResourceManager, "Resources");
+    addCommand(projectMenu, CommandId::ShowKeyboardShortcuts, "Keyboard Shortcuts");
     addCommand(projectMenu, CommandId::ShowExportDependencies, "Export Dependencies");
     result.push_back(std::move(projectMenu));
 
@@ -4488,17 +4881,29 @@ bool MainWindow::executeCommand(CommandId command)
         showEditorMessageDialog("About VisiForm", visiform::aboutDialogText());
         return true;
     case CommandId::ShowKeyboardShortcuts:
+    {
+        std::vector<std::string> lines;
+        for (const auto& definition : commands::CommandRegistry::definitions()) {
+            const std::string shortcut = [&]() -> std::string {
+                if (const auto iterator = settings_.keyboardShortcuts.find(std::string{ definition.id }); iterator != settings_.keyboardShortcuts.end()) {
+                    return iterator->second;
+                }
+                return std::string{ definition.defaultShortcut };
+            }();
+
+            if (shortcut.empty()) {
+                lines.push_back(std::string{ definition.displayName });
+            }
+            else {
+                lines.push_back(std::string{ definition.displayName } + "  " + shortcut);
+            }
+        }
+
         showEditorMessageDialog("Keyboard Shortcuts",
-            "Ctrl+N  New\n"
-            "Ctrl+O  Open\n"
-            "Ctrl+S  Save\n"
-            "Ctrl+Shift+S  Save As\n"
-            "Ctrl+C  Copy\n"
-            "Ctrl+V  Paste\n"
-            "Ctrl+Z  Undo\n"
-            "Ctrl+Y  Redo\n"
-            "Delete  Delete selection");
+            "Current keyboard shortcuts. Custom mappings are loaded from AppSettings when present.");
+        editorModal_.lines = std::move(lines);
         return true;
+    }
     case CommandId::ShowGeneratedCodeGuide:
         showEditorMessageDialog("Generated Code Guide",
             "Use Export to write a generated Visage project to the selected export folder.\n"
@@ -5028,6 +5433,25 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
         fields.push_back(EditorModalField{ "sourcePath", "Source Path", selectedResource == nullptr ? std::string{} : selectedResource->sourcePath, PropertyInspector::PropertyEditKind::ReadOnly });
         fields.push_back(EditorModalField{ "exportRelativePath", "Export Path", selectedResource == nullptr ? std::string{} : selectedResource->exportRelativePath, PropertyInspector::PropertyEditKind::ReadOnly });
     }
+    else if (editorModal_.mode == EditorModalMode::KeyboardShortcuts) {
+        std::vector<PropertyInspector::PropertyChoice> commandChoices;
+        commandChoices.reserve(commands::CommandRegistry::definitions().size());
+        for (const auto& definition : commands::CommandRegistry::definitions()) {
+            commandChoices.push_back({
+                std::string{ definition.id },
+                std::string{ definition.menuPath } + " - " + std::string{ definition.displayName }
+            });
+        }
+
+        const auto* selectedDefinition = keyboardShortcutDialog_.selectedCommandId.empty()
+            ? nullptr
+            : commands::CommandRegistry::find(keyboardShortcutDialog_.selectedCommandId);
+        fields.push_back(EditorModalField{ "selectedCommandId", "Command", keyboardShortcutDialog_.selectedCommandId, PropertyInspector::PropertyEditKind::Choice, std::move(commandChoices) });
+        fields.push_back(EditorModalField{ "commandCategory", "Category", selectedDefinition == nullptr ? std::string{} : std::string{ selectedDefinition->menuPath }, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "defaultShortcut", "Default Shortcut", selectedDefinition == nullptr ? std::string{} : std::string{ selectedDefinition->defaultShortcut }, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "shortcutText", "Current Shortcut", keyboardShortcutDialog_.selectedCommandId.empty() ? std::string{} : keyboardShortcutDialogEffectiveText(keyboardShortcutDialog_.selectedCommandId), PropertyInspector::PropertyEditKind::Text });
+        fields.push_back(EditorModalField{ "commandHint", "Description", selectedDefinition == nullptr ? std::string{} : std::string{ selectedDefinition->hint }, PropertyInspector::PropertyEditKind::ReadOnly });
+    }
     return fields;
 }
 
@@ -5226,6 +5650,25 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
                 editorModal_.statusText = "Select a resource to inspect its source and export path.";
             }
         }
+        return;
+    }
+
+    if (editorModal_.mode == EditorModalMode::KeyboardShortcuts) {
+        if (key == "selectedCommandId") {
+            keyboardShortcutDialog_.selectedCommandId = trimmedValue;
+            if (const auto* definition = commands::CommandRegistry::find(keyboardShortcutDialog_.selectedCommandId)) {
+                editorModal_.statusText = std::string{ definition->displayName } + ": edit or clear the shortcut, then click Apply.";
+            }
+            else {
+                editorModal_.statusText = "Select a command to edit its shortcut.";
+            }
+        }
+        else if (key == "shortcutText" && !keyboardShortcutDialog_.selectedCommandId.empty()) {
+            keyboardShortcutDialog_.pendingShortcuts[keyboardShortcutDialog_.selectedCommandId] = trimmedValue;
+            editorModal_.statusText = trimmedValue.empty()
+                ? "Shortcut cleared for the selected command. Click Apply to save."
+                : "Shortcut updated for the selected command. Click Apply to save.";
+        }
     }
 }
 
@@ -5410,6 +5853,13 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
     if (buttonId == "remove_resource" && editorModal_.mode == EditorModalMode::ResourceManager) {
         return removeSelectedResourceFromManager();
     }
+    if (buttonId == "apply_shortcuts" && editorModal_.mode == EditorModalMode::KeyboardShortcuts) {
+        return applyKeyboardShortcutsDialog();
+    }
+    if (buttonId == "reset_shortcut" && editorModal_.mode == EditorModalMode::KeyboardShortcuts) {
+        resetSelectedKeyboardShortcut();
+        return true;
+    }
 
     closeEditorModalDialog(buttonId);
     return true;
@@ -5435,6 +5885,7 @@ void MainWindow::showEditorMessageDialog(const std::string& title, const std::st
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
     resourceManagerDialog_.visible = false;
+    keyboardShortcutDialog_.visible = false;
     redraw();
 }
 
@@ -5459,6 +5910,7 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
     resourceManagerDialog_.visible = false;
+    keyboardShortcutDialog_.visible = false;
 
     if (report.hasErrors()) {
         editorModal_.title = "Validation Errors";
@@ -5537,6 +5989,7 @@ void MainWindow::closeEditorModalDialog(const std::string& result)
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
     resourceManagerDialog_.visible = false;
+    keyboardShortcutDialog_.visible = false;
     requestKeyboardFocus();
     redraw();
 }

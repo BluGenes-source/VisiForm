@@ -100,6 +100,8 @@ Current insertable widget types include:
 
 - `Validate / Check`
 - `Project Settings` - opens the centered modal dialog for project naming, look and feel, and export dependency settings
+- `Resources` - opens the `Resource Manager` modal dialog
+- `Keyboard Shortcuts` - opens the keyboard shortcut settings dialog and saves overrides in `AppSettings`
 - `Export Dependencies`
 
 ### Export
@@ -110,7 +112,7 @@ Current insertable widget types include:
 ### Help
 
 - `About VisiForm`
-- `Keyboard Shortcuts`
+- `Keyboard Shortcuts` - opens the same keyboard shortcut settings dialog used by the `Project` menu
 - `Generated Code Guide`
 
 ## Toolbar cleanup
@@ -150,5 +152,19 @@ This phase keeps the menu system editor-local and intentionally lightweight:
 - no menu icons
 - no accelerator underline system
 - no tear-off menus
-- no shortcut editor
 - placeholder entries remain for some future file-system convenience actions
+
+## Keyboard shortcut settings
+
+The editor now includes a keyboard shortcut settings dialog reachable from:
+
+- `Project > Keyboard Shortcuts`
+- `Help > Keyboard Shortcuts`
+
+Current behavior:
+
+- shortcut labels shown in menus come from the shared command registry plus any `AppSettings` override
+- toolbar hints append the current effective shortcut text
+- the dialog lets the user select a command, inspect its default shortcut, edit the current shortcut, or clear it to disable that binding
+- the dialog validates shortcut text and prevents duplicate bindings before saving
+- saved overrides persist through `AppSettings.keyboardShortcuts`

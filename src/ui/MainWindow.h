@@ -19,6 +19,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -205,7 +206,8 @@ private:
         Message,
         NewProjectWizard,
         ProjectSettings,
-        ResourceManager
+        ResourceManager,
+        KeyboardShortcuts
     };
 
     struct EditorModalField {
@@ -286,6 +288,12 @@ private:
         std::string previewStatus{};
     };
 
+    struct KeyboardShortcutDialogState {
+        bool visible = false;
+        std::string selectedCommandId{};
+        std::map<std::string, std::string> pendingShortcuts{};
+    };
+
     struct EditorModalDialog {
         bool visible = false;
         EditorModalMode mode = EditorModalMode::Message;
@@ -361,6 +369,7 @@ private:
     bool setSelectedWidgetBounds(float x, float y, float width, float height);
     bool setSelectedWidgetProperty(const std::string& key, model::PropertyValue value);
     bool setSelectedWidgetPropertyFromString(const std::string& key, const std::string& valueText);
+    bool applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange);
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;
     void setOperationStatus(std::string message);
@@ -391,9 +400,11 @@ private:
     bool openNewProjectWizard();
     bool openProjectSettingsDialog();
     bool openResourceManagerDialog();
+    bool openKeyboardShortcutsDialog();
     void resetNewProjectWizard();
     void populateProjectSettingsDialog();
     void populateResourceManagerDialog();
+    void populateKeyboardShortcutsDialog();
     void refreshResourceManagerPreview();
     bool addResourceFromDialog(model::ProjectResourceType resourceType);
     bool removeSelectedResourceFromManager();
@@ -420,6 +431,10 @@ private:
     void updateEditorModalEditorBounds();
     void openEditorModalDropdown(const EditorModalField& field);
     bool applyEditorModalDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
+    [[nodiscard]] std::string keyboardShortcutDialogEffectiveText(const std::string& commandId) const;
+    [[nodiscard]] std::string validateKeyboardShortcutDialog() const;
+    bool applyKeyboardShortcutsDialog();
+    void resetSelectedKeyboardShortcut();
     [[nodiscard]] std::optional<editors::DropdownControl::Bounds> activeDropdownViewportBounds() const;
     [[nodiscard]] std::vector<editors::DropdownControl::Item> dropdownItemsFromChoices(const std::vector<PropertyInspector::PropertyChoice>& choices) const;
     [[nodiscard]] std::string validateNewProjectWizard() const;
@@ -460,6 +475,7 @@ private:
     NewProjectWizardState newProjectWizard_{};
     ProjectSettingsDialogState projectSettingsDialog_{};
     ResourceManagerDialogState resourceManagerDialog_{};
+    KeyboardShortcutDialogState keyboardShortcutDialog_{};
 
     // Apply a callback suggestion directly to the selected widget property
     bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);

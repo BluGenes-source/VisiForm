@@ -94,6 +94,15 @@ AppSettings AppSettings::load(std::string& errorMessage)
         if (const auto iterator = json.find("majorGridSize"); iterator != json.end() && iterator->is_number_integer()) {
             settings.majorGridSize = std::max(1, iterator->get<int>());
         }
+        if (const auto iterator = json.find("keyboardShortcuts"); iterator != json.end() && iterator->is_object()) {
+            for (auto entry = iterator->begin(); entry != iterator->end(); ++entry) {
+                if (!entry.value().is_string()) {
+                    continue;
+                }
+
+                settings.keyboardShortcuts[entry.key()] = entry.value().get<std::string>();
+            }
+        }
     }
     catch (...) {
         errorMessage.clear();
@@ -128,6 +137,10 @@ bool AppSettings::save(std::string& errorMessage) const
     json["smartGuidesEnabled"] = smartGuidesEnabled;
     json["gridSize"] = gridSize;
     json["majorGridSize"] = majorGridSize;
+    json["keyboardShortcuts"] = nlohmann::json::object();
+    for (const auto& [commandId, shortcut] : keyboardShortcuts) {
+        json["keyboardShortcuts"][commandId] = shortcut;
+    }
 
     return FileUtils::writeTextFile(path, json.dump(2), errorMessage);
 }

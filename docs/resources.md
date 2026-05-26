@@ -32,9 +32,11 @@ Current `Resource Manager` behavior:
 - shows readable resource entries including display name, id, type, and source filename
 - allows cycling the selected resource inside the existing modal dialog system
 - shows the selected resource type, display name, source path, and export path
+- shows a scaled preview for image resources when the source file can be loaded
 - supports `Add Image`
 - supports `Add Font`
 - supports `Remove`
+- add and remove actions now participate in editor undo and redo through the shared command stack
 
 Current add flows:
 
@@ -71,7 +73,9 @@ Current editor behavior:
 - the property inspector shows `resourceId` as `Resource`
 - the `Resource` row uses a dropdown of project image resources with readable labels such as `Logo (image_1)`
 - the dropdown stores the stable resource id such as `image_1`, not the display name
-- the designer shows a placeholder label for the selected managed image resource
+- the designer draws the selected managed image resource from cached encoded bytes when available
+- selected image widgets use a lightweight preview while moving or resizing to keep drag interaction responsive
+- the canvas resets image tint before drawing so image widgets display at normal brightness
 - missing `resourceId` references are shown as missing-resource placeholders
 - direct `imagePath` fallback values are still accepted
 - older `source` values are treated as a legacy fallback path

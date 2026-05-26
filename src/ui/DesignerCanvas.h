@@ -76,6 +76,7 @@ public:
         bool drawText,
         const model::ProjectDocument& document,
         resources::ImageResourceCache* imageCache,
+        bool simplifySelectedImages = false,
         const std::optional<SelectionRect>& marqueeRect = std::nullopt,
         const std::vector<SmartGuide>& smartGuides = {}) const;
 

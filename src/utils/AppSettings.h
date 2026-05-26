@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,7 @@ public:
     bool smartGuidesEnabled = true;
     int gridSize = 10;
     int majorGridSize = 50;
+    std::map<std::string, std::string> keyboardShortcuts{};
 
     [[nodiscard]] static AppSettings load(std::string& errorMessage);
     [[nodiscard]] bool save(std::string& errorMessage) const;

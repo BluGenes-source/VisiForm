@@ -129,4 +129,30 @@ std::string ResizeWidgetCommand::description() const
     return "Resize widget";
 }
 
+DocumentStateCommand::DocumentStateCommand(model::ProjectDocument& document,
+    std::string description,
+    model::ProjectDocument beforeDocument,
+    model::ProjectDocument afterDocument)
+    : document_(document)
+    , description_(std::move(description))
+    , beforeDocument_(std::move(beforeDocument))
+    , afterDocument_(std::move(afterDocument))
+{
+}
+
+void DocumentStateCommand::execute()
+{
+    document_ = afterDocument_;
+}
+
+void DocumentStateCommand::undo()
+{
+    document_ = beforeDocument_;
+}
+
+std::string DocumentStateCommand::description() const
+{
+    return description_;
+}
+
 } // namespace visiform::commands

@@ -658,6 +658,7 @@ void drawWidget(visage::Canvas& canvas,
     bool drawText,
     const model::ProjectDocument& document,
     resources::ImageResourceCache* imageCache,
+    bool simplifySelectedImages,
     const model::WidgetNode& widget,
     float formScreenX,
     float formScreenY,
@@ -989,10 +990,40 @@ void drawWidget(visage::Canvas& canvas,
         const int errorBorderColor = 0xffe17d7d;
         int borderColor = style.borderColor;
         std::string placeholderText = imageWidgetPlaceholderText(resolvedSource);
+        const bool simplifyImagePreview = simplifySelectedImages
+            && (document.isPrimarySelected(widget.id) || document.isSecondarySelected(widget.id));
         bool drewImage = false;
 
         if (resolvedSource.missingResource) {
             borderColor = warningBorderColor;
+        }
+        else if (simplifyImagePreview) {
+            const PanelRect imageBounds{
+                bounds.x + 4.0f,
+                bounds.y + 4.0f,
+                std::max(0.0f, bounds.width - 8.0f),
+                std::max(0.0f, bounds.height - 8.0f)
+            };
+            canvas.setColor(blendColor(style.fillColor, style.accentColor, 0.12f));
+            canvas.fill(imageBounds.x, imageBounds.y, imageBounds.width, imageBounds.height);
+            canvas.setColor(blendColor(style.borderColor, style.accentColor, 0.35f));
+            canvas.fill(imageBounds.x, imageBounds.y, imageBounds.width, 1.0f);
+            canvas.fill(imageBounds.x, imageBounds.y + imageBounds.height - 1.0f, imageBounds.width, 1.0f);
+            canvas.fill(imageBounds.x, imageBounds.y, 1.0f, imageBounds.height);
+            canvas.fill(imageBounds.x + imageBounds.width - 1.0f, imageBounds.y, 1.0f, imageBounds.height);
+
+            const float inset = std::min(std::min(imageBounds.width, imageBounds.height) * 0.2f, 12.0f);
+            canvas.setColor(style.accentColor);
+            canvas.fill(imageBounds.x + inset, imageBounds.y + inset,
+                std::max(1.0f, imageBounds.width - inset * 2.0f), 1.0f);
+            canvas.fill(imageBounds.x + inset, imageBounds.y + imageBounds.height - inset - 1.0f,
+                std::max(1.0f, imageBounds.width - inset * 2.0f), 1.0f);
+            if (drawText && !resolvedSource.displayText.empty()) {
+                placeholderText = resolvedSource.displayText;
+            }
+            else {
+                placeholderText = "Image";
+            }
         }
         else if (resolvedSource.hasImage && imageCache != nullptr) {
             const auto cachedImage = imageCache->getOrLoad(resolvedSource.sourcePath);
@@ -1006,6 +1037,7 @@ void drawWidget(visage::Canvas& canvas,
                     cachedImage.info.width,
                     cachedImage.info.height,
                     scaleMode);
+                canvas.setColor(0xffffffff);
                 canvas.image(cachedImage.encodedBytes->data(),
                     static_cast<int>(cachedImage.encodedBytes->size()),
                     drawRect.x,
@@ -1043,7 +1075,7 @@ void drawWidget(visage::Canvas& canvas,
 
     // Draw children from back to front so later children appear on top.
     for (const auto& child : widget.children) {
-        drawWidget(canvas, font, drawText, document, imageCache, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
+        drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
             scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
     }
 
@@ -1266,9 +1298,12 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     bool drawText,
     const model::ProjectDocument& document,
     resources::ImageResourceCache* imageCache,
+    bool simplifySelectedImages,
     const std::optional<SelectionRect>& marqueeRect,
     const std::vector<SmartGuide>& smartGuides) const
 {
+    (void)simplifySelectedImages;
+
     if (width_ <= 0.0f || height_ <= 0.0f) {
         return;
     }
@@ -1306,7 +1341,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
         return;
     }
 
-    drawWidget(canvas, font, drawText, document, imageCache, document.root, previewLayout.form.x, previewLayout.form.y,
+    drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
         resizeHandleVisualSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
 

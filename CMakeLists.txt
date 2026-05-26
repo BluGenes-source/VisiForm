@@ -79,6 +79,7 @@ add_executable(VisiForm
     src/generator/CMakeEmitter.cpp
     src/validation/ProjectValidator.cpp
     src/commands/Command.cpp
+    src/commands/CommandRegistry.cpp
     src/commands/UndoRedoStack.cpp
     src/utils/FileUtils.cpp
     src/utils/CppIdentifier.cpp

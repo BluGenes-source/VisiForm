@@ -79,4 +79,22 @@ private:
     model::Rect afterBounds_{};
 };
 
+class DocumentStateCommand final : public Command {
+public:
+    DocumentStateCommand(model::ProjectDocument& document,
+        std::string description,
+        model::ProjectDocument beforeDocument,
+        model::ProjectDocument afterDocument);
+
+    void execute() override;
+    void undo() override;
+    [[nodiscard]] std::string description() const override;
+
+private:
+    model::ProjectDocument& document_;
+    std::string description_{};
+    model::ProjectDocument beforeDocument_{};
+    model::ProjectDocument afterDocument_{};
+};
+
 } // namespace visiform::commands
