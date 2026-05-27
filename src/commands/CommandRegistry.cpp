@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <string>
 
 namespace visiform::commands {
@@ -69,18 +70,30 @@ visage::KeyCode parseKeyToken(std::string_view token)
     if (normalized.size() == 1) {
         const char character = normalized.front();
         if (character >= 'A' && character <= 'Z') {
+            return static_cast<visage::KeyCode>(static_cast<char>(std::tolower(static_cast<unsigned char>(character))));
+        }
+        if (character >= '0' && character <= '9') {
             return static_cast<visage::KeyCode>(character);
         }
     }
 
-    if (normalized == "DELETE") {
+    if (normalized == "DEL" || normalized == "DELETE") {
         return visage::KeyCode::Delete;
+    }
+    if (normalized == "BACKSPACE" || normalized == "BKSP") {
+        return visage::KeyCode::Backspace;
     }
     if (normalized == "ENTER" || normalized == "RETURN") {
         return visage::KeyCode::Return;
     }
     if (normalized == "ESC" || normalized == "ESCAPE") {
         return visage::KeyCode::Escape;
+    }
+    if (normalized == "TAB") {
+        return visage::KeyCode::Tab;
+    }
+    if (normalized == "SPACE") {
+        return visage::KeyCode::Space;
     }
     if (normalized == "LEFT") {
         return visage::KeyCode::Left;
@@ -94,28 +107,38 @@ visage::KeyCode parseKeyToken(std::string_view token)
     if (normalized == "DOWN") {
         return visage::KeyCode::Down;
     }
-    if (normalized.size() == 2 && normalized.front() == 'F' && std::isdigit(static_cast<unsigned char>(normalized[1])) != 0) {
-        switch (normalized[1]) {
-        case '1':
-            return visage::KeyCode::F1;
-        case '2':
-            return visage::KeyCode::F2;
-        case '3':
-            return visage::KeyCode::F3;
-        case '4':
-            return visage::KeyCode::F4;
-        case '5':
-            return visage::KeyCode::F5;
-        case '6':
-            return visage::KeyCode::F6;
-        case '7':
-            return visage::KeyCode::F7;
-        case '8':
-            return visage::KeyCode::F8;
-        case '9':
-            return visage::KeyCode::F9;
-        default:
-            break;
+    if (normalized.size() >= 2 && normalized.front() == 'F') {
+        int functionIndex = 0;
+        const auto parseResult = std::from_chars(normalized.data() + 1, normalized.data() + normalized.size(), functionIndex);
+        if (parseResult.ec == std::errc{} && parseResult.ptr == normalized.data() + normalized.size()) {
+            switch (functionIndex) {
+            case 1:
+                return visage::KeyCode::F1;
+            case 2:
+                return visage::KeyCode::F2;
+            case 3:
+                return visage::KeyCode::F3;
+            case 4:
+                return visage::KeyCode::F4;
+            case 5:
+                return visage::KeyCode::F5;
+            case 6:
+                return visage::KeyCode::F6;
+            case 7:
+                return visage::KeyCode::F7;
+            case 8:
+                return visage::KeyCode::F8;
+            case 9:
+                return visage::KeyCode::F9;
+            case 10:
+                return visage::KeyCode::F10;
+            case 11:
+                return visage::KeyCode::F11;
+            case 12:
+                return visage::KeyCode::F12;
+            default:
+                break;
+            }
         }
     }
 
@@ -125,16 +148,25 @@ visage::KeyCode parseKeyToken(std::string_view token)
 std::string keyToken(visage::KeyCode key)
 {
     if (key >= visage::KeyCode::A && key <= visage::KeyCode::Z) {
+        return std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(key))));
+    }
+    if (key >= visage::KeyCode::Number0 && key <= visage::KeyCode::Number9) {
         return std::string(1, static_cast<char>(key));
     }
 
     switch (key) {
     case visage::KeyCode::Delete:
         return "Delete";
+    case visage::KeyCode::Backspace:
+        return "Backspace";
     case visage::KeyCode::Return:
         return "Enter";
     case visage::KeyCode::Escape:
         return "Escape";
+    case visage::KeyCode::Tab:
+        return "Tab";
+    case visage::KeyCode::Space:
+        return "Space";
     case visage::KeyCode::Left:
         return "Left";
     case visage::KeyCode::Right:
@@ -161,6 +193,12 @@ std::string keyToken(visage::KeyCode key)
         return "F8";
     case visage::KeyCode::F9:
         return "F9";
+    case visage::KeyCode::F10:
+        return "F10";
+    case visage::KeyCode::F11:
+        return "F11";
+    case visage::KeyCode::F12:
+        return "F12";
     default:
         return {};
     }
@@ -205,6 +243,9 @@ std::optional<ShortcutGesture> CommandRegistry::parseShortcutString(std::string_
         else if (normalized == "SHIFT") {
             shortcut.shift = true;
         }
+        else if (normalized == "CMD" || normalized == "COMMAND" || normalized == "META" || normalized == "SUPER" || normalized == "WIN" || normalized == "WINDOWS") {
+            shortcut.meta = true;
+        }
         else {
             if (shortcut.key != visage::KeyCode::Unknown) {
                 return std::nullopt;
@@ -244,8 +285,27 @@ std::string CommandRegistry::formatShortcut(const ShortcutGesture& shortcut)
     if (shortcut.shift) {
         text += "Shift+";
     }
+    if (shortcut.meta) {
+        text += "Meta+";
+    }
     text += keyToken(shortcut.key);
     return text;
+}
+
+std::optional<ShortcutGesture> CommandRegistry::shortcutFromKeyEvent(const visage::KeyEvent& event)
+{
+    ShortcutGesture shortcut;
+    shortcut.ctrl = event.isCtrlDown();
+    shortcut.alt = event.isAltDown();
+    shortcut.shift = event.isShiftDown();
+    shortcut.meta = event.isCmdDown() || event.isMetaDown();
+    shortcut.key = event.keyCode();
+
+    if (!shortcut.isValid() || keyToken(shortcut.key).empty()) {
+        return std::nullopt;
+    }
+
+    return shortcut;
 }
 
 bool CommandRegistry::matchesShortcut(const ShortcutGesture& shortcut, const visage::KeyEvent& event)
@@ -254,10 +314,16 @@ bool CommandRegistry::matchesShortcut(const ShortcutGesture& shortcut, const vis
         return false;
     }
 
-    return shortcut.key == event.keyCode()
-        && shortcut.ctrl == event.isCtrlDown()
-        && shortcut.alt == event.isAltDown()
-        && shortcut.shift == event.isShiftDown();
+    const auto eventShortcut = shortcutFromKeyEvent(event);
+    if (!eventShortcut.has_value()) {
+        return false;
+    }
+
+    return shortcut.key == eventShortcut->key
+        && shortcut.ctrl == eventShortcut->ctrl
+        && shortcut.alt == eventShortcut->alt
+        && shortcut.shift == eventShortcut->shift
+        && shortcut.meta == eventShortcut->meta;
 }
 
 } // namespace visiform::commands

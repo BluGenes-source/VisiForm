@@ -16,6 +16,7 @@ struct ShortcutGesture {
     bool ctrl = false;
     bool alt = false;
     bool shift = false;
+    bool meta = false;
     visage::KeyCode key = visage::KeyCode::Unknown;
 
     [[nodiscard]] bool isValid() const
@@ -38,6 +39,7 @@ public:
     [[nodiscard]] static const CommandDefinition* find(std::string_view id);
     [[nodiscard]] static std::optional<ShortcutGesture> parseShortcutString(std::string_view text);
     [[nodiscard]] static std::string formatShortcut(const ShortcutGesture& shortcut);
+    [[nodiscard]] static std::optional<ShortcutGesture> shortcutFromKeyEvent(const visage::KeyEvent& event);
     [[nodiscard]] static bool matchesShortcut(const ShortcutGesture& shortcut, const visage::KeyEvent& event);
 };
 

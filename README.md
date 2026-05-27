@@ -43,6 +43,7 @@ Current major features include:
 - Project Tree
 - Resource Manager
 - Menu bar
+- Customizable keyboard shortcuts
 - Validation
 - Modal dialogs
 - Save/load `.vfb.json`
@@ -68,6 +69,8 @@ Current repository dependencies from `vcpkg.json` include:
 
 The primary Windows presets keep the static runtime strategy and use the `x64-windows-static` triplet.
 That Windows triplet does not apply to macOS or Linux.
+
+See `docs/keyboard_shortcuts.md` for the current default bindings, customization flow, and focus rules.
 
 ## Clone the repositories
 

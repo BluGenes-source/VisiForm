@@ -18,6 +18,7 @@ Current top-level menus:
 ## Command routing
 
 The menu bar and the toolbar both route into the same `MainWindow` command handlers.
+Keyboard shortcuts are dispatched through that same command path after `MainWindow::keyPress(const visage::KeyEvent&)` normalizes the incoming `Visage` key event against the active keymap.
 This keeps existing commands working without duplicating the underlying editor logic.
 
 Shared command examples:
@@ -164,7 +165,9 @@ The editor now includes a keyboard shortcut settings dialog reachable from:
 Current behavior:
 
 - shortcut labels shown in menus come from the shared command registry plus any `AppSettings` override
+- shortcut labels are normalized before display, so configured bindings show consistent text such as `Ctrl+Shift+Z` or `Ctrl+Alt+Left`
 - toolbar hints append the current effective shortcut text
 - the dialog lets the user select a command, inspect its default shortcut, edit the current shortcut, or clear it to disable that binding
 - the dialog validates shortcut text and prevents duplicate bindings before saving
 - saved overrides persist through `AppSettings.keyboardShortcuts`
+- `Ctrl+Alt+K` opens the keyboard shortcuts settings dialog through the same command path used by the `Project` menu

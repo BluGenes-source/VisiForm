@@ -2379,8 +2379,10 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
         return false;
     }
 
-    if (e.keyCode() == KeyCode::Left || e.keyCode() == KeyCode::Right
-        || e.keyCode() == KeyCode::Up || e.keyCode() == KeyCode::Down) {
+    const bool usesGlobalShortcutModifier = e.isCtrlDown() || e.isAltDown() || e.isCmdDown() || e.isMetaDown();
+    if (!usesGlobalShortcutModifier
+        && (e.keyCode() == KeyCode::Left || e.keyCode() == KeyCode::Right
+            || e.keyCode() == KeyCode::Up || e.keyCode() == KeyCode::Down)) {
         const float amount = e.isShiftDown() ? static_cast<float>(std::max(1, designerCanvas_.gridSize())) : 1.0f;
         if (e.keyCode() == KeyCode::Left) {
             nudgeSelectedWidgets(-amount, 0.0f);
@@ -2397,49 +2399,30 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
         return true;
     }
 
-    const auto matchesCommandShortcut = [this, &e](CommandId command) {
-        const std::string shortcutText = commandShortcutText(command);
-        if (shortcutText.empty()) {
-            return false;
+    const auto shortcut = commands::CommandRegistry::shortcutFromKeyEvent(e);
+    if (!shortcut.has_value()) {
+        return false;
+    }
+
+    const std::string shortcutText = commands::CommandRegistry::formatShortcut(*shortcut);
+    for (const auto& definition : commands::CommandRegistry::definitions()) {
+        const CommandId command = commandFromRegistryId(definition.id);
+        if (command == CommandId::None || commandShortcutText(command) != shortcutText) {
+            continue;
         }
 
-        const auto shortcut = commands::CommandRegistry::parseShortcutString(shortcutText);
-        return shortcut.has_value() && commands::CommandRegistry::matchesShortcut(*shortcut, e);
-    };
-
-    constexpr std::array<CommandId, 20> shortcutCommands = {
-        CommandId::DeleteWidget,
-        CommandId::NewProject,
-        CommandId::OpenProject,
-        CommandId::SaveProject,
-        CommandId::SaveProjectAsDialog,
-        CommandId::ExportCode,
-        CommandId::UndoAction,
-        CommandId::RedoAction,
-        CommandId::CopyWidgets,
-        CommandId::PasteWidgets,
-        CommandId::DuplicateWidget,
-        CommandId::ToggleGrid,
-        CommandId::ToggleSmartGuides,
-        CommandId::ToggleSnap,
-        CommandId::ValidateProject,
-        CommandId::ShowResourceManager,
-        CommandId::ShowKeyboardShortcuts,
-        CommandId::AlignLeft,
-        CommandId::AlignRight,
-        CommandId::FitText
-    };
-
-    for (CommandId command : shortcutCommands) {
-        if (!matchesCommandShortcut(command) || !isCommandEnabled(command)) {
-            continue;
+        if (!isCommandEnabled(command)) {
+            return reportUnavailableCommand(command);
         }
 
         return executeCommand(command);
     }
 
-    if (const auto redoAlternate = commands::CommandRegistry::parseShortcutString("Ctrl+Shift+Z");
-        redoAlternate.has_value() && commands::CommandRegistry::matchesShortcut(*redoAlternate, e) && isCommandEnabled(CommandId::RedoAction)) {
+    if (shortcutText == "Ctrl+Shift+Z" && commandShortcutText(CommandId::RedoAction) == "Ctrl+Y") {
+        if (!isCommandEnabled(CommandId::RedoAction)) {
+            return reportUnavailableCommand(CommandId::RedoAction);
+        }
+
         return executeCommand(CommandId::RedoAction);
     }
 
@@ -4020,105 +4003,258 @@ void MainWindow::updateWindowTitle()
     setTitle(makeWindowTitle(document_.dirty));
 }
 
+std::string_view MainWindow::commandRegistryId(CommandId command)
+{
+    using namespace commands::ids;
+    switch (command) {
+    case CommandId::NewProject:
+        return kFileNew;
+    case CommandId::OpenProject:
+        return kFileOpen;
+    case CommandId::OpenSample:
+        return kFileOpenSample;
+    case CommandId::SaveProject:
+        return kFileSave;
+    case CommandId::SaveProjectAsDialog:
+        return kFileSaveAs;
+    case CommandId::ExportCode:
+        return kFileExport;
+    case CommandId::ValidateProject:
+        return kProjectValidate;
+    case CommandId::ShowValidationReport:
+        return kViewValidationReport;
+    case CommandId::ShowAboutDialog:
+        return kHelpAbout;
+    case CommandId::ShowKeyboardShortcuts:
+        return kProjectKeyboardShortcuts;
+    case CommandId::ShowGeneratedCodeGuide:
+        return kHelpGeneratedCodeGuide;
+    case CommandId::ShowProjectSettings:
+        return kProjectSettings;
+    case CommandId::ShowResourceManager:
+        return kProjectResources;
+    case CommandId::ShowExportDependencies:
+        return kProjectExportDependencies;
+    case CommandId::FitText:
+        return kLayoutFitText;
+    case CommandId::CopyWidgets:
+        return kEditCopy;
+    case CommandId::PasteWidgets:
+        return kEditPaste;
+    case CommandId::DeleteWidget:
+        return kEditDelete;
+    case CommandId::DuplicateWidget:
+        return kEditDuplicate;
+    case CommandId::ToggleMultiSelect:
+        return kViewMultiSelect;
+    case CommandId::AlignLeft:
+        return kLayoutAlignLeft;
+    case CommandId::AlignTop:
+        return kLayoutAlignTop;
+    case CommandId::AlignRight:
+        return kLayoutAlignRight;
+    case CommandId::AlignBottom:
+        return kLayoutAlignBottom;
+    case CommandId::CenterHorizontally:
+        return kLayoutCenterHorizontal;
+    case CommandId::CenterVertically:
+        return kLayoutCenterVertical;
+    case CommandId::SameWidth:
+        return kLayoutSameWidth;
+    case CommandId::SameHeight:
+        return kLayoutSameHeight;
+    case CommandId::DistributeHorizontally:
+        return kLayoutDistributeHorizontal;
+    case CommandId::DistributeVertically:
+        return kLayoutDistributeVertical;
+    case CommandId::ToggleSmartGuides:
+        return kViewGuides;
+    case CommandId::BringForward:
+        return kLayoutBringForward;
+    case CommandId::SendBackward:
+        return kLayoutSendBackward;
+    case CommandId::ToggleGrid:
+        return kViewGrid;
+    case CommandId::ToggleSnap:
+        return kViewSnap;
+    case CommandId::UndoAction:
+        return kEditUndo;
+    case CommandId::RedoAction:
+        return kEditRedo;
+    case CommandId::None:
+    default:
+        return {};
+    }
+}
+
+MainWindow::CommandId MainWindow::commandFromRegistryId(std::string_view registryId)
+{
+    using namespace commands::ids;
+
+    if (registryId == kFileNew) {
+        return CommandId::NewProject;
+    }
+    if (registryId == kFileOpen) {
+        return CommandId::OpenProject;
+    }
+    if (registryId == kFileOpenSample) {
+        return CommandId::OpenSample;
+    }
+    if (registryId == kFileSave) {
+        return CommandId::SaveProject;
+    }
+    if (registryId == kFileSaveAs) {
+        return CommandId::SaveProjectAsDialog;
+    }
+    if (registryId == kFileExport) {
+        return CommandId::ExportCode;
+    }
+    if (registryId == kEditUndo) {
+        return CommandId::UndoAction;
+    }
+    if (registryId == kEditRedo) {
+        return CommandId::RedoAction;
+    }
+    if (registryId == kEditCopy) {
+        return CommandId::CopyWidgets;
+    }
+    if (registryId == kEditPaste) {
+        return CommandId::PasteWidgets;
+    }
+    if (registryId == kEditDelete) {
+        return CommandId::DeleteWidget;
+    }
+    if (registryId == kEditDuplicate) {
+        return CommandId::DuplicateWidget;
+    }
+    if (registryId == kViewGrid) {
+        return CommandId::ToggleGrid;
+    }
+    if (registryId == kViewSnap) {
+        return CommandId::ToggleSnap;
+    }
+    if (registryId == kViewGuides) {
+        return CommandId::ToggleSmartGuides;
+    }
+    if (registryId == kViewMultiSelect) {
+        return CommandId::ToggleMultiSelect;
+    }
+    if (registryId == kLayoutFitText) {
+        return CommandId::FitText;
+    }
+    if (registryId == kLayoutAlignLeft) {
+        return CommandId::AlignLeft;
+    }
+    if (registryId == kLayoutAlignTop) {
+        return CommandId::AlignTop;
+    }
+    if (registryId == kLayoutAlignRight) {
+        return CommandId::AlignRight;
+    }
+    if (registryId == kLayoutAlignBottom) {
+        return CommandId::AlignBottom;
+    }
+    if (registryId == kLayoutCenterHorizontal) {
+        return CommandId::CenterHorizontally;
+    }
+    if (registryId == kLayoutCenterVertical) {
+        return CommandId::CenterVertically;
+    }
+    if (registryId == kLayoutSameWidth) {
+        return CommandId::SameWidth;
+    }
+    if (registryId == kLayoutSameHeight) {
+        return CommandId::SameHeight;
+    }
+    if (registryId == kLayoutDistributeHorizontal) {
+        return CommandId::DistributeHorizontally;
+    }
+    if (registryId == kLayoutDistributeVertical) {
+        return CommandId::DistributeVertically;
+    }
+    if (registryId == kLayoutBringForward) {
+        return CommandId::BringForward;
+    }
+    if (registryId == kLayoutSendBackward) {
+        return CommandId::SendBackward;
+    }
+    if (registryId == kProjectValidate) {
+        return CommandId::ValidateProject;
+    }
+    if (registryId == kProjectSettings) {
+        return CommandId::ShowProjectSettings;
+    }
+    if (registryId == kProjectResources) {
+        return CommandId::ShowResourceManager;
+    }
+    if (registryId == kProjectKeyboardShortcuts) {
+        return CommandId::ShowKeyboardShortcuts;
+    }
+    if (registryId == kProjectExportDependencies) {
+        return CommandId::ShowExportDependencies;
+    }
+    if (registryId == kHelpAbout) {
+        return CommandId::ShowAboutDialog;
+    }
+    if (registryId == kHelpGeneratedCodeGuide) {
+        return CommandId::ShowGeneratedCodeGuide;
+    }
+    if (registryId == kViewValidationReport) {
+        return CommandId::ShowValidationReport;
+    }
+
+    return CommandId::None;
+}
+
 std::string MainWindow::commandShortcutText(CommandId command) const
 {
-    const auto commandRegistryId = [command]() -> std::string_view {
-        using namespace commands::ids;
-        switch (command) {
-        case CommandId::NewProject:
-            return kFileNew;
-        case CommandId::OpenProject:
-            return kFileOpen;
-        case CommandId::OpenSample:
-            return kFileOpenSample;
-        case CommandId::SaveProject:
-            return kFileSave;
-        case CommandId::SaveProjectAsDialog:
-            return kFileSaveAs;
-        case CommandId::ExportCode:
-            return kFileExport;
-        case CommandId::ValidateProject:
-            return kProjectValidate;
-        case CommandId::ShowValidationReport:
-            return kViewValidationReport;
-        case CommandId::ShowAboutDialog:
-            return kHelpAbout;
-        case CommandId::ShowKeyboardShortcuts:
-            return kProjectKeyboardShortcuts;
-        case CommandId::ShowGeneratedCodeGuide:
-            return kHelpGeneratedCodeGuide;
-        case CommandId::ShowProjectSettings:
-            return kProjectSettings;
-        case CommandId::ShowResourceManager:
-            return kProjectResources;
-        case CommandId::ShowExportDependencies:
-            return kProjectExportDependencies;
-        case CommandId::FitText:
-            return kLayoutFitText;
-        case CommandId::CopyWidgets:
-            return kEditCopy;
-        case CommandId::PasteWidgets:
-            return kEditPaste;
-        case CommandId::DeleteWidget:
-            return kEditDelete;
-        case CommandId::DuplicateWidget:
-            return kEditDuplicate;
-        case CommandId::ToggleMultiSelect:
-            return kViewMultiSelect;
-        case CommandId::AlignLeft:
-            return kLayoutAlignLeft;
-        case CommandId::AlignTop:
-            return kLayoutAlignTop;
-        case CommandId::AlignRight:
-            return kLayoutAlignRight;
-        case CommandId::AlignBottom:
-            return kLayoutAlignBottom;
-        case CommandId::CenterHorizontally:
-            return kLayoutCenterHorizontal;
-        case CommandId::CenterVertically:
-            return kLayoutCenterVertical;
-        case CommandId::SameWidth:
-            return kLayoutSameWidth;
-        case CommandId::SameHeight:
-            return kLayoutSameHeight;
-        case CommandId::DistributeHorizontally:
-            return kLayoutDistributeHorizontal;
-        case CommandId::DistributeVertically:
-            return kLayoutDistributeVertical;
-        case CommandId::ToggleSmartGuides:
-            return kViewGuides;
-        case CommandId::BringForward:
-            return kLayoutBringForward;
-        case CommandId::SendBackward:
-            return kLayoutSendBackward;
-        case CommandId::ToggleGrid:
-            return kViewGrid;
-        case CommandId::ToggleSnap:
-            return kViewSnap;
-        case CommandId::UndoAction:
-            return kEditUndo;
-        case CommandId::RedoAction:
-            return kEditRedo;
-        case CommandId::None:
-        default:
-            return {};
-        }
-    };
-
-    const std::string_view registryId = commandRegistryId();
+    const std::string_view registryId = commandRegistryId(command);
     if (registryId.empty()) {
         return {};
     }
 
+    std::string shortcutText;
     if (const auto iterator = settings_.keyboardShortcuts.find(std::string{ registryId }); iterator != settings_.keyboardShortcuts.end()) {
-        return iterator->second;
+        shortcutText = iterator->second;
+    }
+    else if (const auto* definition = commands::CommandRegistry::find(registryId)) {
+        shortcutText = std::string{ definition->defaultShortcut };
     }
 
-    if (const auto* definition = commands::CommandRegistry::find(registryId)) {
-        return std::string{ definition->defaultShortcut };
+    if (shortcutText.empty()) {
+        return {};
     }
 
-    return {};
+    if (const auto parsedShortcut = commands::CommandRegistry::parseShortcutString(shortcutText)) {
+        return commands::CommandRegistry::formatShortcut(*parsedShortcut);
+    }
+
+    return shortcutText;
+}
+
+bool MainWindow::reportUnavailableCommand(CommandId command)
+{
+    switch (command) {
+    case CommandId::UndoAction:
+        setOperationStatus("Nothing to undo");
+        redraw();
+        return true;
+    case CommandId::RedoAction:
+        setOperationStatus("Nothing to redo");
+        redraw();
+        return true;
+    default:
+        break;
+    }
+
+    const std::string_view registryId = commandRegistryId(command);
+    if (const auto* definition = registryId.empty() ? nullptr : commands::CommandRegistry::find(registryId)) {
+        setOperationStatus("Command unavailable: " + std::string{ definition->displayName });
+        redraw();
+        return true;
+    }
+
+    return false;
 }
 
 std::string MainWindow::commandHintText(CommandId command) const
@@ -4881,29 +5017,7 @@ bool MainWindow::executeCommand(CommandId command)
         showEditorMessageDialog("About VisiForm", visiform::aboutDialogText());
         return true;
     case CommandId::ShowKeyboardShortcuts:
-    {
-        std::vector<std::string> lines;
-        for (const auto& definition : commands::CommandRegistry::definitions()) {
-            const std::string shortcut = [&]() -> std::string {
-                if (const auto iterator = settings_.keyboardShortcuts.find(std::string{ definition.id }); iterator != settings_.keyboardShortcuts.end()) {
-                    return iterator->second;
-                }
-                return std::string{ definition.defaultShortcut };
-            }();
-
-            if (shortcut.empty()) {
-                lines.push_back(std::string{ definition.displayName });
-            }
-            else {
-                lines.push_back(std::string{ definition.displayName } + "  " + shortcut);
-            }
-        }
-
-        showEditorMessageDialog("Keyboard Shortcuts",
-            "Current keyboard shortcuts. Custom mappings are loaded from AppSettings when present.");
-        editorModal_.lines = std::move(lines);
-        return true;
-    }
+        return openKeyboardShortcutsDialog();
     case CommandId::ShowGeneratedCodeGuide:
         showEditorMessageDialog("Generated Code Guide",
             "Use Export to write a generated Visage project to the selected export folder.\n"

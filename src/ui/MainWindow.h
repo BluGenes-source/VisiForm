@@ -325,8 +325,11 @@ private:
     bool executeCommand(CommandId command);
     [[nodiscard]] bool isCommandEnabled(CommandId command) const;
     [[nodiscard]] bool isCommandChecked(CommandId command) const;
+    [[nodiscard]] static std::string_view commandRegistryId(CommandId command);
+    [[nodiscard]] static CommandId commandFromRegistryId(std::string_view registryId);
     [[nodiscard]] std::string commandShortcutText(CommandId command) const;
     [[nodiscard]] std::string commandHintText(CommandId command) const;
+    bool reportUnavailableCommand(CommandId command);
     bool openSampleProject();
     bool saveDebugProject();
     UnsavedChangesResult promptForUnsavedChanges();
