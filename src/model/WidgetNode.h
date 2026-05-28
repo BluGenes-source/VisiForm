@@ -18,6 +18,9 @@ namespace visiform::model {
 enum class WidgetType {
     FormWindow,
     Frame,
+    GroupBox,
+    Panel,
+    TabControl,
     Label,
     Button,
     TextBox,
@@ -35,6 +38,29 @@ enum class WidgetType {
 
 [[nodiscard]] std::string toString(WidgetType type);
 [[nodiscard]] std::optional<WidgetType> widgetTypeFromString(const std::string& value);
+
+enum class DockMode {
+    None,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    Fill
+};
+
+[[nodiscard]] std::string toString(DockMode mode);
+[[nodiscard]] std::optional<DockMode> dockModeFromString(const std::string& value);
+
+enum class LayoutMode {
+    Absolute,
+    Horizontal,
+    Vertical,
+    Grid,
+    TabPage
+};
+
+[[nodiscard]] std::string toString(LayoutMode mode);
+[[nodiscard]] std::optional<LayoutMode> layoutModeFromString(const std::string& value);
 
 struct Rect {
     float x = 0.0f;
@@ -55,10 +81,14 @@ public:
     std::string name{};
     WidgetType type = WidgetType::Frame;
     Rect bounds{};
+    std::string parentId{};
+    int zOrder = 0;
     std::map<std::string, PropertyValue> properties{};
     std::vector<WidgetNode> children{};
 
     [[nodiscard]] const std::string& typeName() const;
+    [[nodiscard]] DockMode dockMode() const;
+    [[nodiscard]] LayoutMode layoutMode() const;
 
     [[nodiscard]] PropertyValue* getProperty(const std::string& key);
     [[nodiscard]] const PropertyValue* getProperty(const std::string& key) const;
@@ -78,6 +108,9 @@ public:
 
     [[nodiscard]] WidgetNode* hitTest(float x, float y);
     [[nodiscard]] const WidgetNode* hitTest(float x, float y) const;
+
+    void syncHierarchyMetadata(const std::string& resolvedParentId = {});
+    void appendChild(WidgetNode child);
 
 private:
 };

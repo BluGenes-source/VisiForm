@@ -43,6 +43,22 @@ void appendProperties(std::vector<WidgetPropertyDefinition>& target, const std::
     target.insert(target.end(), source.begin(), source.end());
 }
 
+std::vector<WidgetPropertyDefinition> commonChildLayoutProperties()
+{
+    return {
+        { "dock", "Dock", "None", PropertyEditKind::Text, true, "Simple docking mode inside the current parent.", { "None", "Top", "Bottom", "Left", "Right", "Fill" } },
+        { "anchor", "Anchor", "Left,Top", PropertyEditKind::Text, true, "Stored anchor metadata for future resize behavior." },
+        { "tabIndex", "Tab Index", 0, PropertyEditKind::Integer, true, "Tab page index used when this widget is inside a tab control." }
+    };
+}
+
+std::vector<WidgetPropertyDefinition> containerLayoutProperties(LayoutMode layoutMode = LayoutMode::Absolute)
+{
+    return {
+        { "layoutMode", "Layout Mode", toString(layoutMode), PropertyEditKind::Text, true, "Child layout mode used by this container.", { "Absolute", "Horizontal", "Vertical", "Grid", "TabPage" } }
+    };
+}
+
 WidgetDefinition makeFormWindowDefinition()
 {
     WidgetDefinition definition;
@@ -52,12 +68,17 @@ WidgetDefinition makeFormWindowDefinition()
     definition.paletteGroup = "Root";
     definition.defaultNamePrefix = "form";
     definition.defaultHint = "Main form window.";
+    definition.canContainChildren = true;
+    definition.allowsDrop = true;
+    definition.drawsChildrenInside = true;
+    definition.defaultChildLayoutMode = LayoutMode::Absolute;
     definition.size = { 900.0f, 600.0f, 300.0f, 200.0f };
     definition.properties = {
         { "title", "title", "MainWindow", PropertyEditKind::Text, true, "Window title text." },
         { "backgroundColor", "backgroundColor", "", PropertyEditKind::Color, true, "Form background color override. Empty means inherit from the look and feel." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, containerLayoutProperties(LayoutMode::Absolute));
     appendProperties(definition.properties, commonStyleProperties(false));
     definition.events = {
         { "onLoad", "onLoad", "void_event", "Called when the form loads." },
@@ -83,10 +104,10 @@ WidgetDefinition makeStatusBarDefinition()
         { "text2", "Section 3", "Cool", PropertyEditKind::Text, true, "Text for section 3." },
         { "text3", "Section 4", "", PropertyEditKind::Text, true, "Text for section 4." },
         { "fieldWidths", "Section Widths", "1,1,1", PropertyEditKind::Text, true, "Relative section widths e.g. \"1,2,1\"." },
-        { "dock", "Dock", "Bottom", PropertyEditKind::Text, true, "Simple docking mode for the editor.", { "Bottom", "None" } },
         { "fillWidth", "Fill Width", true, PropertyEditKind::Bool, true, "Stretch the status bar to the root form width when docked." },
         { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     return definition;
@@ -110,6 +131,7 @@ WidgetDefinition makeProgressBarDefinition()
         { "text", "text", "", PropertyEditKind::Text, true, "Optional text to display." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     return definition;
@@ -124,12 +146,99 @@ WidgetDefinition makeFrameDefinition()
     definition.paletteGroup = "Basic";
     definition.defaultNamePrefix = "frame";
     definition.defaultHint = "Groups related controls visually.";
+    definition.canContainChildren = true;
+    definition.allowsDrop = true;
+    definition.clipsChildren = true;
+    definition.drawsChildrenInside = true;
+    definition.defaultChildLayoutMode = LayoutMode::Absolute;
     definition.size = { 300.0f, 180.0f, 180.0f, 120.0f };
     definition.properties = {
         { "title", "title", "Frame", PropertyEditKind::Text, true, "Frame caption text." },
         { "backgroundColor", "backgroundColor", "", PropertyEditKind::Color, true, "Frame background color override. Empty means inherit from the look and feel." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, containerLayoutProperties(LayoutMode::Absolute));
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    return definition;
+}
+
+WidgetDefinition makeGroupBoxDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::GroupBox;
+    definition.typeName = "GroupBox";
+    definition.displayName = "Group Box";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "groupBox";
+    definition.defaultHint = "Titled container for related controls.";
+    definition.canContainChildren = true;
+    definition.allowsDrop = true;
+    definition.clipsChildren = true;
+    definition.drawsChildrenInside = true;
+    definition.defaultChildLayoutMode = LayoutMode::Absolute;
+    definition.size = { 240.0f, 160.0f, 180.0f, 120.0f };
+    definition.properties = {
+        { "title", "Title", "Group", PropertyEditKind::Text, true, "Group box caption text." },
+        { "backgroundColor", "Background Color", "", PropertyEditKind::Color, true, "Optional group box background override." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, containerLayoutProperties(LayoutMode::Absolute));
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    return definition;
+}
+
+WidgetDefinition makePanelDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Panel;
+    definition.typeName = "Panel";
+    definition.displayName = "Panel";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "panel";
+    definition.defaultHint = "Generic container for child controls.";
+    definition.canContainChildren = true;
+    definition.allowsDrop = true;
+    definition.clipsChildren = true;
+    definition.drawsChildrenInside = true;
+    definition.defaultChildLayoutMode = LayoutMode::Absolute;
+    definition.size = { 300.0f, 200.0f, 180.0f, 120.0f };
+    definition.properties = {
+        { "backgroundColor", "Background Color", "", PropertyEditKind::Color, true, "Optional panel background override." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, containerLayoutProperties(LayoutMode::Absolute));
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    return definition;
+}
+
+WidgetDefinition makeTabControlDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::TabControl;
+    definition.typeName = "TabControl";
+    definition.displayName = "Tab Control";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "tabControl";
+    definition.defaultHint = "Container that groups child widgets by tab index.";
+    definition.canContainChildren = true;
+    definition.allowsDrop = true;
+    definition.clipsChildren = true;
+    definition.drawsChildrenInside = true;
+    definition.defaultChildLayoutMode = LayoutMode::TabPage;
+    definition.size = { 400.0f, 260.0f, 220.0f, 160.0f };
+    definition.properties = {
+        { "tabs", "Tabs", "Tab 1,Tab 2", PropertyEditKind::Text, true, "Comma-separated tab labels." },
+        { "selectedTab", "Selected Tab", 0, PropertyEditKind::Integer, true, "Selected tab index used by the designer preview." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, containerLayoutProperties(LayoutMode::TabPage));
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     return definition;
@@ -149,6 +258,7 @@ WidgetDefinition makeLabelDefinition()
         { "text", "text", "Label", PropertyEditKind::Text, true, "Displayed label text." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     return definition;
@@ -174,6 +284,7 @@ WidgetDefinition makeButtonDefinition()
         { "pressedFillColor", "Pressed Fill Color", "", PropertyEditKind::Color, true, "Optional fill color used for the pressed or checked button state." },
         { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
@@ -198,6 +309,7 @@ WidgetDefinition makeTextBoxDefinition()
         { "text", "text", "", PropertyEditKind::Text, true, "Text box contents." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
@@ -221,6 +333,7 @@ WidgetDefinition makeCheckBoxDefinition()
         { "checked", "checked", false, PropertyEditKind::Bool, true, "Initial checked state." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
@@ -245,6 +358,7 @@ WidgetDefinition makeRadioButtonDefinition()
         { "group", "group", "default", PropertyEditKind::Text, true, "Logical radio group name." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
@@ -269,6 +383,7 @@ WidgetDefinition makeSliderDefinition()
         { "value", "value", 50, PropertyEditKind::Integer, true, "Current slider value." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onChanged", "onChanged", "float_event", "Called when the slider value changes." }
@@ -294,6 +409,7 @@ WidgetDefinition makeScrollBarDefinition()
         { "pageSize", "pageSize", 10, PropertyEditKind::Integer, true, "Visible page size for the thumb." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     definition.events = {
         { "onChanged", "onChanged", "float_event", "Called when the scroll value changes." }
@@ -317,6 +433,7 @@ WidgetDefinition makeImageDefinition()
         { "scaleMode", "Scale Mode", "Fit", PropertyEditKind::Text, true, "Controls how the image is fitted inside the widget bounds.", { "Stretch", "Fit", "Fill", "Center" } },
         { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     return definition;
 }
@@ -337,6 +454,7 @@ WidgetDefinition makeColorPickerDefinition()
         { "showText", "showText", true, PropertyEditKind::Bool, true, "Show the label text beside the swatch." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
@@ -363,6 +481,7 @@ WidgetDefinition makeModalDialogDefinition()
         { "visibleAtStartup", "visibleAtStartup", false, PropertyEditKind::Bool, true, "Show this dialog when the generated window first opens." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     definition.events = {
@@ -385,6 +504,7 @@ WidgetDefinition makeSpacerDefinition()
     definition.properties = {
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
+    appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, commonStyleProperties());
     return definition;
 }
@@ -402,6 +522,9 @@ WidgetRegistry::WidgetRegistry()
     : definitions_{
         makeFormWindowDefinition(),
         makeFrameDefinition(),
+        makeGroupBoxDefinition(),
+        makePanelDefinition(),
+        makeTabControlDefinition(),
         makeLabelDefinition(),
         makeButtonDefinition(),
         makeTextBoxDefinition(),
@@ -456,10 +579,17 @@ WidgetNode WidgetRegistry::createDefaultWidget(WidgetType type, const std::strin
                 widget.setProperty(event.key, "");
             }
         }
+        widget.syncHierarchyMetadata();
         return widget;
     }
 
     return WidgetNode{ id, id, type };
+}
+
+bool WidgetRegistry::canContainChildren(WidgetType type) const
+{
+    const WidgetDefinition* definition = find(type);
+    return definition != nullptr && definition->canContainChildren;
 }
 
 } // namespace visiform::model

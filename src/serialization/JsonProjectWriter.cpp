@@ -48,18 +48,20 @@ nlohmann::json propertiesToJson(const std::map<std::string, model::PropertyValue
     return json;
 }
 
-nlohmann::json widgetToJson(const model::WidgetNode& widget)
+nlohmann::json widgetToJson(const model::WidgetNode& widget, const std::string& parentId = {}, int zOrder = 0)
 {
     nlohmann::json json;
     json["id"] = widget.id;
     json["name"] = widget.name;
     json["type"] = model::toString(widget.type);
     json["bounds"] = rectToJson(widget.bounds);
+    json["parentId"] = parentId;
+    json["zOrder"] = zOrder;
     json["properties"] = propertiesToJson(widget.properties);
     json["children"] = nlohmann::json::array();
 
-    for (const auto& child : widget.children) {
-        json["children"].push_back(widgetToJson(child));
+    for (std::size_t index = 0; index < widget.children.size(); ++index) {
+        json["children"].push_back(widgetToJson(widget.children[index], widget.id, static_cast<int>(index)));
     }
 
     return json;

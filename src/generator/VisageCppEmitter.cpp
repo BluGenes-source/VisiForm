@@ -92,6 +92,36 @@ std::vector<std::string> splitCommaSeparatedValues(const std::string& text)
     return values;
 }
 
+std::vector<std::string> tabLabels(const visiform::model::WidgetNode& widget)
+{
+    std::vector<std::string> labels;
+    std::istringstream stream(widget.getStringProperty("tabs", "Tab 1,Tab 2"));
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        const auto first = std::find_if_not(item.begin(), item.end(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        });
+        const auto last = std::find_if_not(item.rbegin(), item.rend(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        }).base();
+        if (first < last) {
+            labels.emplace_back(first, last);
+        }
+    }
+
+    if (labels.empty()) {
+        labels.push_back("Tab 1");
+    }
+
+    return labels;
+}
+
+int selectedTabIndex(const visiform::model::WidgetNode& widget)
+{
+    const std::vector<std::string> labels = tabLabels(widget);
+    return std::clamp(widget.getIntProperty("selectedTab", 0), 0, std::max(0, static_cast<int>(labels.size()) - 1));
+}
+
 std::string progressBarDisplayText(const visiform::model::WidgetNode& widget)
 {
     if (!widget.getBoolProperty("showText", true)) {
@@ -1014,6 +1044,12 @@ std::string runtimeWidgetTypeLiteral(visiform::model::WidgetType type)
         return "RuntimeWidgetType::ColorPicker";
     case visiform::model::WidgetType::Frame:
         return "RuntimeWidgetType::Frame";
+    case visiform::model::WidgetType::GroupBox:
+        return "RuntimeWidgetType::GroupBox";
+    case visiform::model::WidgetType::Panel:
+        return "RuntimeWidgetType::Panel";
+    case visiform::model::WidgetType::TabControl:
+        return "RuntimeWidgetType::TabControl";
     case visiform::model::WidgetType::Image:
         return "RuntimeWidgetType::Image";
     case visiform::model::WidgetType::Spacer:
@@ -1066,6 +1102,7 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.type = " << runtimeWidgetTypeLiteral(widget.type) << ";\n";
     stream << innerIndent << "widget.id = " << emitStringLiteral(widget.id) << ";\n";
     stream << innerIndent << "widget.name = " << emitStringLiteral(widget.name.empty() ? widget.id : widget.name) << ";\n";
+    stream << innerIndent << "widget.parentId = " << emitStringLiteral(widget.parentId) << ";\n";
     stream << innerIndent << "widget.bounds = RuntimeRect{ " << emitFloat(spec.x) << ", " << emitFloat(spec.y) << ", "
            << emitFloat(widget.bounds.width) << ", " << emitFloat(widget.bounds.height) << " };\n";
     stream << innerIndent << "widget.hint = " << emitStringLiteral(widget.getStringProperty("hint", {})) << ";\n";
@@ -1073,6 +1110,8 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.text.value = " << emitStringLiteral(displayTextOrFallback(widget, "text", widgetLabel(widget))) << ";\n";
     stream << innerIndent << "widget.source = " << emitStringLiteral(widget.getStringProperty("source", "Image")) << ";\n";
     stream << innerIndent << "widget.colorValue = " << emitStringLiteral(widget.getStringProperty("value", "#2D7DFF")) << ";\n";
+    stream << innerIndent << "widget.tabIndex = " << widget.getIntProperty("tabIndex", 0) << ";\n";
+    stream << innerIndent << "widget.selectedTab = " << selectedTabIndex(widget) << ";\n";
     stream << innerIndent << "widget.text.showText = " << (widget.getBoolProperty("showText", true) ? "true" : "false") << ";\n";
     stream << innerIndent << "widget.modal = " << (widget.getBoolProperty("modal", true) ? "true" : "false") << ";\n";
     stream << innerIndent << "widget.visibleAtStartup = " << (widget.getBoolProperty("visibleAtStartup", false) ? "true" : "false") << ";\n";
@@ -1105,6 +1144,12 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
 
     if (widget.type == visiform::model::WidgetType::Frame) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::GroupBox) {
+        stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
+    }
+    else if (widget.type == visiform::model::WidgetType::TabControl) {
+        stream << innerIndent << "widget.items = " << emitStringVectorLiteral(tabLabels(widget)) << ";\n";
     }
     else if (widget.type == visiform::model::WidgetType::Button) {
         const std::string text = widget.getStringProperty("text", {});
@@ -1271,6 +1316,9 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    ModalDialog,\n";
     stream << "    Label,\n";
     stream << "    Frame,\n";
+    stream << "    GroupBox,\n";
+    stream << "    Panel,\n";
+    stream << "    TabControl,\n";
     stream << "    Image,\n";
     stream << "    Spacer,\n";
     stream << "    ColorPicker\n";
@@ -1341,12 +1389,15 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    RuntimeWidgetType type = RuntimeWidgetType::Unknown;\n";
     stream << "    std::string id;\n";
     stream << "    std::string name;\n";
+    stream << "    std::string parentId;\n";
     stream << "    RuntimeRect bounds;\n";
     stream << "    std::string hint;\n";
     stream << "    std::string dialogTitle;\n";
     stream << "    std::string source;\n";
     stream << "    std::string colorValue = \"#2D7DFF\";\n";
     stream << "    std::vector<std::string> items;\n";
+    stream << "    int tabIndex = 0;\n";
+    stream << "    int selectedTab = 0;\n";
     stream << "    bool modal = true;\n";
     stream << "    bool visibleAtStartup = false;\n";
     stream << "    RuntimeTextState text;\n";
@@ -1420,6 +1471,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    const RuntimeWidget* findWidgetByIdOrName(const std::string& idOrName) const;\n";
     stream << "    RuntimeWidget* activeModalWidget();\n";
     stream << "    const RuntimeWidget* activeModalWidget() const;\n";
+    stream << "    [[nodiscard]] bool isWidgetVisible(const RuntimeWidget& widget) const;\n";
+    stream << "    [[nodiscard]] std::optional<int> hitTestTabHeader(const RuntimeWidget& widget, float x, float y) const;\n";
     stream << "    RuntimeWidget* hitTest(float x, float y);\n";
     stream << "    RuntimeWidget* focusedTextBox();\n";
     stream << "    const RuntimeWidget* focusedTextBox() const;\n";
@@ -1526,6 +1579,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "constexpr float kFormOffsetX = 40.0f;\n";
     stream << "constexpr float kFormOffsetY = 60.0f;\n";
     stream << "constexpr float kTitleBarHeight = 28.0f;\n\n";
+    stream << "constexpr float kTabHeaderHeight = 30.0f;\n\n";
     stream << "std::uint32_t runtimeColorToArgb(RuntimeColor color)\n";
     stream << "{\n";
     stream << "    return (static_cast<std::uint32_t>(color.a) << 24)\n";
@@ -1610,6 +1664,9 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::ModalDialog: return \"ModalDialog\";\n";
     stream << "    case RuntimeWidgetType::Label: return \"Label\";\n";
     stream << "    case RuntimeWidgetType::Frame: return \"Frame\";\n";
+    stream << "    case RuntimeWidgetType::GroupBox: return \"GroupBox\";\n";
+    stream << "    case RuntimeWidgetType::Panel: return \"Panel\";\n";
+    stream << "    case RuntimeWidgetType::TabControl: return \"TabControl\";\n";
     stream << "    case RuntimeWidgetType::Image: return \"Image\";\n";
     stream << "    case RuntimeWidgetType::Spacer: return \"Spacer\";\n";
     stream << "    case RuntimeWidgetType::ColorPicker: return \"ColorPicker\";\n";
@@ -1704,6 +1761,43 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), 20.0f);\n";
     stream << "        }\n";
     stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::GroupBox:\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
+    stream << "        canvas.fill(x, y + 10.0f, width, std::max(0.0f, height - 10.0f));\n";
+    stream << "        drawBorder(canvas, x, y + 10.0f, width, std::max(0.0f, height - 10.0f), widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 10.0f, y, std::max(0.0f, width - 20.0f), 20.0f);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::Panel:\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::TabControl: {\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
+    stream << "        canvas.fill(x, y + kTabHeaderHeight, width, std::max(0.0f, height - kTabHeaderHeight));\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        const std::size_t tabCount = std::max<std::size_t>(1, widget.items.size());\n";
+    stream << "        const float tabWidth = width / static_cast<float>(tabCount);\n";
+    stream << "        const int selectedTab = std::clamp(widget.selectedTab, 0, static_cast<int>(tabCount) - 1);\n";
+    stream << "        for (std::size_t index = 0; index < tabCount; ++index) {\n";
+    stream << "            const float tabX = x + tabWidth * static_cast<float>(index);\n";
+    stream << "            const RuntimeColor tabFill = static_cast<int>(index) == selectedTab\n";
+    stream << "                ? blendColor(widget.style.fillColor, widget.style.accentColor, 0.18f)\n";
+    stream << "                : blendColor(widget.style.fillColor, widget.style.panelColor, 0.35f);\n";
+    stream << "            canvas.setColor(canvasColor(tabFill));\n";
+    stream << "            canvas.fill(tabX, y, tabWidth, kTabHeaderHeight);\n";
+    stream << "            drawBorder(canvas, tabX, y, tabWidth, kTabHeaderHeight, widget.style.borderColor, std::max(1.0f, widget.style.borderThickness));\n";
+    stream << "            if (drawText) {\n";
+    stream << "                canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "                const std::string label = index < widget.items.size() ? widget.items[index] : std::string{ \"Tab\" };\n";
+    stream << "                canvas.text(label, font, visage::Font::kCenter, tabX, y, tabWidth, kTabHeaderHeight);\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
     stream << "    case RuntimeWidgetType::Label:\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
@@ -1986,6 +2080,43 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "const RuntimeWidget* " << className << "::activeModalWidget() const\n";
     stream << "{\n";
     stream << "    return modalState_.dialogId.empty() ? nullptr : findWidgetById(modalState_.dialogId);\n";
+    stream << "}\n\n";
+    stream << "bool " << className << "::isWidgetVisible(const RuntimeWidget& widget) const\n";
+    stream << "{\n";
+    stream << "    const RuntimeWidget* current = &widget;\n";
+    stream << "    std::size_t guard = 0;\n";
+    stream << "    while (!current->parentId.empty()) {\n";
+    stream << "        if (guard++ > runtimeWidgets_.size()) {\n";
+    stream << "            return false;\n";
+    stream << "        }\n";
+    stream << "        const RuntimeWidget* parent = findWidgetById(current->parentId);\n";
+    stream << "        if (parent == nullptr) {\n";
+    stream << "            return true;\n";
+    stream << "        }\n";
+    stream << "        if (parent->type == RuntimeWidgetType::TabControl) {\n";
+    stream << "            const int tabCount = std::max(1, static_cast<int>(parent->items.size()));\n";
+    stream << "            const int selectedTab = std::clamp(parent->selectedTab, 0, tabCount - 1);\n";
+    stream << "            if (current->tabIndex != selectedTab) {\n";
+    stream << "                return false;\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        current = parent;\n";
+    stream << "    }\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
+    stream << "std::optional<int> " << className << "::hitTestTabHeader(const RuntimeWidget& widget, float x, float y) const\n";
+    stream << "{\n";
+    stream << "    if (widget.type != RuntimeWidgetType::TabControl) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    const std::size_t tabCount = std::max<std::size_t>(1, widget.items.size());\n";
+    stream << "    if (x < widget.bounds.x || x > widget.bounds.x + widget.bounds.width\n";
+    stream << "        || y < widget.bounds.y || y > widget.bounds.y + std::min(kTabHeaderHeight, widget.bounds.height)) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    const float tabWidth = widget.bounds.width / static_cast<float>(tabCount);\n";
+    stream << "    const int tabIndex = std::clamp(static_cast<int>((x - widget.bounds.x) / std::max(1.0f, tabWidth)), 0, static_cast<int>(tabCount) - 1);\n";
+    stream << "    return tabIndex;\n";
     stream << "}\n\n";
     stream << "bool " << className << "::setText(const std::string& idOrName, const std::string& text)\n";
     stream << "{\n";
@@ -2323,11 +2454,14 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Slider:\n";
     stream << "    case RuntimeWidgetType::ScrollBar:\n";
     stream << "    case RuntimeWidgetType::ColorPicker:\n";
+    stream << "    case RuntimeWidgetType::TabControl:\n";
     stream << "        return true;\n";
     stream << "    case RuntimeWidgetType::ProgressBar:\n";
     stream << "    case RuntimeWidgetType::StatusBar:\n";
     stream << "    case RuntimeWidgetType::Label:\n";
     stream << "    case RuntimeWidgetType::Frame:\n";
+    stream << "    case RuntimeWidgetType::GroupBox:\n";
+    stream << "    case RuntimeWidgetType::Panel:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
     stream << "        return false;\n";
@@ -2444,6 +2578,9 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "RuntimeWidget* " << className << "::hitTest(float x, float y)\n";
     stream << "{\n";
     stream << "    for (auto iterator = runtimeWidgets_.rbegin(); iterator != runtimeWidgets_.rend(); ++iterator) {\n";
+    stream << "        if (!isWidgetVisible(*iterator)) {\n";
+    stream << "            continue;\n";
+    stream << "        }\n";
     stream << "        if (isInteractive(*iterator) && iterator->bounds.contains(x, y)) {\n";
     stream << "            return &(*iterator);\n";
     stream << "        }\n";
@@ -2524,6 +2661,9 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        canvas.text(formTitle_, labelFont_, visage::Font::kTopLeft, kFormOffsetX + 10.0f, kFormOffsetY + 4.0f, std::max(0.0f, formBounds_.width - 20.0f), 22.0f);\n";
     stream << "    }\n";
     stream << "    for (const auto& widget : runtimeWidgets_) {\n";
+    stream << "        if (!isWidgetVisible(widget)) {\n";
+    stream << "            continue;\n";
+    stream << "        }\n";
     stream << "        drawRuntimeWidget(canvas, labelFont_, drawText, widget);\n";
     stream << "    }\n";
     stream << "    drawActiveModalDialog(canvas, drawText);\n";
@@ -2576,6 +2716,14 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    setFocusedWidget(std::string{});\n";
     stream << "    switch (widget->type) {\n";
     stream << "    case RuntimeWidgetType::Unknown:\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::TabControl:\n";
+    stream << "        if (const auto tabIndex = hitTestTabHeader(*widget, formX, formY); tabIndex.has_value()) {\n";
+    stream << "            if (widget->selectedTab != *tabIndex) {\n";
+    stream << "                widget->selectedTab = *tabIndex;\n";
+    stream << "                redraw();\n";
+    stream << "            }\n";
+    stream << "        }\n";
     stream << "        return;\n";
     stream << "    case RuntimeWidgetType::Button:\n";
     stream << "    case RuntimeWidgetType::CheckBox:\n";

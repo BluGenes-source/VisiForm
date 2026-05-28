@@ -25,6 +25,80 @@ void collectWidgetsReferencingResource(const WidgetNode& widget, const std::stri
     }
 }
 
+void applyDockLayoutRecursive(WidgetNode& parent)
+{
+    if (!WidgetRegistry::instance().canContainChildren(parent.type)) {
+        return;
+    }
+
+    Rect remaining{ 0.0f, 0.0f, parent.bounds.width, parent.bounds.height };
+    for (auto& child : parent.children) {
+        const DockMode dock = child.dockMode();
+        const float originalWidth = child.bounds.width;
+        const float originalHeight = child.bounds.height;
+
+        switch (dock) {
+        case DockMode::Top:
+            child.bounds.x = 0.0f;
+            child.bounds.y = remaining.y;
+            child.bounds.width = remaining.width;
+            remaining.y += originalHeight;
+            remaining.height = std::max(0.0f, remaining.height - originalHeight);
+            break;
+        case DockMode::Bottom:
+            child.bounds.x = 0.0f;
+            child.bounds.y = std::max(0.0f, remaining.y + remaining.height - originalHeight);
+            child.bounds.width = remaining.width;
+            remaining.height = std::max(0.0f, remaining.height - originalHeight);
+            break;
+        case DockMode::Left:
+            child.bounds.x = remaining.x;
+            child.bounds.y = remaining.y;
+            child.bounds.height = remaining.height;
+            remaining.x += originalWidth;
+            remaining.width = std::max(0.0f, remaining.width - originalWidth);
+            break;
+        case DockMode::Right:
+            child.bounds.x = std::max(0.0f, remaining.x + remaining.width - originalWidth);
+            child.bounds.y = remaining.y;
+            child.bounds.height = remaining.height;
+            remaining.width = std::max(0.0f, remaining.width - originalWidth);
+            break;
+        case DockMode::Fill:
+            child.bounds = remaining;
+            break;
+        case DockMode::None:
+            if (child.type == WidgetType::StatusBar && child.getBoolProperty("fillWidth", false)) {
+                child.bounds.x = 0.0f;
+                child.bounds.width = parent.bounds.width;
+            }
+            break;
+        }
+
+        applyDockLayoutRecursive(child);
+    }
+}
+
+bool detachWidgetRecursive(WidgetNode& parent, const std::string& searchId, WidgetNode& detachedWidget)
+{
+    const auto iterator = std::find_if(parent.children.begin(), parent.children.end(),
+        [&](const WidgetNode& child) { return child.id == searchId; });
+    if (iterator != parent.children.end()) {
+        detachedWidget = std::move(*iterator);
+        parent.children.erase(iterator);
+        parent.syncHierarchyMetadata(parent.parentId);
+        return true;
+    }
+
+    for (auto& child : parent.children) {
+        if (detachWidgetRecursive(child, searchId, detachedWidget)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 template <typename ParentType>
 using SiblingPointer = std::conditional_t<
     std::is_const_v<ParentType>,
@@ -115,12 +189,26 @@ std::string duplicateNameFor(const WidgetNode& widget, const std::string& id)
         return "scrollBar" + suffix;
     case WidgetType::Frame:
         return "frame" + suffix;
+    case WidgetType::GroupBox:
+        return "groupBox" + suffix;
+    case WidgetType::Panel:
+        return "panel" + suffix;
+    case WidgetType::TabControl:
+        return "tabControl" + suffix;
     case WidgetType::Image:
         return "image" + suffix;
     case WidgetType::Spacer:
         return "spacer" + suffix;
     case WidgetType::FormWindow:
         return "form" + suffix;
+    case WidgetType::StatusBar:
+        return "statusBar" + suffix;
+    case WidgetType::ProgressBar:
+        return "progressBar" + suffix;
+    case WidgetType::ModalDialog:
+        return "modalDialog" + suffix;
+    case WidgetType::ColorPicker:
+        return "colorPicker" + suffix;
     }
 
     return id;
@@ -163,7 +251,8 @@ ProjectDocument ProjectDocument::createDefault()
     helloButton.name = "helloButton";
     helloButton.bounds = Rect{ 40.0f, 40.0f, 160.0f, 40.0f };
     helloButton.setProperty("text", "Click Me");
-    document.root.children.push_back(std::move(helloButton));
+    document.root.appendChild(std::move(helloButton));
+    document.applyDockLayout();
     document.setSelection("button_hello");
 
     return document;
@@ -302,7 +391,11 @@ bool ProjectDocument::bringWidgetForward(const std::string& id)
         return false;
     }
 
-    return reorderWithinParent(&parent->children, id, true);
+    const bool reordered = reorderWithinParent(&parent->children, id, true);
+    if (reordered) {
+        refreshHierarchyMetadata();
+    }
+    return reordered;
 }
 
 bool ProjectDocument::sendWidgetBackward(const std::string& id)
@@ -312,7 +405,11 @@ bool ProjectDocument::sendWidgetBackward(const std::string& id)
         return false;
     }
 
-    return reorderWithinParent(&parent->children, id, false);
+    const bool reordered = reorderWithinParent(&parent->children, id, false);
+    if (reordered) {
+        refreshHierarchyMetadata();
+    }
+    return reordered;
 }
 
 bool ProjectDocument::removeWidgetById(const std::string& id)
@@ -321,7 +418,11 @@ bool ProjectDocument::removeWidgetById(const std::string& id)
         return false;
     }
 
-    return root.removeWidgetById(id);
+    const bool removed = root.removeWidgetById(id);
+    if (removed) {
+        applyDockLayout();
+    }
+    return removed;
 }
 
 bool ProjectDocument::isRootWidgetId(const std::string& id) const
@@ -364,7 +465,8 @@ bool ProjectDocument::removeResourceById(const std::string& id)
 
 bool ProjectDocument::addChildToRoot(WidgetNode widget)
 {
-    root.children.push_back(std::move(widget));
+    root.appendChild(std::move(widget));
+    applyDockLayout();
     return true;
 }
 
@@ -378,11 +480,51 @@ bool ProjectDocument::addChildToParent(const std::string& parentId, WidgetNode w
     }
 
     if (auto* parent = findWidgetById(parentId)) {
-        parent->children.push_back(std::move(widget));
+        parent->appendChild(std::move(widget));
+        applyDockLayout();
         return true;
     }
 
     return false;
+}
+
+bool ProjectDocument::canReparentWidget(const std::string& widgetId, const std::string& newParentId) const
+{
+    if (widgetId.empty() || newParentId.empty() || widgetId == newParentId || isRootWidgetId(widgetId)) {
+        return false;
+    }
+
+    const WidgetNode* widget = findWidgetById(widgetId);
+    const WidgetNode* newParent = findWidgetById(newParentId);
+    if (widget == nullptr || newParent == nullptr) {
+        return false;
+    }
+    if (!WidgetRegistry::instance().canContainChildren(newParent->type)) {
+        return false;
+    }
+
+    return widget->findById(newParentId) == nullptr;
+}
+
+bool ProjectDocument::reparentWidget(const std::string& widgetId, const std::string& newParentId, Rect newBounds)
+{
+    if (!canReparentWidget(widgetId, newParentId)) {
+        return false;
+    }
+
+    WidgetNode detachedWidget;
+    if (!detachWidgetRecursive(root, widgetId, detachedWidget)) {
+        return false;
+    }
+
+    detachedWidget.bounds = newBounds;
+    const bool added = addChildToParent(newParentId, std::move(detachedWidget));
+    if (!added) {
+        return false;
+    }
+
+    refreshHierarchyMetadata();
+    return true;
 }
 
 WidgetNode* ProjectDocument::duplicateWidgetById(const std::string& id, utils::IdGenerator& idGenerator)
@@ -409,6 +551,18 @@ WidgetNode* ProjectDocument::duplicateWidgetById(const std::string& id, utils::I
     }
 
     return findWidgetById(duplicatedId);
+}
+
+void ProjectDocument::refreshHierarchyMetadata()
+{
+    root.syncHierarchyMetadata();
+}
+
+void ProjectDocument::applyDockLayout()
+{
+    refreshHierarchyMetadata();
+    applyDockLayoutRecursive(root);
+    refreshHierarchyMetadata();
 }
 
 void ProjectDocument::selectWidget(const std::string& id)

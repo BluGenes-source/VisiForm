@@ -54,6 +54,11 @@ struct WidgetDefinition {
     std::string defaultNamePrefix{};
     std::string defaultHint{};
     WidgetSizeDefinition size{};
+    bool canContainChildren = false;
+    bool allowsDrop = false;
+    bool clipsChildren = false;
+    bool drawsChildrenInside = false;
+    LayoutMode defaultChildLayoutMode = LayoutMode::Absolute;
     std::vector<WidgetPropertyDefinition> properties{};
     std::vector<WidgetEventDefinition> events{};
 };

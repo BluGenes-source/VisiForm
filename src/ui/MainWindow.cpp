@@ -524,10 +524,24 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
         return "textBox" + suffix;
     case model::WidgetType::CheckBox:
         return "checkBox" + suffix;
+    case model::WidgetType::RadioButton:
+        return "radioButton" + suffix;
     case model::WidgetType::Slider:
         return "slider" + suffix;
+    case model::WidgetType::ScrollBar:
+        return "scrollBar" + suffix;
     case model::WidgetType::Frame:
         return "frame" + suffix;
+    case model::WidgetType::GroupBox:
+        return "groupBox" + suffix;
+    case model::WidgetType::Panel:
+        return "panel" + suffix;
+    case model::WidgetType::TabControl:
+        return "tabControl" + suffix;
+    case model::WidgetType::StatusBar:
+        return "statusBar" + suffix;
+    case model::WidgetType::ProgressBar:
+        return "progressBar" + suffix;
     case model::WidgetType::ColorPicker:
         return "colorPicker" + suffix;
     case model::WidgetType::ModalDialog:
@@ -587,6 +601,39 @@ SelectionBoundsInfo calculateSelectionBounds(const std::vector<model::WidgetNode
     }
 
     return bounds;
+}
+
+model::Rect absoluteBoundsForWidget(const model::ProjectDocument& document, const std::string& widgetId)
+{
+    const model::WidgetNode* widget = document.findWidgetById(widgetId);
+    if (widget == nullptr) {
+        return {};
+    }
+
+    model::Rect absoluteBounds = widget->bounds;
+    const model::WidgetNode* parent = document.findParentOf(widgetId);
+    while (parent != nullptr) {
+        absoluteBounds.x += parent->bounds.x;
+        absoluteBounds.y += parent->bounds.y;
+        parent = document.findParentOf(parent->id);
+    }
+
+    return absoluteBounds;
+}
+
+model::Rect boundsRelativeToParent(const model::ProjectDocument& document, const std::string& parentId, const model::Rect& absoluteBounds)
+{
+    if (parentId.empty() || document.isRootWidgetId(parentId)) {
+        return absoluteBounds;
+    }
+
+    const model::Rect parentAbsoluteBounds = absoluteBoundsForWidget(document, parentId);
+    return {
+        absoluteBounds.x - parentAbsoluteBounds.x,
+        absoluteBounds.y - parentAbsoluteBounds.y,
+        absoluteBounds.width,
+        absoluteBounds.height
+    };
 }
 
 SelectionBoundsInfo calculateSelectionBounds(const std::vector<model::Rect>& widgets)
@@ -1992,6 +2039,27 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
+        const bool additiveSelection = multiSelectMode_ || isAdditiveSelectionModifierDown();
+        if (const auto* hitWidget = document_.findWidgetById(*widgetId); hitWidget != nullptr && hitWidget->type == model::WidgetType::TabControl) {
+            if (const auto tabIndex = designerCanvas_.hitTestTabHeader(document_, *widgetId, e.position.x, e.position.y)) {
+                if (!document_.isSelected(*widgetId)) {
+                    handleWidgetClicked(*widgetId, additiveSelection);
+                }
+                if (hitWidget->getIntProperty("selectedTab", 0) != *tabIndex) {
+                    applyUndoableDocumentChange("Change selected tab", [this, widgetId, tabIndex]() {
+                        if (auto* tabControl = document_.findWidgetById(*widgetId)) {
+                            tabControl->setProperty("selectedTab", *tabIndex);
+                            return true;
+                        }
+                        return false;
+                    });
+                    setOperationStatus("Selected tab " + std::to_string(*tabIndex + 1) + " on " + widgetDisplayName(*hitWidget));
+                }
+                redraw();
+                return;
+            }
+        }
+
         if (*widgetId == document_.root.id) {
             if (const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y)) {
                 clearCanvasInteraction();
@@ -2004,7 +2072,6 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             return;
         }
 
-        const bool additiveSelection = multiSelectMode_ || isAdditiveSelectionModifierDown();
         const bool clickedPrimarySelected = document_.selectedWidgetId == *widgetId;
         const bool keepMultiSelectionForDrag = multiSelectMode_ && clickedPrimarySelected;
         const bool wasSelected = clickedPrimarySelected;
@@ -2024,10 +2091,14 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             auto* widget = document_.findWidgetById(*widgetId);
             if (interactionHit.has_value() && dragStart.has_value() && widget != nullptr) {
                 canvasInteraction_.widgetId = *widgetId;
+                canvasInteraction_.originalParentId = document_.findParentOf(*widgetId) != nullptr
+                    ? document_.findParentOf(*widgetId)->id
+                    : document_.root.id;
                 canvasInteraction_.region = interactionHit->region;
                 canvasInteraction_.originalBounds = widget->bounds;
                 canvasInteraction_.dragStart = *dragStart;
                 canvasInteraction_.currentPoint = *dragStart;
+                canvasInteraction_.dropTargetWidgetId = canvasInteraction_.originalParentId;
                 canvasInteraction_.selectionBounds.clear();
                 canvasInteraction_.changed = false;
                 canvasInteraction_.mode = interactionHit->region == DesignerCanvas::HitRegion::Body
@@ -2178,10 +2249,21 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         updatedBounds = canvasInteraction_.originalBounds;
         updatedBounds.x = canvasInteraction_.originalBounds.x + snapResult.dx;
         updatedBounds.y = canvasInteraction_.originalBounds.y + snapResult.dy;
+
+        if (canvasInteraction_.selectionBounds.size() <= 1) {
+            canvasInteraction_.dropTargetWidgetId = resolveDropParentId(widget->id, e.position.x, e.position.y);
+            if (!canvasInteraction_.dropTargetWidgetId.empty()) {
+                const auto* dropTarget = document_.findWidgetById(canvasInteraction_.dropTargetWidgetId);
+                if (dropTarget != nullptr && canvasInteraction_.dropTargetWidgetId != canvasInteraction_.originalParentId) {
+                    setOperationStatus("Drop into " + widgetDisplayName(*dropTarget));
+                }
+            }
+        }
     }
     else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize) {
         canvasInteraction_.smartGuides.clear();
         canvasInteraction_.smartGuideSnapUsed = false;
+        canvasInteraction_.dropTargetWidgetId.clear();
         updatedBounds = designerCanvas_.resizeBounds(canvasInteraction_.originalBounds, canvasInteraction_.region,
             canvasInteraction_.dragStart, *currentPoint);
     }
@@ -2276,10 +2358,35 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         }
 
         const model::Rect finalBounds = widget->bounds;
+        const model::Rect finalAbsoluteBounds = absoluteBoundsForWidget(document_, widget->id);
         widget->bounds = canvasInteraction_.originalBounds;
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
-            undoRedo_.executeCommand(std::make_unique<commands::MoveWidgetCommand>(
-                document_, widget->id, canvasInteraction_.originalBounds, finalBounds));
+            const std::string dropParentId = canvasInteraction_.dropTargetWidgetId.empty()
+                ? canvasInteraction_.originalParentId
+                : canvasInteraction_.dropTargetWidgetId;
+            if (!dropParentId.empty() && dropParentId != canvasInteraction_.originalParentId) {
+                model::ProjectDocument beforeDocument = document_;
+                model::ProjectDocument afterDocument = document_;
+                if (auto* movedWidget = beforeDocument.findWidgetById(widget->id)) {
+                    movedWidget->bounds = canvasInteraction_.originalBounds;
+                }
+                if (auto* movedWidget = afterDocument.findWidgetById(widget->id)) {
+                    movedWidget->bounds = finalBounds;
+                }
+                const model::Rect reparentedBounds = boundsRelativeToParent(afterDocument, dropParentId, finalAbsoluteBounds);
+                if (afterDocument.reparentWidget(widget->id, dropParentId, reparentedBounds)) {
+                    document_ = beforeDocument;
+                    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+                        document_,
+                        "Reparent widget",
+                        std::move(beforeDocument),
+                        std::move(afterDocument)));
+                }
+            }
+            else {
+                undoRedo_.executeCommand(std::make_unique<commands::MoveWidgetCommand>(
+                    document_, widget->id, canvasInteraction_.originalBounds, finalBounds));
+            }
         }
         else {
             undoRedo_.executeCommand(std::make_unique<commands::ResizeWidgetCommand>(
@@ -2289,9 +2396,16 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         document_.markDirty();
         const std::string displayName = widget->name.empty() ? widget->id : widget->name;
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
-            setOperationStatus(canvasInteraction_.smartGuideSnapUsed
-                ? "Moved widget: " + displayName + " (" + widget->id + ") with smart guide snap"
-                : "Moved widget: " + displayName + " (" + widget->id + ")");
+            if (!canvasInteraction_.dropTargetWidgetId.empty() && canvasInteraction_.dropTargetWidgetId != canvasInteraction_.originalParentId) {
+                if (const auto* parent = document_.findWidgetById(canvasInteraction_.dropTargetWidgetId)) {
+                    setOperationStatus("Reparented widget: " + displayName + " -> " + widgetDisplayName(*parent));
+                }
+            }
+            else {
+                setOperationStatus(canvasInteraction_.smartGuideSnapUsed
+                    ? "Moved widget: " + displayName + " (" + widget->id + ") with smart guide snap"
+                    : "Moved widget: " + displayName + " (" + widget->id + ")");
+            }
         }
         else {
             setOperationStatus("Resized widget: " + displayName + " (" + widget->id + ")");
@@ -2730,7 +2844,14 @@ model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type)
 {
     const std::string id = idGenerator_.next(type, document_);
     model::WidgetNode widget = model::WidgetRegistry::instance().createDefaultWidget(type, id);
-    widget.bounds = nextDefaultWidgetBounds(type);
+    if (type == model::WidgetType::StatusBar) {
+        widget.bounds = { 0.0f, std::max(0.0f, document_.root.bounds.height - widget.bounds.height), document_.root.bounds.width, widget.bounds.height };
+        widget.setProperty("dock", "Bottom");
+        widget.setProperty("fillWidth", true);
+    }
+    else {
+        widget.bounds = nextDefaultWidgetBounds(type);
+    }
 
     return widget;
 }
@@ -2777,6 +2898,43 @@ bool MainWindow::enforceMinimumBoundsRecursive(model::WidgetNode& widget)
 bool MainWindow::normalizeWidgetBoundsForEditor()
 {
     return enforceMinimumBoundsRecursive(document_.root);
+}
+
+std::string MainWindow::resolveDropParentId(const std::string& movingWidgetId, float x, float y) const
+{
+    if (movingWidgetId.empty()) {
+        return document_.root.id;
+    }
+
+    const model::WidgetNode* movingWidget = document_.findWidgetById(movingWidgetId);
+    if (movingWidget == nullptr) {
+        return document_.root.id;
+    }
+
+    std::optional<std::string> hitWidgetId = designerCanvas_.hitTestWidgetId(document_, x, y);
+    if (!hitWidgetId.has_value()) {
+        return document_.root.id;
+    }
+
+    std::string candidateId = *hitWidgetId;
+    while (!candidateId.empty()) {
+        if (candidateId != movingWidgetId) {
+            if (const auto* candidate = document_.findWidgetById(candidateId);
+                candidate != nullptr
+                && model::WidgetRegistry::instance().canContainChildren(candidate->type)
+                && movingWidget->findById(candidateId) == nullptr) {
+                return candidate->id;
+            }
+        }
+
+        const model::WidgetNode* parent = document_.findParentOf(candidateId);
+        if (parent == nullptr) {
+            break;
+        }
+        candidateId = parent->id;
+    }
+
+    return document_.root.id;
 }
 
 bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const std::string& key, const std::string& valueText)

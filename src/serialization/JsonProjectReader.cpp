@@ -8,6 +8,7 @@
 
 #include <cctype>
 #include <sstream>
+#include <vector>
 
 namespace visiform::serialization {
 namespace {
@@ -188,6 +189,28 @@ bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::str
     }
     widget.type = *widgetType;
 
+    if (const auto iterator = json.find("parentId"); iterator != json.end()) {
+        if (!iterator->is_string()) {
+            errorMessage = "parentId must be a string when present.";
+            return false;
+        }
+        widget.parentId = iterator->get<std::string>();
+    }
+    else {
+        widget.parentId.clear();
+    }
+
+    if (const auto iterator = json.find("zOrder"); iterator != json.end()) {
+        if (!iterator->is_number_integer()) {
+            errorMessage = "zOrder must be an integer when present.";
+            return false;
+        }
+        widget.zOrder = iterator->get<int>();
+    }
+    else {
+        widget.zOrder = 0;
+    }
+
     const auto boundsIterator = json.find("bounds");
     if (boundsIterator == json.end()) {
         errorMessage = "Missing required widget field: bounds";
@@ -206,19 +229,46 @@ bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::str
     }
 
     const auto childrenIterator = json.find("children");
-    if (childrenIterator == json.end() || !childrenIterator->is_array()) {
-        errorMessage = "Missing or invalid widget field: children";
-        return false;
-    }
-
     widget.children.clear();
-    for (const auto& childJson : *childrenIterator) {
-        model::WidgetNode child;
-        if (!parseWidget(childJson, child, errorMessage)) {
+    if (childrenIterator != json.end()) {
+        if (!childrenIterator->is_array()) {
+            errorMessage = "children must be an array when present.";
             return false;
         }
 
-        widget.children.push_back(std::move(child));
+        for (const auto& childJson : *childrenIterator) {
+            model::WidgetNode child;
+            if (!parseWidget(childJson, child, errorMessage)) {
+                return false;
+            }
+
+            widget.children.push_back(std::move(child));
+        }
+    }
+
+    return true;
+}
+
+bool parseWidgetArray(const nlohmann::json& json, const char* fieldName, std::vector<model::WidgetNode>& widgets, std::string& errorMessage)
+{
+    widgets.clear();
+
+    const auto iterator = json.find(fieldName);
+    if (iterator == json.end()) {
+        return true;
+    }
+    if (!iterator->is_array()) {
+        errorMessage = std::string(fieldName) + " must be an array when present.";
+        return false;
+    }
+
+    for (const auto& widgetJson : *iterator) {
+        model::WidgetNode widget;
+        if (!parseWidget(widgetJson, widget, errorMessage)) {
+            return false;
+        }
+
+        widgets.push_back(std::move(widget));
     }
 
     return true;
@@ -337,14 +387,32 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
             }
         }
 
+        std::vector<model::WidgetNode> legacyWidgets;
+        if (!parseWidgetArray(json, "widgets", legacyWidgets, errorMessage)) {
+            return std::nullopt;
+        }
+
         const auto rootIterator = json.find("root");
-        if (rootIterator == json.end()) {
+        if (rootIterator != json.end()) {
+            if (!parseWidget(*rootIterator, document.root, errorMessage)) {
+                return std::nullopt;
+            }
+        }
+        else if (!legacyWidgets.empty()) {
+            document.root = model::ProjectDocument::createDefault().root;
+            document.root.children.clear();
+            document.root.setProperty("title", document.windowTitle.empty() ? document.projectName : document.windowTitle);
+        }
+        else {
             errorMessage = "Missing required field: root";
             return std::nullopt;
         }
-        if (!parseWidget(*rootIterator, document.root, errorMessage)) {
-            return std::nullopt;
+
+        for (auto& widget : legacyWidgets) {
+            document.root.appendChild(std::move(widget));
         }
+
+        document.refreshHierarchyMetadata();
 
         if (document.windowTitle.empty()) {
             document.windowTitle = document.root.getStringProperty("title", document.projectName);

@@ -152,6 +152,8 @@ private:
         Mode mode = Mode::None;
         DesignerCanvas::HitRegion region = DesignerCanvas::HitRegion::None;
         std::string widgetId{};
+        std::string originalParentId{};
+        std::string dropTargetWidgetId{};
         model::Rect originalBounds{};
         DesignerCanvas::FormPoint dragStart{};
         DesignerCanvas::FormPoint currentPoint{};
@@ -364,6 +366,7 @@ private:
     void toggleSnapToGrid();
     bool normalizeWidgetBoundsForEditor();
     bool enforceMinimumBoundsRecursive(model::WidgetNode& widget);
+    [[nodiscard]] std::string resolveDropParentId(const std::string& movingWidgetId, float x, float y) const;
     void addWidgetFromPalette(model::WidgetType type);
     [[nodiscard]] model::WidgetNode createDefaultWidget(model::WidgetType type);
     [[nodiscard]] model::Rect nextDefaultWidgetBounds(model::WidgetType type) const;

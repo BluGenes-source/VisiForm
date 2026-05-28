@@ -6,6 +6,9 @@ Current widget types:
 
 - `FormWindow`
 - `Frame`
+- `GroupBox`
+- `Panel`
+- `TabControl`
 - `Label`
 - `Button`
 - `TextBox`
@@ -35,6 +38,28 @@ The registry stores:
 
 The editor exposes these widget types through both the `Widget Palette` and the `Insert` menu.
 Both entry points use the same add-widget flow in `MainWindow`.
+
+## Hierarchy and container metadata
+
+Common hierarchy-aware properties now used by multiple widgets:
+
+- `dock`
+- `anchor`
+- `layoutMode`
+- `tabIndex`
+
+Container-capable widget types in the current registry:
+
+- `FormWindow`
+- `Frame`
+- `GroupBox`
+- `Panel`
+- `TabControl`
+
+`TabControl` also stores:
+
+- `tabs`
+- `selectedTab`
 
 ## Look and feel foundation
 
@@ -158,6 +183,9 @@ These values drive generated CMake naming, executable naming, user subclass file
 
 Current exported generated runtime behavior by widget type:
 
+- `GroupBox` - exported as a titled container and preserves parent-child hierarchy metadata
+- `Panel` - exported as a generic container and preserves parent-child hierarchy metadata
+- `TabControl` - exported as a tab container, keeps `tabs`, `selectedTab`, and child `tabIndex` metadata, and only draws children for the selected tab in generated runtime output
 - `Button` - click completion fires `onClick`, release-over-button fires `onRelease`, double-click fires `onDoubleClick`, toggle buttons preserve a checked state, and callback code can update other generated widgets through protected `MainWindow` helpers such as `setText(...)`, `setChecked(...)`, or `setStatusBarField(...)`
 - `CheckBox` - toggles and fires `onToggle`, and callback code can read or write checkbox state with `getChecked(...)` and `setChecked(...)`
 - `RadioButton` - enforces single selection per group and fires `onSelected` for the clicked item; callback code can also use `setSelected(...)` to apply group-aware selection changes
@@ -182,6 +210,7 @@ Current generated runtime limitations:
 - no text selection, clipboard, or IME support in generated `TextBox` yet
 - no full retained-mode widget framework yet
 - no generated layout manager yet
+- container export currently preserves hierarchy metadata and selected-tab visibility, but does not yet generate a full retained-mode layout system
 
 ## StatusBar defaults
 

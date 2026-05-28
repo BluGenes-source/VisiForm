@@ -4,7 +4,7 @@
 
 ## Purpose
 
-A `.vfb.json` file captures the project document used by the editor, including the root form, widget hierarchy, widget properties, and current selection.
+A `.vfb.json` file captures the project document used by the editor, including the root form, widget hierarchy, hierarchy metadata, widget properties, and current selection.
 
 ## Top-level schema
 
@@ -23,6 +23,11 @@ Top-level fields:
 - `selectedWidgetId` - currently selected widget id
 - `resources` - array of managed project resources
 - `root` - root `WidgetNode`
+
+Compatibility note:
+
+- older flat documents may also include a top-level `widgets` array
+- when present, those legacy widgets are attached to the root form during load
 
 The `dirty` flag is runtime-only and is not stored in the file.
 
@@ -59,6 +64,8 @@ Each widget node stores:
 - `name` - widget name used by the editor and generated code
 - `type` - widget type string
 - `bounds` - rectangle object
+- `parentId` - stored parent widget id, empty only for the root form
+- `zOrder` - stored sibling order index inside the parent
 - `properties` - object mapping property names to simple JSON values
 - `children` - array of child widget nodes
 
@@ -73,6 +80,9 @@ Supported `type` values:
 
 - `FormWindow`
 - `Frame`
+- `GroupBox`
+- `Panel`
+- `TabControl`
 - `Label`
 - `Button`
 - `TextBox`
@@ -209,6 +219,21 @@ The editor may store a widget help hint as:
 - `hint` - string help text shown by the editor UI
 
 The `hint` property is editor-facing help text. It is preserved by save and load, and may also appear as generated code comments during export.
+
+## Hierarchy and container metadata
+
+Common hierarchy-related widget properties now include:
+
+- `dock` - `None`, `Top`, `Bottom`, `Left`, `Right`, or `Fill`
+- `anchor` - stored anchor metadata for future resize behavior
+- `layoutMode` - `Absolute`, `Horizontal`, `Vertical`, `Grid`, or `TabPage`
+- `tabIndex` - tab page index used for widgets inside a `TabControl`
+
+Container-specific notes:
+
+- `FormWindow`, `Frame`, `GroupBox`, `Panel`, and `TabControl` can contain `children`
+- `TabControl` also stores `tabs` and `selectedTab` in `properties`
+- hierarchy is persisted through both the nested `children` arrays and the explicit `parentId` / `zOrder` metadata
 
 Current export naming rule:
 

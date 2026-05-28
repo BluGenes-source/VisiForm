@@ -15,6 +15,7 @@
 #include <set>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace visiform::validation {
@@ -301,6 +302,35 @@ bool isKnownDockValue(std::string_view value)
         || value == "Fill";
 }
 
+bool isKnownLayoutModeValue(std::string_view value)
+{
+    return value.empty() || model::layoutModeFromString(std::string{ value }).has_value();
+}
+
+bool hasHierarchyCycle(const std::unordered_map<std::string, const model::WidgetNode*>& widgetsById, const model::WidgetNode& widget)
+{
+    std::unordered_set<std::string> visitedIds;
+    if (!widget.id.empty()) {
+        visitedIds.insert(widget.id);
+    }
+
+    std::string currentParentId = trim(widget.parentId);
+    while (!currentParentId.empty()) {
+        if (!visitedIds.insert(currentParentId).second) {
+            return true;
+        }
+
+        const auto iterator = widgetsById.find(currentParentId);
+        if (iterator == widgetsById.end()) {
+            return false;
+        }
+
+        currentParentId = trim(iterator->second->parentId);
+    }
+
+    return false;
+}
+
 std::string eventSignatureKind(const model::WidgetDefinition& definition, const std::string& eventKey)
 {
     const auto iterator = std::find_if(definition.events.begin(), definition.events.end(), [&eventKey](const model::WidgetEventDefinition& eventDefinition) {
@@ -530,9 +560,11 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
 
     std::unordered_map<std::string, int> idCounts;
     std::unordered_map<std::string, int> nameCounts;
+    std::unordered_map<std::string, const model::WidgetNode*> widgetsById;
     for (const auto* widget : widgets) {
         if (!widget->id.empty()) {
             ++idCounts[widget->id];
+            widgetsById.emplace(widget->id, widget);
         }
         if (!widget->name.empty()) {
             ++nameCounts[widget->name];
@@ -590,6 +622,75 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                     widget->id,
                     "name");
             }
+        }
+
+        const model::WidgetNode* actualParent = document.findParentOf(widget->id);
+        const std::string storedParentId = trim(widget->parentId);
+        if (document.isRootWidgetId(widget->id)) {
+            if (!storedParentId.empty()) {
+                addMessage(report, ValidationSeverity::Error,
+                    "ROOT_PARENT_INVALID",
+                    "Root form must not have a parentId.",
+                    widget->id,
+                    "parentId");
+            }
+        }
+        else {
+            if (storedParentId.empty()) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_PARENT_EMPTY",
+                    "Non-root widgets must store a parentId.",
+                    widget->id,
+                    "parentId");
+            }
+            else if (storedParentId == widget->id) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_PARENT_SELF",
+                    "Widget parentId must not reference the widget itself.",
+                    widget->id,
+                    "parentId");
+            }
+            else {
+                const auto parentIterator = widgetsById.find(storedParentId);
+                if (parentIterator == widgetsById.end()) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "WIDGET_PARENT_MISSING",
+                        "Widget parentId does not match any widget in the document.",
+                        widget->id,
+                        "parentId");
+                }
+                else if (actualParent != nullptr && actualParent->id != storedParentId) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "WIDGET_PARENT_MISMATCH",
+                        "Widget parentId does not match the actual parent-child hierarchy.",
+                        widget->id,
+                        "parentId");
+                }
+            }
+
+            if (hasHierarchyCycle(widgetsById, *widget)) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_HIERARCHY_CYCLE",
+                    "Widget parentId metadata contains a hierarchy cycle.",
+                    widget->id,
+                    "parentId");
+            }
+        }
+
+        if (!definition->canContainChildren && !widget->children.empty()) {
+            addMessage(report, ValidationSeverity::Error,
+                "WIDGET_CHILDREN_NOT_ALLOWED",
+                "This widget type cannot contain child widgets.",
+                widget->id,
+                "children");
+        }
+
+        if (actualParent != nullptr && !model::WidgetRegistry::instance().canContainChildren(actualParent->type)) {
+            addMessage(report, ValidationSeverity::Error,
+                "WIDGET_PARENT_NOT_CONTAINER",
+                "Widget is attached to a parent type that cannot contain children.",
+                widget->id,
+                "parentId");
         }
 
         if (widget->bounds.width < 0.0f) {
@@ -686,6 +787,22 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                 "dock");
         }
 
+        const std::string layoutMode = trim(propertyString(*widget, "layoutMode"));
+        if (!layoutMode.empty() && !isKnownLayoutModeValue(layoutMode)) {
+            addMessage(report, ValidationSeverity::Error,
+                "WIDGET_LAYOUT_MODE_INVALID",
+                "layoutMode must be empty, Absolute, Horizontal, Vertical, Grid, or TabPage.",
+                widget->id,
+                "layoutMode");
+        }
+        else if (!definition->canContainChildren && !layoutMode.empty()) {
+            addMessage(report, ValidationSeverity::Warning,
+                "WIDGET_LAYOUT_MODE_UNUSED",
+                "layoutMode is stored on a widget type that does not contain children.",
+                widget->id,
+                "layoutMode");
+        }
+
         if (const auto fontSize = propertyNumber(*widget, "fontSize"); fontSize.has_value() && (*fontSize < 8.0 || *fontSize > 72.0)) {
             addMessage(report, ValidationSeverity::Warning,
                 "WIDGET_FONT_SIZE_RANGE",
@@ -760,6 +877,29 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                     "StatusBar fields must stay in the supported 1-4 range.",
                     widget->id,
                     "fields");
+            }
+
+            if (actualParent != &document.root) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "STATUSBAR_PARENT_UNSUPPORTED",
+                    "StatusBar bottom-dock behavior is only validated on the root form.",
+                    widget->id,
+                    "parentId");
+            }
+
+            if (dock.empty() || dock == "None") {
+                addMessage(report, ValidationSeverity::Warning,
+                    "STATUSBAR_DOCK_RECOMMENDED",
+                    "StatusBar should use Bottom dock to preserve the expected root status strip behavior.",
+                    widget->id,
+                    "dock");
+            }
+            else if (dock != "Bottom") {
+                addMessage(report, ValidationSeverity::Warning,
+                    "STATUSBAR_DOCK_NON_BOTTOM",
+                    "StatusBar is expected to use Bottom dock on the root form.",
+                    widget->id,
+                    "dock");
             }
         }
 

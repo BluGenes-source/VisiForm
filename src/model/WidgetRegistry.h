@@ -15,6 +15,7 @@ public:
     [[nodiscard]] const WidgetDefinition* findByTypeName(const std::string& typeName) const;
     [[nodiscard]] const std::vector<WidgetDefinition>& definitions() const;
     [[nodiscard]] WidgetNode createDefaultWidget(WidgetType type, const std::string& id) const;
+    [[nodiscard]] bool canContainChildren(WidgetType type) const;
 
 private:
     WidgetRegistry();

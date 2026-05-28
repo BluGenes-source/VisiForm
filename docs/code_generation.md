@@ -190,6 +190,7 @@ Current export validation highlights:
 - project naming checks for `projectName`, `executableName`, and `userSubclassName`
 - local Visage dependency-setting checks for `localVisageSourceDirectory`, `visageGitRepository`, and `visageGitTag`
 - project resource checks for unique ids, existing source files, safe `assets/` export paths, and duplicate export path conflicts
+- hierarchy checks for recursive duplicate ids, valid parent references, container rules, cycles in stored parent metadata, `dock`, `layoutMode`, and `StatusBar` docking expectations
 - `Image` widget checks for `resourceId`, fallback `imagePath`, and `scaleMode`
 - widget validation for duplicate ids, duplicate names, empty ids, bounds, colors, enum values, and numeric ranges
 - callback validation for invalid handler names and incompatible signature reuse
@@ -216,6 +217,9 @@ Current generated widget rendering support:
 
 - `FormWindow`
 - `Frame`
+- `GroupBox`
+- `Panel`
+- `TabControl`
 - `Label`
 - `Button`
 - `TextBox`
@@ -239,6 +243,18 @@ Generated runtime type highlights:
 - `RuntimeOrientation` replaces string-based runtime orientation checks
 - `RuntimeColor` replaces plain integer color fields in the generated runtime model
 - `RuntimeWidget` now groups related text, toggle, range, style, event, and interaction state
+- exported runtime widgets also preserve `parentId`, selected-tab state, and tab-page metadata so generated code can keep hierarchy-aware visibility for container children
+
+## Hierarchy-aware export behavior
+
+Current hierarchy export behavior:
+
+- generated runtime widgets are still emitted into a lightweight flat runtime list for simplicity
+- each generated runtime widget now preserves its source `parentId`
+- `TabControl` export preserves `tabs`, `selectedTab`, and child `tabIndex`
+- generated hit testing and drawing skip children on non-selected tab pages
+- `GroupBox`, `Panel`, and `TabControl` now export as concrete runtime widget types instead of falling back to `Unknown`
+- generated export scripts and Debug / Release preset names remain unchanged in this phase
 
 ## Look and feel aware preview rendering
 
@@ -496,6 +512,8 @@ Generated handler bodies in `src/MainWindow.cpp` use explicit preservation marke
 - `// USER CODE END handlerName`
 
 During re-export, `VisiForm` reads the existing generated `src/MainWindow.cpp` file and preserves the content inside matching handler markers.
+
+This preservation behavior remains unchanged when hierarchy or container metadata is added to the exported project.
 
 Example:
 

@@ -59,7 +59,11 @@ public:
     bool removeResourceById(const std::string& id);
     bool addChildToRoot(WidgetNode widget);
     bool addChildToParent(const std::string& parentId, WidgetNode widget);
+    [[nodiscard]] bool canReparentWidget(const std::string& widgetId, const std::string& newParentId) const;
+    bool reparentWidget(const std::string& widgetId, const std::string& newParentId, Rect newBounds);
     [[nodiscard]] WidgetNode* duplicateWidgetById(const std::string& id, utils::IdGenerator& idGenerator);
+    void refreshHierarchyMetadata();
+    void applyDockLayout();
 
     void selectWidget(const std::string& id);
     void setSelection(const std::string& id);

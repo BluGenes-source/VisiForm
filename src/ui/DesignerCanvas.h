@@ -67,6 +67,7 @@ public:
     [[nodiscard]] int majorGridSize() const;
     [[nodiscard]] bool contains(float x, float y) const;
     [[nodiscard]] std::optional<std::string> hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const;
+    [[nodiscard]] std::optional<int> hitTestTabHeader(const model::ProjectDocument& document, const std::string& widgetId, float x, float y) const;
     [[nodiscard]] std::optional<InteractionHit> hitTestInteraction(const model::ProjectDocument& document, float x, float y, const std::string& selectedWidgetId) const;
     [[nodiscard]] std::optional<FormPoint> toFormPoint(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] model::Rect moveBounds(const model::Rect& originalBounds, const FormPoint& dragStart, const FormPoint& currentPoint) const;

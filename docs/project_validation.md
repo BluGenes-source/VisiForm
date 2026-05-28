@@ -58,6 +58,12 @@ Current widget checks include:
 - empty widget `name`
 - duplicate widget `name`
 - widget-name sanitization warnings
+- root `parentId` must stay empty
+- non-root widgets must store a valid `parentId`
+- stored parent references must match the real parent-child hierarchy
+- stored parent metadata must not form cycles
+- non-container widgets must not own `children`
+- widgets must not be attached under a parent type that cannot contain children
 - negative width or height
 - zero width or height warnings
 - bounds extending outside the root form
@@ -70,13 +76,17 @@ Current property validation includes:
 - color format validation for `backgroundColor`, `fillColor`, `textColor`, `borderColor`, `accentColor`, `panelColor`, `controlFillColor`, `controlTextColor`, `controlBorderColor`, `disabledColor`, and `ColorPicker.value`
 - `ScrollBar.orientation` must be `Horizontal` or `Vertical`
 - `dock` must be empty, `None`, `Bottom`, `Top`, `Left`, `Right`, or `Fill`
+- `layoutMode` must be empty, `Absolute`, `Horizontal`, `Vertical`, `Grid`, or `TabPage`
+- `layoutMode` on non-container widgets is reported as a warning because it is unused
 - widget `lookAndFeelId` values must be empty or match a known preset
 - `fontSize` range warnings outside `8..72`
-- `borderThickness` range warnings outside `0..20`
-- `cornerRadius` range warnings outside `0..50`
+- `borderThickness` range warnings outside `1..25`
+- `cornerRadius` range warnings outside `1..25`
 - `Slider`, `ScrollBar`, and `ProgressBar` require `max > min`
 - out-of-range `value` warnings for `Slider`, `ScrollBar`, and `ProgressBar`
 - `StatusBar.fields` must remain in the supported `1..4` range
+- `StatusBar` warns when it is not attached to the root form
+- `StatusBar` warns when it is not bottom-docked on the root form
 - `Image.scaleMode` must be `Stretch`, `Fit`, `Fill`, or `Center`
 - `Image.resourceId` must resolve to a managed project resource when set
 - `Image.resourceId` must resolve specifically to a project resource of type `Image`
@@ -112,6 +122,7 @@ Current radio-group validation includes:
 
 Current export-compatibility validation includes:
 
+- hierarchy checks before export so invalid parent metadata, non-container parenting, and tab-container visibility problems are caught before code generation
 - warning when an `Image` widget has neither `resourceId` nor `imagePath`
 - error when a managed project resource source file is missing
 - error when an `Image.resourceId` points to a missing or non-image project resource

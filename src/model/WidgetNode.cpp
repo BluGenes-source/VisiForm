@@ -12,6 +12,9 @@ const std::string& widgetTypeName(WidgetType type)
 {
     static const std::string formWindow = "FormWindow";
     static const std::string frame = "Frame";
+    static const std::string groupBox = "GroupBox";
+    static const std::string panel = "Panel";
+    static const std::string tabControl = "TabControl";
     static const std::string label = "Label";
     static const std::string button = "Button";
     static const std::string textBox = "TextBox";
@@ -31,6 +34,12 @@ const std::string& widgetTypeName(WidgetType type)
         return formWindow;
     case WidgetType::Frame:
         return frame;
+    case WidgetType::GroupBox:
+        return groupBox;
+    case WidgetType::Panel:
+        return panel;
+    case WidgetType::TabControl:
+        return tabControl;
     case WidgetType::Label:
         return label;
     case WidgetType::Button:
@@ -62,6 +71,66 @@ const std::string& widgetTypeName(WidgetType type)
     return frame;
 }
 
+const std::string& dockModeName(DockMode mode)
+{
+    static const std::string none = "None";
+    static const std::string top = "Top";
+    static const std::string bottom = "Bottom";
+    static const std::string left = "Left";
+    static const std::string right = "Right";
+    static const std::string fill = "Fill";
+
+    switch (mode) {
+    case DockMode::None:
+        return none;
+    case DockMode::Top:
+        return top;
+    case DockMode::Bottom:
+        return bottom;
+    case DockMode::Left:
+        return left;
+    case DockMode::Right:
+        return right;
+    case DockMode::Fill:
+        return fill;
+    }
+
+    return none;
+}
+
+const std::string& layoutModeName(LayoutMode mode)
+{
+    static const std::string absolute = "Absolute";
+    static const std::string horizontal = "Horizontal";
+    static const std::string vertical = "Vertical";
+    static const std::string grid = "Grid";
+    static const std::string tabPage = "TabPage";
+
+    switch (mode) {
+    case LayoutMode::Absolute:
+        return absolute;
+    case LayoutMode::Horizontal:
+        return horizontal;
+    case LayoutMode::Vertical:
+        return vertical;
+    case LayoutMode::Grid:
+        return grid;
+    case LayoutMode::TabPage:
+        return tabPage;
+    }
+
+    return absolute;
+}
+
+void normalizeChildMetadata(WidgetNode& parent)
+{
+    for (std::size_t index = 0; index < parent.children.size(); ++index) {
+        auto& child = parent.children[index];
+        child.zOrder = static_cast<int>(index);
+        child.syncHierarchyMetadata(parent.id);
+    }
+}
+
 } // namespace
 
 std::string toString(WidgetType type)
@@ -76,6 +145,15 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     }
     if (value == "Frame") {
         return WidgetType::Frame;
+    }
+    if (value == "GroupBox") {
+        return WidgetType::GroupBox;
+    }
+    if (value == "Panel") {
+        return WidgetType::Panel;
+    }
+    if (value == "TabControl") {
+        return WidgetType::TabControl;
     }
     if (value == "Label") {
         return WidgetType::Label;
@@ -120,6 +198,61 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     return std::nullopt;
 }
 
+std::string toString(DockMode mode)
+{
+    return dockModeName(mode);
+}
+
+std::optional<DockMode> dockModeFromString(const std::string& value)
+{
+    if (value == "None") {
+        return DockMode::None;
+    }
+    if (value == "Top") {
+        return DockMode::Top;
+    }
+    if (value == "Bottom") {
+        return DockMode::Bottom;
+    }
+    if (value == "Left") {
+        return DockMode::Left;
+    }
+    if (value == "Right") {
+        return DockMode::Right;
+    }
+    if (value == "Fill") {
+        return DockMode::Fill;
+    }
+
+    return std::nullopt;
+}
+
+std::string toString(LayoutMode mode)
+{
+    return layoutModeName(mode);
+}
+
+std::optional<LayoutMode> layoutModeFromString(const std::string& value)
+{
+    if (value == "Absolute") {
+        return LayoutMode::Absolute;
+    }
+    if (value == "Horizontal") {
+        return LayoutMode::Horizontal;
+    }
+    if (value == "Vertical") {
+        return LayoutMode::Vertical;
+    }
+    if (value == "Grid") {
+        return LayoutMode::Grid;
+    }
+    if (value == "TabPage") {
+        return LayoutMode::TabPage;
+    }
+
+    return std::nullopt;
+}
+
 bool Rect::contains(float px, float py) const
 {
     return px >= x && py >= y && px <= x + width && py <= y + height;
@@ -141,6 +274,16 @@ WidgetNode::WidgetNode(std::string idValue, std::string nameValue, WidgetType wi
 const std::string& WidgetNode::typeName() const
 {
     return widgetTypeName(type);
+}
+
+DockMode WidgetNode::dockMode() const
+{
+    return dockModeFromString(getStringProperty("dock", "None")).value_or(DockMode::None);
+}
+
+LayoutMode WidgetNode::layoutMode() const
+{
+    return layoutModeFromString(getStringProperty("layoutMode", "Absolute")).value_or(LayoutMode::Absolute);
 }
 
 PropertyValue* WidgetNode::getProperty(const std::string& key)
@@ -249,6 +392,7 @@ bool WidgetNode::removeWidgetById(const std::string& searchId)
         [&](const WidgetNode& child) { return child.id == searchId; });
     if (iterator != children.end()) {
         children.erase(iterator);
+        normalizeChildMetadata(*this);
         return true;
     }
 
@@ -264,16 +408,12 @@ bool WidgetNode::removeWidgetById(const std::string& searchId)
 bool WidgetNode::addChildToParent(const std::string& parentId, WidgetNode widget)
 {
     if (id == parentId) {
-        children.push_back(std::move(widget));
+        appendChild(std::move(widget));
         return true;
     }
 
     for (auto& child : children) {
-        if (child.id == parentId) {
-            child.children.push_back(std::move(widget));
-            return true;
-        }
-        if (child.addChildToParent(parentId, widget)) {
+        if (child.addChildToParent(parentId, std::move(widget))) {
             return true;
         }
     }
@@ -299,6 +439,19 @@ const WidgetNode* WidgetNode::hitTest(float x, float y) const
     }
 
     return nullptr;
+}
+
+void WidgetNode::syncHierarchyMetadata(const std::string& resolvedParentId)
+{
+    parentId = resolvedParentId;
+    normalizeChildMetadata(*this);
+}
+
+void WidgetNode::appendChild(WidgetNode child)
+{
+    child.zOrder = static_cast<int>(children.size());
+    child.syncHierarchyMetadata(id);
+    children.push_back(std::move(child));
 }
 
 } // namespace visiform::model

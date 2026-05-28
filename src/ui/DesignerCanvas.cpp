@@ -341,6 +341,45 @@ std::vector<std::string> splitCommaSeparatedValues(const std::string& text)
     return values;
 }
 
+std::vector<std::string> tabLabels(const model::WidgetNode& widget)
+{
+    std::vector<std::string> labels;
+    std::istringstream stream(getStringProperty(widget, "tabs", "Tab 1,Tab 2"));
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        const auto first = std::find_if_not(item.begin(), item.end(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        });
+        const auto last = std::find_if_not(item.rbegin(), item.rend(), [](unsigned char character) {
+            return std::isspace(character) != 0;
+        }).base();
+        if (first < last) {
+            labels.emplace_back(first, last);
+        }
+    }
+
+    if (labels.empty()) {
+        labels.push_back("Tab 1");
+    }
+
+    return labels;
+}
+
+int selectedTabIndex(const model::WidgetNode& widget)
+{
+    const std::vector<std::string> labels = tabLabels(widget);
+    return std::clamp(widget.getIntProperty("selectedTab", 0), 0, std::max(0, static_cast<int>(labels.size()) - 1));
+}
+
+bool isChildVisibleInParent(const model::WidgetNode& parent, const model::WidgetNode& child)
+{
+    if (parent.type != model::WidgetType::TabControl) {
+        return true;
+    }
+
+    return child.getIntProperty("tabIndex", 0) == selectedTabIndex(parent);
+}
+
 float normalizedSliderValue(const model::WidgetNode& widget)
 {
     const float minimum = getNumericProperty(widget, "min", 0.0f);
@@ -434,7 +473,10 @@ ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, c
     style.borderColor = parseColorOrDefault(widget.getStringProperty("borderColor", {}), style.borderColor);
     style.accentColor = parseColorOrDefault(widget.getStringProperty("accentColor", {}), style.accentColor);
 
-    if (widget.type == model::WidgetType::FormWindow || widget.type == model::WidgetType::Frame) {
+    if (widget.type == model::WidgetType::FormWindow
+        || widget.type == model::WidgetType::Frame
+        || widget.type == model::WidgetType::GroupBox
+        || widget.type == model::WidgetType::Panel) {
         style.fillColor = parseColorOrDefault(widget.getStringProperty("backgroundColor", {}),
             widget.type == model::WidgetType::FormWindow ? style.panelColor : style.fillColor);
     }
@@ -567,6 +609,9 @@ std::optional<std::string> hitTestWidgetScreenId(const model::WidgetNode& widget
     // - children.back() is frontmost
     // Hit testing walks children from front to back so the topmost overlap wins.
     for (auto iterator = widget.children.rbegin(); iterator != widget.children.rend(); ++iterator) {
+        if (!isChildVisibleInParent(widget, *iterator)) {
+            continue;
+        }
         if (auto match = hitTestWidgetScreenId(*iterator, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
                 scale, x, y, smallWidgetHitPadding)) {
             return match;
@@ -827,6 +872,56 @@ void drawWidget(visage::Canvas& canvas,
                 bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 16.0f), 20.0f);
         }
         break;
+    case model::WidgetType::GroupBox: {
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y + 10.0f, bounds.width, std::max(0.0f, bounds.height - 10.0f));
+        drawBorder(canvas, { bounds.x, bounds.y + 10.0f, bounds.width, std::max(0.0f, bounds.height - 10.0f) }, style.borderColor, style.borderThickness);
+        if (drawText) {
+            const std::string title = getStringProperty(widget, "title", "Group");
+            const float titleWidth = std::min(bounds.width - 20.0f, std::max(48.0f, estimateDesignerTextWidth(title, fontSize)));
+            canvas.setColor(style.fillColor);
+            canvas.fill(bounds.x + 12.0f, bounds.y, titleWidth + 12.0f, 20.0f);
+            canvas.setColor(style.textColor);
+            canvas.text(title, widgetFont, visage::Font::kTopLeft,
+                bounds.x + 18.0f, bounds.y + 1.0f, std::max(0.0f, bounds.width - 28.0f), 18.0f);
+        }
+        break;
+    }
+    case model::WidgetType::Panel:
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        break;
+    case model::WidgetType::TabControl: {
+        const std::vector<std::string> labels = tabLabels(widget);
+        const int selectedTab = selectedTabIndex(widget);
+        const float headerHeight = std::min(32.0f, std::max(24.0f, bounds.height * 0.18f));
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        canvas.setColor(style.panelColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, headerHeight);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        const float tabWidth = bounds.width / static_cast<float>(std::max<std::size_t>(1, labels.size()));
+        for (std::size_t index = 0; index < labels.size(); ++index) {
+            const PanelRect tabBounds{
+                bounds.x + tabWidth * static_cast<float>(index),
+                bounds.y,
+                tabWidth,
+                headerHeight
+            };
+            canvas.setColor(static_cast<int>(index) == selectedTab ? style.fillColor : blendColor(style.panelColor, style.fillColor, 0.22f));
+            canvas.fill(tabBounds.x, tabBounds.y, tabBounds.width, tabBounds.height);
+            drawBorder(canvas, tabBounds, style.borderColor, 1.0f);
+            if (drawText) {
+                canvas.setColor(style.textColor);
+                canvas.text(labels[index], widgetFont, visage::Font::kCenter,
+                    tabBounds.x, tabBounds.y, tabBounds.width, tabBounds.height);
+            }
+        }
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x + 1.0f, bounds.y + headerHeight, std::max(0.0f, bounds.width - 2.0f), std::max(0.0f, bounds.height - headerHeight - 1.0f));
+        break;
+    }
     case model::WidgetType::Label:
         if (drawText) {
             canvas.setColor(style.textColor);
@@ -1075,6 +1170,9 @@ void drawWidget(visage::Canvas& canvas,
 
     // Draw children from back to front so later children appear on top.
     for (const auto& child : widget.children) {
+        if (!isChildVisibleInParent(widget, child)) {
+            continue;
+        }
         drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
             scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
     }
@@ -1179,6 +1277,40 @@ std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectD
     }
 
     return std::nullopt;
+}
+
+std::optional<int> DesignerCanvas::hitTestTabHeader(const model::ProjectDocument& document, const std::string& widgetId, float x, float y) const
+{
+    if (!contains(x, y) || widgetId.empty() || !document.root.bounds.isValid()) {
+        return std::nullopt;
+    }
+
+    const model::WidgetNode* widget = document.findWidgetById(widgetId);
+    if (widget == nullptr || widget->type != model::WidgetType::TabControl) {
+        return std::nullopt;
+    }
+
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    if (!previewLayout.form.isValid()) {
+        return std::nullopt;
+    }
+
+    const auto widgetInfo = findWidgetScreenInfo(document.root, widgetId, previewLayout.form.x, previewLayout.form.y,
+        -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale);
+    if (!widgetInfo.has_value()) {
+        return std::nullopt;
+    }
+
+    const float headerHeight = std::min(32.0f, std::max(24.0f, widgetInfo->bounds.height * 0.18f));
+    const PanelRect headerBounds{ widgetInfo->bounds.x, widgetInfo->bounds.y, widgetInfo->bounds.width, headerHeight };
+    if (!headerBounds.contains(x, y)) {
+        return std::nullopt;
+    }
+
+    const std::vector<std::string> labels = tabLabels(*widget);
+    const float tabWidth = headerBounds.width / static_cast<float>(std::max<std::size_t>(1, labels.size()));
+    const int index = std::clamp(static_cast<int>((x - headerBounds.x) / std::max(1.0f, tabWidth)), 0, static_cast<int>(labels.size()) - 1);
+    return index;
 }
 
 std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction(const model::ProjectDocument& document,
