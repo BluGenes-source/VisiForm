@@ -154,6 +154,7 @@ private:
         std::string widgetId{};
         std::string originalParentId{};
         std::string dropTargetWidgetId{};
+        std::string marqueeScopeWidgetId{};
         model::Rect originalBounds{};
         DesignerCanvas::FormPoint dragStart{};
         DesignerCanvas::FormPoint currentPoint{};

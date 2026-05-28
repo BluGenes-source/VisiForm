@@ -1479,6 +1479,8 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
 
     if (marqueeRect.has_value()) {
         const PanelRect screenRect = selectionRectToScreenRect(previewLayout, *marqueeRect);
+        canvas.setColor(0x226fa9ff);
+        canvas.fill(screenRect.x, screenRect.y, screenRect.width, screenRect.height);
         canvas.setColor(0xff6fa9ff);
         canvas.fill(screenRect.x, screenRect.y, screenRect.width, 1.0f);
         canvas.fill(screenRect.x, screenRect.y + screenRect.height - 1.0f, screenRect.width, 1.0f);

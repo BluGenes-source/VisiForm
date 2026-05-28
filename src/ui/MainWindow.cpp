@@ -60,6 +60,7 @@ constexpr float kLayoutMargin = 20.0f;
 constexpr float kGroupBoxChildStartX = 20.0f;
 constexpr float kGroupBoxChildStartY = 36.0f;
 constexpr float kGroupBoxChildOffsetStep = 16.0f;
+constexpr float kGroupBoxContentTopInset = 20.0f;
 constexpr float kMarqueeDragThreshold = 4.0f;
 constexpr float kSmartGuideSnapThreshold = 6.0f;
 constexpr float kEditorModalPreferredWidth = 560.0f;
@@ -571,10 +572,12 @@ bool isRepairPassParentTarget(const model::WidgetNode& widget)
         || widget.type == model::WidgetType::GroupBox;
 }
 
-std::string insertionParentIdForNewWidget(const model::ProjectDocument& document)
+std::string insertionParentIdForNewWidget(const model::ProjectDocument& document, model::WidgetType type)
 {
     const model::WidgetNode* selectedWidget = document.selectedWidget();
-    if (selectedWidget != nullptr && selectedWidget->type == model::WidgetType::GroupBox) {
+    if (selectedWidget != nullptr
+        && selectedWidget->type == model::WidgetType::GroupBox
+        && type != model::WidgetType::GroupBox) {
         return selectedWidget->id;
     }
 
@@ -859,7 +862,75 @@ bool rectsIntersect(const model::Rect& widgetBounds, const DesignerCanvas::Selec
         && widgetBounds.y <= selectionBottom && widgetBottom >= selectionRect.y;
 }
 
-void collectIntersectingWidgetIds(const model::WidgetNode& widget,
+bool isChildVisibleForMarqueeSelection(const model::WidgetNode& parent, const model::WidgetNode& child)
+{
+    if (parent.type != model::WidgetType::TabControl) {
+        return true;
+    }
+
+    return child.getIntProperty("tabIndex", 0) == std::max(0, parent.getIntProperty("selectedTab", 0));
+}
+
+bool isDescendantOf(const model::ProjectDocument& document, const std::string& widgetId, const std::string& ancestorId)
+{
+    if (widgetId.empty() || ancestorId.empty() || widgetId == ancestorId) {
+        return false;
+    }
+
+    const model::WidgetNode* parent = document.findParentOf(widgetId);
+    while (parent != nullptr) {
+        if (parent->id == ancestorId) {
+            return true;
+        }
+        parent = document.findParentOf(parent->id);
+    }
+
+    return false;
+}
+
+bool groupBoxHasActiveSelection(const model::ProjectDocument& document, const std::string& groupBoxId)
+{
+    if (groupBoxId.empty()) {
+        return false;
+    }
+
+    if (document.isSelected(groupBoxId)) {
+        return true;
+    }
+
+    return std::any_of(document.selectedWidgetIds().begin(), document.selectedWidgetIds().end(),
+        [&document, &groupBoxId](const std::string& selectedId) {
+            return isDescendantOf(document, selectedId, groupBoxId);
+        });
+}
+
+std::optional<std::string> resolveMarqueeGroupBoxScope(const model::ProjectDocument& document, const std::string& hitWidgetId)
+{
+    const model::WidgetNode* current = document.findWidgetById(hitWidgetId);
+    while (current != nullptr) {
+        if (current->type == model::WidgetType::GroupBox && groupBoxHasActiveSelection(document, current->id)) {
+            return current->id;
+        }
+
+        current = document.findParentOf(current->id);
+    }
+
+    return std::nullopt;
+}
+
+bool isPointInGroupBoxContent(const model::ProjectDocument& document, const std::string& groupBoxId, const DesignerCanvas::FormPoint& point)
+{
+    const model::Rect groupBoxBounds = absoluteBoundsForWidget(document, groupBoxId);
+    if (!groupBoxBounds.isValid()) {
+        return false;
+    }
+
+    const float contentTop = groupBoxBounds.y + std::min(kGroupBoxContentTopInset, groupBoxBounds.height);
+    return point.x >= groupBoxBounds.x && point.x <= groupBoxBounds.x + groupBoxBounds.width
+        && point.y >= contentTop && point.y <= groupBoxBounds.y + groupBoxBounds.height;
+}
+
+bool collectIntersectingWidgetIds(const model::WidgetNode& widget,
     float parentX,
     float parentY,
     const DesignerCanvas::SelectionRect& selectionRect,
@@ -869,12 +940,54 @@ void collectIntersectingWidgetIds(const model::WidgetNode& widget,
     const float absoluteY = parentY + widget.bounds.y;
     const model::Rect absoluteBounds{ absoluteX, absoluteY, widget.bounds.width, widget.bounds.height };
 
-    if (widget.type != model::WidgetType::FormWindow && rectsIntersect(absoluteBounds, selectionRect)) {
+    bool matchedDescendant = false;
+    for (const auto& child : widget.children) {
+        if (!isChildVisibleForMarqueeSelection(widget, child)) {
+            continue;
+        }
+        if (collectIntersectingWidgetIds(child, absoluteX, absoluteY, selectionRect, widgetIds)) {
+            matchedDescendant = true;
+        }
+    }
+
+    const bool intersects = widget.type != model::WidgetType::FormWindow && rectsIntersect(absoluteBounds, selectionRect);
+    if (intersects && !matchedDescendant) {
         widgetIds.push_back(widget.id);
     }
 
-    for (const auto& child : widget.children) {
-        collectIntersectingWidgetIds(child, absoluteX, absoluteY, selectionRect, widgetIds);
+    return intersects || matchedDescendant;
+}
+
+void collectRootIntersectingWidgetIds(const model::ProjectDocument& document,
+    const DesignerCanvas::SelectionRect& selectionRect,
+    std::vector<std::string>& widgetIds)
+{
+    for (const auto& child : document.root.children) {
+        if (!isChildVisibleForMarqueeSelection(document.root, child)) {
+            continue;
+        }
+
+        collectIntersectingWidgetIds(child, document.root.bounds.x, document.root.bounds.y, selectionRect, widgetIds);
+    }
+}
+
+void collectScopedGroupBoxIntersectingWidgetIds(const model::ProjectDocument& document,
+    const std::string& groupBoxId,
+    const DesignerCanvas::SelectionRect& selectionRect,
+    std::vector<std::string>& widgetIds)
+{
+    const model::WidgetNode* groupBox = document.findWidgetById(groupBoxId);
+    if (groupBox == nullptr) {
+        return;
+    }
+
+    const model::Rect groupBoxBounds = absoluteBoundsForWidget(document, groupBoxId);
+    for (const auto& child : groupBox->children) {
+        if (!isChildVisibleForMarqueeSelection(*groupBox, child)) {
+            continue;
+        }
+
+        collectIntersectingWidgetIds(child, groupBoxBounds.x, groupBoxBounds.y, selectionRect, widgetIds);
     }
 }
 
@@ -2083,12 +2196,29 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             if (const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y)) {
                 clearCanvasInteraction();
                 canvasInteraction_.mode = CanvasInteractionState::Mode::MarqueeSelect;
+                canvasInteraction_.marqueeScopeWidgetId = document_.root.id;
                 canvasInteraction_.dragStart = *dragStart;
                 canvasInteraction_.currentPoint = *dragStart;
                 canvasInteraction_.changed = false;
                 redraw();
             }
             return;
+        }
+
+        if (const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y)) {
+            const auto marqueeGroupBoxId = resolveMarqueeGroupBoxScope(document_, *widgetId);
+            if (marqueeGroupBoxId.has_value()
+                && *widgetId == *marqueeGroupBoxId
+                && isPointInGroupBoxContent(document_, *marqueeGroupBoxId, *dragStart)) {
+                clearCanvasInteraction();
+                canvasInteraction_.mode = CanvasInteractionState::Mode::MarqueeSelect;
+                canvasInteraction_.marqueeScopeWidgetId = *marqueeGroupBoxId;
+                canvasInteraction_.dragStart = *dragStart;
+                canvasInteraction_.currentPoint = *dragStart;
+                canvasInteraction_.changed = false;
+                redraw();
+                return;
+            }
         }
 
         const bool clickedPrimarySelected = document_.selectedWidgetId == *widgetId;
@@ -2146,6 +2276,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     if (const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y)) {
         clearCanvasInteraction();
         canvasInteraction_.mode = CanvasInteractionState::Mode::MarqueeSelect;
+        canvasInteraction_.marqueeScopeWidgetId = document_.root.id;
         canvasInteraction_.dragStart = *dragStart;
         canvasInteraction_.currentPoint = *dragStart;
         canvasInteraction_.changed = false;
@@ -2325,23 +2456,34 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 
     if (canvasInteraction_.mode == CanvasInteractionState::Mode::MarqueeSelect) {
         const DesignerCanvas::SelectionRect selectionRect = normalizedSelectionRect(canvasInteraction_.dragStart, canvasInteraction_.currentPoint);
+        const std::string marqueeScopeWidgetId = canvasInteraction_.marqueeScopeWidgetId.empty()
+            ? document_.root.id
+            : canvasInteraction_.marqueeScopeWidgetId;
+        const bool groupBoxScope = !document_.isRootWidgetId(marqueeScopeWidgetId);
+        const std::string statusSuffix = groupBoxScope ? " in " + marqueeScopeWidgetId : std::string{};
         if (!isMeaningfulMarquee(selectionRect)) {
-            document_.setSelection(document_.root.id);
-            setOperationStatus("Box selected 0 widgets");
+            document_.setSelection(groupBoxScope ? marqueeScopeWidgetId : document_.root.id);
+            setOperationStatus("Selected 0 widgets" + statusSuffix);
         }
         else {
             std::vector<std::string> intersectingIds;
-            collectIntersectingWidgetIds(document_.root, 0.0f, 0.0f, selectionRect, intersectingIds);
+            if (groupBoxScope) {
+                collectScopedGroupBoxIntersectingWidgetIds(document_, marqueeScopeWidgetId, selectionRect, intersectingIds);
+            }
+            else {
+                collectRootIntersectingWidgetIds(document_, selectionRect, intersectingIds);
+            }
+
             if (intersectingIds.empty()) {
-                document_.setSelection(document_.root.id);
-                setOperationStatus("Box selected 0 widgets");
+                document_.setSelection(groupBoxScope ? marqueeScopeWidgetId : document_.root.id);
+                setOperationStatus("Selected 0 widgets" + statusSuffix);
             }
             else {
                 document_.clearSelection();
                 for (const auto& id : intersectingIds) {
                     document_.addToSelection(id);
                 }
-                setOperationStatus("Box selected " + std::to_string(intersectingIds.size()) + " widgets");
+                setOperationStatus("Selected " + std::to_string(intersectingIds.size()) + " widgets" + statusSuffix);
             }
         }
 
@@ -2684,7 +2826,7 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
         return;
     }
 
-    const std::string parentId = insertionParentIdForNewWidget(document_);
+    const std::string parentId = insertionParentIdForNewWidget(document_, type);
     const model::WidgetNode* parent = document_.findWidgetById(parentId);
     if (parent == nullptr) {
         setOperationStatus("Add widget failed: insertion parent is invalid");
@@ -2698,6 +2840,7 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
     undoRedo_.executeCommand(std::make_unique<commands::AddWidgetCommand>(document_, parentId, std::move(widget), addedId));
     normalizeWidgetBoundsForEditor();
     document_.markDirty();
+    updatePropertyEditorBounds();
     setOperationStatus("Added " + model::toString(type) + " to " + parentLabel);
     redraw();
 }

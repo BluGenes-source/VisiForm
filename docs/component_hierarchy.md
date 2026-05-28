@@ -35,6 +35,12 @@ Current editor-active parenting workflow in this repair pass:
 - selecting the root `FormWindow` returns insertion to the root form
 - selecting any non-`GroupBox` widget still falls back to inserting at the root form
 - drag/drop reparenting in the editor is intentionally limited to `GroupBox` and the root form for now
+- box-selection marquee coordinates are stored in root-form coordinates and drawn in root canvas space
+- box-selection intersection tests convert child widget bounds to absolute root-form bounds before checking the marquee rectangle
+- starting box selection from empty content inside a selected or active `GroupBox` scopes selection to that `GroupBox`'s descendants
+- newly created `GroupBox` widgets remain root-level in this repair pass instead of inheriting the currently selected `GroupBox` as their parent
+- clicking a `GroupBox` title, border, or empty body selects the `GroupBox`, while clicking a child still selects that child first
+- moving a root-level `GroupBox` updates only the `GroupBox` root coordinates; child widgets keep their parent-relative local bounds and move visually with the parent
 
 ## Hierarchy metadata
 
@@ -66,6 +72,7 @@ Compatibility behavior:
 - hierarchy metadata is normalized after load so runtime tree traversal stays consistent
 
 For the current `GroupBox` workflow, child widget `bounds.x` and `bounds.y` remain relative to the owning `GroupBox`, not absolute root-form coordinates.
+Selection outlines and marquee intersection tests therefore use absolute bounds computed from the parent-relative hierarchy.
 
 ## Validation behavior
 
