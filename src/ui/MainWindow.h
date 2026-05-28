@@ -368,13 +368,16 @@ private:
     bool enforceMinimumBoundsRecursive(model::WidgetNode& widget);
     [[nodiscard]] std::string resolveDropParentId(const std::string& movingWidgetId, float x, float y) const;
     void addWidgetFromPalette(model::WidgetType type);
-    [[nodiscard]] model::WidgetNode createDefaultWidget(model::WidgetType type);
-    [[nodiscard]] model::Rect nextDefaultWidgetBounds(model::WidgetType type) const;
+    [[nodiscard]] model::WidgetNode createDefaultWidget(model::WidgetType type, const std::string& parentId);
+    [[nodiscard]] model::Rect nextDefaultWidgetBounds(model::WidgetType type, const std::string& parentId) const;
     [[nodiscard]] bool autoSizeWidgetForTextProperty(model::WidgetNode& widget, const std::string& key, const std::string& valueText);
     bool setSelectedWidgetName(const std::string& name);
     bool setSelectedWidgetBounds(float x, float y, float width, float height);
     bool setSelectedWidgetProperty(const std::string& key, model::PropertyValue value);
     bool setSelectedWidgetPropertyFromString(const std::string& key, const std::string& valueText);
+    bool selectGroupBoxChildFromInspector(const std::string& childId);
+    bool addExistingWidgetToSelectedGroupBox(const std::string& childId);
+    bool removeSelectedGroupBoxChildToRoot(const std::string& childId);
     bool applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange);
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;

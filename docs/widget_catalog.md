@@ -9,6 +9,27 @@ Current widget types:
 - `GroupBox`
 - `Panel`
 - `TabControl`
+
+Current editor-active container workflow:
+
+- `GroupBox` is the first container with a focused parenting workflow in the editor
+- selecting a `GroupBox` inserts new widgets into that `GroupBox`
+- selecting the root form inserts new widgets at the root
+- other selected widgets currently fall back to root insertion instead of accepting new children directly
+
+## GroupBox repair-pass behavior
+
+Current `GroupBox` editor behavior:
+
+- child widgets use coordinates relative to the `GroupBox`
+- `ProjectTree` shows `GroupBox` children recursively under the `GroupBox`
+- the `Property Inspector` shows a `Children` section when a `GroupBox` is selected
+- the `Property Inspector` can select a current child, add an existing root-level widget into the `GroupBox`, and remove a child back to the root form
+
+Current `GroupBox` limitations in this repair pass:
+
+- the child management workflow is currently specialized for `GroupBox`
+- this pass does not enable equivalent general-purpose parenting UI for every other container-capable widget
 - `Label`
 - `Button`
 - `TextBox`

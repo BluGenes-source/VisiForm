@@ -256,6 +256,10 @@ Current hierarchy export behavior:
 - `GroupBox`, `Panel`, and `TabControl` now export as concrete runtime widget types instead of falling back to `Unknown`
 - generated export scripts and Debug / Release preset names remain unchanged in this phase
 
+Current repair-pass note:
+
+- the editor's new parenting workflow is intentionally focused on `GroupBox` and the root form first, but export continues to preserve the underlying hierarchy metadata already stored on widgets
+
 ## Look and feel aware preview rendering
 
 Generated preview drawing now resolves a project-level look and feel plus optional per-widget style overrides at export time.

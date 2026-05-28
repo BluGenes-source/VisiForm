@@ -215,6 +215,12 @@ std::string imageResourceChoiceLabel(const model::ProjectResource& resource)
     return name + " (" + resource.id + ")";
 }
 
+std::string widgetHierarchyLabel(const model::WidgetNode& widget)
+{
+    const std::string displayName = widget.name.empty() ? widget.id : widget.name;
+    return displayName + " [" + widget.typeName() + "] (" + widget.id + ")";
+}
+
 std::vector<PropertyInspector::PropertyChoice> lookAndFeelChoices()
 {
     std::vector<PropertyInspector::PropertyChoice> choices;
@@ -585,10 +591,57 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         rows.push_back({ "visageGitRepository", "Visage Git Repository", "Fallback Git repository used when no local Visage source is configured.", settings.visageGitRepository, PropertyEditKind::Text });
         rows.push_back({ "visageGitTag", "Visage Git Tag", "Fallback Git tag or branch used when no local Visage source is configured.", settings.visageGitTag, PropertyEditKind::Text });
     }
-    rows.push_back({ "x", "X", "Widget left position in form coordinates.", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
-    rows.push_back({ "y", "Y", "Widget top position in form coordinates.", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
+    rows.push_back({ "x", "X", "Widget left position relative to the current parent container.", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
+    rows.push_back({ "y", "Y", "Widget top position relative to the current parent container.", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
     rows.push_back({ "width", "Width", "Widget width in form coordinates.", formatFloat(selectedWidget->bounds.width), PropertyEditKind::Float });
     rows.push_back({ "height", "Height", "Widget height in form coordinates.", formatFloat(selectedWidget->bounds.height), PropertyEditKind::Float });
+
+    if (selectedWidget->type == model::WidgetType::GroupBox) {
+        rows.push_back({ "__section_children", "Children", {}, {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({ "__groupbox_child_count", "Child Count", "Number of widgets currently parented to this GroupBox.", std::to_string(selectedWidget->children.size()), PropertyEditKind::ReadOnly });
+
+        for (const auto& child : selectedWidget->children) {
+            rows.push_back({
+                "__groupbox_child_info_" + child.id,
+                child.name.empty() ? child.id : child.name,
+                "Current GroupBox child widget.",
+                widgetHierarchyLabel(child),
+                PropertyEditKind::ReadOnly
+            });
+        }
+
+        std::vector<PropertyChoice> childChoices;
+        childChoices.reserve(selectedWidget->children.size());
+        for (const auto& child : selectedWidget->children) {
+            childChoices.push_back(makeChoice(child.id, widgetHierarchyLabel(child), "Select this child widget."));
+        }
+
+        if (childChoices.empty()) {
+            rows.push_back({ "__groupbox_select_child", "Select Child", "Selects a child widget from this GroupBox.", "No children", PropertyEditKind::ReadOnly });
+            rows.push_back({ "__groupbox_remove_child", "Remove Child", "Moves a child widget from this GroupBox back to the root form.", "No children", PropertyEditKind::ReadOnly });
+        }
+        else {
+            rows.push_back({ "__groupbox_select_child", "Select Child", "Selects a child widget from this GroupBox.", "Choose child", PropertyEditKind::Choice, false, childChoices });
+            rows.push_back({ "__groupbox_remove_child", "Remove Child", "Moves a child widget from this GroupBox back to the root form.", "Choose child", PropertyEditKind::Choice, false, childChoices });
+        }
+
+        std::vector<PropertyChoice> addChoices;
+        addChoices.reserve(document.root.children.size());
+        for (const auto& rootChild : document.root.children) {
+            if (rootChild.id == selectedWidget->id) {
+                continue;
+            }
+
+            addChoices.push_back(makeChoice(rootChild.id, widgetHierarchyLabel(rootChild), "Add this root-level widget to the selected GroupBox."));
+        }
+
+        if (addChoices.empty()) {
+            rows.push_back({ "__groupbox_add_existing_child", "Add Existing Child", "Adds a root-level widget to this GroupBox.", "No root widgets", PropertyEditKind::ReadOnly });
+        }
+        else {
+            rows.push_back({ "__groupbox_add_existing_child", "Add Existing Child", "Adds a root-level widget to this GroupBox.", "Choose root widget", PropertyEditKind::Choice, false, addChoices });
+        }
+    }
 
     std::set<std::string> drawnKeys;
     for (const auto& row : rows) {

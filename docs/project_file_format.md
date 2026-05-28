@@ -69,6 +69,13 @@ Each widget node stores:
 - `properties` - object mapping property names to simple JSON values
 - `children` - array of child widget nodes
 
+Current `GroupBox` hierarchy storage notes:
+
+- a widget moved into a `GroupBox` is stored inside that `GroupBox` node's `children` array
+- the child widget also stores `parentId` equal to the owning `GroupBox` id
+- child `bounds.x` and `bounds.y` remain local to the `GroupBox`
+- removing the child back to the root form converts those bounds back to root-form coordinates before save
+
 For this phase, generated event metadata is also stored in `properties` as string values.
 Widget help text is also stored in `properties` using the common `hint` string key.
 

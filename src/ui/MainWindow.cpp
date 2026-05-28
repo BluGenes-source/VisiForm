@@ -57,6 +57,9 @@ constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
 constexpr float kLayoutMargin = 20.0f;
+constexpr float kGroupBoxChildStartX = 20.0f;
+constexpr float kGroupBoxChildStartY = 36.0f;
+constexpr float kGroupBoxChildOffsetStep = 16.0f;
 constexpr float kMarqueeDragThreshold = 4.0f;
 constexpr float kSmartGuideSnapThreshold = 6.0f;
 constexpr float kEditorModalPreferredWidth = 560.0f;
@@ -560,6 +563,22 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
 std::string widgetDisplayName(const model::WidgetNode& widget)
 {
     return widget.name.empty() ? widget.id : widget.name;
+}
+
+bool isRepairPassParentTarget(const model::WidgetNode& widget)
+{
+    return widget.type == model::WidgetType::FormWindow
+        || widget.type == model::WidgetType::GroupBox;
+}
+
+std::string insertionParentIdForNewWidget(const model::ProjectDocument& document)
+{
+    const model::WidgetNode* selectedWidget = document.selectedWidget();
+    if (selectedWidget != nullptr && selectedWidget->type == model::WidgetType::GroupBox) {
+        return selectedWidget->id;
+    }
+
+    return document.root.id;
 }
 
 float snapToCanvasGrid(const DesignerCanvas& designerCanvas, float value);
@@ -2358,7 +2377,9 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         }
 
         const model::Rect finalBounds = widget->bounds;
-        const model::Rect finalAbsoluteBounds = absoluteBoundsForWidget(document_, widget->id);
+        const std::string widgetId = widget->id;
+        const std::string displayName = widget->name.empty() ? widgetId : widget->name;
+        const model::Rect finalAbsoluteBounds = absoluteBoundsForWidget(document_, widgetId);
         widget->bounds = canvasInteraction_.originalBounds;
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
             const std::string dropParentId = canvasInteraction_.dropTargetWidgetId.empty()
@@ -2367,14 +2388,14 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
             if (!dropParentId.empty() && dropParentId != canvasInteraction_.originalParentId) {
                 model::ProjectDocument beforeDocument = document_;
                 model::ProjectDocument afterDocument = document_;
-                if (auto* movedWidget = beforeDocument.findWidgetById(widget->id)) {
+                if (auto* movedWidget = beforeDocument.findWidgetById(widgetId)) {
                     movedWidget->bounds = canvasInteraction_.originalBounds;
                 }
-                if (auto* movedWidget = afterDocument.findWidgetById(widget->id)) {
+                if (auto* movedWidget = afterDocument.findWidgetById(widgetId)) {
                     movedWidget->bounds = finalBounds;
                 }
                 const model::Rect reparentedBounds = boundsRelativeToParent(afterDocument, dropParentId, finalAbsoluteBounds);
-                if (afterDocument.reparentWidget(widget->id, dropParentId, reparentedBounds)) {
+                if (afterDocument.reparentWidget(widgetId, dropParentId, reparentedBounds)) {
                     document_ = beforeDocument;
                     undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
                         document_,
@@ -2385,16 +2406,15 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
             }
             else {
                 undoRedo_.executeCommand(std::make_unique<commands::MoveWidgetCommand>(
-                    document_, widget->id, canvasInteraction_.originalBounds, finalBounds));
+                    document_, widgetId, canvasInteraction_.originalBounds, finalBounds));
             }
         }
         else {
             undoRedo_.executeCommand(std::make_unique<commands::ResizeWidgetCommand>(
-                document_, widget->id, canvasInteraction_.originalBounds, finalBounds));
+                document_, widgetId, canvasInteraction_.originalBounds, finalBounds));
         }
 
         document_.markDirty();
-        const std::string displayName = widget->name.empty() ? widget->id : widget->name;
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
             if (!canvasInteraction_.dropTargetWidgetId.empty() && canvasInteraction_.dropTargetWidgetId != canvasInteraction_.originalParentId) {
                 if (const auto* parent = document_.findWidgetById(canvasInteraction_.dropTargetWidgetId)) {
@@ -2403,12 +2423,12 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
             }
             else {
                 setOperationStatus(canvasInteraction_.smartGuideSnapUsed
-                    ? "Moved widget: " + displayName + " (" + widget->id + ") with smart guide snap"
-                    : "Moved widget: " + displayName + " (" + widget->id + ")");
+                    ? "Moved widget: " + displayName + " (" + widgetId + ") with smart guide snap"
+                    : "Moved widget: " + displayName + " (" + widgetId + ")");
             }
         }
         else {
-            setOperationStatus("Resized widget: " + displayName + " (" + widget->id + ")");
+            setOperationStatus("Resized widget: " + displayName + " (" + widgetId + ")");
         }
     }
 
@@ -2664,14 +2684,21 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
         return;
     }
 
-    model::WidgetNode widget = createDefaultWidget(type);
+    const std::string parentId = insertionParentIdForNewWidget(document_);
+    const model::WidgetNode* parent = document_.findWidgetById(parentId);
+    if (parent == nullptr) {
+        setOperationStatus("Add widget failed: insertion parent is invalid");
+        redraw();
+        return;
+    }
+
+    model::WidgetNode widget = createDefaultWidget(type, parentId);
     const std::string addedId = widget.id;
-    const model::Rect widgetBounds = widget.bounds;
-    undoRedo_.executeCommand(std::make_unique<commands::AddWidgetCommand>(document_, document_.root.id, std::move(widget), addedId));
+    const std::string parentLabel = widgetDisplayName(*parent);
+    undoRedo_.executeCommand(std::make_unique<commands::AddWidgetCommand>(document_, parentId, std::move(widget), addedId));
     normalizeWidgetBoundsForEditor();
     document_.markDirty();
-    setOperationStatus("Added widget: " + addedId + " size " + std::to_string(static_cast<int>(widgetBounds.width))
-        + "x" + std::to_string(static_cast<int>(widgetBounds.height)));
+    setOperationStatus("Added " + model::toString(type) + " to " + parentLabel);
     redraw();
 }
 
@@ -2840,27 +2867,46 @@ bool MainWindow::canRedo() const
     return undoRedo_.canRedo();
 }
 
-model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type)
+model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type, const std::string& parentId)
 {
     const std::string id = idGenerator_.next(type, document_);
     model::WidgetNode widget = model::WidgetRegistry::instance().createDefaultWidget(type, id);
-    if (type == model::WidgetType::StatusBar) {
+    if (type == model::WidgetType::StatusBar && (parentId.empty() || parentId == document_.root.id)) {
         widget.bounds = { 0.0f, std::max(0.0f, document_.root.bounds.height - widget.bounds.height), document_.root.bounds.width, widget.bounds.height };
         widget.setProperty("dock", "Bottom");
         widget.setProperty("fillWidth", true);
     }
     else {
-        widget.bounds = nextDefaultWidgetBounds(type);
+        widget.bounds = nextDefaultWidgetBounds(type, parentId);
     }
 
     return widget;
 }
 
-model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type) const
+model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type, const std::string& parentId) const
 {
     const WidgetSizeMetrics metrics = getWidgetSizeMetrics(type);
     const float width = metrics.defaultWidth;
     const float height = metrics.defaultHeight;
+
+    if (!parentId.empty() && parentId != document_.root.id) {
+        const model::WidgetNode* parent = document_.findWidgetById(parentId);
+        if (parent != nullptr && parent->type == model::WidgetType::GroupBox) {
+            const float maxWidth = std::max(metrics.minWidth, parent->bounds.width - kLayoutMargin * 2.0f);
+            const float maxHeight = std::max(metrics.minHeight, parent->bounds.height - kGroupBoxChildStartY - kLayoutMargin);
+            const float clampedWidth = std::min(width, maxWidth);
+            const float clampedHeight = std::min(height, maxHeight);
+            const float staggerOffset = static_cast<float>(parent->children.size()) * kGroupBoxChildOffsetStep;
+            const float maxX = std::max(kGroupBoxChildStartX, parent->bounds.width - clampedWidth - kLayoutMargin);
+            const float maxY = std::max(kGroupBoxChildStartY, parent->bounds.height - clampedHeight - kLayoutMargin);
+            return {
+                std::min(kGroupBoxChildStartX + staggerOffset, maxX),
+                std::min(kGroupBoxChildStartY + staggerOffset, maxY),
+                clampedWidth,
+                clampedHeight
+            };
+        }
+    }
 
     float nextY = kNewWidgetStartY;
     for (const auto& child : document_.root.children) {
@@ -2911,6 +2957,11 @@ std::string MainWindow::resolveDropParentId(const std::string& movingWidgetId, f
         return document_.root.id;
     }
 
+    const auto dropPoint = designerCanvas_.toFormPoint(document_, x, y);
+    if (!dropPoint.has_value()) {
+        return document_.root.id;
+    }
+
     std::optional<std::string> hitWidgetId = designerCanvas_.hitTestWidgetId(document_, x, y);
     if (!hitWidgetId.has_value()) {
         return document_.root.id;
@@ -2921,9 +2972,13 @@ std::string MainWindow::resolveDropParentId(const std::string& movingWidgetId, f
         if (candidateId != movingWidgetId) {
             if (const auto* candidate = document_.findWidgetById(candidateId);
                 candidate != nullptr
-                && model::WidgetRegistry::instance().canContainChildren(candidate->type)
+                && isRepairPassParentTarget(*candidate)
                 && movingWidget->findById(candidateId) == nullptr) {
+                const model::Rect candidateBounds = absoluteBoundsForWidget(document_, candidateId);
+                if (candidate->type == model::WidgetType::FormWindow
+                    || candidateBounds.contains(dropPoint->x, dropPoint->y)) {
                 return candidate->id;
+                }
             }
         }
 
@@ -5592,6 +5647,28 @@ void MainWindow::openInspectorDropdown(const PropertyInspector::PropertyRow& row
 
 bool MainWindow::applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label)
 {
+    if (key == "__groupbox_select_child"
+        || key == "__groupbox_add_existing_child"
+        || key == "__groupbox_remove_child") {
+        const bool applied = key == "__groupbox_select_child"
+            ? selectGroupBoxChildFromInspector(value)
+            : (key == "__groupbox_add_existing_child"
+                    ? addExistingWidgetToSelectedGroupBox(value)
+                    : removeSelectedGroupBoxChildToRoot(value));
+        if (!applied) {
+            redraw();
+            return false;
+        }
+
+        propertyInspector_.clearEditing();
+        textEditControl_.clear();
+        dropdownControl_.close();
+        requestKeyboardFocus();
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
     const std::string propertyLabel = inspectorPropertyLabel(key);
     if (!setSelectedWidgetPropertyFromString(key, value)) {
         redraw();
@@ -5617,6 +5694,93 @@ bool MainWindow::applyInspectorDropdownSelection(const std::string& key, const s
         setOperationStatus(propertyLabel + ": " + label);
     }
     redraw();
+    return true;
+}
+
+bool MainWindow::selectGroupBoxChildFromInspector(const std::string& childId)
+{
+    const auto* groupBox = document_.selectedWidget();
+    if (groupBox == nullptr || groupBox->type != model::WidgetType::GroupBox || childId.empty()) {
+        return false;
+    }
+
+    const auto* parent = document_.findParentOf(childId);
+    const auto* child = document_.findWidgetById(childId);
+    if (child == nullptr || parent == nullptr || parent->id != groupBox->id) {
+        return false;
+    }
+
+    document_.setSelection(childId);
+    setOperationStatus("Selected: " + widgetDisplayName(*child) + " (" + childId + ")");
+    return true;
+}
+
+bool MainWindow::addExistingWidgetToSelectedGroupBox(const std::string& childId)
+{
+    const auto* groupBox = document_.selectedWidget();
+    if (groupBox == nullptr || groupBox->type != model::WidgetType::GroupBox || childId.empty()) {
+        return false;
+    }
+
+    const auto* child = document_.findWidgetById(childId);
+    const auto* currentParent = document_.findParentOf(childId);
+    if (child == nullptr || currentParent == nullptr || currentParent->id != document_.root.id || childId == groupBox->id) {
+        return false;
+    }
+
+    const std::string childLabel = widgetDisplayName(*child);
+    const std::string groupBoxLabel = widgetDisplayName(*groupBox);
+    model::ProjectDocument beforeDocument = document_;
+    model::ProjectDocument afterDocument = document_;
+    const model::Rect childAbsoluteBounds = absoluteBoundsForWidget(afterDocument, childId);
+    const model::Rect localBounds = boundsRelativeToParent(afterDocument, groupBox->id, childAbsoluteBounds);
+    if (!afterDocument.reparentWidget(childId, groupBox->id, localBounds)) {
+        return false;
+    }
+
+    afterDocument.setSelection(childId);
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Add GroupBox child",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
+    document_.markDirty();
+    setOperationStatus("Added " + childLabel + " to " + groupBoxLabel);
+    return true;
+}
+
+bool MainWindow::removeSelectedGroupBoxChildToRoot(const std::string& childId)
+{
+    const auto* groupBox = document_.selectedWidget();
+    if (groupBox == nullptr || groupBox->type != model::WidgetType::GroupBox || childId.empty()) {
+        return false;
+    }
+
+    const auto* currentParent = document_.findParentOf(childId);
+    const auto* child = document_.findWidgetById(childId);
+    if (child == nullptr || currentParent == nullptr || currentParent->id != groupBox->id) {
+        return false;
+    }
+
+    const std::string childLabel = widgetDisplayName(*child);
+    const std::string groupBoxLabel = widgetDisplayName(*groupBox);
+    model::ProjectDocument beforeDocument = document_;
+    model::ProjectDocument afterDocument = document_;
+    const model::Rect childAbsoluteBounds = absoluteBoundsForWidget(afterDocument, childId);
+    if (!afterDocument.reparentWidget(childId, afterDocument.root.id, childAbsoluteBounds)) {
+        return false;
+    }
+
+    afterDocument.setSelection(childId);
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Remove GroupBox child",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
+    document_.markDirty();
+    setOperationStatus("Removed " + childLabel + " from " + groupBoxLabel);
     return true;
 }
 

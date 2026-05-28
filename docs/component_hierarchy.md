@@ -19,7 +19,7 @@ The root `FormWindow` remains the single document root.
 
 ## Container-capable widgets
 
-Current container-capable widget types:
+Current container-capable widget types in the model metadata:
 
 - `FormWindow`
 - `Frame`
@@ -28,6 +28,13 @@ Current container-capable widget types:
 - `TabControl`
 
 These types can own child widgets in `children` and use `layoutMode` metadata for future layout behavior.
+
+Current editor-active parenting workflow in this repair pass:
+
+- selecting a `GroupBox` makes that `GroupBox` the insertion parent for newly added widgets
+- selecting the root `FormWindow` returns insertion to the root form
+- selecting any non-`GroupBox` widget still falls back to inserting at the root form
+- drag/drop reparenting in the editor is intentionally limited to `GroupBox` and the root form for now
 
 ## Hierarchy metadata
 
@@ -58,6 +65,8 @@ Compatibility behavior:
 - missing `children` arrays are treated as empty
 - hierarchy metadata is normalized after load so runtime tree traversal stays consistent
 
+For the current `GroupBox` workflow, child widget `bounds.x` and `bounds.y` remain relative to the owning `GroupBox`, not absolute root-form coordinates.
+
 ## Validation behavior
 
 Current hierarchy validation checks include:
@@ -86,6 +95,8 @@ Current export behavior:
 
 ## Current limitations
 
+- `GroupBox` is the first editor-facing container with an add/remove child workflow in the property inspector
+- other container-capable types may still preserve hierarchy metadata, but this repair pass does not enable full general parenting workflows for every container type yet
 - generated runtime layout is still a lightweight flat runtime list instead of a full retained-mode layout tree
 - docking metadata is preserved and validated, but generated layout behavior is still intentionally minimal
 - tab interaction is limited to basic selected-tab handling in generated output
