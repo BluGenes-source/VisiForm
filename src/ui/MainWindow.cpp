@@ -21,6 +21,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <set>
@@ -928,6 +929,58 @@ bool isPointInGroupBoxContent(const model::ProjectDocument& document, const std:
     const float contentTop = groupBoxBounds.y + std::min(kGroupBoxContentTopInset, groupBoxBounds.height);
     return point.x >= groupBoxBounds.x && point.x <= groupBoxBounds.x + groupBoxBounds.width
         && point.y >= contentTop && point.y <= groupBoxBounds.y + groupBoxBounds.height;
+}
+
+std::string formatCanvasCoordinate(float value)
+{
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(1) << value;
+    return stream.str();
+}
+
+void writeCanvasInteractionDebug(std::string message)
+{
+#ifdef _WIN32
+    message.insert(0, "[VisiForm] ");
+    message.push_back('\n');
+    OutputDebugStringA(message.c_str());
+#else
+    (void)message;
+#endif
+}
+
+void logCanvasHitDiagnostic(const model::ProjectDocument& document,
+    const DesignerCanvas::FormPoint& point,
+    const model::WidgetNode* hitWidget,
+    bool dragStartCreated,
+    std::string_view detail)
+{
+    if (hitWidget == nullptr) {
+        return;
+    }
+
+    const model::WidgetNode* parent = document.findParentOf(hitWidget->id);
+    const bool hitGroupBox = hitWidget->type == model::WidgetType::GroupBox;
+    const bool hitInsideGroupBox = parent != nullptr && parent->type == model::WidgetType::GroupBox;
+    if (!hitGroupBox && !hitInsideGroupBox) {
+        return;
+    }
+
+    const bool isContainer = model::WidgetRegistry::instance().canContainChildren(hitWidget->type);
+    std::ostringstream stream;
+    stream << "Hit test: (" << formatCanvasCoordinate(point.x) << ", " << formatCanvasCoordinate(point.y) << ") -> "
+           << hitWidget->id << " [" << hitWidget->typeName() << "]"
+           << " | kind=" << (isContainer ? "container" : "child")
+           << " | groupBox=" << (hitGroupBox ? "yes" : "no");
+    if (hitInsideGroupBox) {
+        stream << " | parent=" << parent->id;
+    }
+    stream << " | dragStart=" << (dragStartCreated ? "yes" : "no");
+    if (!detail.empty()) {
+        stream << " | " << detail;
+    }
+
+    writeCanvasInteractionDebug(stream.str());
 }
 
 bool collectIntersectingWidgetIds(const model::WidgetNode& widget,
@@ -2205,40 +2258,46 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             return;
         }
 
-        if (const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y)) {
-            const auto marqueeGroupBoxId = resolveMarqueeGroupBoxScope(document_, *widgetId);
-            if (marqueeGroupBoxId.has_value()
-                && *widgetId == *marqueeGroupBoxId
-                && isPointInGroupBoxContent(document_, *marqueeGroupBoxId, *dragStart)) {
-                clearCanvasInteraction();
-                canvasInteraction_.mode = CanvasInteractionState::Mode::MarqueeSelect;
-                canvasInteraction_.marqueeScopeWidgetId = *marqueeGroupBoxId;
-                canvasInteraction_.dragStart = *dragStart;
-                canvasInteraction_.currentPoint = *dragStart;
-                canvasInteraction_.changed = false;
-                redraw();
-                return;
-            }
+        const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y);
+        if (!dragStart.has_value()) {
+            clearCanvasInteraction();
+            logCanvasHitDiagnostic(document_, DesignerCanvas::FormPoint{}, document_.findWidgetById(*widgetId), false, "Drag blocked: click is outside form preview");
+            return;
+        }
+
+        const auto marqueeGroupBoxId = resolveMarqueeGroupBoxScope(document_, *widgetId);
+        if (additiveSelection
+            && marqueeGroupBoxId.has_value()
+            && *widgetId == *marqueeGroupBoxId
+            && isPointInGroupBoxContent(document_, *marqueeGroupBoxId, *dragStart)) {
+            clearCanvasInteraction();
+            canvasInteraction_.mode = CanvasInteractionState::Mode::MarqueeSelect;
+            canvasInteraction_.marqueeScopeWidgetId = *marqueeGroupBoxId;
+            canvasInteraction_.dragStart = *dragStart;
+            canvasInteraction_.currentPoint = *dragStart;
+            canvasInteraction_.changed = false;
+            logCanvasHitDiagnostic(document_, *dragStart, document_.findWidgetById(*widgetId), true, "Marquee start: GroupBox scope");
+            redraw();
+            return;
         }
 
         const bool clickedPrimarySelected = document_.selectedWidgetId == *widgetId;
         const bool keepMultiSelectionForDrag = multiSelectMode_ && clickedPrimarySelected;
-        const bool wasSelected = clickedPrimarySelected;
 
         if (!keepMultiSelectionForDrag) {
             handleWidgetClicked(*widgetId, additiveSelection);
 
             if (additiveSelection) {
                 clearCanvasInteraction();
+                logCanvasHitDiagnostic(document_, *dragStart, document_.findWidgetById(*widgetId), false, "Drag blocked: additive selection toggle");
                 return;
             }
         }
 
-        if (wasSelected && *widgetId != document_.root.id) {
-            const auto interactionHit = designerCanvas_.hitTestInteraction(document_, e.position.x, e.position.y, document_.selectedWidgetId);
-            const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y);
+        if (document_.selectedWidgetId == *widgetId && *widgetId != document_.root.id) {
+            const auto interactionHit = designerCanvas_.hitTestInteraction(document_, e.position.x, e.position.y, *widgetId);
             auto* widget = document_.findWidgetById(*widgetId);
-            if (interactionHit.has_value() && dragStart.has_value() && widget != nullptr) {
+            if (interactionHit.has_value() && widget != nullptr) {
                 canvasInteraction_.widgetId = *widgetId;
                 canvasInteraction_.originalParentId = document_.findParentOf(*widgetId) != nullptr
                     ? document_.findParentOf(*widgetId)->id
@@ -2264,10 +2323,20 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                         }
                     }
                 }
+
+                const std::string interactionDetail = interactionHit->region == DesignerCanvas::HitRegion::Body
+                    ? "Drag start: move"
+                    : "Drag start: resize";
+                logCanvasHitDiagnostic(document_, *dragStart, widget, true, interactionDetail);
+            }
+            else {
+                clearCanvasInteraction();
+                logCanvasHitDiagnostic(document_, *dragStart, document_.findWidgetById(*widgetId), false, "Drag blocked: interaction hit missing");
             }
         }
         else {
             clearCanvasInteraction();
+            logCanvasHitDiagnostic(document_, *dragStart, document_.findWidgetById(*widgetId), false, "Drag blocked: widget is not primary selection");
         }
 
         return;
@@ -2837,11 +2906,17 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
     model::WidgetNode widget = createDefaultWidget(type, parentId);
     const std::string addedId = widget.id;
     const std::string parentLabel = widgetDisplayName(*parent);
+    clearCanvasInteraction();
     undoRedo_.executeCommand(std::make_unique<commands::AddWidgetCommand>(document_, parentId, std::move(widget), addedId));
     normalizeWidgetBoundsForEditor();
     document_.markDirty();
     updatePropertyEditorBounds();
-    setOperationStatus("Added " + model::toString(type) + " to " + parentLabel);
+    if (type == model::WidgetType::GroupBox && parentId == document_.root.id) {
+        setOperationStatus("Added GroupBox");
+    }
+    else {
+        setOperationStatus("Added " + model::toString(type) + " to " + parentLabel);
+    }
     redraw();
 }
 

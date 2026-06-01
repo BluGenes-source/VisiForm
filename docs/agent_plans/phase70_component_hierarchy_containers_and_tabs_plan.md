@@ -230,8 +230,101 @@
 - [ ] Save, reload, and export a project containing a moved `GroupBox` with children.
 
 ### Final result summary
-- Completed. `MainWindow` now keeps newly added `GroupBox` widgets at the root for this repair pass, refreshes inspector state after add, and only starts GroupBox-local marquee selection when explicit additive multi-select intent is active, which restores normal empty-area GroupBox selection and dragging while preserving child-first hit testing and existing move behavior. The main `VisiForm` app was then built successfully with `build-static-debug` from an x64 Visual Studio developer environment, and no new compile errors remained from this repair pass.
+- Completed. `MainWindow` now keeps newly added `GroupBox` widgets at the root for this repair pass, refreshes inspector state after add, and only starts GroupBox-local marquee selection when explicit additive multi-select intent is active, which restores normal empty-area GroupBox selection and dragging while preserving child-first hit testing and existing move behavior. The main `VisiForm` app was then built successfully with `build-static-debug` from an x64 Visual Studio developer environment, and no new compile errors remained from this repair pass. This continuation revalidated the same build path with `cmake --build --preset build-static-debug`, which completed cleanly with `ninja: no work to do.`
 
 ### Remaining TODOs
 - Manually verify GroupBox add/select/move behavior in the canvas, `ProjectTree`, and `PropertyInspector`.
 - Manually verify undo/redo, save/load, and export behavior for moved `GroupBox` widgets with children.
+
+## Critical Repair Pass - GroupBox Still Cannot Be Selected or Moved
+
+### Current failed behavior
+- After adding or dropping a `GroupBox` onto the root form, the `GroupBox` appears on the designer canvas but does not reliably behave like a normal selectable widget.
+- Clicking the `GroupBox` title, border, or empty body does not consistently leave the `GroupBox` selected for immediate drag interaction.
+- Dragging from the `GroupBox` body often fails to start a move even though the `GroupBox` is visible and root-level.
+- Child widgets can still participate in recursive hit testing, which makes the regression look like the `GroupBox` is treated as only a child container instead of both a widget and a container.
+
+### Root cause diagnosis
+- `DesignerCanvas::hitTestWidgetId(...)` and the recursive helper `hitTestWidgetScreenId(...)` already walk children front-to-back and fall back to the container widget when no child is hit, so the canvas hit-test algorithm itself still resolves empty `GroupBox` area clicks to the `GroupBox` id.
+- The remaining failure is in `MainWindow::mouseDown(...)`: the `GroupBox`-local marquee branch still runs before normal drag-start setup and had no additive-selection guard, so empty `GroupBox` body clicks were diverted into marquee mode instead of selecting or moving the `GroupBox`.
+- The same method also only armed move or resize when `wasSelected` was true before `handleWidgetClicked(...)` updated the selection, so a newly added or newly clicked `GroupBox` could become selected in the document state without creating a same-press drag start.
+- Together those two ordering bugs made the `GroupBox` look like a child-only container even though recursive hit testing, absolute-bounds math, selection overlays, child-local movement math, and move undo infrastructure were already valid for a selectable container widget.
+
+### Files inspected
+- `.github/copilot-instructions.md`
+- `.github/instructions/visiform.instructions.md`
+- `src/ui/DesignerCanvas.h`
+- `src/ui/DesignerCanvas.cpp`
+- `src/ui/MainWindow.h`
+- `src/ui/MainWindow.cpp`
+- `src/ui/ProjectTree.h`
+- `src/ui/ProjectTree.cpp`
+- `src/ui/PropertyInspector.h`
+- `src/ui/PropertyInspector.cpp`
+- `src/model/ProjectDocument.h`
+- `src/model/ProjectDocument.cpp`
+- `src/model/WidgetNode.h`
+- `src/model/WidgetNode.cpp`
+- `src/model/WidgetRegistry.h`
+- `src/model/WidgetRegistry.cpp`
+- `src/model/WidgetDefinition.h`
+- `src/model/WidgetDefinition.cpp`
+- `src/commands/Command.h`
+- `src/commands/Command.cpp`
+- `src/commands/UndoRedoStack.h`
+- `src/commands/UndoRedoStack.cpp`
+- `docs/component_hierarchy.md`
+- `docs/widget_catalog.md`
+- `docs/agent_plans/phase70_component_hierarchy_containers_and_tabs_plan.md`
+
+### Specific code paths changed
+- [x] `MainWindow::mouseDown(...)`
+- [x] `MainWindow` GroupBox hit/drag diagnostics via `logCanvasHitDiagnostic(...)` and `writeCanvasInteractionDebug(...)`
+- [x] `MainWindow::addWidgetFromPalette(...)`
+- [ ] `DesignerCanvas::hitTestWidgetId(...)` or recursive hit-test helpers if the diagnosis requires it
+- [ ] `DesignerCanvas::draw(...)` selection overlay behavior if the diagnosis requires it
+- [x] Phase-plan and documentation updates
+
+### Step-by-step TODO checklist
+- [x] Append this critical repair-pass section to the Phase 70 plan.
+- [x] Inspect the listed canvas, selection, widget-definition, and undo files.
+- [x] Confirm the current hit-test recursion and identify the drag-start ordering bug.
+- [x] Add low-noise click and drag diagnostics for GroupBox hit testing.
+- [x] Ensure newly added root-level `GroupBox` widgets remain selected immediately after creation.
+- [x] Fix `GroupBox` click-to-select and drag-start behavior on title, border, and empty body hits.
+- [x] Preserve deepest-child hit testing for child widgets inside a `GroupBox`.
+- [x] Verify move math keeps child local coordinates stable while the `GroupBox` moves.
+- [x] Verify selection sync with `ProjectTree` and `PropertyInspector`.
+- [x] Update hierarchy and widget documentation for the repaired `GroupBox` behavior.
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Update this section with final results and remaining TODOs.
+
+### Build validation checklist
+- [x] Build with the existing `build-static-debug` preset.
+- [x] Confirm the main `VisiForm` target built successfully.
+- [x] Confirm no compile errors remain from this critical repair pass.
+- [x] Confirm `VisiForm.exe` was not run.
+- [x] Confirm no generated apps were launched.
+
+### Manual test checklist
+- [ ] Add a root-level `GroupBox` and verify it is selected immediately.
+- [ ] Click the `GroupBox` title and verify the `GroupBox` selects.
+- [ ] Click the `GroupBox` border and verify the `GroupBox` selects.
+- [ ] Click the empty `GroupBox` body and verify the `GroupBox` selects.
+- [ ] Drag the selected `GroupBox` and verify it moves on the canvas.
+- [ ] Verify `PropertyInspector` x/y values change when the `GroupBox` moves.
+- [ ] Verify child widgets move visually with the `GroupBox` while child local x/y stay unchanged.
+- [ ] Click a child inside the `GroupBox` and verify the child selects.
+- [ ] Drag a child inside the `GroupBox` and verify the child moves locally without moving the `GroupBox`.
+- [ ] Verify `ProjectTree` selection stays in sync with canvas selection.
+- [ ] Undo and redo a `GroupBox` move and verify the position is restored.
+- [ ] Save and reload a project with a moved `GroupBox` and verify positions persist.
+- [ ] Export a project with a moved `GroupBox` and verify generated builds still work.
+
+### Final result summary
+- Completed. The critical root cause was not recursive hit testing itself; it was the ordering inside `MainWindow::mouseDown(...)`. Empty `GroupBox` body clicks were still diverted into GroupBox-local marquee mode before normal drag setup, and move/resize setup still depended on the widget already being selected before `handleWidgetClicked(...)` ran. This pass fixed both issues by restricting GroupBox-local marquee start to additive multi-select input only, then arming same-press move/resize after selection so a `GroupBox` behaves as both a selectable widget and a child container. The repair also added low-noise `OutputDebugStringA` diagnostics for GroupBox-related hit tests and drag-start outcomes, preserved existing deepest-child selection for child widgets, kept root-level `GroupBox` creation selected with `Added GroupBox`, and updated the hierarchy/widget docs to match the repaired interaction behavior. The main `VisiForm` app was then built successfully with `build-static-debug` from an explicit x64 Visual Studio developer command environment, and no compile errors remained from this repair.
+
+### Remaining TODOs
+- Manually verify root-level `GroupBox` add/select/move behavior on the canvas.
+- Manually verify child selection and child-local movement inside a `GroupBox`.
+- Manually verify `ProjectTree`/`PropertyInspector` sync, undo/redo, save/load, and export behavior for moved `GroupBox` widgets with children.

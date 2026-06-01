@@ -46,4 +46,7 @@ Thumbs.db
 Python-Audio-Player/Audio Files/*.wav
 Python-Audio-Player/Audio Files/*.mp3
 Python-Audio-Player/Audio Files/*.ogg   
+/Python-Audio-Player
+/Python-Audio-Player/*.*
+
 

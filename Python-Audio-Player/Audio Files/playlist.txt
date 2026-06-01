@@ -1,14 +1,9 @@
-# Directory of J:\Dev\CeePlusPlus\VisiForm\Python-Audio-Player\Audio Files
-#bug found
 Bug in the Machine.wav
-
-#compile started
 Compile Time 2.wav
 Compile Time 3.wav
 Compile Time 4 (1).wav
 Compile Time 4.wav
 Compile Time.wav
-#compile completed
 Compiled Sunshine.wav
 Cursor's Stare.wav
 Five Minute Break.wav

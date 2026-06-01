@@ -37,9 +37,10 @@ Current editor-active parenting workflow in this repair pass:
 - drag/drop reparenting in the editor is intentionally limited to `GroupBox` and the root form for now
 - box-selection marquee coordinates are stored in root-form coordinates and drawn in root canvas space
 - box-selection intersection tests convert child widget bounds to absolute root-form bounds before checking the marquee rectangle
-- starting box selection from empty content inside a selected or active `GroupBox` scopes selection to that `GroupBox`'s descendants
+- starting box selection from empty content inside a selected or active `GroupBox` now requires additive multi-select intent and scopes selection to that `GroupBox`'s descendants
 - newly created `GroupBox` widgets remain root-level in this repair pass instead of inheriting the currently selected `GroupBox` as their parent
 - clicking a `GroupBox` title, border, or empty body selects the `GroupBox`, while clicking a child still selects that child first
+- clicking or dragging a `GroupBox` title, border, or empty body now creates the same-press move interaction after selection instead of requiring a second click
 - moving a root-level `GroupBox` updates only the `GroupBox` root coordinates; child widgets keep their parent-relative local bounds and move visually with the parent
 
 ## Hierarchy metadata

@@ -25,10 +25,11 @@ Current `GroupBox` editor behavior:
 - `ProjectTree` shows `GroupBox` children recursively under the `GroupBox`
 - the `Property Inspector` shows a `Children` section when a `GroupBox` is selected
 - the `Property Inspector` can select a current child, add an existing root-level widget into the `GroupBox`, and remove a child back to the root form
-- dragging a marquee from empty content inside a selected or active `GroupBox` draws the selection rectangle in root canvas coordinates while limiting selection results to that `GroupBox`'s descendants
+- dragging a marquee from empty content inside a selected or active `GroupBox` now requires additive multi-select intent and draws the selection rectangle in root canvas coordinates while limiting selection results to that `GroupBox`'s descendants
 - selected child widgets inside a `GroupBox` keep their normal absolute-position selection outlines and handles
 - adding a new `GroupBox` keeps it at the root level for this repair pass and selects it immediately after creation
 - clicking a `GroupBox` border, title, or empty body selects the `GroupBox`, while clicking a child still selects the child first
+- clicking or dragging a selected `GroupBox` title, border, or empty body starts the normal widget move interaction on the same press
 - dragging a selected root-level `GroupBox` moves the parent widget while child widget local coordinates remain unchanged
 
 Current `GroupBox` limitations in this repair pass:
