@@ -43,13 +43,39 @@ Current major features include:
 - Project Tree
 - Resource Manager
 - Menu bar
+- Undo/Redo
 - Customizable keyboard shortcuts
 - Validation
 - Modal dialogs
+- GroupBox parenting and child editing
+- TabControl and TabPage parenting/editing
+- Image resource binding and preview support
+- StatusBar insertion with default bottom docking in the editor
+- Basic dock and anchor layout behavior for root form, `GroupBox`, and `TabPage` parents in the editor
 - Save/load `.vfb.json`
 - Export generated C++ projects
 - Interactive generated widgets
 - Local `Visage` dependency support
+
+## Current layout support
+
+The editor currently supports a first formal pass of parent-relative docking and anchoring behavior.
+
+Supported editor layout behavior:
+
+- `Dock`: `None`, `Top`, `Bottom`, `Left`, `Right`, `Fill`
+- readable `Anchor` presets in the Property Inspector
+- automatic relayout when supported parents resize
+- parent-relative child layout inside the root form, `GroupBox`, and `TabPage`
+- `StatusBar` defaults to `Dock = Bottom` and fills parent width in the editor
+
+Current scope notes:
+
+- `Dock` takes priority over `Anchor`
+- `GroupBox` and `TabControl` editing workflows remain supported
+- save/load preserves layout metadata through project properties
+- validation checks invalid `dock` and `anchor` values
+- exported/runtime dock and anchor behavior is still more limited than the editor and will continue to expand in follow-up work
 
 ## Core build requirements
 

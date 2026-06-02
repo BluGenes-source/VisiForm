@@ -808,18 +808,33 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             else {
                 displayValue = propertyValue != nullptr ? propertyValueText(*propertyValue) : property.defaultValue.toDisplayString();
             }
+            if (property.key == "dock") {
+                displayValue = model::toString(model::dockModeFromString(displayValue).value_or(model::DockMode::None));
+            }
+            if (property.key == "anchor") {
+                displayValue = model::toString(model::anchorModeFromString(displayValue).value_or(model::AnchorMode::TopLeft));
+            }
             if (selectedWidget->type == model::WidgetType::Image && property.key == "imagePath" && displayValue.empty()) {
                 displayValue = selectedWidget->getStringProperty("source", {});
             }
             if (!choices.empty()) {
                 displayValue = choiceLabelForValue(choices, displayValue);
             }
+            PropertyEditKind rowEditKind = editKindForDefinition(property);
+            std::string rowHint = resolvedPropertyHint(property.hint, property.key);
+            if (property.key == "anchor" && selectedWidget->dockMode() != model::DockMode::None) {
+                rowEditKind = PropertyEditKind::ReadOnly;
+                if (!rowHint.empty()) {
+                    rowHint += " ";
+                }
+                rowHint += "Ignored while Dock is not None.";
+            }
             rows.push_back({
                 property.key,
                 property.label,
-                resolvedPropertyHint(property.hint, property.key),
+                rowHint,
                 displayValue,
-                editKindForDefinition(property),
+                rowEditKind,
                 false,
                 std::move(choices),
                 property.minimumValue,

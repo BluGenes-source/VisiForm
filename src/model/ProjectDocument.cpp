@@ -2,6 +2,7 @@
 
 #include "model/ProjectDocument.h"
 
+#include "model/LayoutEngine.h"
 #include "model/WidgetRegistry.h"
 #include "utils/IdGenerator.h"
 
@@ -14,23 +15,10 @@
 namespace visiform::model {
 namespace {
 
-constexpr float kTabControlPageInset = 6.0f;
-constexpr float kTabControlHeaderHeight = 30.0f;
-
-Rect tabPageBoundsForTabControl(const WidgetNode& tabControl)
-{
-    return {
-        kTabControlPageInset,
-        kTabControlHeaderHeight + kTabControlPageInset,
-        std::max(40.0f, tabControl.bounds.width - kTabControlPageInset * 2.0f),
-        std::max(40.0f, tabControl.bounds.height - kTabControlHeaderHeight - kTabControlPageInset * 2.0f)
-    };
-}
-
 void syncTabPageBoundsRecursive(WidgetNode& widget)
 {
     if (widget.type == WidgetType::TabControl) {
-        const Rect pageBounds = tabPageBoundsForTabControl(widget);
+        const Rect pageBounds = LayoutEngine::clientBoundsForParent(widget);
         for (auto& child : widget.children) {
             if (child.type == WidgetType::TabPage) {
                 child.bounds = pageBounds;
@@ -51,60 +39,6 @@ void collectWidgetsReferencingResource(const WidgetNode& widget, const std::stri
 
     for (const auto& child : widget.children) {
         collectWidgetsReferencingResource(child, resourceId, widgetIds);
-    }
-}
-
-void applyDockLayoutRecursive(WidgetNode& parent)
-{
-    if (!WidgetRegistry::instance().canContainChildren(parent.type)) {
-        return;
-    }
-
-    Rect remaining{ 0.0f, 0.0f, parent.bounds.width, parent.bounds.height };
-    for (auto& child : parent.children) {
-        const DockMode dock = child.dockMode();
-        const float originalWidth = child.bounds.width;
-        const float originalHeight = child.bounds.height;
-
-        switch (dock) {
-        case DockMode::Top:
-            child.bounds.x = 0.0f;
-            child.bounds.y = remaining.y;
-            child.bounds.width = remaining.width;
-            remaining.y += originalHeight;
-            remaining.height = std::max(0.0f, remaining.height - originalHeight);
-            break;
-        case DockMode::Bottom:
-            child.bounds.x = 0.0f;
-            child.bounds.y = std::max(0.0f, remaining.y + remaining.height - originalHeight);
-            child.bounds.width = remaining.width;
-            remaining.height = std::max(0.0f, remaining.height - originalHeight);
-            break;
-        case DockMode::Left:
-            child.bounds.x = remaining.x;
-            child.bounds.y = remaining.y;
-            child.bounds.height = remaining.height;
-            remaining.x += originalWidth;
-            remaining.width = std::max(0.0f, remaining.width - originalWidth);
-            break;
-        case DockMode::Right:
-            child.bounds.x = std::max(0.0f, remaining.x + remaining.width - originalWidth);
-            child.bounds.y = remaining.y;
-            child.bounds.height = remaining.height;
-            remaining.width = std::max(0.0f, remaining.width - originalWidth);
-            break;
-        case DockMode::Fill:
-            child.bounds = remaining;
-            break;
-        case DockMode::None:
-            if (child.type == WidgetType::StatusBar && child.getBoolProperty("fillWidth", false)) {
-                child.bounds.x = 0.0f;
-                child.bounds.width = parent.bounds.width;
-            }
-            break;
-        }
-
-        applyDockLayoutRecursive(child);
     }
 }
 
@@ -678,7 +612,14 @@ void ProjectDocument::refreshHierarchyMetadata()
 void ProjectDocument::applyDockLayout()
 {
     refreshHierarchyMetadata();
-    applyDockLayoutRecursive(root);
+    LayoutEngine::applyDockLayout(root);
+    refreshHierarchyMetadata();
+}
+
+void ProjectDocument::applyLayoutFromPrevious(const ProjectDocument& previousDocument)
+{
+    refreshHierarchyMetadata();
+    LayoutEngine::applyLayoutFromPrevious(root, previousDocument.root);
     refreshHierarchyMetadata();
 }
 

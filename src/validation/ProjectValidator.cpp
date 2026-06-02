@@ -34,6 +34,11 @@ void addMessage(ValidationReport& report,
     report.messages.push_back(ValidationMessage{ severity, std::move(code), std::move(message), std::move(widgetId), std::move(propertyKey) });
 }
 
+bool isKnownAnchorValue(std::string_view value)
+{
+    return value.empty() || model::anchorModeFromString(std::string{ value }).has_value();
+}
+
 std::string trim(std::string_view value)
 {
     std::size_t start = 0;
@@ -785,6 +790,31 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                 "Dock value must be empty, None, Bottom, Top, Left, Right, or Fill.",
                 widget->id,
                 "dock");
+        }
+        else if (dock == "Fill" && actualParent != nullptr) {
+            int fillSiblingCount = 0;
+            for (const auto& sibling : actualParent->children) {
+                if (trim(propertyString(sibling, "dock")) == "Fill") {
+                    ++fillSiblingCount;
+                }
+            }
+
+            if (fillSiblingCount > 1) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_DOCK_FILL_CONFLICT",
+                    "Multiple Fill-docked widgets in the same parent may overlap.",
+                    widget->id,
+                    "dock");
+            }
+        }
+
+        const std::string anchor = trim(propertyString(*widget, "anchor"));
+        if (!anchor.empty() && !isKnownAnchorValue(anchor)) {
+            addMessage(report, ValidationSeverity::Error,
+                "WIDGET_ANCHOR_INVALID",
+                "Anchor value is not one of the supported presets.",
+                widget->id,
+                "anchor");
         }
 
         const std::string layoutMode = trim(propertyString(*widget, "layoutMode"));

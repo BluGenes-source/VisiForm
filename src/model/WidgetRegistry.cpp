@@ -46,8 +46,9 @@ void appendProperties(std::vector<WidgetPropertyDefinition>& target, const std::
 std::vector<WidgetPropertyDefinition> commonChildLayoutProperties()
 {
     return {
-        { "dock", "Dock", "None", PropertyEditKind::Text, true, "Simple docking mode inside the current parent.", { "None", "Top", "Bottom", "Left", "Right", "Fill" } },
-        { "anchor", "Anchor", "Left,Top", PropertyEditKind::Text, true, "Stored anchor metadata for future resize behavior." },
+        { "dock", "Dock", "None", PropertyEditKind::Text, true, "Attaches the widget to an edge of its parent.", { "None", "Top", "Bottom", "Left", "Right", "Fill" } },
+        { "anchor", "Anchor", "Top Left", PropertyEditKind::Text, true, "Controls how the widget moves or resizes when its parent resizes.",
+            { "Top Left", "Top Right", "Bottom Left", "Bottom Right", "Stretch Width Top", "Stretch Width Bottom", "Stretch Height Left", "Stretch Height Right", "Fill", "None" } },
         { "tabIndex", "Tab Index", 0, PropertyEditKind::Integer, true, "Tab page index used when this widget is inside a tab control." }
     };
 }

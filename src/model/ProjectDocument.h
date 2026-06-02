@@ -70,6 +70,7 @@ public:
     [[nodiscard]] WidgetNode* duplicateWidgetById(const std::string& id, utils::IdGenerator& idGenerator);
     void refreshHierarchyMetadata();
     void applyDockLayout();
+    void applyLayoutFromPrevious(const ProjectDocument& previousDocument);
 
     void selectWidget(const std::string& id);
     void setSelection(const std::string& id);

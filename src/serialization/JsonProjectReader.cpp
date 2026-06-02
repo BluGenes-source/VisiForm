@@ -413,6 +413,7 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
         }
 
         document.refreshHierarchyMetadata();
+        document.applyDockLayout();
 
         if (document.windowTitle.empty()) {
             document.windowTitle = document.root.getStringProperty("title", document.projectName);

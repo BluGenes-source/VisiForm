@@ -101,6 +101,45 @@ const std::string& dockModeName(DockMode mode)
     return none;
 }
 
+const std::string& anchorModeName(AnchorMode mode)
+{
+    static const std::string none = "None";
+    static const std::string topLeft = "Top Left";
+    static const std::string topRight = "Top Right";
+    static const std::string bottomLeft = "Bottom Left";
+    static const std::string bottomRight = "Bottom Right";
+    static const std::string stretchWidthTop = "Stretch Width Top";
+    static const std::string stretchWidthBottom = "Stretch Width Bottom";
+    static const std::string stretchHeightLeft = "Stretch Height Left";
+    static const std::string stretchHeightRight = "Stretch Height Right";
+    static const std::string fill = "Fill";
+
+    switch (mode) {
+    case AnchorMode::None:
+        return none;
+    case AnchorMode::TopLeft:
+        return topLeft;
+    case AnchorMode::TopRight:
+        return topRight;
+    case AnchorMode::BottomLeft:
+        return bottomLeft;
+    case AnchorMode::BottomRight:
+        return bottomRight;
+    case AnchorMode::StretchWidthTop:
+        return stretchWidthTop;
+    case AnchorMode::StretchWidthBottom:
+        return stretchWidthBottom;
+    case AnchorMode::StretchHeightLeft:
+        return stretchHeightLeft;
+    case AnchorMode::StretchHeightRight:
+        return stretchHeightRight;
+    case AnchorMode::Fill:
+        return fill;
+    }
+
+    return topLeft;
+}
+
 const std::string& layoutModeName(LayoutMode mode)
 {
     static const std::string absolute = "Absolute";
@@ -204,6 +243,47 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     return std::nullopt;
 }
 
+std::string toString(AnchorMode mode)
+{
+    return anchorModeName(mode);
+}
+
+std::optional<AnchorMode> anchorModeFromString(const std::string& value)
+{
+    if (value.empty() || value == "Top Left" || value == "TopLeft" || value == "Left,Top" || value == "Top,Left") {
+        return AnchorMode::TopLeft;
+    }
+    if (value == "None") {
+        return AnchorMode::None;
+    }
+    if (value == "Top Right" || value == "TopRight" || value == "Right,Top" || value == "Top,Right") {
+        return AnchorMode::TopRight;
+    }
+    if (value == "Bottom Left" || value == "BottomLeft" || value == "Left,Bottom" || value == "Bottom,Left") {
+        return AnchorMode::BottomLeft;
+    }
+    if (value == "Bottom Right" || value == "BottomRight" || value == "Right,Bottom" || value == "Bottom,Right") {
+        return AnchorMode::BottomRight;
+    }
+    if (value == "Stretch Width Top" || value == "Left Right Top" || value == "LeftRightTop") {
+        return AnchorMode::StretchWidthTop;
+    }
+    if (value == "Stretch Width Bottom" || value == "Left Right Bottom" || value == "LeftRightBottom") {
+        return AnchorMode::StretchWidthBottom;
+    }
+    if (value == "Stretch Height Left" || value == "Top Bottom Left" || value == "TopBottomLeft") {
+        return AnchorMode::StretchHeightLeft;
+    }
+    if (value == "Stretch Height Right" || value == "Top Bottom Right" || value == "TopBottomRight") {
+        return AnchorMode::StretchHeightRight;
+    }
+    if (value == "Fill" || value == "All" || value == "FillParent") {
+        return AnchorMode::Fill;
+    }
+
+    return std::nullopt;
+}
+
 std::string toString(DockMode mode)
 {
     return dockModeName(mode);
@@ -285,6 +365,11 @@ const std::string& WidgetNode::typeName() const
 DockMode WidgetNode::dockMode() const
 {
     return dockModeFromString(getStringProperty("dock", "None")).value_or(DockMode::None);
+}
+
+AnchorMode WidgetNode::anchorMode() const
+{
+    return anchorModeFromString(getStringProperty("anchor", "Top Left")).value_or(AnchorMode::TopLeft);
 }
 
 LayoutMode WidgetNode::layoutMode() const

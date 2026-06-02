@@ -52,6 +52,22 @@ enum class DockMode {
 [[nodiscard]] std::string toString(DockMode mode);
 [[nodiscard]] std::optional<DockMode> dockModeFromString(const std::string& value);
 
+enum class AnchorMode {
+    None,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    StretchWidthTop,
+    StretchWidthBottom,
+    StretchHeightLeft,
+    StretchHeightRight,
+    Fill
+};
+
+[[nodiscard]] std::string toString(AnchorMode mode);
+[[nodiscard]] std::optional<AnchorMode> anchorModeFromString(const std::string& value);
+
 enum class LayoutMode {
     Absolute,
     Horizontal,
@@ -89,6 +105,7 @@ public:
 
     [[nodiscard]] const std::string& typeName() const;
     [[nodiscard]] DockMode dockMode() const;
+    [[nodiscard]] AnchorMode anchorMode() const;
     [[nodiscard]] LayoutMode layoutMode() const;
     [[nodiscard]] int selectedTabIndex() const;
     void setSelectedTabIndex(int index);

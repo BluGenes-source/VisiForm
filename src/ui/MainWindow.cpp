@@ -4,6 +4,7 @@
 #include "commands/Command.h"
 #include "commands/CommandIds.h"
 #include "commands/CommandRegistry.h"
+#include "model/LayoutEngine.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetRegistry.h"
 #include "serialization/JsonProjectReader.h"
@@ -3169,8 +3170,17 @@ model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type, const 
         return widget;
     }
 
-    if (type == model::WidgetType::StatusBar && (parentId.empty() || parentId == document_.root.id)) {
-        widget.bounds = { 0.0f, std::max(0.0f, document_.root.bounds.height - widget.bounds.height), document_.root.bounds.width, widget.bounds.height };
+    if (type == model::WidgetType::StatusBar) {
+        const model::WidgetNode* parent = parentId.empty() ? &document_.root : document_.findWidgetById(parentId);
+        const model::Rect parentClientBounds = parent != nullptr
+            ? model::LayoutEngine::clientBoundsForParent(*parent)
+            : model::LayoutEngine::clientBoundsForParent(document_.root);
+        widget.bounds = {
+            parentClientBounds.x,
+            std::max(parentClientBounds.y, parentClientBounds.y + parentClientBounds.height - widget.bounds.height),
+            parentClientBounds.width,
+            widget.bounds.height
+        };
         widget.setProperty("dock", "Bottom");
         widget.setProperty("fillWidth", true);
     }
@@ -4057,9 +4067,7 @@ bool MainWindow::setSelectedWidgetBounds(float x, float y, float width, float he
 
     model::ProjectDocument beforeDocument = document_;
     widget->bounds = { x, y, clampedWidth, clampedHeight };
-    if (widget->type == model::WidgetType::TabControl) {
-        document_.refreshHierarchyMetadata();
-    }
+    document_.applyLayoutFromPrevious(beforeDocument);
     model::ProjectDocument afterDocument = document_;
     document_ = beforeDocument;
     undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
@@ -4108,6 +4116,7 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     }
     const float previousWidth = widget->bounds.width;
     const bool autoSized = autoSizeWidgetForTextProperty(*widget, key, widget->getStringProperty(key, {}));
+    document_.applyLayoutFromPrevious(beforeDocument);
     const std::string displayName = widget->name.empty() ? widget->id : widget->name;
     const std::string operationStatus = autoSized
         ? "Auto-sized " + displayName + ": width " + std::to_string(static_cast<int>(previousWidth))
@@ -4371,6 +4380,26 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         });
         if (!isValidScaleMode) {
             setOperationStatus("Invalid image scale mode");
+            redraw();
+            return false;
+        }
+
+        return setSelectedWidgetProperty(key, trimmedValue);
+    }
+
+    if (key == "dock") {
+        if (!model::dockModeFromString(trimmedValue).has_value()) {
+            setOperationStatus("Invalid dock value");
+            redraw();
+            return false;
+        }
+
+        return setSelectedWidgetProperty(key, trimmedValue);
+    }
+
+    if (key == "anchor") {
+        if (!model::anchorModeFromString(trimmedValue).has_value()) {
+            setOperationStatus("Invalid anchor value");
             redraw();
             return false;
         }
