@@ -225,20 +225,45 @@ WidgetDefinition makeTabControlDefinition()
     definition.displayName = "Tab Control";
     definition.paletteGroup = "Basic";
     definition.defaultNamePrefix = "tabControl";
-    definition.defaultHint = "Container that groups child widgets by tab index.";
+    definition.defaultHint = "Container that owns tab pages.";
     definition.canContainChildren = true;
     definition.allowsDrop = true;
     definition.clipsChildren = true;
     definition.drawsChildrenInside = true;
     definition.defaultChildLayoutMode = LayoutMode::TabPage;
-    definition.size = { 400.0f, 260.0f, 220.0f, 160.0f };
+    definition.size = { 420.0f, 280.0f, 220.0f, 160.0f };
     definition.properties = {
-        { "tabs", "Tabs", "Tab 1,Tab 2", PropertyEditKind::Text, true, "Comma-separated tab labels." },
-        { "selectedTab", "Selected Tab", 0, PropertyEditKind::Integer, true, "Selected tab index used by the designer preview." },
+        { "selectedTabIndex", "Selected Tab", 0, PropertyEditKind::Integer, true, "Selected tab page index used by the designer preview." },
         { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonChildLayoutProperties());
     appendProperties(definition.properties, containerLayoutProperties(LayoutMode::TabPage));
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    return definition;
+}
+
+WidgetDefinition makeTabPageDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::TabPage;
+    definition.typeName = "TabPage";
+    definition.displayName = "Tab Page";
+    definition.paletteGroup = "Containers";
+    definition.defaultNamePrefix = "tabPage";
+    definition.defaultHint = "Logical tab page owned by a tab control.";
+    definition.canContainChildren = true;
+    definition.allowsDrop = true;
+    definition.clipsChildren = true;
+    definition.drawsChildrenInside = true;
+    definition.defaultChildLayoutMode = LayoutMode::Absolute;
+    definition.size = { 380.0f, 220.0f, 180.0f, 120.0f };
+    definition.properties = {
+        { "title", "Title", "Tab", PropertyEditKind::Text, true, "Displayed tab page title." },
+        { "backgroundColor", "Background Color", "", PropertyEditKind::Color, true, "Optional tab page background override." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, containerLayoutProperties(LayoutMode::Absolute));
     appendProperties(definition.properties, commonStyleProperties());
     appendProperties(definition.properties, commonFontProperties());
     return definition;
@@ -525,6 +550,7 @@ WidgetRegistry::WidgetRegistry()
         makeGroupBoxDefinition(),
         makePanelDefinition(),
         makeTabControlDefinition(),
+        makeTabPageDefinition(),
         makeLabelDefinition(),
         makeButtonDefinition(),
         makeTextBoxDefinition(),
@@ -590,6 +616,23 @@ bool WidgetRegistry::canContainChildren(WidgetType type) const
 {
     const WidgetDefinition* definition = find(type);
     return definition != nullptr && definition->canContainChildren;
+}
+
+bool WidgetRegistry::canContainChild(WidgetType parentType, WidgetType childType) const
+{
+    if (!canContainChildren(parentType)) {
+        return false;
+    }
+
+    if (parentType == WidgetType::TabControl) {
+        return childType == WidgetType::TabPage;
+    }
+
+    if (parentType == WidgetType::TabPage) {
+        return childType != WidgetType::FormWindow && childType != WidgetType::TabPage;
+    }
+
+    return childType != WidgetType::TabPage;
 }
 
 } // namespace visiform::model

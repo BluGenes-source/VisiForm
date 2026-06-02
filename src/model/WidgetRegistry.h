@@ -16,6 +16,7 @@ public:
     [[nodiscard]] const std::vector<WidgetDefinition>& definitions() const;
     [[nodiscard]] WidgetNode createDefaultWidget(WidgetType type, const std::string& id) const;
     [[nodiscard]] bool canContainChildren(WidgetType type) const;
+    [[nodiscard]] bool canContainChild(WidgetType parentType, WidgetType childType) const;
 
 private:
     WidgetRegistry();

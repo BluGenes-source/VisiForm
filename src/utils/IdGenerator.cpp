@@ -53,6 +53,14 @@ std::string IdGenerator::prefixForType(model::WidgetType widgetType)
         return "form_";
     case model::WidgetType::Frame:
         return "frame_";
+    case model::WidgetType::GroupBox:
+        return "groupbox_";
+    case model::WidgetType::Panel:
+        return "panel_";
+    case model::WidgetType::TabControl:
+        return "tabcontrol_";
+    case model::WidgetType::TabPage:
+        return "tabpage_";
     case model::WidgetType::Label:
         return "label_";
     case model::WidgetType::Button:
@@ -67,6 +75,14 @@ std::string IdGenerator::prefixForType(model::WidgetType widgetType)
         return "slider_";
     case model::WidgetType::ScrollBar:
         return "scrollbar_";
+    case model::WidgetType::StatusBar:
+        return "statusbar_";
+    case model::WidgetType::ProgressBar:
+        return "progressbar_";
+    case model::WidgetType::ModalDialog:
+        return "modaldialog_";
+    case model::WidgetType::ColorPicker:
+        return "colorpicker_";
     case model::WidgetType::Image:
         return "image_";
     case model::WidgetType::Spacer:

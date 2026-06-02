@@ -343,6 +343,19 @@ std::vector<std::string> splitCommaSeparatedValues(const std::string& text)
 
 std::vector<std::string> tabLabels(const model::WidgetNode& widget)
 {
+    if (widget.type == model::WidgetType::TabControl && widget.tabPageCount() > 0) {
+        std::vector<std::string> labels;
+        labels.reserve(widget.tabPageCount());
+        for (const auto& child : widget.children) {
+            if (child.type == model::WidgetType::TabPage) {
+                labels.push_back(child.tabTitle());
+            }
+        }
+        if (!labels.empty()) {
+            return labels;
+        }
+    }
+
     std::vector<std::string> labels;
     std::istringstream stream(getStringProperty(widget, "tabs", "Tab 1,Tab 2"));
     std::string item;
@@ -367,14 +380,23 @@ std::vector<std::string> tabLabels(const model::WidgetNode& widget)
 
 int selectedTabIndex(const model::WidgetNode& widget)
 {
+    if (widget.type == model::WidgetType::TabControl && widget.tabPageCount() > 0) {
+        return widget.selectedTabIndex();
+    }
+
     const std::vector<std::string> labels = tabLabels(widget);
-    return std::clamp(widget.getIntProperty("selectedTab", 0), 0, std::max(0, static_cast<int>(labels.size()) - 1));
+    return std::clamp(widget.getIntProperty("selectedTabIndex", widget.getIntProperty("selectedTab", 0)), 0, std::max(0, static_cast<int>(labels.size()) - 1));
 }
 
 bool isChildVisibleInParent(const model::WidgetNode& parent, const model::WidgetNode& child)
 {
     if (parent.type != model::WidgetType::TabControl) {
         return true;
+    }
+
+    if (parent.tabPageCount() > 0) {
+        const auto* selectedPage = parent.tabPageAt(parent.selectedTabIndex());
+        return child.type == model::WidgetType::TabPage && selectedPage != nullptr && child.id == selectedPage->id;
     }
 
     return child.getIntProperty("tabIndex", 0) == selectedTabIndex(parent);
@@ -614,6 +636,11 @@ std::optional<std::string> hitTestWidgetScreenId(const model::WidgetNode& widget
         }
         if (auto match = hitTestWidgetScreenId(*iterator, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
                 scale, x, y, smallWidgetHitPadding)) {
+            if (widget.type == model::WidgetType::TabControl
+                && iterator->type == model::WidgetType::TabPage
+                && *match == iterator->id) {
+                continue;
+            }
             return match;
         }
     }
@@ -690,6 +717,9 @@ std::optional<WidgetScreenInfo> findWidgetScreenInfo(const model::WidgetNode& wi
     }
 
     for (const auto& child : widget.children) {
+        if (!isChildVisibleInParent(widget, child)) {
+            continue;
+        }
         if (auto match = findWidgetScreenInfo(child, widgetId, formScreenX, formScreenY, widgetLocalX, widgetLocalY, scale)) {
             return match;
         }
@@ -922,6 +952,11 @@ void drawWidget(visage::Canvas& canvas,
         canvas.fill(bounds.x + 1.0f, bounds.y + headerHeight, std::max(0.0f, bounds.width - 2.0f), std::max(0.0f, bounds.height - headerHeight - 1.0f));
         break;
     }
+    case model::WidgetType::TabPage:
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, blendColor(style.borderColor, style.fillColor, 0.35f), 1.0f);
+        break;
     case model::WidgetType::Label:
         if (drawText) {
             canvas.setColor(style.textColor);
@@ -1179,7 +1214,7 @@ void drawWidget(visage::Canvas& canvas,
 
     if (document.isPrimarySelected(widget.id)) {
         drawSelectionOutline(canvas, bounds);
-        if (widget.type != model::WidgetType::FormWindow) {
+        if (widget.type != model::WidgetType::FormWindow && widget.type != model::WidgetType::TabPage) {
             drawSelectionHandles(canvas, bounds, visualHandleSize);
         }
     }
@@ -1335,6 +1370,11 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
     }
 
     InteractionHit hit{ *hitWidgetId, HitRegion::Body };
+    if (const auto* selectedWidget = document.findWidgetById(selectedWidgetId);
+        selectedWidget != nullptr && selectedWidget->type == model::WidgetType::TabPage) {
+        return std::nullopt;
+    }
+
     if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id) {
         const HitRegion handle = hitHandle(widgetInfo->bounds, x, y, resizeHandleHitSize_);
         if (handle != HitRegion::None) {

@@ -15,6 +15,7 @@ const std::string& widgetTypeName(WidgetType type)
     static const std::string groupBox = "GroupBox";
     static const std::string panel = "Panel";
     static const std::string tabControl = "TabControl";
+    static const std::string tabPage = "TabPage";
     static const std::string label = "Label";
     static const std::string button = "Button";
     static const std::string textBox = "TextBox";
@@ -40,6 +41,8 @@ const std::string& widgetTypeName(WidgetType type)
         return panel;
     case WidgetType::TabControl:
         return tabControl;
+    case WidgetType::TabPage:
+        return tabPage;
     case WidgetType::Label:
         return label;
     case WidgetType::Button:
@@ -154,6 +157,9 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     }
     if (value == "TabControl") {
         return WidgetType::TabControl;
+    }
+    if (value == "TabPage") {
+        return WidgetType::TabPage;
     }
     if (value == "Label") {
         return WidgetType::Label;
@@ -284,6 +290,71 @@ DockMode WidgetNode::dockMode() const
 LayoutMode WidgetNode::layoutMode() const
 {
     return layoutModeFromString(getStringProperty("layoutMode", "Absolute")).value_or(LayoutMode::Absolute);
+}
+
+int WidgetNode::selectedTabIndex() const
+{
+    if (type != WidgetType::TabControl) {
+        return 0;
+    }
+
+    const int tabCount = static_cast<int>(tabPageCount());
+    if (tabCount <= 0) {
+        return 0;
+    }
+
+    return std::clamp(getIntProperty("selectedTabIndex", getIntProperty("selectedTab", 0)), 0, tabCount - 1);
+}
+
+void WidgetNode::setSelectedTabIndex(int index)
+{
+    const int clampedIndex = std::max(0, index);
+    setProperty("selectedTabIndex", clampedIndex);
+    setProperty("selectedTab", clampedIndex);
+}
+
+std::size_t WidgetNode::tabPageCount() const
+{
+    return static_cast<std::size_t>(std::count_if(children.begin(), children.end(), [](const WidgetNode& child) {
+        return child.type == WidgetType::TabPage;
+    }));
+}
+
+WidgetNode* WidgetNode::tabPageAt(int index)
+{
+    return const_cast<WidgetNode*>(std::as_const(*this).tabPageAt(index));
+}
+
+const WidgetNode* WidgetNode::tabPageAt(int index) const
+{
+    if (index < 0) {
+        return nullptr;
+    }
+
+    int currentIndex = 0;
+    for (const auto& child : children) {
+        if (child.type != WidgetType::TabPage) {
+            continue;
+        }
+
+        if (currentIndex == index) {
+            return &child;
+        }
+
+        ++currentIndex;
+    }
+
+    return nullptr;
+}
+
+std::string WidgetNode::tabTitle() const
+{
+    if (type != WidgetType::TabPage) {
+        return {};
+    }
+
+    const std::string fallback = name.empty() ? std::string{ "Tab" } : name;
+    return getStringProperty("title", fallback);
 }
 
 PropertyValue* WidgetNode::getProperty(const std::string& key)

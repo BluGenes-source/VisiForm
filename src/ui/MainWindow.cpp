@@ -62,6 +62,11 @@ constexpr float kGroupBoxChildStartX = 20.0f;
 constexpr float kGroupBoxChildStartY = 36.0f;
 constexpr float kGroupBoxChildOffsetStep = 16.0f;
 constexpr float kGroupBoxContentTopInset = 20.0f;
+constexpr float kTabControlPageInset = 6.0f;
+constexpr float kTabControlHeaderHeight = 30.0f;
+constexpr float kTabPageChildStartX = 20.0f;
+constexpr float kTabPageChildStartY = 20.0f;
+constexpr float kTabPageChildOffsetStep = 16.0f;
 constexpr float kMarqueeDragThreshold = 4.0f;
 constexpr float kSmartGuideSnapThreshold = 6.0f;
 constexpr float kEditorModalPreferredWidth = 560.0f;
@@ -567,19 +572,64 @@ std::string widgetDisplayName(const model::WidgetNode& widget)
     return widget.name.empty() ? widget.id : widget.name;
 }
 
+const model::WidgetNode* nearestAncestorOfType(const model::ProjectDocument& document,
+    const model::WidgetNode* start,
+    model::WidgetType type)
+{
+    const model::WidgetNode* current = start;
+    while (current != nullptr) {
+        if (current->type == type) {
+            return current;
+        }
+
+        current = document.findParentOf(current->id);
+    }
+
+    return nullptr;
+}
+
 bool isRepairPassParentTarget(const model::WidgetNode& widget)
 {
     return widget.type == model::WidgetType::FormWindow
-        || widget.type == model::WidgetType::GroupBox;
+        || widget.type == model::WidgetType::GroupBox
+        || widget.type == model::WidgetType::TabPage;
 }
 
 std::string insertionParentIdForNewWidget(const model::ProjectDocument& document, model::WidgetType type)
 {
     const model::WidgetNode* selectedWidget = document.selectedWidget();
-    if (selectedWidget != nullptr
-        && selectedWidget->type == model::WidgetType::GroupBox
-        && type != model::WidgetType::GroupBox) {
+    if (selectedWidget == nullptr) {
+        return document.root.id;
+    }
+
+    if (type == model::WidgetType::TabControl) {
+        return document.root.id;
+    }
+
+    if (type != model::WidgetType::GroupBox && type != model::WidgetType::TabPage) {
+        if (const auto* groupBox = nearestAncestorOfType(document, selectedWidget, model::WidgetType::GroupBox)) {
+            return groupBox->id;
+        }
+    }
+
+    if (type == model::WidgetType::TabPage) {
+        if (const auto* tabControl = document.findTabControlFor(selectedWidget->id)) {
+            return tabControl->id;
+        }
+
+        return document.root.id;
+    }
+
+    if (selectedWidget->type == model::WidgetType::TabControl) {
+        if (const auto* selectedTabPage = document.selectedTabPageFor(selectedWidget->id)) {
+            return selectedTabPage->id;
+        }
+    }
+    else if (selectedWidget->type == model::WidgetType::TabPage) {
         return selectedWidget->id;
+    }
+    else if (const auto* tabPage = document.findTabPageFor(selectedWidget->id)) {
+        return tabPage->id;
     }
 
     return document.root.id;
@@ -642,6 +692,16 @@ model::Rect absoluteBoundsForWidget(const model::ProjectDocument& document, cons
     }
 
     return absoluteBounds;
+}
+
+model::Rect tabPageBoundsForTabControl(const model::WidgetNode& tabControl)
+{
+    return {
+        kTabControlPageInset,
+        kTabControlHeaderHeight + kTabControlPageInset,
+        std::max(40.0f, tabControl.bounds.width - kTabControlPageInset * 2.0f),
+        std::max(40.0f, tabControl.bounds.height - kTabControlHeaderHeight - kTabControlPageInset * 2.0f)
+    };
 }
 
 model::Rect boundsRelativeToParent(const model::ProjectDocument& document, const std::string& parentId, const model::Rect& absoluteBounds)
@@ -2230,10 +2290,10 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 if (!document_.isSelected(*widgetId)) {
                     handleWidgetClicked(*widgetId, additiveSelection);
                 }
-                if (hitWidget->getIntProperty("selectedTab", 0) != *tabIndex) {
+                if (hitWidget->selectedTabIndex() != *tabIndex) {
                     applyUndoableDocumentChange("Change selected tab", [this, widgetId, tabIndex]() {
                         if (auto* tabControl = document_.findWidgetById(*widgetId)) {
-                            tabControl->setProperty("selectedTab", *tabIndex);
+                            tabControl->setSelectedTabIndex(*tabIndex);
                             return true;
                         }
                         return false;
@@ -2490,6 +2550,9 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
     if (updatedBounds.x != widget->bounds.x || updatedBounds.y != widget->bounds.y
         || updatedBounds.width != widget->bounds.width || updatedBounds.height != widget->bounds.height) {
         widget->bounds = updatedBounds;
+        if (widget->type == model::WidgetType::TabControl) {
+            document_.refreshHierarchyMetadata();
+        }
         canvasInteraction_.changed = true;
         redraw();
     }
@@ -3089,6 +3152,23 @@ model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type, const 
 {
     const std::string id = idGenerator_.next(type, document_);
     model::WidgetNode widget = model::WidgetRegistry::instance().createDefaultWidget(type, id);
+    if (type == model::WidgetType::TabControl) {
+        widget.bounds = nextDefaultWidgetBounds(type, parentId);
+        widget.setSelectedTabIndex(0);
+
+        const auto appendDefaultTabPage = [this, &widget](const std::string& title) {
+            model::WidgetNode page = model::WidgetRegistry::instance().createDefaultWidget(model::WidgetType::TabPage,
+                idGenerator_.next(model::WidgetType::TabPage, document_));
+            page.setProperty("title", title);
+            page.bounds = tabPageBoundsForTabControl(widget);
+            widget.appendChild(std::move(page));
+        };
+
+        appendDefaultTabPage("Tab 1");
+        appendDefaultTabPage("Tab 2");
+        return widget;
+    }
+
     if (type == model::WidgetType::StatusBar && (parentId.empty() || parentId == document_.root.id)) {
         widget.bounds = { 0.0f, std::max(0.0f, document_.root.bounds.height - widget.bounds.height), document_.root.bounds.width, widget.bounds.height };
         widget.setProperty("dock", "Bottom");
@@ -3120,6 +3200,22 @@ model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type, const st
             return {
                 std::min(kGroupBoxChildStartX + staggerOffset, maxX),
                 std::min(kGroupBoxChildStartY + staggerOffset, maxY),
+                clampedWidth,
+                clampedHeight
+            };
+        }
+
+        if (parent != nullptr && parent->type == model::WidgetType::TabPage) {
+            const float maxWidth = std::max(metrics.minWidth, parent->bounds.width - kLayoutMargin * 2.0f);
+            const float maxHeight = std::max(metrics.minHeight, parent->bounds.height - kLayoutMargin * 2.0f);
+            const float clampedWidth = std::min(width, maxWidth);
+            const float clampedHeight = std::min(height, maxHeight);
+            const float staggerOffset = static_cast<float>(parent->children.size()) * kTabPageChildOffsetStep;
+            const float maxX = std::max(kTabPageChildStartX, parent->bounds.width - clampedWidth - kLayoutMargin);
+            const float maxY = std::max(kTabPageChildStartY, parent->bounds.height - clampedHeight - kLayoutMargin);
+            return {
+                std::min(kTabPageChildStartX + staggerOffset, maxX),
+                std::min(kTabPageChildStartY + staggerOffset, maxY),
                 clampedWidth,
                 clampedHeight
             };
@@ -3172,6 +3268,12 @@ std::string MainWindow::resolveDropParentId(const std::string& movingWidgetId, f
 
     const model::WidgetNode* movingWidget = document_.findWidgetById(movingWidgetId);
     if (movingWidget == nullptr) {
+        return document_.root.id;
+    }
+    if (movingWidget->type == model::WidgetType::TabControl) {
+        if (const auto* currentParent = document_.findParentOf(movingWidgetId)) {
+            return currentParent->id;
+        }
         return document_.root.id;
     }
 
@@ -3955,6 +4057,9 @@ bool MainWindow::setSelectedWidgetBounds(float x, float y, float width, float he
 
     model::ProjectDocument beforeDocument = document_;
     widget->bounds = { x, y, clampedWidth, clampedHeight };
+    if (widget->type == model::WidgetType::TabControl) {
+        document_.refreshHierarchyMetadata();
+    }
     model::ProjectDocument afterDocument = document_;
     document_ = beforeDocument;
     undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
@@ -3986,7 +4091,12 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     model::ProjectDocument beforeDocument = document_;
     const bool radioSelectedTrue = widget->type == model::WidgetType::RadioButton
         && key == "selected" && value.isBool() && value.asBool(false);
-    widget->setProperty(key, std::move(value));
+    if (widget->type == model::WidgetType::TabControl && (key == "selectedTabIndex" || key == "selectedTab")) {
+        widget->setSelectedTabIndex(value.asInt(widget->selectedTabIndex()));
+    }
+    else {
+        widget->setProperty(key, std::move(value));
+    }
     if (widget->type == model::WidgetType::FormWindow && document_.isRootWidgetId(widget->id) && key == "title") {
         document_.windowTitle = widget->getStringProperty("title", document_.projectName);
     }
@@ -4047,6 +4157,54 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return setSelectedWidgetName(trimmedValue);
     }
 
+    if ((key == "selectedTabIndex" || key == "selectedTab") && widget->type == model::WidgetType::TabControl) {
+        const auto parsedValue = tryParseInt(trimmedValue);
+        if (!parsedValue.has_value()) {
+            setOperationStatus("Invalid selected tab index");
+            redraw();
+            return false;
+        }
+
+        return setSelectedWidgetProperty("selectedTabIndex", *parsedValue);
+    }
+
+    if (key == "__tabcontrol_selected_tab_title") {
+        const auto* tabControl = widget->type == model::WidgetType::TabControl ? widget : document_.findTabControlFor(widget->id);
+        if (tabControl == nullptr) {
+            setOperationStatus("No tab control selected");
+            redraw();
+            return false;
+        }
+
+        const auto* selectedPage = document_.selectedTabPageFor(tabControl->id);
+        if (selectedPage == nullptr || trimmedValue.empty()) {
+            setOperationStatus(trimmedValue.empty() ? "Tab title cannot be empty" : "Selected tab page is invalid");
+            redraw();
+            return false;
+        }
+
+        model::ProjectDocument beforeDocument = document_;
+        model::ProjectDocument afterDocument = document_;
+        if (auto* page = afterDocument.findWidgetById(selectedPage->id)) {
+            page->setProperty("title", trimmedValue);
+        }
+        else {
+            return false;
+        }
+
+        document_ = beforeDocument;
+        undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+            document_,
+            "Rename tab",
+            std::move(beforeDocument),
+            std::move(afterDocument)));
+        document_.markDirty();
+        setOperationStatus("Renamed selected tab to " + trimmedValue);
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
     if (key == "projectName") {
         if (trimmedValue.empty()) {
             setOperationStatus("Project name cannot be empty");
@@ -4068,6 +4226,28 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
 
         document_.markDirty();
         setOperationStatus("Project name changed: " + document_.projectName);
+        redraw();
+        return true;
+    }
+
+    if (key == "__tabcontrol_tabs"
+        || key == "__tabcontrol_add_tab"
+        || key == "__tabcontrol_remove_selected_tab") {
+        const bool applied = key == "__tabcontrol_tabs"
+            ? selectTabPageFromInspector(trimmedValue)
+            : (key == "__tabcontrol_add_tab"
+                    ? addTabPageToSelectedTabControl()
+                    : removeSelectedTabPageFromSelectedTabControl());
+        if (!applied) {
+            redraw();
+            return false;
+        }
+
+        propertyInspector_.clearEditing();
+        textEditControl_.clear();
+        dropdownControl_.close();
+        requestKeyboardFocus();
+        updatePropertyEditorBounds();
         redraw();
         return true;
     }
@@ -5933,6 +6113,47 @@ bool MainWindow::selectGroupBoxChildFromInspector(const std::string& childId)
     return true;
 }
 
+bool MainWindow::selectTabPageFromInspector(const std::string& tabPageId)
+{
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr || tabPageId.empty()) {
+        return false;
+    }
+
+    const auto* tabPage = document_.findWidgetById(tabPageId);
+    const auto* tabControl = selectedWidget->type == model::WidgetType::TabControl
+        ? selectedWidget
+        : document_.findTabControlFor(selectedWidget->id);
+    if (tabPage == nullptr || tabPage->type != model::WidgetType::TabPage || tabControl == nullptr) {
+        return false;
+    }
+
+    const auto* pageParent = document_.findParentOf(tabPageId);
+    if (pageParent == nullptr || pageParent->id != tabControl->id) {
+        return false;
+    }
+
+    int tabIndex = 0;
+    for (const auto& child : tabControl->children) {
+        if (child.type != model::WidgetType::TabPage) {
+            continue;
+        }
+        if (child.id == tabPageId) {
+            return applyUndoableDocumentChange("Change selected tab", [this, tabControl, tabIndex]() {
+                if (auto* currentTabControl = document_.findWidgetById(tabControl->id)) {
+                    currentTabControl->setSelectedTabIndex(tabIndex);
+                    document_.setSelection(currentTabControl->id);
+                    return true;
+                }
+                return false;
+            });
+        }
+        ++tabIndex;
+    }
+
+    return false;
+}
+
 bool MainWindow::addExistingWidgetToSelectedGroupBox(const std::string& childId)
 {
     const auto* groupBox = document_.selectedWidget();
@@ -5999,6 +6220,87 @@ bool MainWindow::removeSelectedGroupBoxChildToRoot(const std::string& childId)
         std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus("Removed " + childLabel + " from " + groupBoxLabel);
+    return true;
+}
+
+bool MainWindow::addTabPageToSelectedTabControl()
+{
+    const auto* tabControl = document_.selectedWidget();
+    if (tabControl == nullptr || tabControl->type != model::WidgetType::TabControl) {
+        return false;
+    }
+
+    const std::string newPageId = idGenerator_.next(model::WidgetType::TabPage, document_);
+    const std::string newTitle = "Tab " + std::to_string(tabControl->tabPageCount() + 1);
+    model::ProjectDocument beforeDocument = document_;
+    model::ProjectDocument afterDocument = document_;
+    auto* updatedTabControl = afterDocument.findWidgetById(tabControl->id);
+    if (updatedTabControl == nullptr) {
+        return false;
+    }
+
+    model::WidgetNode newPage = model::WidgetRegistry::instance().createDefaultWidget(model::WidgetType::TabPage, newPageId);
+    newPage.setProperty("title", newTitle);
+    newPage.bounds = tabPageBoundsForTabControl(*updatedTabControl);
+    updatedTabControl->appendChild(std::move(newPage));
+    updatedTabControl->setSelectedTabIndex(static_cast<int>(updatedTabControl->tabPageCount()) - 1);
+    afterDocument.setSelection(updatedTabControl->id);
+
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Add tab page",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
+    document_.markDirty();
+    setOperationStatus("Added " + newTitle + " to " + widgetDisplayName(*tabControl));
+    return true;
+}
+
+bool MainWindow::removeSelectedTabPageFromSelectedTabControl()
+{
+    const auto* tabControl = document_.selectedWidget();
+    if (tabControl == nullptr || tabControl->type != model::WidgetType::TabControl) {
+        return false;
+    }
+
+    const auto* selectedPage = document_.selectedTabPageFor(tabControl->id);
+    if (selectedPage == nullptr) {
+        return false;
+    }
+    if (tabControl->tabPageCount() <= 1) {
+        setOperationStatus("Cannot remove the last tab page");
+        return false;
+    }
+    if (!selectedPage->children.empty()) {
+        setOperationStatus("Cannot remove tab with child widgets yet.");
+        return false;
+    }
+
+    model::ProjectDocument beforeDocument = document_;
+    model::ProjectDocument afterDocument = document_;
+    const int previousIndex = tabControl->selectedTabIndex();
+    if (!afterDocument.removeWidgetById(selectedPage->id)) {
+        return false;
+    }
+
+    if (auto* updatedTabControl = afterDocument.findWidgetById(tabControl->id)) {
+        const int remainingCount = static_cast<int>(updatedTabControl->tabPageCount());
+        updatedTabControl->setSelectedTabIndex(std::clamp(previousIndex, 0, std::max(0, remainingCount - 1)));
+        afterDocument.setSelection(updatedTabControl->id);
+    }
+    else {
+        return false;
+    }
+
+    document_ = beforeDocument;
+    undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+        document_,
+        "Remove tab page",
+        std::move(beforeDocument),
+        std::move(afterDocument)));
+    document_.markDirty();
+    setOperationStatus("Removed " + selectedPage->tabTitle() + " from " + widgetDisplayName(*tabControl));
     return true;
 }
 

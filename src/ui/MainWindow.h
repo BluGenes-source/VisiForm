@@ -377,8 +377,11 @@ private:
     bool setSelectedWidgetProperty(const std::string& key, model::PropertyValue value);
     bool setSelectedWidgetPropertyFromString(const std::string& key, const std::string& valueText);
     bool selectGroupBoxChildFromInspector(const std::string& childId);
+    bool selectTabPageFromInspector(const std::string& tabPageId);
     bool addExistingWidgetToSelectedGroupBox(const std::string& childId);
     bool removeSelectedGroupBoxChildToRoot(const std::string& childId);
+    bool addTabPageToSelectedTabControl();
+    bool removeSelectedTabPageFromSelectedTabControl();
     bool applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange);
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;

@@ -21,6 +21,7 @@ enum class WidgetType {
     GroupBox,
     Panel,
     TabControl,
+    TabPage,
     Label,
     Button,
     TextBox,
@@ -89,6 +90,12 @@ public:
     [[nodiscard]] const std::string& typeName() const;
     [[nodiscard]] DockMode dockMode() const;
     [[nodiscard]] LayoutMode layoutMode() const;
+    [[nodiscard]] int selectedTabIndex() const;
+    void setSelectedTabIndex(int index);
+    [[nodiscard]] std::size_t tabPageCount() const;
+    [[nodiscard]] WidgetNode* tabPageAt(int index);
+    [[nodiscard]] const WidgetNode* tabPageAt(int index) const;
+    [[nodiscard]] std::string tabTitle() const;
 
     [[nodiscard]] PropertyValue* getProperty(const std::string& key);
     [[nodiscard]] const PropertyValue* getProperty(const std::string& key) const;

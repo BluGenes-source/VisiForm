@@ -643,6 +643,89 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         }
     }
 
+    if (selectedWidget->type == model::WidgetType::TabControl) {
+        rows.push_back({ "__section_tabs", "Tabs", {}, {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({ "__tabcontrol_tab_count", "Tab Count", "Number of tab pages owned by this TabControl.", std::to_string(selectedWidget->tabPageCount()), PropertyEditKind::ReadOnly });
+
+        std::vector<PropertyChoice> tabChoices;
+        int pageIndex = 0;
+        for (const auto& child : selectedWidget->children) {
+            if (child.type != model::WidgetType::TabPage) {
+                continue;
+            }
+
+            const std::string title = child.tabTitle();
+            tabChoices.push_back(makeChoice(child.id, title, "Activate this tab page in the designer preview."));
+            rows.push_back({
+                "__tabcontrol_tab_info_" + child.id,
+                child.name.empty() ? child.id : child.name,
+                "Current tab page owned by this TabControl.",
+                title + " [TabPage] (#" + std::to_string(pageIndex + 1) + ")",
+                PropertyEditKind::ReadOnly
+            });
+            ++pageIndex;
+        }
+
+        const model::WidgetNode* selectedPage = selectedWidget->tabPageAt(selectedWidget->selectedTabIndex());
+        const std::string selectedTabTitle = selectedPage != nullptr ? selectedPage->tabTitle() : std::string{};
+        if (tabChoices.empty()) {
+            rows.push_back({ "__tabcontrol_tabs", "Selected Tab", "Selects the active tab page.", "No tab pages", PropertyEditKind::ReadOnly });
+            rows.push_back({ "__tabcontrol_selected_tab_title", "Selected Tab Title", "Renames the active tab page title.", "No tab pages", PropertyEditKind::ReadOnly });
+        }
+        else {
+            rows.push_back({ "__tabcontrol_tabs", "Selected Tab", "Selects the active tab page.", selectedTabTitle, PropertyEditKind::Choice, false, tabChoices });
+            rows.push_back({ "__tabcontrol_selected_tab_title", "Selected Tab Title", "Renames the active tab page title.", selectedTabTitle, PropertyEditKind::Text });
+        }
+
+        rows.push_back({
+            "__tabcontrol_add_tab",
+            "Add Tab",
+            "Creates a new empty tab page.",
+            "Add Tab",
+            PropertyEditKind::Choice,
+            false,
+            { makeChoice("add", "Add Tab", "Create a new tab page on this TabControl.") }
+        });
+
+        rows.push_back({
+            "__tabcontrol_remove_selected_tab",
+            "Remove Selected Tab",
+            "Removes the active tab page when the current rules allow removal.",
+            selectedTabTitle.empty() ? std::string{ "Remove Selected Tab" } : selectedTabTitle,
+            PropertyEditKind::Choice,
+            false,
+            { makeChoice("remove", "Remove Selected Tab", "Remove the currently active tab page.") }
+        });
+    }
+
+    if (selectedWidget->type == model::WidgetType::TabPage) {
+        rows.push_back({ "__section_tabpage", "Tab Page", {}, {}, PropertyEditKind::ReadOnly, true });
+
+        const auto* parentTabControl = document.findParentOf(selectedWidget->id);
+        int pageIndex = -1;
+        if (parentTabControl != nullptr && parentTabControl->type == model::WidgetType::TabControl) {
+            int currentIndex = 0;
+            for (const auto& child : parentTabControl->children) {
+                if (child.type != model::WidgetType::TabPage) {
+                    continue;
+                }
+                if (child.id == selectedWidget->id) {
+                    pageIndex = currentIndex;
+                    break;
+                }
+                ++currentIndex;
+            }
+        }
+
+        rows.push_back({ "__tabpage_parent", "Parent TabControl", "Owning tab control for this tab page.",
+            parentTabControl != nullptr ? widgetHierarchyLabel(*parentTabControl) : std::string{ "<none>" }, PropertyEditKind::ReadOnly });
+        rows.push_back({ "__tabpage_index", "Page Index", "Zero-based tab page index inside the parent TabControl.",
+            pageIndex >= 0 ? std::to_string(pageIndex) : std::string{ "<invalid>" }, PropertyEditKind::ReadOnly });
+        rows.push_back({ "__tabpage_child_count", "Child Count", "Number of widgets currently parented to this tab page.",
+            std::to_string(selectedWidget->children.size()), PropertyEditKind::ReadOnly });
+        rows.push_back({ "__tabpage_note", "Ownership", "TabPage is owned by its parent TabControl.", "TabPage is owned by TabControl.", PropertyEditKind::ReadOnly });
+    }
+
     std::set<std::string> drawnKeys;
     for (const auto& row : rows) {
         drawnKeys.insert(row.key);
@@ -652,6 +735,9 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     }
     else if (selectedWidget->type == model::WidgetType::Image) {
         drawnKeys.insert("source");
+    }
+    else if (selectedWidget->type == model::WidgetType::TabControl) {
+        drawnKeys.insert("selectedTabIndex");
     }
 
     const auto addEventProperty = [&](const std::string& key, const std::string& label, const std::string& hint, const std::string& fallback = {}) {

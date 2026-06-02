@@ -48,6 +48,12 @@ public:
     [[nodiscard]] const ProjectResource* findResourceById(const std::string& id) const;
     [[nodiscard]] WidgetNode* findParentOf(const std::string& childId);
     [[nodiscard]] const WidgetNode* findParentOf(const std::string& childId) const;
+    [[nodiscard]] WidgetNode* findTabPageFor(const std::string& widgetId);
+    [[nodiscard]] const WidgetNode* findTabPageFor(const std::string& widgetId) const;
+    [[nodiscard]] WidgetNode* findTabControlFor(const std::string& widgetId);
+    [[nodiscard]] const WidgetNode* findTabControlFor(const std::string& widgetId) const;
+    [[nodiscard]] WidgetNode* selectedTabPageFor(const std::string& tabControlId);
+    [[nodiscard]] const WidgetNode* selectedTabPageFor(const std::string& tabControlId) const;
     [[nodiscard]] WidgetNode* previousSiblingOf(const std::string& id);
     [[nodiscard]] const WidgetNode* previousSiblingOf(const std::string& id) const;
     bool bringWidgetForward(const std::string& id);
@@ -83,6 +89,7 @@ public:
     void clearDirty();
 
 private:
+    void syncTabSelectionForWidget(const std::string& id);
     void syncPrimarySelection();
 
     std::vector<std::string> selectedWidgetIds_{};

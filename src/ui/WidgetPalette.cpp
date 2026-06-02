@@ -17,7 +17,7 @@ std::vector<const model::WidgetDefinition*> paletteEntries()
 {
     std::vector<const model::WidgetDefinition*> entries;
     for (const auto& definition : model::WidgetRegistry::instance().definitions()) {
-        if (definition.type == model::WidgetType::FormWindow) {
+        if (definition.type == model::WidgetType::FormWindow || definition.type == model::WidgetType::TabPage) {
             continue;
         }
         entries.push_back(&definition);

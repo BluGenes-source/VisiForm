@@ -14,6 +14,35 @@
 namespace visiform::model {
 namespace {
 
+constexpr float kTabControlPageInset = 6.0f;
+constexpr float kTabControlHeaderHeight = 30.0f;
+
+Rect tabPageBoundsForTabControl(const WidgetNode& tabControl)
+{
+    return {
+        kTabControlPageInset,
+        kTabControlHeaderHeight + kTabControlPageInset,
+        std::max(40.0f, tabControl.bounds.width - kTabControlPageInset * 2.0f),
+        std::max(40.0f, tabControl.bounds.height - kTabControlHeaderHeight - kTabControlPageInset * 2.0f)
+    };
+}
+
+void syncTabPageBoundsRecursive(WidgetNode& widget)
+{
+    if (widget.type == WidgetType::TabControl) {
+        const Rect pageBounds = tabPageBoundsForTabControl(widget);
+        for (auto& child : widget.children) {
+            if (child.type == WidgetType::TabPage) {
+                child.bounds = pageBounds;
+            }
+        }
+    }
+
+    for (auto& child : widget.children) {
+        syncTabPageBoundsRecursive(child);
+    }
+}
+
 void collectWidgetsReferencingResource(const WidgetNode& widget, const std::string& resourceId, std::vector<std::string>& widgetIds)
 {
     if (!resourceId.empty() && widget.getStringProperty("resourceId", {}) == resourceId) {
@@ -164,6 +193,49 @@ bool reorderWithinParent(ParentType* parent, const std::string& id, bool forward
     return false;
 }
 
+template <typename DocumentType>
+auto findNearestAncestorOfType(DocumentType& document, const std::string& widgetId, WidgetType type)
+{
+    using WidgetPointer = decltype(document.findWidgetById(widgetId));
+
+    if (widgetId.empty()) {
+        return WidgetPointer{ nullptr };
+    }
+
+    auto* current = document.findWidgetById(widgetId);
+    while (current != nullptr) {
+        if (current->type == type) {
+            return current;
+        }
+
+        current = document.findParentOf(current->id);
+    }
+
+    return WidgetPointer{ nullptr };
+}
+
+template <typename DocumentType>
+auto findOwningTabControl(DocumentType& document, const std::string& widgetId)
+{
+    using WidgetPointer = decltype(document.findWidgetById(widgetId));
+
+    auto* tabPage = findNearestAncestorOfType(document, widgetId, WidgetType::TabPage);
+    if (tabPage == nullptr) {
+        auto* widget = document.findWidgetById(widgetId);
+        if (widget != nullptr && widget->type == WidgetType::TabControl) {
+            return widget;
+        }
+        return WidgetPointer{ nullptr };
+    }
+
+    auto* parent = document.findParentOf(tabPage->id);
+    if (parent != nullptr && parent->type == WidgetType::TabControl) {
+        return parent;
+    }
+
+    return WidgetPointer{ nullptr };
+}
+
 std::string duplicateNameFor(const WidgetNode& widget, const std::string& id)
 {
     const auto underscore = id.find_last_of('_');
@@ -195,6 +267,8 @@ std::string duplicateNameFor(const WidgetNode& widget, const std::string& id)
         return "panel" + suffix;
     case WidgetType::TabControl:
         return "tabControl" + suffix;
+    case WidgetType::TabPage:
+        return "tabPage" + suffix;
     case WidgetType::Image:
         return "image" + suffix;
     case WidgetType::Spacer:
@@ -355,6 +429,41 @@ WidgetNode* ProjectDocument::findParentOf(const std::string& childId)
     return root.findParentOf(childId);
 }
 
+WidgetNode* ProjectDocument::findTabPageFor(const std::string& widgetId)
+{
+    return const_cast<WidgetNode*>(std::as_const(*this).findTabPageFor(widgetId));
+}
+
+const WidgetNode* ProjectDocument::findTabPageFor(const std::string& widgetId) const
+{
+    return findNearestAncestorOfType(*this, widgetId, WidgetType::TabPage);
+}
+
+WidgetNode* ProjectDocument::findTabControlFor(const std::string& widgetId)
+{
+    return const_cast<WidgetNode*>(std::as_const(*this).findTabControlFor(widgetId));
+}
+
+const WidgetNode* ProjectDocument::findTabControlFor(const std::string& widgetId) const
+{
+    return findOwningTabControl(*this, widgetId);
+}
+
+WidgetNode* ProjectDocument::selectedTabPageFor(const std::string& tabControlId)
+{
+    return const_cast<WidgetNode*>(std::as_const(*this).selectedTabPageFor(tabControlId));
+}
+
+const WidgetNode* ProjectDocument::selectedTabPageFor(const std::string& tabControlId) const
+{
+    const WidgetNode* tabControl = findWidgetById(tabControlId);
+    if (tabControl == nullptr || tabControl->type != WidgetType::TabControl) {
+        return nullptr;
+    }
+
+    return tabControl->tabPageAt(tabControl->selectedTabIndex());
+}
+
 const WidgetNode* ProjectDocument::findParentOf(const std::string& childId) const
 {
     if (childId.empty() || childId == root.id) {
@@ -476,10 +585,16 @@ bool ProjectDocument::addChildToParent(const std::string& parentId, WidgetNode w
         return false;
     }
     if (parentId == root.id) {
+        if (!WidgetRegistry::instance().canContainChild(root.type, widget.type)) {
+            return false;
+        }
         return addChildToRoot(std::move(widget));
     }
 
     if (auto* parent = findWidgetById(parentId)) {
+        if (!WidgetRegistry::instance().canContainChild(parent->type, widget.type)) {
+            return false;
+        }
         parent->appendChild(std::move(widget));
         applyDockLayout();
         return true;
@@ -499,7 +614,7 @@ bool ProjectDocument::canReparentWidget(const std::string& widgetId, const std::
     if (widget == nullptr || newParent == nullptr) {
         return false;
     }
-    if (!WidgetRegistry::instance().canContainChildren(newParent->type)) {
+    if (!WidgetRegistry::instance().canContainChild(newParent->type, widget->type)) {
         return false;
     }
 
@@ -556,6 +671,8 @@ WidgetNode* ProjectDocument::duplicateWidgetById(const std::string& id, utils::I
 void ProjectDocument::refreshHierarchyMetadata()
 {
     root.syncHierarchyMetadata();
+    syncTabPageBoundsRecursive(root);
+    root.syncHierarchyMetadata();
 }
 
 void ProjectDocument::applyDockLayout()
@@ -585,6 +702,7 @@ void ProjectDocument::setSelection(const std::string& id)
     selectedWidgetIds_.clear();
     selectedWidgetIds_.push_back(id);
     syncPrimarySelection();
+    syncTabSelectionForWidget(selectedWidgetId);
 }
 
 void ProjectDocument::addToSelection(const std::string& id)
@@ -602,6 +720,7 @@ void ProjectDocument::addToSelection(const std::string& id)
     selectedWidgetIds_.erase(std::remove(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), id), selectedWidgetIds_.end());
     selectedWidgetIds_.push_back(id);
     syncPrimarySelection();
+    syncTabSelectionForWidget(selectedWidgetId);
 }
 
 void ProjectDocument::removeFromSelection(const std::string& id)
@@ -612,6 +731,7 @@ void ProjectDocument::removeFromSelection(const std::string& id)
 
     selectedWidgetIds_.erase(std::remove(selectedWidgetIds_.begin(), selectedWidgetIds_.end(), id), selectedWidgetIds_.end());
     syncPrimarySelection();
+    syncTabSelectionForWidget(selectedWidgetId);
 }
 
 void ProjectDocument::toggleSelection(const std::string& id)
@@ -746,6 +866,35 @@ void ProjectDocument::syncPrimarySelection()
     }
 
     selectedWidgetId = selectedWidgetIds_.back();
+}
+
+void ProjectDocument::syncTabSelectionForWidget(const std::string& id)
+{
+    if (id.empty()) {
+        return;
+    }
+
+    WidgetNode* tabPage = findTabPageFor(id);
+    if (tabPage == nullptr) {
+        return;
+    }
+
+    WidgetNode* tabControl = findParentOf(tabPage->id);
+    if (tabControl == nullptr || tabControl->type != WidgetType::TabControl) {
+        return;
+    }
+
+    int tabIndex = 0;
+    for (const auto& child : tabControl->children) {
+        if (child.type != WidgetType::TabPage) {
+            continue;
+        }
+        if (child.id == tabPage->id) {
+            tabControl->setSelectedTabIndex(tabIndex);
+            return;
+        }
+        ++tabIndex;
+    }
 }
 
 } // namespace visiform::model

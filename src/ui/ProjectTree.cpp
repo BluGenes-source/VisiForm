@@ -55,7 +55,10 @@ struct LayoutBounds {
 void appendRows(const model::WidgetNode& widget, int depth, std::vector<TreeEntry>& rows)
 {
     const std::string displayName = widget.name.empty() ? widget.id : widget.name;
-    rows.push_back({ TreeEntry::Kind::Widget, widget.id, displayName + " [" + widget.typeName() + "]", 0, depth, kRowHeight });
+    const std::string typeLabel = widget.type == model::WidgetType::TabPage
+        ? widget.typeName() + ": " + widget.tabTitle()
+        : widget.typeName();
+    rows.push_back({ TreeEntry::Kind::Widget, widget.id, displayName + " [" + typeLabel + "]", 0, depth, kRowHeight });
     for (const auto& child : widget.children) {
         appendRows(child, depth + 1, rows);
     }
