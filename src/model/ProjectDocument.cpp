@@ -185,6 +185,10 @@ std::string duplicateNameFor(const WidgetNode& widget, const std::string& id)
         return "button" + suffix;
     case WidgetType::TextBox:
         return "textBox" + suffix;
+    case WidgetType::ComboBox:
+        return "comboBox" + suffix;
+    case WidgetType::ListBox:
+        return "listBox" + suffix;
     case WidgetType::CheckBox:
         return "checkBox" + suffix;
     case WidgetType::RadioButton:

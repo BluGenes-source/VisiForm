@@ -219,6 +219,15 @@ Current generated widget rendering support:
 - `Frame`
 - `GroupBox`
 - `Panel`
+- `ComboBox`
+- `ListBox`
+
+For generated item-list widgets:
+
+- exported `ComboBox` and `ListBox` widgets use the edited project `items` list, not the registry defaults
+- exported `selectedIndex` values are clamped against the emitted item count during generation and runtime initialization
+- generated `ComboBox` text is derived from the selected item so it stays aligned with the edited item list
+- generated `ListBox` rows use the edited item strings and preserve `onChanged` / `onDoubleClick` callback wiring where supported
 - `TabControl`
 - `Label`
 - `Button`

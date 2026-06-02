@@ -2,6 +2,7 @@
 
 #include "model/LookAndFeelRegistry.h"
 #include "model/PropertyValue.h"
+#include "model/WidgetItemUtils.h"
 #include "model/WidgetRegistry.h"
 #include "utils/CppIdentifier.h"
 #include "utils/FileUtils.h"
@@ -86,7 +87,6 @@ std::string sanitizeProjectNameForCMake(std::string_view value)
             sanitized.push_back('_');
         }
     }
-
     if (sanitized.empty()) {
         sanitized = kDefaultProjectName;
     }
@@ -930,6 +930,29 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                     "StatusBar is expected to use Bottom dock on the root form.",
                     widget->id,
                     "dock");
+            }
+        }
+
+        if (model::supportsItemList(widget->type)) {
+            const auto items = model::splitItems(propertyString(*widget, "items"));
+            const int selectedIndex = widget->getIntProperty("selectedIndex", items.empty() ? -1 : 0);
+            const int safeSelectedIndex = model::sanitizeSelectedIndex(items, selectedIndex);
+            if (selectedIndex != safeSelectedIndex) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SELECTED_INDEX_OUT_OF_RANGE",
+                    items.empty()
+                        ? "selectedIndex should be -1 when the item list is empty."
+                        : "selectedIndex is outside the available item range and will be clamped.",
+                    widget->id,
+                    "selectedIndex");
+            }
+
+            if (widget->type == model::WidgetType::ComboBox && items.empty()) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "COMBOBOX_ITEMS_EMPTY",
+                    "ComboBox has no items, so no selection can be shown.",
+                    widget->id,
+                    "items");
             }
         }
 

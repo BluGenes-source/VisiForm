@@ -90,9 +90,12 @@ Supported `type` values:
 - `GroupBox`
 - `Panel`
 - `TabControl`
+- `TabPage`
 - `Label`
 - `Button`
 - `TextBox`
+- `ComboBox`
+- `ListBox`
 - `CheckBox`
 - `RadioButton`
 - `Slider`
@@ -135,6 +138,20 @@ Supported property JSON value types:
 - string -> `std::string`
 
 Objects and arrays are not currently supported as property values.
+
+## ComboBox and ListBox item storage
+
+`ComboBox` and `ListBox` use these widget properties:
+
+- `items` - saved as a JSON string array in `.vfb.json`, then normalized back to newline-delimited editor text in memory
+- `selectedIndex` - stored as an integer beside `items`
+
+Normalization rules:
+
+- blank item lines are ignored
+- leading and trailing whitespace is trimmed from each item string
+- if the final item list is empty, `selectedIndex` becomes `-1`
+- if the final item list is non-empty, `selectedIndex` is clamped into the valid `0..count-1` range
 
 ## Project resource format
 

@@ -3,6 +3,7 @@
 #include "ui/DesignerCanvas.h"
 
 #include "model/LookAndFeelRegistry.h"
+#include "model/WidgetItemUtils.h"
 #include "ui/WidgetMetrics.h"
 #include "ui/resources/ImageResourceCache.h"
 
@@ -998,6 +999,63 @@ void drawWidget(visage::Canvas& canvas,
                 std::max(0.0f, bounds.width - 16.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
+    case model::WidgetType::ComboBox: {
+        const auto items = model::splitItems(getStringProperty(widget, "items", {}));
+        const int selectedIndex = model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+        const std::string selectedText = model::getSelectedItemText(items, selectedIndex);
+        const float arrowWidth = std::min(26.0f, std::max(20.0f, bounds.width * 0.18f));
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.22f));
+        canvas.fill(bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height);
+        drawBorder(canvas, { bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height }, style.borderColor, style.borderThickness);
+        canvas.setColor(style.borderColor);
+        canvas.fill(bounds.x + bounds.width - arrowWidth * 0.5f - 4.0f, bounds.y + bounds.height * 0.5f - 1.0f, 8.0f, 2.0f);
+        if (drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text(selectedText.empty() ? std::string{ "<empty>" } : selectedText, widgetFont, visage::Font::kTopLeft,
+                bounds.x + 8.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
+                std::max(0.0f, bounds.width - arrowWidth - 14.0f), std::max(0.0f, bounds.height - 8.0f));
+        }
+        break;
+    }
+    case model::WidgetType::ListBox: {
+        const auto items = model::splitItems(getStringProperty(widget, "items", {}));
+        const int selectedIndex = model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+        const float rowHeight = std::max(18.0f, fontSize * 1.5f);
+        const float listTop = bounds.y + 4.0f;
+        const float visibleHeight = std::max(0.0f, bounds.height - 8.0f);
+        const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        float rowTop = listTop;
+        for (std::size_t index = 0; index < std::min<std::size_t>(visibleCount, items.size()); ++index) {
+            const bool selected = static_cast<int>(index) == selectedIndex;
+            canvas.setColor(selected ? blendColor(style.accentColor, style.fillColor, 0.32f) : (index % 2 == 0 ? style.fillColor : blendColor(style.panelColor, style.fillColor, 0.18f)));
+            canvas.fill(bounds.x + 4.0f, rowTop, std::max(0.0f, bounds.width - 14.0f), rowHeight - 1.0f);
+            if (drawText) {
+                canvas.setColor(style.textColor);
+                canvas.text(items[index], widgetFont, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, rowTop + std::max(2.0f, (rowHeight - fontSize * 1.4f) * 0.5f),
+                    std::max(0.0f, bounds.width - 22.0f), std::max(0.0f, rowHeight - 4.0f));
+            }
+            rowTop += rowHeight;
+        }
+        if (items.size() > visibleCount) {
+            canvas.setColor(style.panelColor);
+            canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 4.0f, 4.0f, std::max(0.0f, bounds.height - 8.0f));
+            canvas.setColor(style.accentColor);
+            canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 10.0f, 4.0f, std::max(16.0f, bounds.height * 0.22f));
+        }
+        if (items.empty() && drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text("<empty>", widgetFont, visage::Font::kCenter,
+                bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+        break;
+    }
     case model::WidgetType::CheckBox: {
         const float boxSize = 18.0f;
         const float squareX = bounds.x + 6.0f;

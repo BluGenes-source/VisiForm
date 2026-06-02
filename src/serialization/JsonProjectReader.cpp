@@ -2,6 +2,7 @@
 
 #include "serialization/JsonProjectReader.h"
 
+#include "model/WidgetItemUtils.h"
 #include "utils/FileUtils.h"
 
 #include <nlohmann/json.hpp>
@@ -157,6 +158,22 @@ bool parseProperties(const nlohmann::json& json, std::map<std::string, model::Pr
     }
 
     for (const auto& [key, value] : json.items()) {
+        if (key == "items" && value.is_array()) {
+            std::vector<std::string> items;
+            items.reserve(value.size());
+            for (const auto& itemValue : value) {
+                if (!itemValue.is_string()) {
+                    errorMessage = "Invalid property 'items': every array element must be a string.";
+                    return false;
+                }
+
+                items.push_back(itemValue.get<std::string>());
+            }
+
+            properties.insert_or_assign(key, model::PropertyValue{ model::joinItems(items) });
+            continue;
+        }
+
         model::PropertyValue propertyValue;
         if (!parsePropertyValue(value, propertyValue, errorMessage)) {
             errorMessage = "Invalid property '" + key + "': " + errorMessage;
@@ -227,6 +244,8 @@ bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::str
     if (propertiesIterator == json.end()) {
         widget.properties.clear();
     }
+
+    model::normalizeItemListProperties(widget);
 
     const auto childrenIterator = json.find("children");
     widget.children.clear();

@@ -41,6 +41,7 @@ public:
         float minimumValue = 0.0f;
         float maximumValue = 0.0f;
         float stepValue = 1.0f;
+        std::string actionText{};
     };
 
     struct PendingEdit {

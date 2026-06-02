@@ -3,6 +3,7 @@
 #include "ui/PropertyInspector.h"
 
 #include "model/LookAndFeelRegistry.h"
+#include "model/WidgetItemUtils.h"
 #include "model/WidgetRegistry.h"
 #include "utils/FileUtils.h"
 
@@ -38,6 +39,7 @@ constexpr float kSliderTrackHeight = 4.0f;
 constexpr float kSliderThumbWidth = 10.0f;
 constexpr float kSliderThumbHeight = 16.0f;
 constexpr float kSliderValueWidth = 56.0f;
+constexpr float kActionButtonWidth = 72.0f;
 
 struct RowLayout {
     PropertyInspector::PropertyRow row;
@@ -780,6 +782,38 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 }
             }
 
+            if (model::supportsItemList(selectedWidget->type) && property.key == "items") {
+                const auto items = model::getWidgetItems(*selectedWidget);
+                const int selectedIndex = model::clampSelectedIndex(items, selectedWidget->getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+                const std::string selectedItemText = model::getSelectedItemText(items, selectedIndex);
+                std::string summary = std::to_string(items.size()) + (items.size() == 1 ? " item" : " items");
+                if (selectedIndex >= 0) {
+                    summary += ", selected #" + std::to_string(selectedIndex);
+                    if (!selectedItemText.empty()) {
+                        summary += " (" + selectedItemText + ")";
+                    }
+                }
+                else {
+                    summary += ", no selection";
+                }
+
+                rows.push_back({
+                    property.key,
+                    property.label,
+                    "Click the value area or Edit... to open the item list editor.",
+                    summary,
+                    PropertyEditKind::Text,
+                    false,
+                    {},
+                    0.0f,
+                    0.0f,
+                    1.0f,
+                    "Edit..."
+                });
+                drawnKeys.insert(property.key);
+                continue;
+            }
+
             const auto* propertyValue = selectedWidget->getProperty(property.key);
             std::string displayValue;
             if (property.editKind == model::PropertyEditKind::Slider) {
@@ -1246,9 +1280,11 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
         const bool isChoice = row.editKind == PropertyEditKind::Choice;
         const bool isSlider = row.editKind == PropertyEditKind::Slider;
         const auto swatchBounds = colorSwatchBoundsForRow(row, rowTop);
+        const float actionWidth = row.actionText.empty() ? 0.0f : kActionButtonWidth;
         const float valueTextWidth = swatchBounds.has_value()
             ? std::max(0.0f, valueWidth - swatchBounds->width - 16.0f)
             : valueWidth;
+        const float summaryTextWidth = std::max(0.0f, valueTextWidth - (actionWidth > 0.0f ? actionWidth + 10.0f : 0.0f));
 
         if (row.isSection) {
             canvas.setColor(0xff253246);
@@ -1305,7 +1341,17 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                     valueText += "  >";
                 }
                 canvas.text(valueText, font, visage::Font::kTopLeft,
-                    valueLeft + 8.0f, rowTop + 5.0f, valueTextWidth - 12.0f, kRowHeight - 8.0f);
+                    valueLeft + 8.0f, rowTop + 5.0f, summaryTextWidth - 12.0f, kRowHeight - 8.0f);
+
+                if (!row.actionText.empty()) {
+                    const float actionLeft = valueLeft + valueWidth - actionWidth - 8.0f;
+                    canvas.setColor(0xff355382);
+                    canvas.fill(actionLeft, rowTop + 5.0f, actionWidth, kRowHeight - 12.0f);
+                    canvas.setColor(0xffd8e8ff);
+                    canvas.text(row.actionText, font, visage::Font::kCenter,
+                        actionLeft, rowTop + 5.0f, actionWidth, kRowHeight - 12.0f);
+                    canvas.setColor(isReadOnly ? 0xffb3bcc9 : 0xffeef2f8);
+                }
             }
 
             if (isActive && row.editKind != PropertyEditKind::Choice && row.editKind != PropertyEditKind::Slider) {

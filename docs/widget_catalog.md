@@ -39,6 +39,8 @@ Current `GroupBox` limitations in this repair pass:
 - `Label`
 - `Button`
 - `TextBox`
+- `ComboBox`
+- `ListBox`
 - `CheckBox`
 - `RadioButton`
 - `Slider`
@@ -87,6 +89,21 @@ Container-capable widget types in the current registry:
 
 - `tabs`
 - `selectedTab`
+
+## Item-list widget behavior
+
+`ComboBox` and `ListBox` now share the item-list persistence helpers used by the editor, serializer, validation flow, and generated runtime.
+
+Current first-pass behavior:
+
+- `items` are stored as newline-delimited editor text and serialized as a JSON string array
+- `selectedIndex` is normalized to `-1` for empty lists and clamped for non-empty lists
+- the `Property Inspector` shows an `Items` row with an item-count summary and an `Edit...` action inside the same value cell
+- clicking either the `Items` value area or the visible `Edit...` action opens the item-list editor modal
+- blank item-editor lines are ignored during normalization, and leading or trailing whitespace is trimmed from each stored item
+- the designer renders a lightweight preview of the current selection or visible rows
+- generated apps export lightweight interaction support: clicking a `ComboBox` cycles the selected item, clicking a `ListBox` selects a row, and double-clicking a `ListBox` can emit its callback
+- `multiSelect` is preserved as widget metadata for future expansion, but this pass keeps selection behavior single-select
 
 ## Look and feel foundation
 
@@ -149,6 +166,11 @@ Supported event properties:
   - `onChanged`
 - `TextBox`
   - `onTextChanged`
+- `ComboBox`
+  - `onChanged`
+- `ListBox`
+  - `onChanged`
+  - `onDoubleClick`
 - `ModalDialog`
   - `onAccepted`
   - `onCancelled`

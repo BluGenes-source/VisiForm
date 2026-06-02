@@ -210,7 +210,17 @@ private:
         NewProjectWizard,
         ProjectSettings,
         ResourceManager,
-        KeyboardShortcuts
+        KeyboardShortcuts,
+        ItemListEditor
+    };
+
+    struct ItemListEditorDialogState {
+        bool visible = false;
+        std::string widgetId{};
+        std::vector<std::string> items{};
+        int selectedItemIndex = -1;
+        std::string originalItemsText{};
+        int originalSelectedIndex = -1;
     };
 
     struct EditorModalField {
@@ -382,6 +392,9 @@ private:
     bool removeSelectedGroupBoxChildToRoot(const std::string& childId);
     bool addTabPageToSelectedTabControl();
     bool removeSelectedTabPageFromSelectedTabControl();
+    bool openSelectedWidgetItemEditor();
+    bool applyItemListEditor();
+    void setItemListEditorSelectedIndex(int index);
     bool applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange);
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;
@@ -432,10 +445,13 @@ private:
     [[nodiscard]] PanelBounds editorModalBodyBounds() const;
     [[nodiscard]] PanelBounds resourceManagerDetailBounds() const;
     [[nodiscard]] PanelBounds resourceManagerPreviewBounds() const;
+    [[nodiscard]] PanelBounds itemListEditorPreviewBounds() const;
+    [[nodiscard]] PanelBounds itemListEditorFormBounds() const;
     [[nodiscard]] PanelBounds editorModalStatusBounds() const;
     [[nodiscard]] std::vector<EditorModalField> editorModalFields() const;
     [[nodiscard]] std::vector<EditorModalFieldHit> editorModalFieldHits() const;
     [[nodiscard]] std::optional<EditorModalFieldHit> editorModalFieldAt(float x, float y) const;
+    [[nodiscard]] std::optional<int> itemListEditorPreviewIndexAt(float x, float y) const;
     [[nodiscard]] std::string editorModalFieldValue(const std::string& key) const;
     void setEditorModalFieldValue(const std::string& key, const std::string& valueText);
     bool beginEditorModalFieldEdit(const EditorModalField& field);
@@ -489,6 +505,7 @@ private:
     ProjectSettingsDialogState projectSettingsDialog_{};
     ResourceManagerDialogState resourceManagerDialog_{};
     KeyboardShortcutDialogState keyboardShortcutDialog_{};
+    ItemListEditorDialogState itemListEditorDialog_{};
 
     // Apply a callback suggestion directly to the selected widget property
     bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);

@@ -344,6 +344,57 @@ WidgetDefinition makeTextBoxDefinition()
     return definition;
 }
 
+WidgetDefinition makeComboBoxDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::ComboBox;
+    definition.typeName = "ComboBox";
+    definition.displayName = "Combo Box";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "comboBox";
+    definition.defaultHint = "Selects one item from a dropdown list.";
+    definition.size = { 180.0f, 32.0f, 120.0f, 28.0f };
+    definition.properties = {
+        { "items", "Items", "Apple\nOrange\nBanana", PropertyEditKind::Text, true, "Newline-delimited list of selectable items." },
+        { "selectedIndex", "Selected Index", 0, PropertyEditKind::Integer, true, "Zero-based selected item index. Use -1 when the list is empty." },
+        { "text", "Selected Item", "Apple", PropertyEditKind::ReadOnly, false, "Selected item text derived from items and selectedIndex." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    definition.events = {
+        { "onChanged", "On Changed", "void_event", "Called when the selected item changes." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeListBoxDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::ListBox;
+    definition.typeName = "ListBox";
+    definition.displayName = "List Box";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "listBox";
+    definition.defaultHint = "Displays a selectable list of items.";
+    definition.size = { 220.0f, 140.0f, 140.0f, 80.0f };
+    definition.properties = {
+        { "items", "Items", "Item 1\nItem 2\nItem 3", PropertyEditKind::Text, true, "Newline-delimited list of selectable items." },
+        { "selectedIndex", "Selected Index", 0, PropertyEditKind::Integer, true, "Zero-based selected item index. Use -1 when the list is empty." },
+        { "multiSelect", "Multi Select", false, PropertyEditKind::Bool, true, "Allows multiple selection when runtime support is enabled." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    definition.events = {
+        { "onChanged", "On Changed", "void_event", "Called when the selected item changes." },
+        { "onDoubleClick", "On Double Click", "void_event", "Called when an item is double-clicked." }
+    };
+    return definition;
+}
+
 WidgetDefinition makeCheckBoxDefinition()
 {
     WidgetDefinition definition;
@@ -555,6 +606,8 @@ WidgetRegistry::WidgetRegistry()
         makeLabelDefinition(),
         makeButtonDefinition(),
         makeTextBoxDefinition(),
+        makeComboBoxDefinition(),
+        makeListBoxDefinition(),
         makeCheckBoxDefinition(),
         makeRadioButtonDefinition(),
         makeSliderDefinition(),

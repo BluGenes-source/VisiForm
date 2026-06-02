@@ -6,6 +6,7 @@
 #include "commands/CommandRegistry.h"
 #include "model/LayoutEngine.h"
 #include "model/LookAndFeelRegistry.h"
+#include "model/WidgetItemUtils.h"
 #include "model/WidgetRegistry.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
@@ -93,6 +94,11 @@ constexpr float kWizardModalWidth = 640.0f;
 constexpr float kWizardModalHeight = 520.0f;
 constexpr float kProjectSettingsModalWidth = 640.0f;
 constexpr float kProjectSettingsModalHeight = 520.0f;
+constexpr float kItemListEditorModalWidth = 640.0f;
+constexpr float kItemListEditorModalHeight = 540.0f;
+constexpr float kItemListEditorPreviewHeight = 220.0f;
+constexpr float kItemListEditorPreviewRowHeight = 28.0f;
+constexpr float kItemListEditorPreviewGap = 14.0f;
 
 bool pointInBounds(float x, float y, float left, float top, float width, float height)
 {
@@ -103,6 +109,20 @@ bool pointInBounds(float x, float y, float left, float top, float width, float h
 std::string normalizedPathText(const std::filesystem::path& path)
 {
     return utils::FileUtils::normalizeSeparators(path.string());
+}
+
+std::string itemListSummaryText(std::size_t itemCount)
+{
+    return std::to_string(itemCount) + (itemCount == 1 ? " item" : " items");
+}
+
+std::string itemListEditorRowLabel(const std::vector<std::string>& items, int index)
+{
+    if (index < 0 || index >= static_cast<int>(items.size())) {
+        return "<none>";
+    }
+
+    return std::to_string(index) + ": " + items[static_cast<std::size_t>(index)];
 }
 
 bool isAdditiveSelectionModifierDown()
@@ -533,6 +553,10 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
         return "button" + suffix;
     case model::WidgetType::TextBox:
         return "textBox" + suffix;
+    case model::WidgetType::ComboBox:
+        return "comboBox" + suffix;
+    case model::WidgetType::ListBox:
+        return "listBox" + suffix;
     case model::WidgetType::CheckBox:
         return "checkBox" + suffix;
     case model::WidgetType::RadioButton:
@@ -4105,6 +4129,9 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     else {
         widget->setProperty(key, std::move(value));
     }
+    if (model::supportsItemList(widget->type) && (key == "items" || key == "selectedIndex" || key == "text")) {
+        model::normalizeItemListProperties(*widget);
+    }
     if (widget->type == model::WidgetType::FormWindow && document_.isRootWidgetId(widget->id) && key == "title") {
         document_.windowTitle = widget->getStringProperty("title", document_.projectName);
     }
@@ -5944,6 +5971,13 @@ std::string MainWindow::editorModalFieldLabel(const std::string& key) const
 
 bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
 {
+    if (row.key == "items") {
+        const auto* selectedWidget = document_.selectedWidget();
+        if (selectedWidget != nullptr && model::supportsItemList(selectedWidget->type)) {
+            return openSelectedWidgetItemEditor();
+        }
+    }
+
     if (row.editKind == PropertyInspector::PropertyEditKind::ReadOnly
         || row.editKind == PropertyInspector::PropertyEditKind::Bool
         || row.editKind == PropertyInspector::PropertyEditKind::Slider) {
@@ -6074,6 +6108,21 @@ void MainWindow::openInspectorDropdown(const PropertyInspector::PropertyRow& row
 
 bool MainWindow::applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label)
 {
+    if ((key == "items" && value == "__edit_items") || (key == "__edit_items" && value == "edit")) {
+        const bool opened = openSelectedWidgetItemEditor();
+        if (!opened) {
+            redraw();
+            return false;
+        }
+
+        propertyInspector_.clearEditing();
+        textEditControl_.clear();
+        dropdownControl_.close();
+        requestKeyboardFocus();
+        redraw();
+        return true;
+    }
+
     if (key == "__groupbox_select_child"
         || key == "__groupbox_add_existing_child"
         || key == "__groupbox_remove_child") {
@@ -6333,6 +6382,96 @@ bool MainWindow::removeSelectedTabPageFromSelectedTabControl()
     return true;
 }
 
+bool MainWindow::openSelectedWidgetItemEditor()
+{
+    const auto* widget = document_.selectedWidget();
+    if (widget == nullptr || !model::supportsItemList(widget->type)) {
+        return false;
+    }
+
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    itemListEditorDialog_.visible = true;
+    itemListEditorDialog_.widgetId = widget->id;
+    itemListEditorDialog_.originalItemsText = widget->getStringProperty("items", {});
+    itemListEditorDialog_.items = model::getWidgetItems(*widget);
+    itemListEditorDialog_.originalSelectedIndex = model::clampSelectedIndex(
+        itemListEditorDialog_.items,
+        widget->getIntProperty("selectedIndex", itemListEditorDialog_.items.empty() ? -1 : 0));
+    itemListEditorDialog_.selectedItemIndex = itemListEditorDialog_.originalSelectedIndex;
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::ItemListEditor;
+    editorModal_.title = "Edit Items";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = {
+        { "add_item", "Add" },
+        { "remove_item", "Remove" },
+        { "move_up_item", "Move Up" },
+        { "move_down_item", "Move Down" },
+        { "apply_items", "Apply" },
+        { "cancel", "Cancel" }
+    };
+    editorModal_.result.clear();
+    editorModal_.statusText = "Select an item row, edit its text, then click Apply to commit the list.";
+    editorModal_.preferredWidth = kItemListEditorModalWidth;
+    editorModal_.preferredHeight = kItemListEditorModalHeight;
+    newProjectWizard_.visible = false;
+    projectSettingsDialog_.visible = false;
+    resourceManagerDialog_.visible = false;
+    keyboardShortcutDialog_.visible = false;
+    redraw();
+    return true;
+}
+
+void MainWindow::setItemListEditorSelectedIndex(int index)
+{
+    const int safeIndex = model::sanitizeSelectedIndex(itemListEditorDialog_.items, index);
+    itemListEditorDialog_.selectedItemIndex = safeIndex;
+    editorModal_.statusText = safeIndex >= 0
+        ? "Selected item " + std::to_string(safeIndex + 1) + " of " + std::to_string(itemListEditorDialog_.items.size()) + "."
+        : "No item selected. Click Add to create a new item.";
+}
+
+bool MainWindow::applyItemListEditor()
+{
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr || selectedWidget->id != itemListEditorDialog_.widgetId || !model::supportsItemList(selectedWidget->type)) {
+        return false;
+    }
+
+    if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+        return false;
+    }
+
+    const std::string itemsText = model::joinItems(itemListEditorDialog_.items);
+    const int selectedIndex = model::clampSelectedIndex(itemListEditorDialog_.items, itemListEditorDialog_.originalSelectedIndex);
+    const std::string widgetTypeName = selectedWidget->type == model::WidgetType::ComboBox ? "ComboBox" : "ListBox";
+
+    const bool applied = applyUndoableDocumentChange("Edit items", [this, &itemsText, selectedIndex]() {
+        auto* widget = document_.selectedWidget();
+        if (widget == nullptr || !model::supportsItemList(widget->type)) {
+            return false;
+        }
+
+        widget->setProperty("items", itemsText);
+        widget->setProperty("selectedIndex", selectedIndex);
+        model::normalizeItemListProperties(*widget);
+        return true;
+    });
+    if (!applied) {
+        return false;
+    }
+
+    setOperationStatus("Updated " + widgetTypeName + " items");
+    closeEditorModalDialog("apply_items");
+    return true;
+}
+
 void MainWindow::handleTextEditPendingAction()
 {
     const auto action = textEditControl_.consumePendingAction();
@@ -6437,6 +6576,16 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
         fields.push_back(EditorModalField{ "shortcutText", "Current Shortcut", keyboardShortcutDialog_.selectedCommandId.empty() ? std::string{} : keyboardShortcutDialogEffectiveText(keyboardShortcutDialog_.selectedCommandId), PropertyInspector::PropertyEditKind::Text });
         fields.push_back(EditorModalField{ "commandHint", "Description", selectedDefinition == nullptr ? std::string{} : std::string{ selectedDefinition->hint }, PropertyInspector::PropertyEditKind::ReadOnly });
     }
+    else if (editorModal_.mode == EditorModalMode::ItemListEditor) {
+        fields.push_back(EditorModalField{ "itemCount", "Item Count", std::to_string(itemListEditorDialog_.items.size()), PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "itemIndex", "Selected Row", itemListEditorDialog_.selectedItemIndex >= 0
+                ? std::to_string(itemListEditorDialog_.selectedItemIndex)
+                : std::string{ "<none>" }, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "itemText", "Item Text", itemListEditorDialog_.selectedItemIndex >= 0
+                ? itemListEditorDialog_.items[static_cast<std::size_t>(itemListEditorDialog_.selectedItemIndex)]
+                : std::string{},
+            itemListEditorDialog_.selectedItemIndex >= 0 ? PropertyInspector::PropertyEditKind::Text : PropertyInspector::PropertyEditKind::ReadOnly });
+    }
     return fields;
 }
 
@@ -6486,6 +6635,38 @@ MainWindow::PanelBounds MainWindow::resourceManagerPreviewBounds() const
     };
 }
 
+MainWindow::PanelBounds MainWindow::itemListEditorPreviewBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::ItemListEditor) {
+        return bodyBounds;
+    }
+
+    return {
+        bodyBounds.x,
+        bodyBounds.y,
+        bodyBounds.width,
+        std::min(kItemListEditorPreviewHeight, bodyBounds.height)
+    };
+}
+
+MainWindow::PanelBounds MainWindow::itemListEditorFormBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::ItemListEditor) {
+        return bodyBounds;
+    }
+
+    const PanelBounds previewBounds = itemListEditorPreviewBounds();
+    const float top = previewBounds.y + previewBounds.height + kItemListEditorPreviewGap;
+    return {
+        bodyBounds.x,
+        top,
+        bodyBounds.width,
+        std::max(0.0f, bodyBounds.y + bodyBounds.height - top)
+    };
+}
+
 MainWindow::PanelBounds MainWindow::editorModalStatusBounds() const
 {
     const PanelBounds dialogBounds = editorModalDialogBounds();
@@ -6508,7 +6689,7 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
 
     const PanelBounds bodyBounds = editorModal_.mode == EditorModalMode::ResourceManager
         ? resourceManagerDetailBounds()
-        : editorModalBodyBounds();
+        : (editorModal_.mode == EditorModalMode::ItemListEditor ? itemListEditorFormBounds() : editorModalBodyBounds());
     const float labelWidth = editorModal_.mode == EditorModalMode::ResourceManager
         ? kResourceManagerFieldLabelWidth
         : kEditorModalFormLabelWidth;
@@ -6535,6 +6716,31 @@ std::optional<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldAt(fl
         }
     }
     return std::nullopt;
+}
+
+std::optional<int> MainWindow::itemListEditorPreviewIndexAt(float x, float y) const
+{
+    if (editorModal_.mode != EditorModalMode::ItemListEditor) {
+        return std::nullopt;
+    }
+
+    const PanelBounds bounds = itemListEditorPreviewBounds();
+    if (!pointInBounds(x, y, bounds.x, bounds.y, bounds.width, bounds.height)) {
+        return std::nullopt;
+    }
+
+    const float listTop = bounds.y + 8.0f;
+    const float rowOffset = y - listTop;
+    if (rowOffset < 0.0f) {
+        return std::nullopt;
+    }
+
+    const int rowIndex = static_cast<int>(rowOffset / kItemListEditorPreviewRowHeight);
+    if (rowIndex < 0 || rowIndex >= static_cast<int>(itemListEditorDialog_.items.size())) {
+        return std::nullopt;
+    }
+
+    return rowIndex;
 }
 
 std::string MainWindow::editorModalFieldValue(const std::string& key) const
@@ -6653,6 +6859,14 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
             editorModal_.statusText = trimmedValue.empty()
                 ? "Shortcut cleared for the selected command. Click Apply to save."
                 : "Shortcut updated for the selected command. Click Apply to save.";
+        }
+        return;
+    }
+
+    if (editorModal_.mode == EditorModalMode::ItemListEditor) {
+        if (key == "itemText" && itemListEditorDialog_.selectedItemIndex >= 0) {
+            itemListEditorDialog_.items[static_cast<std::size_t>(itemListEditorDialog_.selectedItemIndex)] = valueText;
+            editorModal_.statusText = "Updated row " + std::to_string(itemListEditorDialog_.selectedItemIndex + 1) + ". Click Apply to commit the list.";
         }
     }
 }
@@ -6845,6 +7059,71 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
         resetSelectedKeyboardShortcut();
         return true;
     }
+    if (editorModal_.mode == EditorModalMode::ItemListEditor) {
+        if (buttonId == "add_item") {
+            if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+                return false;
+            }
+
+            const int insertIndex = itemListEditorDialog_.selectedItemIndex >= 0
+                ? itemListEditorDialog_.selectedItemIndex + 1
+                : static_cast<int>(itemListEditorDialog_.items.size());
+            const auto iterator = itemListEditorDialog_.items.begin() + std::clamp(insertIndex, 0, static_cast<int>(itemListEditorDialog_.items.size()));
+            itemListEditorDialog_.items.insert(iterator, "Item " + std::to_string(itemListEditorDialog_.items.size() + 1));
+            setItemListEditorSelectedIndex(std::clamp(insertIndex, 0, static_cast<int>(itemListEditorDialog_.items.size()) - 1));
+            redraw();
+            return true;
+        }
+        if (buttonId == "remove_item") {
+            if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+                return false;
+            }
+
+            if (itemListEditorDialog_.selectedItemIndex < 0 || itemListEditorDialog_.selectedItemIndex >= static_cast<int>(itemListEditorDialog_.items.size())) {
+                editorModal_.statusText = "Select an item before removing it.";
+                redraw();
+                return false;
+            }
+
+            itemListEditorDialog_.items.erase(itemListEditorDialog_.items.begin() + itemListEditorDialog_.selectedItemIndex);
+            setItemListEditorSelectedIndex(std::min(itemListEditorDialog_.selectedItemIndex, static_cast<int>(itemListEditorDialog_.items.size()) - 1));
+            if (editorModalEdit_.active) {
+                cancelEditorModalFieldEdit();
+            }
+            redraw();
+            return true;
+        }
+        if (buttonId == "move_up_item" || buttonId == "move_down_item") {
+            if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+                return false;
+            }
+
+            const int currentIndex = itemListEditorDialog_.selectedItemIndex;
+            if (currentIndex < 0 || currentIndex >= static_cast<int>(itemListEditorDialog_.items.size())) {
+                editorModal_.statusText = "Select an item before reordering it.";
+                redraw();
+                return false;
+            }
+
+            const int delta = buttonId == "move_up_item" ? -1 : 1;
+            const int targetIndex = currentIndex + delta;
+            if (targetIndex < 0 || targetIndex >= static_cast<int>(itemListEditorDialog_.items.size())) {
+                editorModal_.statusText = buttonId == "move_up_item"
+                    ? "Selected item is already at the top."
+                    : "Selected item is already at the bottom.";
+                redraw();
+                return false;
+            }
+
+            std::swap(itemListEditorDialog_.items[static_cast<std::size_t>(currentIndex)], itemListEditorDialog_.items[static_cast<std::size_t>(targetIndex)]);
+            setItemListEditorSelectedIndex(targetIndex);
+            redraw();
+            return true;
+        }
+        if (buttonId == "apply_items") {
+            return applyItemListEditor();
+        }
+    }
 
     closeEditorModalDialog(buttonId);
     return true;
@@ -6975,6 +7254,7 @@ void MainWindow::closeEditorModalDialog(const std::string& result)
     projectSettingsDialog_.visible = false;
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
+    itemListEditorDialog_ = {};
     requestKeyboardFocus();
     redraw();
 }
@@ -7100,10 +7380,50 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
     else {
         const PanelBounds bodyBounds = editorModal_.mode == EditorModalMode::ResourceManager
             ? resourceManagerDetailBounds()
-            : editorModalBodyBounds();
+            : (editorModal_.mode == EditorModalMode::ItemListEditor ? itemListEditorFormBounds() : editorModalBodyBounds());
         const float fieldLabelWidth = editorModal_.mode == EditorModalMode::ResourceManager
             ? kResourceManagerFieldLabelWidth
             : kEditorModalFormLabelWidth;
+
+        if (editorModal_.mode == EditorModalMode::ItemListEditor) {
+            const PanelBounds previewBounds = itemListEditorPreviewBounds();
+            canvas.setColor(0xff1a2028);
+            canvas.fill(previewBounds.x, previewBounds.y, previewBounds.width, previewBounds.height);
+            canvas.setColor(0xff12161c);
+            canvas.fill(previewBounds.x, previewBounds.y, previewBounds.width, 1.0f);
+            canvas.fill(previewBounds.x, previewBounds.y + previewBounds.height - 1.0f, previewBounds.width, 1.0f);
+            canvas.fill(previewBounds.x, previewBounds.y, 1.0f, previewBounds.height);
+            canvas.fill(previewBounds.x + previewBounds.width - 1.0f, previewBounds.y, 1.0f, previewBounds.height);
+            canvas.setColor(0xffd6dbe4);
+            canvas.text("Items", labelFont_, visage::Font::kTopLeft,
+                previewBounds.x + 10.0f, previewBounds.y + 6.0f, previewBounds.width - 20.0f, 20.0f);
+
+            float rowTop = previewBounds.y + 34.0f;
+            const std::size_t visibleCount = std::min<std::size_t>(
+                itemListEditorDialog_.items.size(),
+                std::max<std::size_t>(1, static_cast<std::size_t>(std::floor((previewBounds.height - 42.0f) / kItemListEditorPreviewRowHeight))));
+            for (std::size_t index = 0; index < visibleCount; ++index) {
+                const bool selected = static_cast<int>(index) == itemListEditorDialog_.selectedItemIndex;
+                canvas.setColor(selected ? 0xff355382 : (index % 2 == 0 ? 0xff222936 : 0xff1d2430));
+                canvas.fill(previewBounds.x + 8.0f, rowTop, previewBounds.width - 16.0f, kItemListEditorPreviewRowHeight - 2.0f);
+                canvas.setColor(selected ? 0xfff3f7ff : 0xffdde2ea);
+                canvas.text(itemListEditorRowLabel(itemListEditorDialog_.items, static_cast<int>(index)), labelFont_, visage::Font::kTopLeft,
+                    previewBounds.x + 16.0f, rowTop + 5.0f, previewBounds.width - 32.0f, kItemListEditorPreviewRowHeight - 8.0f);
+                rowTop += kItemListEditorPreviewRowHeight;
+            }
+
+            if (itemListEditorDialog_.items.empty()) {
+                canvas.setColor(0xff9eabbc);
+                canvas.text("No items yet. Click Add to create the first item.", labelFont_, visage::Font::kCenter,
+                    previewBounds.x + 12.0f, previewBounds.y + 50.0f, previewBounds.width - 24.0f, previewBounds.height - 62.0f);
+            }
+            else if (visibleCount < itemListEditorDialog_.items.size()) {
+                canvas.setColor(0xff9eabbc);
+                canvas.text("...", labelFont_, visage::Font::kCenter,
+                    previewBounds.x, previewBounds.y + previewBounds.height - 26.0f, previewBounds.width, 18.0f);
+            }
+        }
+
         for (const auto& hit : editorModalFieldHits()) {
             const bool active = editorModalEdit_.active && editorModalEdit_.key == hit.field.key;
             const bool drawInlineValue = !active || hit.field.editKind == PropertyInspector::PropertyEditKind::Choice;
@@ -7222,7 +7542,12 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
 
     const auto buttonBounds = editorModalButtonBounds();
     for (std::size_t index = 0; index < buttonBounds.size(); ++index) {
-        canvas.setColor(index == 0 ? 0xff355382 : 0xff39414e);
+        const bool accentButton = index == 0
+            || editorModal_.buttons[index].id == "apply"
+            || editorModal_.buttons[index].id == "create"
+            || editorModal_.buttons[index].id == "apply_shortcuts"
+            || editorModal_.buttons[index].id == "apply_items";
+        canvas.setColor(accentButton ? 0xff355382 : 0xff39414e);
         canvas.fill(buttonBounds[index].x, buttonBounds[index].y, buttonBounds[index].width, buttonBounds[index].height);
         canvas.setColor(0xff14161b);
         canvas.fill(buttonBounds[index].x, buttonBounds[index].y + buttonBounds[index].height - 1.0f, buttonBounds[index].width, 1.0f);
@@ -7270,6 +7595,14 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
     }
 
     if (editorModal_.mode != EditorModalMode::Message) {
+        if (editorModal_.mode == EditorModalMode::ItemListEditor) {
+            if (const auto previewIndex = itemListEditorPreviewIndexAt(e.position.x, e.position.y)) {
+                setItemListEditorSelectedIndex(*previewIndex);
+                redraw();
+                return true;
+            }
+        }
+
         if (const auto fieldHit = editorModalFieldAt(e.position.x, e.position.y)) {
             if (fieldHit->field.editKind == PropertyInspector::PropertyEditKind::Choice && !fieldHit->field.choices.empty()) {
                 beginEditorModalFieldEdit(fieldHit->field);

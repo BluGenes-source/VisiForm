@@ -25,6 +25,8 @@ enum class WidgetType {
     Label,
     Button,
     TextBox,
+    ComboBox,
+    ListBox,
     CheckBox,
     RadioButton,
     Slider,

@@ -19,6 +19,8 @@ const std::string& widgetTypeName(WidgetType type)
     static const std::string label = "Label";
     static const std::string button = "Button";
     static const std::string textBox = "TextBox";
+    static const std::string comboBox = "ComboBox";
+    static const std::string listBox = "ListBox";
     static const std::string checkBox = "CheckBox";
     static const std::string radioButton = "RadioButton";
     static const std::string slider = "Slider";
@@ -49,6 +51,10 @@ const std::string& widgetTypeName(WidgetType type)
         return button;
     case WidgetType::TextBox:
         return textBox;
+    case WidgetType::ComboBox:
+        return comboBox;
+    case WidgetType::ListBox:
+        return listBox;
     case WidgetType::CheckBox:
         return checkBox;
     case WidgetType::RadioButton:
@@ -208,6 +214,12 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     }
     if (value == "TextBox") {
         return WidgetType::TextBox;
+    }
+    if (value == "ComboBox") {
+        return WidgetType::ComboBox;
+    }
+    if (value == "ListBox") {
+        return WidgetType::ListBox;
     }
     if (value == "CheckBox") {
         return WidgetType::CheckBox;

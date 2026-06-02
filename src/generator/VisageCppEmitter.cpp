@@ -4,6 +4,7 @@
 
 #include "app/Version.h"
 #include "model/LookAndFeelRegistry.h"
+#include "model/WidgetItemUtils.h"
 #include "model/WidgetRegistry.h"
 #include "utils/CppIdentifier.h"
 
@@ -431,6 +432,10 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
     switch (type) {
     case visiform::model::WidgetType::Button:
         return { "onClick", "onRelease", "onDoubleClick" };
+    case visiform::model::WidgetType::ComboBox:
+        return { "onChanged" };
+    case visiform::model::WidgetType::ListBox:
+        return { "onChanged", "onDoubleClick" };
     case visiform::model::WidgetType::CheckBox:
         return { "onToggle" };
     case visiform::model::WidgetType::RadioButton:
@@ -1026,6 +1031,10 @@ std::string runtimeWidgetTypeLiteral(visiform::model::WidgetType type)
         return "RuntimeWidgetType::Button";
     case visiform::model::WidgetType::TextBox:
         return "RuntimeWidgetType::TextBox";
+    case visiform::model::WidgetType::ComboBox:
+        return "RuntimeWidgetType::ComboBox";
+    case visiform::model::WidgetType::ListBox:
+        return "RuntimeWidgetType::ListBox";
     case visiform::model::WidgetType::CheckBox:
         return "RuntimeWidgetType::CheckBox";
     case visiform::model::WidgetType::RadioButton:
@@ -1169,6 +1178,16 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     else if (widget.type == visiform::model::WidgetType::TextBox) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
     }
+    else if (widget.type == visiform::model::WidgetType::ComboBox || widget.type == visiform::model::WidgetType::ListBox) {
+        const auto items = visiform::model::splitItems(widget.getStringProperty("items", {}));
+        const int selectedIndex = visiform::model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+        stream << innerIndent << "widget.items = " << emitStringVectorLiteral(items) << ";\n";
+        stream << innerIndent << "widget.selectedIndex = " << selectedIndex << ";\n";
+        stream << innerIndent << "widget.multiSelect = " << (widget.getBoolProperty("multiSelect", false) ? "true" : "false") << ";\n";
+        if (widget.type == visiform::model::WidgetType::ComboBox) {
+            stream << innerIndent << "widget.text.value = " << emitStringLiteral(visiform::model::getSelectedItemText(items, selectedIndex)) << ";\n";
+        }
+    }
     else if (widget.type == visiform::model::WidgetType::ProgressBar) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
     }
@@ -1307,6 +1326,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    Unknown,\n";
     stream << "    Button,\n";
     stream << "    TextBox,\n";
+    stream << "    ComboBox,\n";
+    stream << "    ListBox,\n";
     stream << "    CheckBox,\n";
     stream << "    RadioButton,\n";
     stream << "    Slider,\n";
@@ -1398,6 +1419,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::vector<std::string> items;\n";
     stream << "    int tabIndex = 0;\n";
     stream << "    int selectedTab = 0;\n";
+    stream << "    int selectedIndex = -1;\n";
+    stream << "    bool multiSelect = false;\n";
     stream << "    bool modal = true;\n";
     stream << "    bool visibleAtStartup = false;\n";
     stream << "    RuntimeTextState text;\n";
@@ -1485,8 +1508,10 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    void handleActiveModalButton(std::size_t buttonIndex);\n";
     stream << "    void drawActiveModalDialog(visage::Canvas& canvas, bool drawText) const;\n";
     stream << "    bool setWidgetValue(RuntimeWidget& widget, float value, bool emitEvent);\n";
+    stream << "    bool setItemSelection(RuntimeWidget& widget, int selectedIndex, bool emitEvent);\n";
     stream << "    bool updateSliderFromPoint(RuntimeWidget& widget, float formX);\n";
     stream << "    RuntimeRect scrollBarThumbRect(const RuntimeWidget& widget) const;\n";
+    stream << "    std::optional<int> listBoxRowIndexAt(const RuntimeWidget& widget, float x, float y) const;\n";
     stream << "    bool updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY);\n";
     stream << "    bool updateTextBoxText(RuntimeWidget& widget, const std::string& text, bool emitEvent);\n";
     stream << "    void emitVoidEvent(const RuntimeWidget& widget, std::string_view eventKey);\n";
@@ -1655,6 +1680,8 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Unknown: return \"Unknown\";\n";
     stream << "    case RuntimeWidgetType::Button: return \"Button\";\n";
     stream << "    case RuntimeWidgetType::TextBox: return \"TextBox\";\n";
+    stream << "    case RuntimeWidgetType::ComboBox: return \"ComboBox\";\n";
+    stream << "    case RuntimeWidgetType::ListBox: return \"ListBox\";\n";
     stream << "    case RuntimeWidgetType::CheckBox: return \"CheckBox\";\n";
     stream << "    case RuntimeWidgetType::RadioButton: return \"RadioButton\";\n";
     stream << "    case RuntimeWidgetType::Slider: return \"Slider\";\n";
@@ -1712,6 +1739,25 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    const float thumbWidth = std::clamp(trackWidth * thumbFactor, 18.0f, std::max(18.0f, trackWidth));\n";
     stream << "    const float thumbX = trackLeft + std::max(0.0f, trackWidth - thumbWidth) * normalized;\n";
     stream << "    return { thumbX, widget.bounds.y + 4.0f, thumbWidth, std::max(0.0f, widget.bounds.height - 8.0f) };\n";
+    stream << "}\n\n";
+    stream << "int sanitizeItemIndex(const RuntimeWidget& widget, int index)\n";
+    stream << "{\n";
+    stream << "    if (widget.items.empty()) {\n";
+    stream << "        return -1;\n";
+    stream << "    }\n";
+    stream << "    return std::clamp(index, 0, static_cast<int>(widget.items.size()) - 1);\n";
+    stream << "}\n\n";
+    stream << "std::string selectedItemText(const RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    const int safeIndex = sanitizeItemIndex(widget, widget.selectedIndex);\n";
+    stream << "    if (safeIndex < 0) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n";
+    stream << "    return widget.items[static_cast<std::size_t>(safeIndex)];\n";
+    stream << "}\n\n";
+    stream << "float listBoxRowHeight(const RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    return std::max(18.0f, std::max(8.0f, widget.style.fontSize) * 1.5f);\n";
     stream << "}\n\n";
     stream << "std::vector<std::string> splitModalMessageLines(const std::string& text)\n";
     stream << "{\n";
@@ -1830,6 +1876,57 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), std::max(0.0f, height - 8.0f));\n";
     stream << "        }\n";
     stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::ComboBox: {\n";
+    stream << "        const float arrowWidth = std::min(26.0f, std::max(20.0f, width * 0.18f));\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.22f)));\n";
+    stream << "        canvas.fill(x + width - arrowWidth, y, arrowWidth, height);\n";
+    stream << "        drawBorder(canvas, x + width - arrowWidth, y, arrowWidth, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.borderColor));\n";
+    stream << "        canvas.fill(x + width - arrowWidth * 0.5f - 4.0f, y + height * 0.5f - 1.0f, 8.0f, 2.0f);\n";
+    stream << "        if (drawText) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "            const std::string display = selectedItemText(widget);\n";
+    stream << "            canvas.text(display.empty() ? std::string{ \"<empty>\" } : display, font, visage::Font::kTopLeft, x + 8.0f, y + std::max(0.0f, (height - std::max(8.0f, widget.style.fontSize) * 1.6f) * 0.5f), std::max(0.0f, width - arrowWidth - 14.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::ListBox: {\n";
+    stream << "        const float rowHeight = listBoxRowHeight(widget);\n";
+    stream << "        const float listTop = y + 4.0f;\n";
+    stream << "        const float visibleHeight = std::max(0.0f, height - 8.0f);\n";
+    stream << "        const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        float rowTop = listTop;\n";
+    stream << "        for (std::size_t index = 0; index < std::min(visibleCount, widget.items.size()); ++index) {\n";
+    stream << "            const bool selected = static_cast<int>(index) == sanitizeItemIndex(widget, widget.selectedIndex);\n";
+    stream << "            const RuntimeColor rowFill = selected\n";
+    stream << "                ? blendColor(widget.style.accentColor, widget.style.fillColor, 0.32f)\n";
+    stream << "                : (index % 2 == 0 ? widget.style.fillColor : blendColor(widget.style.panelColor, widget.style.fillColor, 0.18f));\n";
+    stream << "            canvas.setColor(canvasColor(rowFill));\n";
+    stream << "            canvas.fill(x + 4.0f, rowTop, std::max(0.0f, width - 14.0f), rowHeight - 1.0f);\n";
+    stream << "            if (drawText) {\n";
+    stream << "                canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "                canvas.text(widget.items[index], font, visage::Font::kTopLeft, x + 10.0f, rowTop + std::max(2.0f, (rowHeight - std::max(8.0f, widget.style.fontSize) * 1.4f) * 0.5f), std::max(0.0f, width - 22.0f), std::max(0.0f, rowHeight - 4.0f));\n";
+    stream << "            }\n";
+    stream << "            rowTop += rowHeight;\n";
+    stream << "        }\n";
+    stream << "        if (widget.items.size() > visibleCount) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.panelColor));\n";
+    stream << "            canvas.fill(x + width - 8.0f, y + 4.0f, 4.0f, std::max(0.0f, height - 8.0f));\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.accentColor));\n";
+    stream << "            canvas.fill(x + width - 8.0f, y + 10.0f, 4.0f, std::max(16.0f, height * 0.22f));\n";
+    stream << "        }\n";
+    stream << "        if (drawText && widget.items.empty()) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "            canvas.text(\"<empty>\", font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
     stream << "    case RuntimeWidgetType::CheckBox:\n";
     stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
     stream << "        canvas.fill(x + 6.0f, y + (height - 18.0f) * 0.5f, 18.0f, 18.0f);\n";
@@ -2449,6 +2546,8 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return false;\n";
     stream << "    case RuntimeWidgetType::Button:\n";
     stream << "    case RuntimeWidgetType::TextBox:\n";
+    stream << "    case RuntimeWidgetType::ComboBox:\n";
+    stream << "    case RuntimeWidgetType::ListBox:\n";
     stream << "    case RuntimeWidgetType::CheckBox:\n";
     stream << "    case RuntimeWidgetType::RadioButton:\n";
     stream << "    case RuntimeWidgetType::Slider:\n";
@@ -2600,6 +2699,21 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    return true;\n";
     stream << "}\n\n";
+    stream << "bool " << className << "::setItemSelection(RuntimeWidget& widget, int selectedIndex, bool emitEvent)\n";
+    stream << "{\n";
+    stream << "    const int safeIndex = sanitizeItemIndex(widget, selectedIndex);\n";
+    stream << "    if (widget.selectedIndex == safeIndex) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n";
+    stream << "    widget.selectedIndex = safeIndex;\n";
+    stream << "    if (widget.type == RuntimeWidgetType::ComboBox) {\n";
+    stream << "        widget.text.value = selectedItemText(widget);\n";
+    stream << "    }\n";
+    stream << "    if (emitEvent && !widget.events.onChanged.empty()) {\n";
+    stream << "        emitVoidEvent(widget, \"onChanged\");\n";
+    stream << "    }\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
     stream << "bool " << className << "::updateSliderFromPoint(RuntimeWidget& widget, float formX)\n";
     stream << "{\n";
     stream << "    const float trackLeft = widget.bounds.x + 8.0f;\n";
@@ -2610,6 +2724,23 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "RuntimeRect " << className << "::scrollBarThumbRect(const RuntimeWidget& widget) const\n";
     stream << "{\n";
     stream << "    return scrollBarThumbRectForWidget(widget);\n";
+    stream << "}\n\n";
+    stream << "std::optional<int> " << className << "::listBoxRowIndexAt(const RuntimeWidget& widget, float x, float y) const\n";
+    stream << "{\n";
+    stream << "    if (!widget.bounds.contains(x, y)) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    const float rowHeight = listBoxRowHeight(widget);\n";
+    stream << "    const float listTop = widget.bounds.y + 4.0f;\n";
+    stream << "    const float rowOffset = y - listTop;\n";
+    stream << "    if (rowOffset < 0.0f) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    const int rowIndex = static_cast<int>(rowOffset / rowHeight);\n";
+    stream << "    if (rowIndex < 0 || rowIndex >= static_cast<int>(widget.items.size())) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    return rowIndex;\n";
     stream << "}\n\n";
     stream << "bool " << className << "::updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY)\n";
     stream << "{\n";
@@ -2716,6 +2847,20 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    setFocusedWidget(std::string{});\n";
     stream << "    switch (widget->type) {\n";
     stream << "    case RuntimeWidgetType::Unknown:\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::ComboBox:\n";
+    stream << "        clearPressedState();\n";
+    stream << "        if (!widget->items.empty() && setItemSelection(*widget, widget->selectedIndex + 1, true)) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::ListBox:\n";
+    stream << "        clearPressedState();\n";
+    stream << "        if (const auto rowIndex = listBoxRowIndexAt(*widget, formX, formY); rowIndex.has_value()) {\n";
+    stream << "            if (setItemSelection(*widget, *rowIndex, true)) {\n";
+    stream << "                redraw();\n";
+    stream << "            }\n";
+    stream << "        }\n";
     stream << "        return;\n";
     stream << "    case RuntimeWidgetType::TabControl:\n";
     stream << "        if (const auto tabIndex = hitTestTabHeader(*widget, formX, formY); tabIndex.has_value()) {\n";
@@ -2930,11 +3075,27 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    RuntimeWidget* widget = formBounds_.contains(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
     stream << "        ? hitTest(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
     stream << "        : nullptr;\n";
-    stream << "    if (widget == nullptr || widget->type != RuntimeWidgetType::Button || widget->events.onDoubleClick.empty()) {\n";
+    stream << "    if (widget == nullptr) {\n";
     stream << "        return;\n";
     stream << "    }\n";
-    stream << "    emitVoidEvent(*widget, \"onDoubleClick\");\n";
-    stream << "    redraw();\n";
+    stream << "    if (widget->type == RuntimeWidgetType::Button) {\n";
+    stream << "        if (widget->events.onDoubleClick.empty()) {\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        emitVoidEvent(*widget, \"onDoubleClick\");\n";
+    stream << "        redraw();\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    if (widget->type == RuntimeWidgetType::ListBox) {\n";
+    stream << "        if (widget->events.onDoubleClick.empty()) {\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        if (const auto rowIndex = listBoxRowIndexAt(*widget, e.position.x - kFormOffsetX, e.position.y - kFormOffsetY); rowIndex.has_value()) {\n";
+    stream << "            setItemSelection(*widget, *rowIndex, true);\n";
+    stream << "            emitVoidEvent(*widget, \"onDoubleClick\");\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "    }\n";
     stream << "}\n\n";
     stream << "bool " << className << "::keyPress(const visage::KeyEvent& e)\n";
     stream << "{\n";

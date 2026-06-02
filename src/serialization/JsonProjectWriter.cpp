@@ -2,6 +2,7 @@
 
 #include "serialization/JsonProjectWriter.h"
 
+#include "model/WidgetItemUtils.h"
 #include "utils/FileUtils.h"
 
 #include <nlohmann/json.hpp>
@@ -38,10 +39,18 @@ nlohmann::json propertyValueToJson(const model::PropertyValue& propertyValue)
         propertyValue.value());
 }
 
-nlohmann::json propertiesToJson(const std::map<std::string, model::PropertyValue>& properties)
+nlohmann::json propertiesToJson(const model::WidgetNode& widget)
 {
     nlohmann::json json = nlohmann::json::object();
-    for (const auto& [key, value] : properties) {
+    for (const auto& [key, value] : widget.properties) {
+        if (key == "items" && model::supportsItemList(widget.type)) {
+            json[key] = nlohmann::json::array();
+            for (const auto& item : model::splitItems(widget.getStringProperty("items", {}))) {
+                json[key].push_back(item);
+            }
+            continue;
+        }
+
         json[key] = propertyValueToJson(value);
     }
 
@@ -57,7 +66,7 @@ nlohmann::json widgetToJson(const model::WidgetNode& widget, const std::string& 
     json["bounds"] = rectToJson(widget.bounds);
     json["parentId"] = parentId;
     json["zOrder"] = zOrder;
-    json["properties"] = propertiesToJson(widget.properties);
+    json["properties"] = propertiesToJson(widget);
     json["children"] = nlohmann::json::array();
 
     for (std::size_t index = 0; index < widget.children.size(); ++index) {
