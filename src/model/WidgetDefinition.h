@@ -51,6 +51,8 @@ struct WidgetDefinition {
     std::string typeName{};
     std::string displayName{};
     std::string paletteGroup{};
+    bool paletteVisible = true;
+    int paletteOrder = 0;
     std::string defaultNamePrefix{};
     std::string defaultHint{};
     WidgetSizeDefinition size{};

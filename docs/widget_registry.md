@@ -9,6 +9,9 @@ The registry stores built-in definitions for:
 
 - widget type name
 - palette display name
+- palette visibility
+- palette order
+- palette group
 - default name prefix
 - default hint
 - default and minimum size
@@ -32,17 +35,47 @@ It does not support runtime plugin loading yet.
 
 ## Current built-in widget flow
 
+The `Widget Palette` now uses `WidgetRegistry` as its source of truth.
+Palette-visible widgets are controlled by `WidgetDefinition::paletteVisible`, ordered by `WidgetDefinition::paletteOrder`, and grouped by `WidgetDefinition::paletteGroup`.
+
+Current palette-visible widget order:
+
+1. `Frame`
+2. `GroupBox`
+3. `Panel`
+4. `TabControl`
+5. `Label`
+6. `Button`
+7. `TextBox`
+8. `CheckBox`
+9. `RadioButton`
+10. `ComboBox`
+11. `ListBox`
+12. `TreeView`
+13. `TableGrid`
+14. `Slider`
+15. `ScrollBar`
+16. `ProgressBar`
+17. `StatusBar`
+18. `Image`
+19. `ColorPicker`
+20. `ModalDialog`
+21. `Spacer`
+
+`FormWindow` and `TabPage` remain registered but are intentionally hidden from the palette.
+
 To add a new widget type internally:
 
 1. Add the `WidgetType` enum value.
 2. Add widget type string conversion.
 3. Add a `WidgetDefinition` to `WidgetRegistry`.
-4. Add common style override properties if the widget should support look-and-feel overrides.
-5. Add designer rendering in `DesignerCanvas`.
-6. Add generator rendering.
-7. Add generated runtime hit testing and interaction if the exported widget should be interactive.
-8. Add or confirm callback signature mapping and dispatch behavior.
-9. Update sample data and docs.
+4. Set `paletteVisible`, `paletteOrder`, and `paletteGroup` when the widget should appear in the palette.
+5. Add common style override properties if the widget should support look-and-feel overrides.
+6. Add designer rendering in `DesignerCanvas`.
+7. Add generator rendering.
+8. Add generated runtime hit testing and interaction if the exported widget should be interactive.
+9. Add or confirm callback signature mapping and dispatch behavior.
+10. Update sample data and docs.
 
 ## Style override properties
 
@@ -128,3 +161,4 @@ Recommended rules for future widget additions:
 - no runtime plugin loading yet
 - no external JSON widget-definition files yet
 - registry is read-only after initialization for now
+- the palette is still a flat list and does not yet render category headers

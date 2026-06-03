@@ -2275,6 +2275,11 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
+    if (widgetPalette_.mouseDown(e.position.x, e.position.y)) {
+        redraw();
+        return;
+    }
+
     if (const auto widgetType = widgetPalette_.hitTestWidgetType(e.position.x, e.position.y)) {
         cancelInspectorEdit();
         addWidgetFromPalette(*widgetType);
@@ -2513,6 +2518,11 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         return;
     }
 
+    if (widgetPalette_.mouseDrag(e.position.x, e.position.y)) {
+        redraw();
+        return;
+    }
+
     if (propertyInspector_.mouseDrag(document_, settings_, e.position.x, e.position.y)) {
         applyPendingInspectorInteractionEdit();
         updatePropertyEditorBounds();
@@ -2637,6 +2647,12 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
     }
 
     if (openMenuIndex_ >= 0) {
+        return;
+    }
+
+    const bool releasedPaletteScrollBar = widgetPalette_.mouseUp();
+    if (releasedPaletteScrollBar && canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        redraw();
         return;
     }
 
@@ -2794,6 +2810,11 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
             redraw();
             return true;
         }
+    }
+
+    if (!isEditorModalVisible() && widgetPalette_.mouseWheel(deltaY, e.position.x, e.position.y)) {
+        redraw();
+        return true;
     }
 
     if (dropdownControl_.mouseWheel(deltaY, e.position.x, e.position.y)) {

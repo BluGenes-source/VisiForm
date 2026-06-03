@@ -4,9 +4,44 @@
 #include "model/WidgetItemUtils.h"
 
 #include <algorithm>
+#include <cassert>
+#include <set>
+#include <utility>
 
 namespace visiform::model {
 namespace {
+
+void setPaletteMetadata(WidgetDefinition& definition, bool visible, int order, std::string group)
+{
+    definition.paletteVisible = visible;
+    definition.paletteOrder = order;
+    definition.paletteGroup = std::move(group);
+}
+
+bool hasConsistentPaletteDefinitions(const std::vector<WidgetDefinition>& definitions)
+{
+    std::set<std::string> displayNames;
+    std::set<int> paletteOrders;
+    for (const auto& definition : definitions) {
+        if (!definition.paletteVisible) {
+            continue;
+        }
+
+        if (definition.displayName.empty() || definition.defaultNamePrefix.empty()) {
+            return false;
+        }
+
+        if (!displayNames.insert(definition.displayName).second) {
+            return false;
+        }
+
+        if (!paletteOrders.insert(definition.paletteOrder).second) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 std::vector<WidgetPropertyDefinition> commonTextProperties()
 {
@@ -68,7 +103,7 @@ WidgetDefinition makeFormWindowDefinition()
     definition.type = WidgetType::FormWindow;
     definition.typeName = "FormWindow";
     definition.displayName = "Form Window";
-    definition.paletteGroup = "Root";
+    setPaletteMetadata(definition, false, -1, "Root");
     definition.defaultNamePrefix = "form";
     definition.defaultHint = "Main form window.";
     definition.canContainChildren = true;
@@ -96,7 +131,7 @@ WidgetDefinition makeTableGridDefinition()
     definition.type = WidgetType::TableGrid;
     definition.typeName = "TableGrid";
     definition.displayName = "Table / Grid";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 12, "Input/List");
     definition.defaultNamePrefix = "tableGrid";
     definition.defaultHint = "Displays editable rows and columns of data.";
     definition.size = { 360.0f, 220.0f, 180.0f, 120.0f };
@@ -127,7 +162,7 @@ WidgetDefinition makeTreeViewDefinition()
     definition.type = WidgetType::TreeView;
     definition.typeName = "TreeView";
     definition.displayName = "Tree View";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 11, "Input/List");
     definition.defaultNamePrefix = "treeView";
     definition.defaultHint = "Displays a hierarchical list of expandable tree nodes.";
     definition.size = { 240.0f, 180.0f, 140.0f, 100.0f };
@@ -155,7 +190,7 @@ WidgetDefinition makeStatusBarDefinition()
     definition.type = WidgetType::StatusBar;
     definition.typeName = "StatusBar";
     definition.displayName = "Status Bar";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 16, "Value/Feedback");
     definition.defaultNamePrefix = "statusBar";
     definition.defaultHint = "Displays status messages in one or more fields.";
     definition.size = { 600.0f, 50.0f, 200.0f, 44.0f };
@@ -181,7 +216,7 @@ WidgetDefinition makeProgressBarDefinition()
     definition.type = WidgetType::ProgressBar;
     definition.typeName = "ProgressBar";
     definition.displayName = "Progress Bar";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 15, "Value/Feedback");
     definition.defaultNamePrefix = "progressBar";
     definition.defaultHint = "Displays task progress.";
     definition.size = { 240.0f, 32.0f, 100.0f, 24.0f };
@@ -205,7 +240,7 @@ WidgetDefinition makeFrameDefinition()
     definition.type = WidgetType::Frame;
     definition.typeName = "Frame";
     definition.displayName = "Frame";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 0, "Containers");
     definition.defaultNamePrefix = "frame";
     definition.defaultHint = "Groups related controls visually.";
     definition.canContainChildren = true;
@@ -232,7 +267,7 @@ WidgetDefinition makeGroupBoxDefinition()
     definition.type = WidgetType::GroupBox;
     definition.typeName = "GroupBox";
     definition.displayName = "Group Box";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 1, "Containers");
     definition.defaultNamePrefix = "groupBox";
     definition.defaultHint = "Titled container for related controls.";
     definition.canContainChildren = true;
@@ -259,7 +294,7 @@ WidgetDefinition makePanelDefinition()
     definition.type = WidgetType::Panel;
     definition.typeName = "Panel";
     definition.displayName = "Panel";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 2, "Containers");
     definition.defaultNamePrefix = "panel";
     definition.defaultHint = "Generic container for child controls.";
     definition.canContainChildren = true;
@@ -285,7 +320,7 @@ WidgetDefinition makeTabControlDefinition()
     definition.type = WidgetType::TabControl;
     definition.typeName = "TabControl";
     definition.displayName = "Tab Control";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 3, "Containers");
     definition.defaultNamePrefix = "tabControl";
     definition.defaultHint = "Container that owns tab pages.";
     definition.canContainChildren = true;
@@ -311,7 +346,7 @@ WidgetDefinition makeTabPageDefinition()
     definition.type = WidgetType::TabPage;
     definition.typeName = "TabPage";
     definition.displayName = "Tab Page";
-    definition.paletteGroup = "Containers";
+    setPaletteMetadata(definition, false, -1, "Containers");
     definition.defaultNamePrefix = "tabPage";
     definition.defaultHint = "Logical tab page owned by a tab control.";
     definition.canContainChildren = true;
@@ -337,7 +372,7 @@ WidgetDefinition makeLabelDefinition()
     definition.type = WidgetType::Label;
     definition.typeName = "Label";
     definition.displayName = "Label";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 4, "Basic");
     definition.defaultNamePrefix = "label";
     definition.defaultHint = "Displays static text.";
     definition.size = { 260.0f, 64.0f, 140.0f, 58.0f };
@@ -357,7 +392,7 @@ WidgetDefinition makeButtonDefinition()
     definition.type = WidgetType::Button;
     definition.typeName = "Button";
     definition.displayName = "Button";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 5, "Basic");
     definition.defaultNamePrefix = "button";
     definition.defaultHint = "Runs an action when clicked.";
     definition.size = { 260.0f, 56.0f, 140.0f, 52.0f };
@@ -388,7 +423,7 @@ WidgetDefinition makeTextBoxDefinition()
     definition.type = WidgetType::TextBox;
     definition.typeName = "TextBox";
     definition.displayName = "Text Box";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 6, "Basic");
     definition.defaultNamePrefix = "textBox";
     definition.defaultHint = "Allows text entry.";
     definition.size = { 260.0f, 48.0f, 160.0f, 44.0f };
@@ -411,7 +446,7 @@ WidgetDefinition makeComboBoxDefinition()
     definition.type = WidgetType::ComboBox;
     definition.typeName = "ComboBox";
     definition.displayName = "Combo Box";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 9, "Input/List");
     definition.defaultNamePrefix = "comboBox";
     definition.defaultHint = "Selects one item from a dropdown list.";
     definition.size = { 180.0f, 32.0f, 120.0f, 28.0f };
@@ -436,7 +471,7 @@ WidgetDefinition makeListBoxDefinition()
     definition.type = WidgetType::ListBox;
     definition.typeName = "ListBox";
     definition.displayName = "List Box";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 10, "Input/List");
     definition.defaultNamePrefix = "listBox";
     definition.defaultHint = "Displays a selectable list of items.";
     definition.size = { 220.0f, 140.0f, 140.0f, 80.0f };
@@ -462,7 +497,7 @@ WidgetDefinition makeCheckBoxDefinition()
     definition.type = WidgetType::CheckBox;
     definition.typeName = "CheckBox";
     definition.displayName = "Check Box";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 7, "Basic");
     definition.defaultNamePrefix = "checkBox";
     definition.defaultHint = "Toggles an option on or off.";
     definition.size = { 300.0f, 68.0f, 200.0f, 62.0f };
@@ -486,7 +521,7 @@ WidgetDefinition makeRadioButtonDefinition()
     definition.type = WidgetType::RadioButton;
     definition.typeName = "RadioButton";
     definition.displayName = "Radio Button";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 8, "Basic");
     definition.defaultNamePrefix = "radioButton";
     definition.defaultHint = "Selects one option from a group.";
     definition.size = { 280.0f, 52.0f, 180.0f, 48.0f };
@@ -511,7 +546,7 @@ WidgetDefinition makeSliderDefinition()
     definition.type = WidgetType::Slider;
     definition.typeName = "Slider";
     definition.displayName = "Slider";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 13, "Value/Feedback");
     definition.defaultNamePrefix = "slider";
     definition.defaultHint = "Adjusts a numeric value.";
     definition.size = { 240.0f, 44.0f, 120.0f, 40.0f };
@@ -535,7 +570,7 @@ WidgetDefinition makeScrollBarDefinition()
     definition.type = WidgetType::ScrollBar;
     definition.typeName = "ScrollBar";
     definition.displayName = "Scroll Bar";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 14, "Value/Feedback");
     definition.defaultNamePrefix = "scrollBar";
     definition.defaultHint = "Scrolls through a range of values.";
     definition.size = { 240.0f, 36.0f, 100.0f, 28.0f };
@@ -561,7 +596,7 @@ WidgetDefinition makeImageDefinition()
     definition.type = WidgetType::Image;
     definition.typeName = "Image";
     definition.displayName = "Image";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 17, "Resources/Other");
     definition.defaultNamePrefix = "image";
     definition.defaultHint = "Displays or reserves space for an image.";
     definition.size = { 200.0f, 140.0f, 100.0f, 80.0f };
@@ -582,7 +617,7 @@ WidgetDefinition makeColorPickerDefinition()
     definition.type = WidgetType::ColorPicker;
     definition.typeName = "ColorPicker";
     definition.displayName = "Color Picker";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 18, "Resources/Other");
     definition.defaultNamePrefix = "colorPicker";
     definition.defaultHint = "Selects a color value.";
     definition.size = { 220.0f, 40.0f, 140.0f, 34.0f };
@@ -607,7 +642,7 @@ WidgetDefinition makeModalDialogDefinition()
     definition.type = WidgetType::ModalDialog;
     definition.typeName = "ModalDialog";
     definition.displayName = "Modal Dialog";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 19, "Resources/Other");
     definition.defaultNamePrefix = "modalDialog";
     definition.defaultHint = "Displays a modal dialog.";
     definition.size = { 420.0f, 240.0f, 260.0f, 160.0f };
@@ -635,7 +670,7 @@ WidgetDefinition makeSpacerDefinition()
     definition.type = WidgetType::Spacer;
     definition.typeName = "Spacer";
     definition.displayName = "Spacer";
-    definition.paletteGroup = "Basic";
+    setPaletteMetadata(definition, true, 20, "Resources/Other");
     definition.defaultNamePrefix = "spacer";
     definition.defaultHint = "Adds spacing between widgets.";
     definition.size = { 180.0f, 50.0f, 40.0f, 30.0f };
@@ -682,6 +717,7 @@ WidgetRegistry::WidgetRegistry()
         makeImageDefinition(),
         makeSpacerDefinition() }
 {
+    assert(hasConsistentPaletteDefinitions(definitions_));
 }
 
 const WidgetRegistry& WidgetRegistry::instance()
@@ -707,6 +743,29 @@ const WidgetDefinition* WidgetRegistry::findByTypeName(const std::string& typeNa
 const std::vector<WidgetDefinition>& WidgetRegistry::definitions() const
 {
     return definitions_;
+}
+
+std::vector<const WidgetDefinition*> WidgetRegistry::paletteDefinitions() const
+{
+    std::vector<const WidgetDefinition*> paletteDefinitions;
+    paletteDefinitions.reserve(definitions_.size());
+    for (const auto& definition : definitions_) {
+        if (!definition.paletteVisible) {
+            continue;
+        }
+
+        paletteDefinitions.push_back(&definition);
+    }
+
+    std::stable_sort(paletteDefinitions.begin(), paletteDefinitions.end(), [](const WidgetDefinition* left, const WidgetDefinition* right) {
+        if (left->paletteOrder != right->paletteOrder) {
+            return left->paletteOrder < right->paletteOrder;
+        }
+
+        return left->displayName < right->displayName;
+    });
+
+    return paletteDefinitions;
 }
 
 WidgetNode WidgetRegistry::createDefaultWidget(WidgetType type, const std::string& id) const

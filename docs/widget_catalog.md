@@ -69,6 +69,36 @@ The registry stores:
 The editor exposes these widget types through both the `Widget Palette` and the `Insert` menu.
 Both entry points use the same add-widget flow in `MainWindow`.
 
+Current `Widget Palette` order for user-placeable widgets:
+
+- `Frame`
+- `GroupBox`
+- `Panel`
+- `TabControl`
+- `Label`
+- `Button`
+- `TextBox`
+- `CheckBox`
+- `RadioButton`
+- `ComboBox`
+- `ListBox`
+- `TreeView`
+- `TableGrid`
+- `Slider`
+- `ScrollBar`
+- `ProgressBar`
+- `StatusBar`
+- `Image`
+- `ColorPicker`
+- `ModalDialog`
+- `Spacer`
+
+Current palette behavior:
+
+- the palette list is derived from `WidgetRegistry` palette metadata instead of a separate hard-coded UI list
+- `FormWindow` and `TabPage` stay hidden from the palette because they are not direct user-placeable entries
+- the palette now supports mouse-wheel scrolling and a draggable scrollbar thumb so lower entries remain reachable on smaller window heights
+
 ## Hierarchy and container metadata
 
 Common hierarchy-aware properties now used by multiple widgets:
