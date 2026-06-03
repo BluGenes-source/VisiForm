@@ -100,14 +100,23 @@ constexpr float kItemListEditorPreviewHeight = 220.0f;
 constexpr float kItemListEditorPreviewRowHeight = 28.0f;
 constexpr float kItemListEditorPreviewGap = 14.0f;
 constexpr float kTableGridEditorModalWidth = 820.0f;
-constexpr float kTableGridEditorModalHeight = 660.0f;
-constexpr float kTableGridEditorInstructionHeight = 24.0f;
-constexpr float kTableGridEditorGridPreferredHeight = 280.0f;
-constexpr float kTableGridEditorGridMinHeight = 220.0f;
+constexpr float kTableGridEditorModalHeight = 720.0f;
+constexpr float kTableGridEditorMaxWidth = 920.0f;
+constexpr float kTableGridEditorMaxHeight = 760.0f;
+constexpr float kTableGridEditorOuterMargin = 80.0f;
+constexpr float kTableGridEditorHeadingHeight = 20.0f;
+constexpr float kTableGridEditorHeadingGap = 4.0f;
+constexpr float kTableGridEditorInstructionHeight = 20.0f;
+constexpr float kTableGridEditorIntroHeight = kTableGridEditorHeadingHeight + kTableGridEditorHeadingGap + kTableGridEditorInstructionHeight;
+constexpr float kTableGridEditorGridPreferredHeight = 170.0f;
+constexpr float kTableGridEditorGridMinHeight = 120.0f;
 constexpr float kTableGridEditorSectionGap = 10.0f;
 constexpr float kTableGridEditorActionLabelHeight = 22.0f;
 constexpr float kTableGridEditorActionButtonHeight = 32.0f;
-constexpr float kTableGridEditorActionRowGap = 10.0f;
+constexpr float kTableGridEditorActionRowGap = 8.0f;
+constexpr float kTableGridEditorFieldRowHeight = 30.0f;
+constexpr float kTableGridEditorFieldRowSpacing = 8.0f;
+constexpr float kTableGridEditorFieldCount = 6.0f;
 constexpr float kTableGridEditorHeaderHeight = 30.0f;
 constexpr float kTableGridEditorRowHeight = 28.0f;
 constexpr float kTreeNodeEditorModalWidth = 760.0f;
@@ -183,6 +192,11 @@ bool isValidColorValue(const std::string& value)
 bool isUnsetValueText(std::string_view value)
 {
     return value.empty() || value == "<unset>";
+}
+
+float verticallyCenteredTextTop(float top, float height, float textHeight = 18.0f, float minimumPadding = 4.0f)
+{
+    return top + std::max(minimumPadding, (height - textHeight) * 0.5f);
 }
 
 std::optional<float> tryParseFloat(std::string_view text)
@@ -7071,18 +7085,20 @@ MainWindow::PanelBounds MainWindow::tableGridEditorGridBounds() const
         return bodyBounds;
     }
 
-    const float top = bodyBounds.y + kTableGridEditorInstructionHeight + kTableGridEditorSectionGap;
+    const float top = bodyBounds.y + kTableGridEditorIntroHeight + kTableGridEditorSectionGap;
     const float reservedBottom = kTableGridEditorSectionGap
         + kTableGridEditorActionLabelHeight
         + kTableGridEditorActionButtonHeight * 2.0f
         + kTableGridEditorActionRowGap
         + kTableGridEditorSectionGap
-        + (kEditorModalFormRowHeight * 6.0f)
-        + (kEditorModalFormRowSpacing * 5.0f);
+        + (kTableGridEditorFieldRowHeight * kTableGridEditorFieldCount)
+        + (kTableGridEditorFieldRowSpacing * (kTableGridEditorFieldCount - 1.0f));
     const float availableHeight = std::max(0.0f, bodyBounds.y + bodyBounds.height - top - reservedBottom);
-    const float gridHeight = availableHeight >= kTableGridEditorGridMinHeight
-        ? std::min(kTableGridEditorGridPreferredHeight, availableHeight)
-        : availableHeight;
+    const float gridHeight = availableHeight <= 0.0f
+        ? 0.0f
+        : (availableHeight >= kTableGridEditorGridMinHeight
+                ? std::min(kTableGridEditorGridPreferredHeight, availableHeight)
+                : availableHeight);
     return {
         bodyBounds.x,
         top,
@@ -7245,6 +7261,12 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
     const float labelWidth = editorModal_.mode == EditorModalMode::ResourceManager
         ? kResourceManagerFieldLabelWidth
         : kEditorModalFormLabelWidth;
+    const float rowHeight = editorModal_.mode == EditorModalMode::TableGridEditor
+        ? kTableGridEditorFieldRowHeight
+        : kEditorModalFormRowHeight;
+    const float rowSpacing = editorModal_.mode == EditorModalMode::TableGridEditor
+        ? kTableGridEditorFieldRowSpacing
+        : kEditorModalFormRowSpacing;
     float top = editorModal_.mode == EditorModalMode::TreeNodeEditor
         ? bodyBounds.y + kTreeNodeEditorActionLabelHeight + kTreeNodeEditorActionButtonHeight + kTreeNodeEditorSectionGap
         : (editorModal_.mode == EditorModalMode::TableGridEditor
@@ -7256,10 +7278,10 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
             bodyBounds.x + labelWidth,
             top,
             std::max(0.0f, bodyBounds.width - labelWidth),
-            kEditorModalFormRowHeight
+            rowHeight
         };
         hits.push_back({ field, valueBounds });
-        top += kEditorModalFormRowHeight + kEditorModalFormRowSpacing;
+        top += rowHeight + rowSpacing;
     }
     return hits;
 }
@@ -8391,7 +8413,11 @@ MainWindow::PanelBounds MainWindow::editorModalDialogBounds() const
 {
     const float preferredWidth = editorModal_.preferredWidth > 0.0f ? editorModal_.preferredWidth : kEditorModalPreferredWidth;
     const float preferredHeight = editorModal_.preferredHeight > 0.0f ? editorModal_.preferredHeight : kEditorModalPreferredHeight;
-    const float maxWidth = std::max(0.0f, std::min(kEditorModalMaxWidth, width() - 120.0f));
+    const bool tableGridEditor = editorModal_.mode == EditorModalMode::TableGridEditor;
+    const float maxWidthLimit = tableGridEditor ? kTableGridEditorMaxWidth : kEditorModalMaxWidth;
+    const float maxHeightLimit = tableGridEditor ? kTableGridEditorMaxHeight : kEditorModalMaxHeight;
+    const float outerMargin = tableGridEditor ? kTableGridEditorOuterMargin : 120.0f;
+    const float maxWidth = std::max(0.0f, std::min(maxWidthLimit, width() - outerMargin));
     const float minWidth = std::min(kEditorModalMinWidth, maxWidth);
     const float dialogWidth = maxWidth <= 0.0f
         ? 0.0f
@@ -8404,7 +8430,7 @@ MainWindow::PanelBounds MainWindow::editorModalDialogBounds() const
         std::max<std::size_t>(1, bodyLines.size())));
     const float bodyHeight = visibleLineCount * 22.0f;
     const float buttonSectionHeight = editorModal_.buttons.empty() ? 0.0f : (kEditorModalButtonHeight + 24.0f);
-    const float maxHeight = std::max(0.0f, std::min(kEditorModalMaxHeight, height() - 120.0f));
+    const float maxHeight = std::max(0.0f, std::min(maxHeightLimit, height() - outerMargin));
     const float minHeight = std::min(kEditorModalMinHeight, maxHeight);
     const float desiredHeight = editorModal_.mode == EditorModalMode::Message
         ? std::max(preferredHeight, 68.0f + bodyHeight + kEditorModalSectionSpacing + buttonSectionHeight)
@@ -8560,13 +8586,16 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             const std::size_t visibleRowCount = std::min<std::size_t>(
                 tableGridEditorDialog_.rows.size(),
                 std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(std::max(0.0f, innerHeight - kTableGridEditorHeaderHeight) / kTableGridEditorRowHeight))));
+            const float headingY = bodyBounds.y;
+            const float instructionY = headingY + kTableGridEditorHeadingHeight + kTableGridEditorHeadingGap;
+            const float headerTextTop = verticallyCenteredTextTop(innerY, kTableGridEditorHeaderHeight, 16.0f, 5.0f);
 
             canvas.setColor(0xffd6dbe4);
             canvas.text("Table / Grid", labelFont_, visage::Font::kTopLeft,
-                bodyBounds.x, bodyBounds.y, bodyBounds.width, 20.0f);
+                bodyBounds.x, headingY, bodyBounds.width, kTableGridEditorHeadingHeight);
             canvas.setColor(0xff9eabbc);
             canvas.text("Select a cell, edit Cell Text below, then click Apply.", labelFont_, visage::Font::kTopLeft,
-                bodyBounds.x, bodyBounds.y + 18.0f, bodyBounds.width, kTableGridEditorInstructionHeight - 2.0f);
+                bodyBounds.x, instructionY, bodyBounds.width, kTableGridEditorInstructionHeight);
             canvas.setColor(0xff1a2028);
             canvas.fill(gridBounds.x, gridBounds.y, gridBounds.width, gridBounds.height);
             canvas.setColor(0xff12161c);
@@ -8590,7 +8619,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                     ? tableGridEditorDialog_.columns[columnIndex]
                     : std::string{};
                 canvas.text(headerText.empty() ? std::string{ "<empty>" } : headerText, labelFont_, visage::Font::kTopLeft,
-                    columnX + 8.0f, innerY + 6.0f, std::max(0.0f, cellWidth - 14.0f), kTableGridEditorHeaderHeight - 10.0f);
+                    columnX + 8.0f, headerTextTop, std::max(0.0f, cellWidth - 14.0f), kTableGridEditorHeaderHeight - 8.0f);
             }
 
             float rowTop = innerY + kTableGridEditorHeaderHeight;
@@ -8599,12 +8628,13 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                 for (std::size_t columnIndex = 0; columnIndex < columnCount; ++columnIndex) {
                     const float columnX = innerX + static_cast<float>(columnIndex) * cellWidth;
                     const bool selectedCell = selectedRow && static_cast<int>(columnIndex) == tableGridEditorDialog_.selectedColumn;
+                    const float cellTextTop = verticallyCenteredTextTop(rowTop, kTableGridEditorRowHeight, 16.0f, 4.0f);
                     canvas.setColor(selectedCell ? 0xff355382 : (selectedRow ? 0xff263749 : (rowIndex % 2 == 0 ? 0xff222936 : 0xff1d2430)));
                     canvas.fill(columnX, rowTop, cellWidth - 1.0f, kTableGridEditorRowHeight - 1.0f);
                     canvas.setColor(selectedCell ? 0xfff3f7ff : 0xffdde2ea);
                     canvas.text(model::getCellText(tableGridEditorDialog_.rows, static_cast<int>(rowIndex), static_cast<int>(columnIndex)),
                         labelFont_, visage::Font::kTopLeft,
-                        columnX + 8.0f, rowTop + 5.0f, std::max(0.0f, cellWidth - 14.0f), kTableGridEditorRowHeight - 8.0f);
+                        columnX + 8.0f, cellTextTop, std::max(0.0f, cellWidth - 14.0f), kTableGridEditorRowHeight - 6.0f);
                 }
                 rowTop += kTableGridEditorRowHeight;
             }
@@ -8713,9 +8743,10 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
         for (const auto& hit : editorModalFieldHits()) {
             const bool active = editorModalEdit_.active && editorModalEdit_.key == hit.field.key;
             const bool drawInlineValue = !active || hit.field.editKind == PropertyInspector::PropertyEditKind::Choice;
+            const float fieldTextTop = verticallyCenteredTextTop(hit.bounds.y, hit.bounds.height, 18.0f, 4.0f);
             canvas.setColor(0xffd6dbe4);
             canvas.text(hit.field.label, labelFont_, visage::Font::kTopLeft,
-                bodyBounds.x, hit.bounds.y + 6.0f, fieldLabelWidth - 14.0f, hit.bounds.height - 8.0f);
+                bodyBounds.x, fieldTextTop, fieldLabelWidth - 14.0f, hit.bounds.height - 6.0f);
 
             canvas.setColor(active ? 0xff355382 : 0xff1a2028);
             canvas.fill(hit.bounds.x, hit.bounds.y, hit.bounds.width, hit.bounds.height);
@@ -8742,7 +8773,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             if (drawInlineValue) {
                 canvas.setColor(0xffeef2f8);
                 canvas.text(valueText, labelFont_, visage::Font::kTopLeft,
-                    hit.bounds.x + 10.0f, hit.bounds.y + 6.0f, hit.bounds.width - 20.0f, hit.bounds.height - 8.0f);
+                    hit.bounds.x + 10.0f, fieldTextTop, hit.bounds.width - 20.0f, hit.bounds.height - 6.0f);
             }
         }
 

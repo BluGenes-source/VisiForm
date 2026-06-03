@@ -186,3 +186,95 @@ Add safe first-pass `TableGrid` support with editable column and row data, selec
 ## Remaining TODOs
 
 - Complete the unchecked items in the TODO checklist and manual validation checklist.
+
+## Repair Pass - Table Grid Editor Layout
+
+### Current failed behavior
+
+- The `TableGrid` widget itself works and the `Edit Table/Grid Data` modal opens.
+- The modal remains usable enough for adding columns, rows, and selecting cells.
+- Text formatting and vertical layout inside the modal are broken.
+- The `Table / Grid` heading and instruction text sit too close to the preview area and can overlap it.
+- The top table preview rectangle is too small because too much height is reserved below it.
+- The action button rows sit too close to surrounding labels and fields.
+- The overall modal needs clearer vertical spacing from the instruction line through the Apply/Cancel row.
+
+### Root cause diagnosis
+
+- `MainWindow::tableGridEditorGridBounds()` reserves too much space for the lower form section and therefore collapses the preview area to a much smaller height than intended.
+- `MainWindow::drawEditorModalDialog()` draws both a title line and an instruction line above the preview, but `tableGridEditorGridBounds()` only offsets the preview by `kTableGridEditorInstructionHeight + kTableGridEditorSectionGap`, which is less than the actual drawn text stack.
+- `MainWindow::editorModalDialogBounds()` also clamps all non-message modals to the generic editor maximums, so the table-grid editor's preferred `820 x 660` sizing was effectively reduced to the shared modal ceiling instead of using a table-grid-sized dialog.
+- The current layout uses related but separate hard-coded offsets across `tableGridEditorGridBounds()`, `tableGridEditorFormBounds()`, `editorModalFieldHits()`, and the table-grid branch of `drawEditorModalDialog()`, so the preview, action rows, and field rows can drift into one another.
+- The current `kTableGridEditorModalHeight` also leaves too little slack once the preview, two action rows, six field rows, status strip, and bottom button row are all reserved.
+
+### Files inspected
+
+- `src/ui/PropertyInspector.h`
+- `src/ui/PropertyInspector.cpp`
+- `src/ui/MainWindow.h`
+- `src/ui/MainWindow.cpp`
+- `src/ui/DesignerCanvas.h`
+- `src/ui/DesignerCanvas.cpp`
+- `src/ui/editors/TextEditControl.h`
+- `src/ui/editors/TextEditControl.cpp`
+- `src/model/WidgetNode.h`
+- `src/model/WidgetRegistry.h`
+- `src/model/WidgetDefinition.h`
+- `docs/widget_catalog.md`
+- `docs/agent_plans/phase_77_table_grid_widget_and_data_editor_plan.md`
+
+### Specific code paths changed
+
+- Updated in `src/ui/MainWindow.cpp`:
+  - table-grid modal sizing and layout constants near the top of the file
+  - `MainWindow::editorModalDialogBounds()`
+  - `MainWindow::tableGridEditorGridBounds()`
+  - `MainWindow::tableGridEditorFormBounds()`
+  - `MainWindow::editorModalFieldHits()`
+  - `MainWindow::drawEditorModalDialog()` table-grid branch
+
+### TODO checklist
+
+- [x] Inspect the current `Edit Table/Grid Data` modal layout and identify which regions overlap.
+- [x] Diagnose the root cause in the current table-grid modal layout math.
+- [x] Replace the fragile table-grid modal vertical spacing with explicit layout constants.
+- [x] Enlarge the table-grid modal height enough to keep the preview, action rows, fields, status row, and Apply/Cancel row separated.
+- [x] Reposition the instruction text so it is fully separate from the preview rectangle.
+- [x] Reposition the table preview rectangle so it remains clearly visible.
+- [x] Reposition the action button rows so they do not overlap nearby text.
+- [x] Reposition the field rows so `Column Count`, `Row Count`, `Selected Row`, `Selected Column`, `Column Name`, and `Cell Text` remain readable.
+- [x] Keep `Apply` and `Cancel` visible and clickable below all field rows.
+- [x] Preserve column, row, cell selection, edit, Apply, and Cancel behavior.
+- [x] Validate the affected UI files for compile errors.
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Update this repair-pass section with final code paths changed, build validation, manual checks, and summary.
+
+### Build validation checklist
+
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Confirm the main `VisiForm` app built successfully.
+- [x] Confirm `VisiForm.exe` was not run.
+- [x] Confirm no generated apps were launched.
+
+### Manual test checklist
+
+- [ ] Open `Edit Table/Grid Data` and confirm the dialog has clean vertical spacing.
+- [ ] Confirm the heading and instruction text do not overlap the preview rectangle.
+- [ ] Confirm the preview rectangle is clearly visible and not compressed.
+- [ ] Confirm the action buttons are aligned and separated from surrounding text.
+- [ ] Confirm `Column Count`, `Row Count`, `Selected Row`, `Selected Column`, `Column Name`, and `Cell Text` are readable.
+- [ ] Confirm `Apply` and `Cancel` are visible and clickable.
+- [ ] Confirm `Add Column`, `Remove Column`, and `Rename Column` still work.
+- [ ] Confirm `Add Row`, `Remove Row`, `Move Row Up`, and `Move Row Down` still work.
+- [ ] Confirm selecting a cell updates `Selected Row` and `Selected Column`.
+- [ ] Confirm editing `Cell Text` updates the preview.
+- [ ] Confirm `Apply` commits changes and `Cancel` discards them.
+- [ ] Confirm save/load still preserves table data.
+- [ ] Confirm existing `ComboBox`, `ListBox`, `TreeView`, `GroupBox`, and `TabControl` behavior still works.
+
+### Final result summary
+
+- Reworked the `Edit Table/Grid Data` modal layout in `src/ui/MainWindow.cpp` so the table-grid editor can use dedicated size limits and explicit table-grid spacing constants instead of relying on the generic modal ceiling and mismatched hard-coded offsets.
+- Separated the heading and instruction text from the preview rectangle, expanded the preview area, kept the action rows above the form fields, and aligned field labels and values with safer centered text placement.
+- Preserved existing table-grid editor behavior for selecting cells, editing field values, and applying or cancelling changes.
+- Built the main `VisiForm` app successfully with `build-static-debug` from the explicit x64 Visual Studio developer environment, without running `VisiForm.exe`.
