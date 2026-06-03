@@ -150,8 +150,8 @@ Add safe first-pass `TreeView` support with a simple hierarchical node text form
 
 ## Build validation checklist
 
-- [ ] Build the main `VisiForm` app with `build-static-debug`.
-- [ ] Confirm the main `VisiForm` app built successfully.
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Confirm the main `VisiForm` app built successfully.
 - [x] Confirm `VisiForm.exe` was not run.
 - [x] Confirm no generated apps were launched.
 
@@ -174,10 +174,108 @@ Add safe first-pass `TreeView` support with a simple hierarchical node text form
 
 ## Final result summary
 
-- Pending implementation.
+- `TreeView` support is now present in the editor-side registry, inspector, designer, persistence, validation, and current repair-pass workflow.
+- The Phase 76 repair pass completed the inspector dropdown collapse fix and replaced the raw node-text modal with a visual `TreeView` node editor.
+- The main `VisiForm` app builds successfully with the required `build-static-debug` workflow.
 
 ## Remaining TODOs
 
-- Implement `TreeView` support.
-- Validate with a successful `build-static-debug` build.
-- Update this phase plan with final results and any remaining follow-up items.
+- Run the remaining manual verification items listed in the checklists below.
+
+## Repair Pass - TreeView Node Editor and Dropdown Collapse
+
+### Current failed behavior
+
+- Opening the `PropertyInspector` `Selected Node` dropdown and then scrolling the inspector leaves the popup floating on screen.
+- Any inspector-owned dropdown currently remains open when the inspector scroll offset changes.
+- The `TreeView` `Nodes` editor is still a raw multiline text editor.
+- The raw editor draws helper text inside the same rectangle as the active multiline text control, causing overlap.
+- Building tree structure currently requires manually typing indentation.
+
+### Root cause diagnosis
+
+- `PropertyInspector` scrolling only changes `scrollOffsetY_`; popup state is owned separately by `MainWindow::dropdownControl_`, so wheel and scrollbar scrolling do not automatically collapse active inspector dropdowns.
+- `MainWindow::mouseWheel()` routes wheel input to `dropdownControl_` before the inspector, which lets an open dropdown consume wheel input instead of collapsing when the inspector is being scrolled.
+- `PropertyInspector::mouseDown()` and `PropertyInspector::mouseDrag()` handle scrollbar paging and thumb dragging without any central popup-cancel path.
+- `MainWindow::openSelectedTreeNodeEditor()` still starts a multiline `TextEditControl` over the whole tree editor body, and `drawEditorModalDialog()` also paints the helper instruction text inside that same bounds region.
+- The current `TreeView` editor has no editor-side node model or visual row interaction; it only edits serialized indented text.
+
+### Files inspected
+
+- `src/ui/PropertyInspector.h`
+- `src/ui/PropertyInspector.cpp`
+- `src/ui/MainWindow.h`
+- `src/ui/MainWindow.cpp`
+- `src/ui/DesignerCanvas.cpp`
+- `src/ui/editors/TextEditControl.h`
+- `src/ui/editors/TextEditControl.cpp`
+- `src/ui/editors/DropdownControl.h`
+- `src/ui/editors/DropdownControl.cpp`
+- `src/model/WidgetNode.h`
+- `src/model/WidgetItemUtils.h`
+- `src/model/WidgetItemUtils.cpp`
+- `src/model/WidgetRegistry.cpp`
+- `src/serialization/JsonProjectReader.cpp`
+- `src/serialization/JsonProjectWriter.cpp`
+- `src/validation/ProjectValidator.cpp`
+- `CMakePresets.json`
+- `README.md`
+- `docs/widget_catalog.md`
+- `docs/project_file_format.md`
+- `docs/code_generation.md`
+- `docs/project_validation.md`
+- `docs/agent_plans/phase_76_treeview_widget_and_tree_node_editor_plan.md`
+
+### Specific code paths changed
+
+- `PropertyInspector` now records scroll interactions from mouse-wheel scrolling, scrollbar paging, and scrollbar dragging so popup collapse can happen through one central path.
+- `MainWindow` now cancels inspector popups when the inspector scrolls and routes `TreeView` node editing through a visual modal editor with selection, rename, add, remove, and move actions.
+- Documentation now reflects the visual `TreeView` editor, stable stored node properties, `TreeView` validation behavior, export data flow, and repository-level feature summary updates.
+
+### TODO checklist
+
+- [x] Inspect `PropertyInspector` scroll behavior and popup ownership.
+- [x] Inspect the current raw `TreeView` node editor and overlap cause.
+- [x] Add a central inspector popup-close path for scroll-driven collapse.
+- [x] Collapse inspector dropdowns on mouse wheel, scrollbar paging, and scrollbar drag.
+- [x] Replace the raw multiline `TreeView` node editor with a visual tree editor.
+- [x] Add visual node selection, rename, add child, add sibling, remove, and move up/down behavior.
+- [x] Keep stored `TreeView` node serialization stable through apply, save/load, validation, and export.
+- [x] Update the requested documentation files for the visual editor behavior.
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Fix any compile errors introduced by this repair pass.
+- [x] Update this repair-pass section with build validation, final summary, and remaining TODOs.
+
+### Build validation checklist
+
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Confirm the main `VisiForm` app built successfully.
+- [x] Confirm `VisiForm.exe` was not run.
+- [x] Confirm no generated apps were launched.
+
+### Manual test checklist
+
+- [ ] Open an inspector dropdown, scroll the inspector wheel, and confirm the popup collapses immediately.
+- [ ] Drag the inspector scrollbar with an open dropdown and confirm the popup collapses immediately.
+- [ ] Confirm `Selected Node` no longer floats after inspector scrolling.
+- [ ] Open `TreeView` `Nodes/Edit` and confirm a visual tree list appears instead of raw indented text.
+- [ ] Confirm node rows do not overlap helper text or labels.
+- [ ] Confirm selecting a node updates the rename field.
+- [ ] Confirm rename, add child, add sibling, remove, and move up/down work before `Apply`.
+- [ ] Confirm `Apply` updates the designer `TreeView` immediately.
+- [ ] Confirm `Cancel` leaves the previous tree unchanged.
+- [ ] Save and reload a project and confirm `TreeView` nodes and selected-node state persist.
+- [ ] Validate a project and confirm `TreeView` node data still validates cleanly.
+- [ ] Export a project and confirm generated output uses the edited tree data.
+
+### Final result summary
+
+- Added a central inspector popup-cancel path so inspector-owned dropdowns collapse immediately when the `PropertyInspector` scrolls by mouse wheel, scrollbar paging, or scrollbar thumb drag.
+- Replaced the raw `TreeView` multiline text editor with a visual tree editor in `MainWindow`, including node selection, rename through the `Node Text` field, add child, add sibling, remove subtree, and move up/down among siblings.
+- Kept `TreeView` storage stable by serializing the visual editor back into the existing `nodes`, `selectedNodePath`, and `expandedNodePaths` properties already used by save/load, validation, preview, and export flows.
+- Updated `docs/widget_catalog.md`, `docs/project_file_format.md`, `docs/code_generation.md`, `docs/project_validation.md`, and `README.md` to document the repaired behavior.
+- Verified the main `VisiForm` app builds successfully with the required `build-static-debug` workflow.
+
+### Remaining TODOs
+
+- Run the manual editor verification items in the checklist above inside Visual Studio.

@@ -70,6 +70,7 @@ public:
     [[nodiscard]] std::optional<ValueCellBounds> activeEditorBounds(const model::ProjectDocument& document, const utils::AppSettings& settings);
     [[nodiscard]] std::optional<PendingEdit> buildPendingEdit(const std::string& valueText) const;
     [[nodiscard]] std::optional<PendingEdit> consumeInteractionEdit();
+    [[nodiscard]] bool consumeScrollInteraction();
     void clearEditing();
     void cancelEditing();
     [[nodiscard]] bool isEditing() const;
@@ -107,6 +108,7 @@ private:
     std::string editBuffer_{};
     PropertyEditKind activeEditKind_ = PropertyEditKind::ReadOnly;
     std::optional<PendingEdit> pendingInteractionEdit_{};
+    bool pendingScrollInteraction_ = false;
 };
 
 } // namespace visiform::ui

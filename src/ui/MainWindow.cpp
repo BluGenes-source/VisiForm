@@ -102,6 +102,10 @@ constexpr float kItemListEditorPreviewGap = 14.0f;
 constexpr float kTreeNodeEditorModalWidth = 760.0f;
 constexpr float kTreeNodeEditorModalHeight = 560.0f;
 constexpr float kTreeNodeEditorLineHeight = 20.0f;
+constexpr float kTreeNodeEditorRowHeight = 26.0f;
+constexpr float kTreeNodeEditorRowIndent = 20.0f;
+constexpr float kTreeNodeEditorSectionGap = 14.0f;
+constexpr float kTreeNodeEditorActionButtonHeight = 30.0f;
 
 bool pointInBounds(float x, float y, float left, float top, float width, float height)
 {
@@ -6065,6 +6069,25 @@ void MainWindow::cancelInspectorEdit()
     redraw();
 }
 
+void MainWindow::cancelPopupEditors()
+{
+    dropdownControl_.close();
+
+    if (isEditorModalVisible() || !propertyInspector_.isEditing()) {
+        return;
+    }
+
+    const auto activeRow = propertyInspector_.activeRow(document_, settings_);
+    if (!activeRow.has_value() || activeRow->editKind != PropertyInspector::PropertyEditKind::Choice) {
+        return;
+    }
+
+    propertyInspector_.clearEditing();
+    textEditControl_.clear();
+    requestKeyboardFocus();
+    updatePropertyEditorBounds();
+}
+
 bool MainWindow::applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName)
 {
     if (!setSelectedWidgetPropertyFromString(propertyKey, callbackName)) {
@@ -6503,17 +6526,17 @@ void MainWindow::handleTextEditPendingAction()
         return;
     }
 
+    if (editorModalEdit_.active) {
+        cancelEditorModalFieldEdit();
+        return;
+    }
+
     if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
         closeEditorModalDialog("cancel");
         return;
     }
 
-    if (editorModalEdit_.active) {
-        cancelEditorModalFieldEdit();
-    }
-    else {
-        cancelInspectorEdit();
-    }
+    cancelInspectorEdit();
 }
 
 void MainWindow::handleDropdownSelection()
@@ -6605,6 +6628,15 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
                 : std::string{},
             itemListEditorDialog_.selectedItemIndex >= 0 ? PropertyInspector::PropertyEditKind::Text : PropertyInspector::PropertyEditKind::ReadOnly });
     }
+    else if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+        const auto* selectedNode = findTreeEditorNode(treeNodeEditorDialog_.selectedNodeId);
+        fields.push_back(EditorModalField{ "nodeCount", "Node Count", std::to_string(visibleTreeNodeEditorRows().size()), PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "selectedNodePath", "Selected Node", selectedNode == nullptr
+                ? std::string{ "<none>" }
+                : treeNodeEditorNodePath(selectedNode->id), PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "nodeText", "Node Text", selectedNode == nullptr ? std::string{} : selectedNode->title,
+            selectedNode == nullptr ? PropertyInspector::PropertyEditKind::ReadOnly : PropertyInspector::PropertyEditKind::Text });
+    }
     return fields;
 }
 
@@ -6693,7 +6725,25 @@ MainWindow::PanelBounds MainWindow::treeNodeEditorTextBounds() const
         return bodyBounds;
     }
 
-    const float top = bodyBounds.y + 24.0f;
+    const float top = bodyBounds.y + 32.0f;
+    const float reservedBottom = std::min(180.0f, std::max(120.0f, bodyBounds.height * 0.38f));
+    return {
+        bodyBounds.x,
+        top,
+        bodyBounds.width,
+        std::max(120.0f, bodyBounds.y + bodyBounds.height - top - reservedBottom)
+    };
+}
+
+MainWindow::PanelBounds MainWindow::treeNodeEditorFormBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::TreeNodeEditor) {
+        return bodyBounds;
+    }
+
+    const PanelBounds listBounds = treeNodeEditorTextBounds();
+    const float top = listBounds.y + listBounds.height + kTreeNodeEditorSectionGap;
     return {
         bodyBounds.x,
         top,
@@ -6724,11 +6774,15 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
 
     const PanelBounds bodyBounds = editorModal_.mode == EditorModalMode::ResourceManager
         ? resourceManagerDetailBounds()
-        : (editorModal_.mode == EditorModalMode::ItemListEditor ? itemListEditorFormBounds() : editorModalBodyBounds());
+        : (editorModal_.mode == EditorModalMode::ItemListEditor
+                ? itemListEditorFormBounds()
+                : (editorModal_.mode == EditorModalMode::TreeNodeEditor ? treeNodeEditorFormBounds() : editorModalBodyBounds()));
     const float labelWidth = editorModal_.mode == EditorModalMode::ResourceManager
         ? kResourceManagerFieldLabelWidth
         : kEditorModalFormLabelWidth;
-    float top = bodyBounds.y;
+    float top = editorModal_.mode == EditorModalMode::TreeNodeEditor
+        ? bodyBounds.y + kTreeNodeEditorActionButtonHeight + 28.0f
+        : bodyBounds.y;
     hits.reserve(fields.size());
     for (const auto& field : fields) {
         const PanelBounds valueBounds{
@@ -6776,6 +6830,395 @@ std::optional<int> MainWindow::itemListEditorPreviewIndexAt(float x, float y) co
     }
 
     return rowIndex;
+}
+
+std::optional<int> MainWindow::treeNodeEditorRowAt(float x, float y) const
+{
+    if (editorModal_.mode != EditorModalMode::TreeNodeEditor) {
+        return std::nullopt;
+    }
+
+    const PanelBounds bounds = treeNodeEditorTextBounds();
+    if (!pointInBounds(x, y, bounds.x, bounds.y, bounds.width, bounds.height)) {
+        return std::nullopt;
+    }
+
+    const float rowTop = bounds.y + 8.0f;
+    const float rowOffset = y - rowTop;
+    if (rowOffset < 0.0f) {
+        return std::nullopt;
+    }
+
+    const int rowIndex = static_cast<int>(rowOffset / kTreeNodeEditorRowHeight);
+    const auto rows = visibleTreeNodeEditorRows();
+    const std::size_t visibleCount = std::min<std::size_t>(
+        rows.size(),
+        std::max<std::size_t>(1, static_cast<std::size_t>(std::floor((bounds.height - 16.0f) / kTreeNodeEditorRowHeight))));
+    if (rowIndex < 0 || static_cast<std::size_t>(rowIndex) >= visibleCount) {
+        return std::nullopt;
+    }
+
+    return rows[static_cast<std::size_t>(rowIndex)].nodeId;
+}
+
+std::vector<MainWindow::TreeNodeEditorRow> MainWindow::visibleTreeNodeEditorRows() const
+{
+    std::vector<TreeNodeEditorRow> rows;
+    auto appendRows = [&](auto&& self, int nodeId, int depth) -> void {
+        const auto* node = findTreeEditorNode(nodeId);
+        if (node == nullptr) {
+            return;
+        }
+
+        rows.push_back({ nodeId, depth, !node->childIds.empty(), treeNodeEditorNodePath(nodeId) });
+        for (int childId : node->childIds) {
+            self(self, childId, depth + 1);
+        }
+    };
+
+    for (int rootId : treeNodeEditorDialog_.rootNodeIds) {
+        appendRows(appendRows, rootId, 0);
+    }
+
+    return rows;
+}
+
+std::vector<MainWindow::TreeNodeEditorActionButton> MainWindow::treeNodeEditorActionButtons() const
+{
+    std::vector<TreeNodeEditorActionButton> buttons;
+    if (editorModal_.mode != EditorModalMode::TreeNodeEditor) {
+        return buttons;
+    }
+
+    const PanelBounds formBounds = treeNodeEditorFormBounds();
+    const float gap = 10.0f;
+    const float buttonWidth = std::max(80.0f, (formBounds.width - gap * 4.0f) / 5.0f);
+    const auto* selectedNode = findTreeEditorNode(treeNodeEditorDialog_.selectedNodeId);
+    const auto* siblings = selectedNode == nullptr ? &treeNodeEditorDialog_.rootNodeIds : treeNodeEditorSiblingList(selectedNode->parentId);
+    int selectedIndex = -1;
+    if (selectedNode != nullptr && siblings != nullptr) {
+        const auto iterator = std::find(siblings->begin(), siblings->end(), selectedNode->id);
+        if (iterator != siblings->end()) {
+            selectedIndex = static_cast<int>(std::distance(siblings->begin(), iterator));
+        }
+    }
+
+    const std::array<std::pair<const char*, const char*>, 5> definitions = {{
+        { "add_child_node", "Add Child" },
+        { "add_sibling_node", "Add Sibling" },
+        { "remove_node", "Remove" },
+        { "move_node_up", "Move Up" },
+        { "move_node_down", "Move Down" }
+    }};
+
+    buttons.reserve(definitions.size());
+    float left = formBounds.x;
+    for (const auto& definition : definitions) {
+        bool enabled = true;
+        if (std::string_view{ definition.first } == "remove_node") {
+            enabled = selectedNode != nullptr;
+        }
+        else if (std::string_view{ definition.first } == "move_node_up") {
+            enabled = selectedNode != nullptr && selectedIndex > 0;
+        }
+        else if (std::string_view{ definition.first } == "move_node_down") {
+            enabled = selectedNode != nullptr && siblings != nullptr && selectedIndex >= 0 && selectedIndex + 1 < static_cast<int>(siblings->size());
+        }
+
+        buttons.push_back({
+            definition.first,
+            definition.second,
+            { left, formBounds.y + 22.0f, buttonWidth, kTreeNodeEditorActionButtonHeight },
+            enabled
+        });
+        left += buttonWidth + gap;
+    }
+
+    return buttons;
+}
+
+MainWindow::TreeEditorNode* MainWindow::findTreeEditorNode(int nodeId)
+{
+    const auto iterator = std::find_if(treeNodeEditorDialog_.nodes.begin(), treeNodeEditorDialog_.nodes.end(), [nodeId](const TreeEditorNode& node) {
+        return node.id == nodeId;
+    });
+    return iterator == treeNodeEditorDialog_.nodes.end() ? nullptr : &(*iterator);
+}
+
+const MainWindow::TreeEditorNode* MainWindow::findTreeEditorNode(int nodeId) const
+{
+    const auto iterator = std::find_if(treeNodeEditorDialog_.nodes.begin(), treeNodeEditorDialog_.nodes.end(), [nodeId](const TreeEditorNode& node) {
+        return node.id == nodeId;
+    });
+    return iterator == treeNodeEditorDialog_.nodes.end() ? nullptr : &(*iterator);
+}
+
+std::vector<int>* MainWindow::treeNodeEditorSiblingList(int parentId)
+{
+    if (parentId < 0) {
+        return &treeNodeEditorDialog_.rootNodeIds;
+    }
+
+    auto* parentNode = findTreeEditorNode(parentId);
+    return parentNode == nullptr ? nullptr : &parentNode->childIds;
+}
+
+const std::vector<int>* MainWindow::treeNodeEditorSiblingList(int parentId) const
+{
+    if (parentId < 0) {
+        return &treeNodeEditorDialog_.rootNodeIds;
+    }
+
+    const auto* parentNode = findTreeEditorNode(parentId);
+    return parentNode == nullptr ? nullptr : &parentNode->childIds;
+}
+
+std::string MainWindow::treeNodeEditorNodePath(int nodeId) const
+{
+    std::vector<std::string> parts;
+    int currentId = nodeId;
+    while (currentId >= 0) {
+        const auto* node = findTreeEditorNode(currentId);
+        if (node == nullptr) {
+            break;
+        }
+
+        std::string title = trimWhitespace(node->title);
+        if (title.empty()) {
+            title = "Node";
+        }
+        parts.push_back(std::move(title));
+        currentId = node->parentId;
+    }
+
+    std::reverse(parts.begin(), parts.end());
+    std::string path;
+    for (std::size_t index = 0; index < parts.size(); ++index) {
+        if (index > 0) {
+            path += '/';
+        }
+        path += parts[index];
+    }
+    return path;
+}
+
+void MainWindow::refreshTreeNodeEditorState()
+{
+    const auto nodeExists = [this](int nodeId) {
+        return findTreeEditorNode(nodeId) != nullptr;
+    };
+
+    auto removeMissingIds = [&nodeExists](std::vector<int>& ids) {
+        ids.erase(std::remove_if(ids.begin(), ids.end(), [&nodeExists](int nodeId) {
+            return !nodeExists(nodeId);
+        }), ids.end());
+    };
+
+    removeMissingIds(treeNodeEditorDialog_.rootNodeIds);
+    for (auto& node : treeNodeEditorDialog_.nodes) {
+        removeMissingIds(node.childIds);
+        const std::string trimmedTitle = trimWhitespace(node.title);
+        node.title = trimmedTitle.empty() ? std::string{ "Node" } : trimmedTitle;
+    }
+
+    if (!nodeExists(treeNodeEditorDialog_.selectedNodeId)) {
+        treeNodeEditorDialog_.selectedNodeId = treeNodeEditorDialog_.rootNodeIds.empty() ? -1 : treeNodeEditorDialog_.rootNodeIds.front();
+    }
+
+    int maximumNodeId = 0;
+    for (const auto& node : treeNodeEditorDialog_.nodes) {
+        maximumNodeId = std::max(maximumNodeId, node.id);
+    }
+    treeNodeEditorDialog_.nextNodeId = std::max(treeNodeEditorDialog_.nextNodeId, maximumNodeId + 1);
+}
+
+void MainWindow::selectTreeEditorNode(int nodeId)
+{
+    treeNodeEditorDialog_.selectedNodeId = findTreeEditorNode(nodeId) != nullptr ? nodeId : -1;
+    if (treeNodeEditorDialog_.selectedNodeId >= 0) {
+        editorModal_.statusText = "Selected node: " + treeNodeEditorNodePath(treeNodeEditorDialog_.selectedNodeId);
+    }
+    else if (treeNodeEditorDialog_.nodes.empty()) {
+        editorModal_.statusText = "No nodes yet. Use Add Child to create the first root node.";
+    }
+    else {
+        editorModal_.statusText = "No node selected.";
+    }
+}
+
+bool MainWindow::renameSelectedTreeEditorNode(const std::string& valueText)
+{
+    auto* node = findTreeEditorNode(treeNodeEditorDialog_.selectedNodeId);
+    if (node == nullptr) {
+        editorModal_.statusText = "Select a node before renaming it.";
+        return false;
+    }
+
+    std::string title = trimWhitespace(valueText);
+    if (title.empty()) {
+        title = "Node";
+    }
+
+    node->title = title;
+    editorModal_.statusText = "Node renamed.";
+    return true;
+}
+
+bool MainWindow::activateTreeNodeEditorAction(const std::string& actionId)
+{
+    if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+        return false;
+    }
+
+    if (actionId == "add_child_node") {
+        const int newNodeId = treeNodeEditorDialog_.nextNodeId++;
+        const int parentId = treeNodeEditorDialog_.selectedNodeId;
+        if (parentId >= 0) {
+            if (auto* parentNode = findTreeEditorNode(parentId)) {
+                parentNode->childIds.push_back(newNodeId);
+                parentNode->expanded = true;
+            }
+        }
+        else {
+            treeNodeEditorDialog_.rootNodeIds.push_back(newNodeId);
+        }
+
+        treeNodeEditorDialog_.nodes.push_back({ newNodeId, "New Node", parentId, {}, true });
+        refreshTreeNodeEditorState();
+        selectTreeEditorNode(newNodeId);
+        editorModal_.statusText = parentId >= 0 ? "Added child node." : "Added root node.";
+        redraw();
+        return true;
+    }
+
+    if (actionId == "add_sibling_node") {
+        const auto* selectedNode = findTreeEditorNode(treeNodeEditorDialog_.selectedNodeId);
+        const int newNodeId = treeNodeEditorDialog_.nextNodeId++;
+        const int parentId = selectedNode == nullptr ? -1 : selectedNode->parentId;
+        auto* siblings = treeNodeEditorSiblingList(parentId);
+        if (siblings == nullptr) {
+            return false;
+        }
+
+        if (selectedNode == nullptr) {
+            siblings->push_back(newNodeId);
+        }
+        else {
+            const auto iterator = std::find(siblings->begin(), siblings->end(), selectedNode->id);
+            siblings->insert(iterator == siblings->end() ? siblings->end() : iterator + 1, newNodeId);
+        }
+
+        treeNodeEditorDialog_.nodes.push_back({ newNodeId, "New Node", parentId, {}, true });
+        refreshTreeNodeEditorState();
+        selectTreeEditorNode(newNodeId);
+        editorModal_.statusText = selectedNode == nullptr ? "Added root node." : "Added sibling node.";
+        redraw();
+        return true;
+    }
+
+    if (actionId == "remove_node") {
+        const int selectedNodeId = treeNodeEditorDialog_.selectedNodeId;
+        const auto* selectedNode = findTreeEditorNode(selectedNodeId);
+        if (selectedNode == nullptr) {
+            editorModal_.statusText = "Select a node before removing it.";
+            redraw();
+            return false;
+        }
+
+        const int parentId = selectedNode->parentId;
+        auto* siblings = treeNodeEditorSiblingList(parentId);
+        int nextSelection = parentId;
+        int previousIndex = -1;
+        if (siblings != nullptr) {
+            const auto iterator = std::find(siblings->begin(), siblings->end(), selectedNodeId);
+            if (iterator != siblings->end()) {
+                previousIndex = static_cast<int>(std::distance(siblings->begin(), iterator));
+            }
+        }
+
+        std::vector<int> removedIds;
+        auto collectIds = [&](auto&& self, int nodeId) -> void {
+            removedIds.push_back(nodeId);
+            if (const auto* node = findTreeEditorNode(nodeId)) {
+                for (int childId : node->childIds) {
+                    self(self, childId);
+                }
+            }
+        };
+        collectIds(collectIds, selectedNodeId);
+        const std::set<int> removedIdSet(removedIds.begin(), removedIds.end());
+
+        if (siblings != nullptr) {
+            siblings->erase(std::remove_if(siblings->begin(), siblings->end(), [&removedIdSet](int nodeId) {
+                return removedIdSet.contains(nodeId);
+            }), siblings->end());
+        }
+
+        for (auto& node : treeNodeEditorDialog_.nodes) {
+            node.childIds.erase(std::remove_if(node.childIds.begin(), node.childIds.end(), [&removedIdSet](int nodeId) {
+                return removedIdSet.contains(nodeId);
+            }), node.childIds.end());
+        }
+        treeNodeEditorDialog_.rootNodeIds.erase(std::remove_if(treeNodeEditorDialog_.rootNodeIds.begin(), treeNodeEditorDialog_.rootNodeIds.end(), [&removedIdSet](int nodeId) {
+            return removedIdSet.contains(nodeId);
+        }), treeNodeEditorDialog_.rootNodeIds.end());
+        treeNodeEditorDialog_.nodes.erase(std::remove_if(treeNodeEditorDialog_.nodes.begin(), treeNodeEditorDialog_.nodes.end(), [&removedIdSet](const TreeEditorNode& node) {
+            return removedIdSet.contains(node.id);
+        }), treeNodeEditorDialog_.nodes.end());
+
+        refreshTreeNodeEditorState();
+        if (const auto* updatedSiblings = treeNodeEditorSiblingList(parentId); updatedSiblings != nullptr && !updatedSiblings->empty()) {
+            nextSelection = (*updatedSiblings)[std::clamp(previousIndex, 0, static_cast<int>(updatedSiblings->size()) - 1)];
+        }
+        else if (!treeNodeEditorDialog_.rootNodeIds.empty()) {
+            nextSelection = treeNodeEditorDialog_.rootNodeIds.front();
+        }
+        else {
+            nextSelection = -1;
+        }
+
+        selectTreeEditorNode(nextSelection);
+        editorModal_.statusText = "Removed node subtree.";
+        redraw();
+        return true;
+    }
+
+    if (actionId == "move_node_up" || actionId == "move_node_down") {
+        const auto* selectedNode = findTreeEditorNode(treeNodeEditorDialog_.selectedNodeId);
+        if (selectedNode == nullptr) {
+            editorModal_.statusText = "Select a node before reordering it.";
+            redraw();
+            return false;
+        }
+
+        auto* siblings = treeNodeEditorSiblingList(selectedNode->parentId);
+        if (siblings == nullptr) {
+            return false;
+        }
+
+        const auto iterator = std::find(siblings->begin(), siblings->end(), selectedNode->id);
+        if (iterator == siblings->end()) {
+            return false;
+        }
+
+        const int index = static_cast<int>(std::distance(siblings->begin(), iterator));
+        const int targetIndex = actionId == "move_node_up" ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= static_cast<int>(siblings->size())) {
+            editorModal_.statusText = actionId == "move_node_up"
+                ? "Selected node is already first among its siblings."
+                : "Selected node is already last among its siblings.";
+            redraw();
+            return false;
+        }
+
+        std::swap((*siblings)[index], (*siblings)[targetIndex]);
+        selectTreeEditorNode(selectedNode->id);
+        editorModal_.statusText = actionId == "move_node_up" ? "Moved node up." : "Moved node down.";
+        redraw();
+        return true;
+    }
+
+    return false;
 }
 
 std::string MainWindow::editorModalFieldValue(const std::string& key) const
@@ -6898,6 +7341,13 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
         return;
     }
 
+    if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+        if (key == "nodeText") {
+            renameSelectedTreeEditorNode(valueText);
+        }
+        return;
+    }
+
     if (editorModal_.mode == EditorModalMode::ItemListEditor) {
         if (key == "itemText" && itemListEditorDialog_.selectedItemIndex >= 0) {
             itemListEditorDialog_.items[static_cast<std::size_t>(itemListEditorDialog_.selectedItemIndex)] = valueText;
@@ -6947,6 +7397,44 @@ bool MainWindow::openSelectedTreeNodeEditor()
     treeNodeEditorDialog_.originalNodesText = widget->getStringProperty("nodes", {});
     treeNodeEditorDialog_.originalSelectedNodePath = widget->getStringProperty("selectedNodePath", {});
     treeNodeEditorDialog_.originalExpandedNodePaths = widget->getStringProperty("expandedNodePaths", {});
+    treeNodeEditorDialog_.nodes.clear();
+    treeNodeEditorDialog_.rootNodeIds.clear();
+    treeNodeEditorDialog_.nextNodeId = 1;
+    treeNodeEditorDialog_.selectedNodeId = -1;
+
+    const auto parseResult = model::parseTreeNodes(treeNodeEditorDialog_.originalNodesText);
+    const auto expandedPathList = model::splitTreeNodePaths(treeNodeEditorDialog_.originalExpandedNodePaths);
+    const std::set<std::string> expandedPaths(expandedPathList.begin(), expandedPathList.end());
+    std::vector<int> nodeIds;
+    nodeIds.reserve(parseResult.nodes.size());
+    for (const auto& parsedNode : parseResult.nodes) {
+        const int nodeId = treeNodeEditorDialog_.nextNodeId++;
+        nodeIds.push_back(nodeId);
+        treeNodeEditorDialog_.nodes.push_back({
+            nodeId,
+            parsedNode.text,
+            parsedNode.parentIndex >= 0 ? nodeIds[static_cast<std::size_t>(parsedNode.parentIndex)] : -1,
+            {},
+            expandedPaths.contains(parsedNode.path)
+        });
+    }
+
+    for (std::size_t index = 0; index < parseResult.nodes.size(); ++index) {
+        const int nodeId = nodeIds[index];
+        const int parentIndex = parseResult.nodes[index].parentIndex;
+        if (parentIndex < 0) {
+            treeNodeEditorDialog_.rootNodeIds.push_back(nodeId);
+        }
+        else if (auto* parentNode = findTreeEditorNode(nodeIds[static_cast<std::size_t>(parentIndex)])) {
+            parentNode->childIds.push_back(nodeId);
+        }
+
+        if (parseResult.nodes[index].path == treeNodeEditorDialog_.originalSelectedNodePath) {
+            treeNodeEditorDialog_.selectedNodeId = nodeId;
+        }
+    }
+    refreshTreeNodeEditorState();
+    selectTreeEditorNode(treeNodeEditorDialog_.selectedNodeId);
 
     editorModal_.visible = true;
     editorModal_.mode = EditorModalMode::TreeNodeEditor;
@@ -6958,7 +7446,9 @@ bool MainWindow::openSelectedTreeNodeEditor()
         { "cancel", "Cancel" }
     };
     editorModal_.result.clear();
-    editorModal_.statusText = "Edit indented tree text using two spaces per level, then click Apply.";
+    editorModal_.statusText = treeNodeEditorDialog_.nodes.empty()
+        ? "No nodes yet. Use Add Child to create the first root node."
+        : "Select a node, edit Node Text, then click Apply to commit the tree.";
     editorModal_.preferredWidth = kTreeNodeEditorModalWidth;
     editorModal_.preferredHeight = kTreeNodeEditorModalHeight;
     newProjectWizard_.visible = false;
@@ -6966,9 +7456,72 @@ bool MainWindow::openSelectedTreeNodeEditor()
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
 
-    textEditControl_.begin(treeNodeEditorDialog_.originalNodesText, false, true);
     updateEditorModalEditorBounds();
     redraw();
+    return true;
+}
+
+bool MainWindow::applyTreeNodeEditor()
+{
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr || selectedWidget->id != treeNodeEditorDialog_.widgetId || !model::supportsTreeNodes(selectedWidget->type)) {
+        return false;
+    }
+
+    if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+        return false;
+    }
+
+    std::vector<model::TreeNodeEntry> serializedNodes;
+    std::vector<std::string> expandedPaths;
+    auto appendNode = [&](auto&& self, int nodeId, int depth, const std::string& parentPath) -> void {
+        const auto* node = findTreeEditorNode(nodeId);
+        if (node == nullptr) {
+            return;
+        }
+
+        const std::string title = trimWhitespace(node->title).empty() ? std::string{ "Node" } : trimWhitespace(node->title);
+        const std::string path = parentPath.empty() ? title : parentPath + "/" + title;
+        model::TreeNodeEntry entry;
+        entry.text = title;
+        entry.depth = depth;
+        serializedNodes.push_back(std::move(entry));
+        if (!node->childIds.empty() && node->expanded) {
+            expandedPaths.push_back(path);
+        }
+        for (int childId : node->childIds) {
+            self(self, childId, depth + 1, path);
+        }
+    };
+
+    for (int rootNodeId : treeNodeEditorDialog_.rootNodeIds) {
+        appendNode(appendNode, rootNodeId, 0, {});
+    }
+
+    const std::string nodesText = model::serializeTreeNodes(serializedNodes);
+    const std::string selectedNodePath = treeNodeEditorDialog_.selectedNodeId >= 0
+        ? treeNodeEditorNodePath(treeNodeEditorDialog_.selectedNodeId)
+        : std::string{};
+    const std::string expandedNodePaths = model::normalizeExpandedTreeNodePaths(nodesText, model::joinTreeNodePaths(expandedPaths));
+
+    const bool applied = applyUndoableDocumentChange("Edit tree nodes", [this, &nodesText, &selectedNodePath, &expandedNodePaths]() {
+        auto* widget = document_.selectedWidget();
+        if (widget == nullptr || !model::supportsTreeNodes(widget->type)) {
+            return false;
+        }
+
+        widget->setProperty("nodes", nodesText);
+        widget->setProperty("selectedNodePath", selectedNodePath);
+        widget->setProperty("expandedNodePaths", expandedNodePaths);
+        model::normalizeTreeViewProperties(*widget);
+        return true;
+    });
+    if (!applied) {
+        return false;
+    }
+
+    setOperationStatus("Updated TreeView nodes.");
+    closeEditorModalDialog("apply_tree_nodes");
     return true;
 }
 
@@ -7025,12 +7578,6 @@ void MainWindow::cancelEditorModalFieldEdit()
 
 void MainWindow::updateEditorModalEditorBounds()
 {
-    if (editorModal_.mode == EditorModalMode::TreeNodeEditor && textEditControl_.isActive()) {
-        const PanelBounds bounds = treeNodeEditorTextBounds();
-        textEditControl_.setBounds(bounds.x + 1.0f, bounds.y + 1.0f, bounds.width - 2.0f, bounds.height - 2.0f);
-        return;
-    }
-
     if (!editorModalEdit_.active) {
         return;
     }
@@ -7142,6 +7689,9 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
     if (buttonId == "reset_shortcut" && editorModal_.mode == EditorModalMode::KeyboardShortcuts) {
         resetSelectedKeyboardShortcut();
         return true;
+    }
+    if (buttonId == "apply_tree_nodes" && editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+        return applyTreeNodeEditor();
     }
     if (editorModal_.mode == EditorModalMode::ItemListEditor) {
         if (buttonId == "add_item") {
@@ -7509,20 +8059,70 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             }
         }
         else if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
-            const PanelBounds textBounds = treeNodeEditorTextBounds();
+            const PanelBounds listBounds = treeNodeEditorTextBounds();
+            const PanelBounds formBounds = treeNodeEditorFormBounds();
+            const auto rows = visibleTreeNodeEditorRows();
             canvas.setColor(0xffd6dbe4);
-            canvas.text("Nodes Text", labelFont_, visage::Font::kTopLeft,
+            canvas.text("Tree Nodes", labelFont_, visage::Font::kTopLeft,
                 bodyBounds.x, bodyBounds.y, bodyBounds.width, 18.0f);
-            canvas.setColor(0xff1a2028);
-            canvas.fill(textBounds.x, textBounds.y, textBounds.width, textBounds.height);
-            canvas.setColor(0xff12161c);
-            canvas.fill(textBounds.x, textBounds.y, textBounds.width, 1.0f);
-            canvas.fill(textBounds.x, textBounds.y + textBounds.height - 1.0f, textBounds.width, 1.0f);
-            canvas.fill(textBounds.x, textBounds.y, 1.0f, textBounds.height);
-            canvas.fill(textBounds.x + textBounds.width - 1.0f, textBounds.y, 1.0f, textBounds.height);
             canvas.setColor(0xff9eabbc);
-            canvas.text("Use two spaces per indent level. Empty lines are ignored.", labelFont_, visage::Font::kTopLeft,
-                textBounds.x + 8.0f, textBounds.y + 6.0f, textBounds.width - 16.0f, 18.0f);
+            canvas.text("Select a node, edit Node Text below, then click Apply.", labelFont_, visage::Font::kTopLeft,
+                bodyBounds.x, bodyBounds.y + 16.0f, bodyBounds.width, 18.0f);
+            canvas.setColor(0xff1a2028);
+            canvas.fill(listBounds.x, listBounds.y, listBounds.width, listBounds.height);
+            canvas.setColor(0xff12161c);
+            canvas.fill(listBounds.x, listBounds.y, listBounds.width, 1.0f);
+            canvas.fill(listBounds.x, listBounds.y + listBounds.height - 1.0f, listBounds.width, 1.0f);
+            canvas.fill(listBounds.x, listBounds.y, 1.0f, listBounds.height);
+            canvas.fill(listBounds.x + listBounds.width - 1.0f, listBounds.y, 1.0f, listBounds.height);
+
+            float rowTop = listBounds.y + 8.0f;
+            const std::size_t visibleCount = std::min<std::size_t>(
+                rows.size(),
+                std::max<std::size_t>(1, static_cast<std::size_t>(std::floor((listBounds.height - 16.0f) / kTreeNodeEditorRowHeight))));
+            for (std::size_t index = 0; index < visibleCount; ++index) {
+                const auto& row = rows[index];
+                const bool selected = row.nodeId == treeNodeEditorDialog_.selectedNodeId;
+                const float indent = 10.0f + static_cast<float>(row.depth) * kTreeNodeEditorRowIndent;
+                const auto* node = findTreeEditorNode(row.nodeId);
+                const std::string title = node == nullptr ? std::string{} : node->title;
+
+                canvas.setColor(selected ? 0xff355382 : (index % 2 == 0 ? 0xff222936 : 0xff1d2430));
+                canvas.fill(listBounds.x + 6.0f, rowTop, listBounds.width - 12.0f, kTreeNodeEditorRowHeight - 2.0f);
+                if (row.hasChildren) {
+                    canvas.setColor(0xff92b9ff);
+                    canvas.fill(listBounds.x + indent, rowTop + 10.0f, 8.0f, 2.0f);
+                }
+                canvas.setColor(selected ? 0xfff3f7ff : 0xffdde2ea);
+                canvas.text(title, labelFont_, visage::Font::kTopLeft,
+                    listBounds.x + indent + 14.0f, rowTop + 5.0f,
+                    listBounds.width - indent - 24.0f, kTreeNodeEditorRowHeight - 8.0f);
+                rowTop += kTreeNodeEditorRowHeight;
+            }
+
+            if (rows.empty()) {
+                canvas.setColor(0xff9eabbc);
+                canvas.text("No nodes yet. Use Add Child to create the first root node.", labelFont_, visage::Font::kCenter,
+                    listBounds.x + 12.0f, listBounds.y + 12.0f, listBounds.width - 24.0f, listBounds.height - 24.0f);
+            }
+            else if (visibleCount < rows.size()) {
+                canvas.setColor(0xff9eabbc);
+                canvas.text("...", labelFont_, visage::Font::kCenter,
+                    listBounds.x, listBounds.y + listBounds.height - 26.0f, listBounds.width, 18.0f);
+            }
+
+            canvas.setColor(0xffd6dbe4);
+            canvas.text("Actions", labelFont_, visage::Font::kTopLeft,
+                formBounds.x, formBounds.y, formBounds.width, 18.0f);
+            for (const auto& button : treeNodeEditorActionButtons()) {
+                canvas.setColor(button.enabled ? 0xff39414e : 0xff2a3039);
+                canvas.fill(button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
+                canvas.setColor(0xff14161b);
+                canvas.fill(button.bounds.x, button.bounds.y + button.bounds.height - 1.0f, button.bounds.width, 1.0f);
+                canvas.setColor(button.enabled ? 0xfff3f5f8 : 0xff7f8997);
+                canvas.text(button.text, labelFont_, visage::Font::kCenter,
+                    button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
+            }
         }
 
         for (const auto& hit : editorModalFieldHits()) {
@@ -7705,6 +8305,27 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
         if (editorModal_.mode == EditorModalMode::ItemListEditor) {
             if (const auto previewIndex = itemListEditorPreviewIndexAt(e.position.x, e.position.y)) {
                 setItemListEditorSelectedIndex(*previewIndex);
+                redraw();
+                return true;
+            }
+        }
+        else if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+            for (const auto& actionButton : treeNodeEditorActionButtons()) {
+                if (!actionButton.enabled) {
+                    continue;
+                }
+                if (pointInBounds(e.position.x, e.position.y,
+                        actionButton.bounds.x,
+                        actionButton.bounds.y,
+                        actionButton.bounds.width,
+                        actionButton.bounds.height)) {
+                    activateTreeNodeEditorAction(actionButton.id);
+                    return true;
+                }
+            }
+
+            if (const auto selectedNodeId = treeNodeEditorRowAt(e.position.x, e.position.y)) {
+                selectTreeEditorNode(*selectedNodeId);
                 redraw();
                 return true;
             }

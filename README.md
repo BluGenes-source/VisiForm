@@ -52,10 +52,18 @@ Current major features include:
 - Image resource binding and preview support
 - StatusBar insertion with default bottom docking in the editor
 - Basic dock and anchor layout behavior for root form, `GroupBox`, and `TabPage` parents in the editor
+- `TreeView` widget support with visual node editing in the editor
 - Save/load `.vfb.json`
 - Export generated C++ projects
 - Interactive generated widgets
 - Local `Visage` dependency support
+
+Recent `TreeView` and inspector usability updates:
+
+- inspector-owned dropdowns now collapse immediately when the `Property Inspector` scrolls
+- the `TreeView` `Nodes` editor now opens a visual tree editor instead of a raw indentation-only text box
+- the visual editor supports selecting a node, renaming it through a field, adding child or sibling nodes, removing nodes, and moving nodes up or down among siblings
+- `Apply` writes the edited hierarchy back into the existing `nodes`, `selectedNodePath`, and `expandedNodePaths` properties used by save/load, validation, preview, and export
 
 ## Current layout support
 

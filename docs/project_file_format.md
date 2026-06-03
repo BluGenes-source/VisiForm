@@ -96,6 +96,7 @@ Supported `type` values:
 - `TextBox`
 - `ComboBox`
 - `ListBox`
+- `TreeView`
 - `CheckBox`
 - `RadioButton`
 - `Slider`
@@ -152,6 +153,26 @@ Normalization rules:
 - leading and trailing whitespace is trimmed from each item string
 - if the final item list is empty, `selectedIndex` becomes `-1`
 - if the final item list is non-empty, `selectedIndex` is clamped into the valid `0..count-1` range
+
+## TreeView node storage
+
+`TreeView` uses these widget properties:
+
+- `nodes` - stored as newline-delimited indented text in `properties`
+- `selectedNodePath` - stored as a string path such as `Root/Child 1`
+- `expandedNodePaths` - stored as a comma-separated string of expanded node paths
+- `showRoot` - stored as a boolean
+- `showLines` - stored as a boolean
+
+Current editor and normalization rules:
+
+- the editor uses a visual node editor, but `Apply` still writes the existing indented `nodes` text format
+- two leading spaces represent one tree depth level in stored `nodes`
+- blank lines are ignored during normalization
+- leading and trailing whitespace around each stored node title is trimmed
+- invalid indentation jumps are normalized safely during load and property normalization
+- `selectedNodePath` is clamped to an existing node path or cleared when no valid node remains
+- `expandedNodePaths` are filtered so only currently expandable node paths remain stored
 
 ## Project resource format
 

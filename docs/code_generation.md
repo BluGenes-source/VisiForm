@@ -202,6 +202,23 @@ Export decision rules:
 - if validation reports warnings only, export continues and the status text reports the warning count
 - if validation reports no warnings or errors, export continues normally
 
+## TreeView export data
+
+Current `TreeView` export behavior depends on the same widget properties used by save/load and designer preview:
+
+- `nodes`
+- `selectedNodePath`
+- `expandedNodePaths`
+- `showRoot`
+- `showLines`
+
+Current editor/export relationship:
+
+- the visual `Edit Tree Nodes` modal does not introduce a new project-file schema
+- `Apply` writes the edited node hierarchy back into the existing stored `TreeView` properties before export
+- export and generated-code paths therefore consume the edited tree data through the normal project document property flow
+- `selectedNodePath` and `expandedNodePaths` are normalized before export so generated data does not keep stale node references
+
 Callback compatibility checks now reuse the same `handlerSignatureKind` metadata already stored in `WidgetRegistry` event definitions. A callback name can be shared only when every use maps to the same signature group:
 
 - `void_event`

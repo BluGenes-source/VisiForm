@@ -1234,6 +1234,13 @@ std::optional<PropertyInspector::PendingEdit> PropertyInspector::consumeInteract
     return edit;
 }
 
+bool PropertyInspector::consumeScrollInteraction()
+{
+    const bool hadScrollInteraction = pendingScrollInteraction_;
+    pendingScrollInteraction_ = false;
+    return hadScrollInteraction;
+}
+
 std::optional<PropertyInspector::PendingEdit> PropertyInspector::sliderEditAtPoint(const std::vector<PropertyRow>& rows, float x, float y)
 {
     const auto layouts = buildRowLayouts(contentBounds().y, rows);

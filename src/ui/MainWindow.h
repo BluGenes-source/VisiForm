@@ -224,12 +224,38 @@ private:
         int originalSelectedIndex = -1;
     };
 
+    struct TreeEditorNode {
+        int id = -1;
+        std::string title{};
+        int parentId = -1;
+        std::vector<int> childIds{};
+        bool expanded = true;
+    };
+
     struct TreeNodeEditorDialogState {
         bool visible = false;
         std::string widgetId{};
         std::string originalNodesText{};
         std::string originalSelectedNodePath{};
         std::string originalExpandedNodePaths{};
+        std::vector<TreeEditorNode> nodes{};
+        std::vector<int> rootNodeIds{};
+        int nextNodeId = 1;
+        int selectedNodeId = -1;
+    };
+
+    struct TreeNodeEditorRow {
+        int nodeId = -1;
+        int depth = 0;
+        bool hasChildren = false;
+        std::string path{};
+    };
+
+    struct TreeNodeEditorActionButton {
+        std::string id{};
+        std::string text{};
+        PanelBounds bounds{};
+        bool enabled = true;
     };
 
     struct EditorModalField {
@@ -425,6 +451,7 @@ private:
     bool beginInspectorEdit(const PropertyInspector::PropertyRow& row);
     bool commitInspectorEdit();
     void cancelInspectorEdit();
+    void cancelPopupEditors();
     void updatePropertyEditorBounds();
     void openInspectorDropdown(const PropertyInspector::PropertyRow& row);
     bool applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
@@ -459,11 +486,13 @@ private:
     [[nodiscard]] PanelBounds itemListEditorPreviewBounds() const;
     [[nodiscard]] PanelBounds itemListEditorFormBounds() const;
     [[nodiscard]] PanelBounds treeNodeEditorTextBounds() const;
+    [[nodiscard]] PanelBounds treeNodeEditorFormBounds() const;
     [[nodiscard]] PanelBounds editorModalStatusBounds() const;
     [[nodiscard]] std::vector<EditorModalField> editorModalFields() const;
     [[nodiscard]] std::vector<EditorModalFieldHit> editorModalFieldHits() const;
     [[nodiscard]] std::optional<EditorModalFieldHit> editorModalFieldAt(float x, float y) const;
     [[nodiscard]] std::optional<int> itemListEditorPreviewIndexAt(float x, float y) const;
+    [[nodiscard]] std::optional<int> treeNodeEditorRowAt(float x, float y) const;
     [[nodiscard]] std::string editorModalFieldValue(const std::string& key) const;
     void setEditorModalFieldValue(const std::string& key, const std::string& valueText);
     bool beginEditorModalFieldEdit(const EditorModalField& field);
@@ -472,6 +501,17 @@ private:
     void updateEditorModalEditorBounds();
     void openEditorModalDropdown(const EditorModalField& field);
     bool applyEditorModalDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
+    [[nodiscard]] std::vector<TreeNodeEditorRow> visibleTreeNodeEditorRows() const;
+    [[nodiscard]] std::vector<TreeNodeEditorActionButton> treeNodeEditorActionButtons() const;
+    [[nodiscard]] TreeEditorNode* findTreeEditorNode(int nodeId);
+    [[nodiscard]] const TreeEditorNode* findTreeEditorNode(int nodeId) const;
+    [[nodiscard]] std::vector<int>* treeNodeEditorSiblingList(int parentId);
+    [[nodiscard]] const std::vector<int>* treeNodeEditorSiblingList(int parentId) const;
+    [[nodiscard]] std::string treeNodeEditorNodePath(int nodeId) const;
+    void refreshTreeNodeEditorState();
+    void selectTreeEditorNode(int nodeId);
+    bool renameSelectedTreeEditorNode(const std::string& valueText);
+    bool activateTreeNodeEditorAction(const std::string& actionId);
     [[nodiscard]] std::string keyboardShortcutDialogEffectiveText(const std::string& commandId) const;
     [[nodiscard]] std::string validateKeyboardShortcutDialog() const;
     bool applyKeyboardShortcutsDialog();

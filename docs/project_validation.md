@@ -93,6 +93,16 @@ Current property validation includes:
 - managed image resources referenced by `Image.resourceId` still depend on the project-level resource source-path validation that blocks export when the source file is missing
 - direct `Image.imagePath` fallback values must exist when used without `resourceId`
 
+## TreeView checks
+
+Current `TreeView` validation includes:
+
+- invalid indentation in stored `nodes` text is reported as an error
+- `selectedNodePath` is allowed to be empty
+- non-empty `selectedNodePath` values warn when the referenced node path does not exist
+- `expandedNodePaths` warn when any stored path no longer exists
+- load and property normalization clamp stale tree state so the editor and export path use the normalized property set
+
 ## Callback and event checks
 
 Current callback validation includes:

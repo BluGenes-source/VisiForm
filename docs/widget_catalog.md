@@ -41,6 +41,7 @@ Current `GroupBox` limitations in this repair pass:
 - `TextBox`
 - `ComboBox`
 - `ListBox`
+- `TreeView`
 - `CheckBox`
 - `RadioButton`
 - `Slider`
@@ -104,6 +105,34 @@ Current first-pass behavior:
 - the designer renders a lightweight preview of the current selection or visible rows
 - generated apps export lightweight interaction support: clicking a `ComboBox` cycles the selected item, clicking a `ListBox` selects a row, and double-clicking a `ListBox` can emit its callback
 - `multiSelect` is preserved as widget metadata for future expansion, but this pass keeps selection behavior single-select
+
+## TreeView widget behavior
+
+`TreeView` now uses a visual node editor in the `Property Inspector` instead of requiring raw indentation-only editing.
+
+Current editor behavior:
+
+- the `Property Inspector` shows a `Nodes` row with a node-count summary and an `Edit...` action
+- clicking the `Nodes` value area opens a modal `Edit Tree Nodes` workflow
+- the modal draws a tree-style row list with indentation and selected-row highlighting
+- the modal exposes a `Node Text` field for the selected node
+- the modal supports `Add Child`, `Add Sibling`, `Remove`, `Move Up`, and `Move Down`
+- `Apply` commits the edited tree back to the selected `TreeView`
+- `Cancel` closes the editor without changing the widget
+- the canvas preview updates from the applied `nodes`, `selectedNodePath`, and `expandedNodePaths` properties
+
+Current storage and selection behavior:
+
+- `nodes` remain stored as newline-delimited indented text using two spaces per level
+- the visual editor converts that stored text into an editor-only node model and serializes back to the same property format on `Apply`
+- `selectedNodePath` stores the currently selected node path or stays empty when nothing is selected
+- `expandedNodePaths` stores the comma-separated set of expanded node paths that still exist after normalization
+
+Current `Property Inspector` popup behavior:
+
+- inspector-owned dropdowns now collapse immediately when the inspector scrolls
+- this includes enum dropdowns, resource dropdowns, callback suggestion dropdowns, look-and-feel dropdowns, and the `TreeView` `Selected Node` dropdown
+- scrolling does not leave the `Selected Node` dropdown floating on screen
 
 ## Look and feel foundation
 
