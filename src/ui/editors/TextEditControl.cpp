@@ -10,6 +10,7 @@ constexpr float kHorizontalPadding = 8.0f;
 constexpr float kVerticalPadding = 4.0f;
 constexpr float kEstimatedTextHeight = 18.0f;
 constexpr float kApproximateCharacterWidth = 8.0f;
+constexpr float kApproximateLineHeight = 20.0f;
 
 bool isPrintableInput(const std::string& text)
 {
@@ -36,17 +37,19 @@ bool TextEditControl::contains(float x, float y) const
     return editing_ && bounds_.contains(x, y);
 }
 
-void TextEditControl::begin(std::string text, bool selectAllText)
+void TextEditControl::begin(std::string text, bool selectAllText, bool multiline)
 {
     originalText_ = text;
     text_ = std::move(text);
     editing_ = true;
     focused_ = true;
+    multiline_ = multiline;
     pendingAction_ = PendingAction::None;
     cursorIndex_ = text_.size();
     selectionStart_ = cursorIndex_;
     selectionEnd_ = cursorIndex_;
     scrollX_ = 0.0f;
+    scrollY_ = 0.0f;
     if (selectAllText) {
         selectAll();
     }
@@ -66,6 +69,8 @@ void TextEditControl::clear()
     selectionStart_ = 0;
     selectionEnd_ = 0;
     scrollX_ = 0.0f;
+    scrollY_ = 0.0f;
+    multiline_ = false;
 }
 
 bool TextEditControl::isActive() const
@@ -76,6 +81,11 @@ bool TextEditControl::isActive() const
 bool TextEditControl::isFocused() const
 {
     return editing_ && focused_;
+}
+
+bool TextEditControl::isMultiline() const
+{
+    return editing_ && multiline_;
 }
 
 void TextEditControl::setText(std::string text)
@@ -115,7 +125,7 @@ bool TextEditControl::mouseDown(float x, float y)
         return false;
     }
 
-    const std::size_t hitIndex = hitTestCharacterIndex(x);
+    const std::size_t hitIndex = hitTestCharacterIndex(x, y);
     cursorIndex_ = hitIndex;
     selectionStart_ = hitIndex;
     selectionEnd_ = hitIndex;
@@ -169,13 +179,38 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
         }
         return true;
     case KeyCode::Home:
-        moveCursor(0);
+        moveCursor(multiline_ ? lineStartForIndex(cursorIndex_) : 0);
         return true;
     case KeyCode::End:
-        moveCursor(text_.size());
+        moveCursor(multiline_ ? lineEndForIndex(cursorIndex_) : text_.size());
         return true;
     case KeyCode::Return:
-        pendingAction_ = PendingAction::Commit;
+        if (multiline_) {
+            insertText("\n");
+        }
+        else {
+            pendingAction_ = PendingAction::Commit;
+        }
+        return true;
+    case KeyCode::Up:
+        if (multiline_) {
+            const std::size_t lineIndex = currentLineIndex();
+            const std::size_t columnIndex = currentColumnIndex();
+            if (lineIndex > 0) {
+                moveCursor(indexForLineColumn(lineIndex - 1, columnIndex));
+            }
+            return true;
+        }
+        return false;
+    case KeyCode::Down:
+        if (multiline_) {
+            const std::size_t lineIndex = currentLineIndex();
+            const std::size_t columnIndex = currentColumnIndex();
+            if (lineIndex + 1 < lineCount()) {
+                moveCursor(indexForLineColumn(lineIndex + 1, columnIndex));
+            }
+            return true;
+        }
         return true;
     case KeyCode::Escape:
         text_ = originalText_;
@@ -220,24 +255,51 @@ void TextEditControl::draw(visage::Canvas& canvas, const visage::Font& font, boo
     const float textLeft = bounds_.x + kHorizontalPadding;
     const float textWidth = std::max(0.0f, bounds_.width - kHorizontalPadding * 2.0f);
     const float textHeight = std::min(kEstimatedTextHeight, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
-    const float textTop = bounds_.y + std::max(kVerticalPadding, (bounds_.height - textHeight) * 0.5f);
+    const float textTop = multiline_
+        ? bounds_.y + kVerticalPadding
+        : bounds_.y + std::max(kVerticalPadding, (bounds_.height - textHeight) * 0.5f);
     const float selectionLeft = textLeft - scrollX_ + static_cast<float>(selectionMin()) * characterAdvance();
     const float selectionWidth = static_cast<float>(selectionMax() - selectionMin()) * characterAdvance();
-    const float cursorX = textLeft - scrollX_ + static_cast<float>(cursorIndex_) * characterAdvance();
 
     canvas.saveState();
     canvas.setClampBounds(bounds_.x + 1.0f, bounds_.y + 1.0f, std::max(0.0f, bounds_.width - 2.0f), std::max(0.0f, bounds_.height - 2.0f));
-    if (hasSelection() && selectionWidth > 0.0f) {
+    if (!multiline_ && hasSelection() && selectionWidth > 0.0f) {
         canvas.setColor(0x66355382);
         canvas.fill(selectionLeft, bounds_.y + kVerticalPadding, selectionWidth, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
     }
 
     canvas.setColor(0xffeef2f8);
-    canvas.text(text_, font, visage::Font::kTopLeft, textLeft - scrollX_, textTop, std::max(textWidth + scrollX_, textWidth), textHeight);
+    if (multiline_) {
+        std::size_t lineStart = 0;
+        float lineTop = textTop - scrollY_;
+        while (lineStart <= text_.size()) {
+            const std::size_t lineEnd = text_.find('\n', lineStart);
+            const std::size_t safeLineEnd = lineEnd == std::string::npos ? text_.size() : lineEnd;
+            const std::string lineText = text_.substr(lineStart, safeLineEnd - lineStart);
+            canvas.text(lineText, font, visage::Font::kTopLeft, textLeft - scrollX_, lineTop, std::max(textWidth + scrollX_, textWidth), textHeight);
+            if (lineEnd == std::string::npos) {
+                break;
+            }
+            lineStart = lineEnd + 1;
+            lineTop += lineAdvance();
+        }
 
-    if (focused_) {
-        canvas.setColor(0xff92b9ff);
-        canvas.fill(cursorX, bounds_.y + kVerticalPadding, 1.0f, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
+        if (focused_) {
+            const std::size_t lineIndex = currentLineIndex();
+            const std::size_t columnIndex = currentColumnIndex();
+            const float cursorX = textLeft - scrollX_ + static_cast<float>(columnIndex) * characterAdvance();
+            const float cursorY = textTop - scrollY_ + static_cast<float>(lineIndex) * lineAdvance();
+            canvas.setColor(0xff92b9ff);
+            canvas.fill(cursorX, cursorY, 1.0f, std::max(textHeight, lineAdvance() - 2.0f));
+        }
+    }
+    else {
+        const float cursorX = textLeft - scrollX_ + static_cast<float>(cursorIndex_) * characterAdvance();
+        canvas.text(text_, font, visage::Font::kTopLeft, textLeft - scrollX_, textTop, std::max(textWidth + scrollX_, textWidth), textHeight);
+        if (focused_) {
+            canvas.setColor(0xff92b9ff);
+            canvas.fill(cursorX, bounds_.y + kVerticalPadding, 1.0f, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
+        }
     }
     canvas.restoreState();
 }
@@ -303,7 +365,9 @@ void TextEditControl::moveCursor(std::size_t index, bool extendSelection)
 void TextEditControl::ensureCursorVisible()
 {
     const float innerWidth = std::max(0.0f, bounds_.width - kHorizontalPadding * 2.0f);
-    const float cursorX = static_cast<float>(cursorIndex_) * characterAdvance();
+    const float cursorX = multiline_
+        ? static_cast<float>(currentColumnIndex()) * characterAdvance()
+        : static_cast<float>(cursorIndex_) * characterAdvance();
     if (cursorX < scrollX_) {
         scrollX_ = cursorX;
     }
@@ -313,18 +377,103 @@ void TextEditControl::ensureCursorVisible()
 
     const float maxScroll = std::max(0.0f, static_cast<float>(text_.size()) * characterAdvance() - innerWidth);
     scrollX_ = std::clamp(scrollX_, 0.0f, maxScroll);
+
+    if (multiline_) {
+        const float innerHeight = std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f);
+        const float cursorY = static_cast<float>(currentLineIndex()) * lineAdvance();
+        if (cursorY < scrollY_) {
+            scrollY_ = cursorY;
+        }
+        else if (cursorY > scrollY_ + innerHeight - lineAdvance()) {
+            scrollY_ = std::max(0.0f, cursorY - innerHeight + lineAdvance());
+        }
+
+        const float maxVerticalScroll = std::max(0.0f, static_cast<float>(lineCount()) * lineAdvance() - innerHeight);
+        scrollY_ = std::clamp(scrollY_, 0.0f, maxVerticalScroll);
+    }
+    else {
+        scrollY_ = 0.0f;
+    }
 }
 
-std::size_t TextEditControl::hitTestCharacterIndex(float x) const
+std::size_t TextEditControl::lineStartForIndex(std::size_t index) const
+{
+    const std::size_t safeIndex = std::min(index, text_.size());
+    const std::size_t searchStart = safeIndex == 0 ? 0 : safeIndex - 1;
+    const std::size_t newline = text_.rfind('\n', searchStart);
+    if (newline == std::string::npos) {
+        return 0;
+    }
+
+    return newline + 1;
+}
+
+std::size_t TextEditControl::lineEndForIndex(std::size_t index) const
+{
+    const std::size_t safeIndex = std::min(index, text_.size());
+    const std::size_t newline = text_.find('\n', safeIndex);
+    return newline == std::string::npos ? text_.size() : newline;
+}
+
+std::size_t TextEditControl::hitTestCharacterIndex(float x, float y) const
 {
     const float relativeX = std::max(0.0f, x - bounds_.x - kHorizontalPadding + scrollX_);
-    const std::size_t index = static_cast<std::size_t>(std::floor((relativeX / characterAdvance()) + 0.5f));
-    return std::min(index, text_.size());
+    const std::size_t columnIndex = static_cast<std::size_t>(std::floor((relativeX / characterAdvance()) + 0.5f));
+    if (!multiline_) {
+        return std::min(columnIndex, text_.size());
+    }
+
+    const float relativeY = std::max(0.0f, y - bounds_.y - kVerticalPadding + scrollY_);
+    const std::size_t lineIndex = static_cast<std::size_t>(std::floor(relativeY / lineAdvance()));
+    return indexForLineColumn(lineIndex, columnIndex);
+}
+
+std::size_t TextEditControl::currentLineIndex() const
+{
+    return static_cast<std::size_t>(std::count(text_.begin(), text_.begin() + static_cast<std::ptrdiff_t>(std::min(cursorIndex_, text_.size())), '\n'));
+}
+
+std::size_t TextEditControl::currentColumnIndex() const
+{
+    return std::min(cursorIndex_, text_.size()) - lineStartForIndex(cursorIndex_);
+}
+
+std::size_t TextEditControl::lineCount() const
+{
+    return static_cast<std::size_t>(std::count(text_.begin(), text_.end(), '\n')) + 1;
+}
+
+std::size_t TextEditControl::indexForLineColumn(std::size_t lineIndex, std::size_t columnIndex) const
+{
+    std::size_t currentLine = 0;
+    std::size_t currentIndex = 0;
+    while (currentLine < lineIndex && currentIndex < text_.size()) {
+        const std::size_t newline = text_.find('\n', currentIndex);
+        if (newline == std::string::npos) {
+            currentIndex = text_.size();
+            break;
+        }
+
+        currentIndex = newline + 1;
+        ++currentLine;
+    }
+
+    if (currentLine < lineIndex) {
+        return text_.size();
+    }
+
+    const std::size_t lineEnd = lineEndForIndex(currentIndex);
+    return std::min(currentIndex + columnIndex, lineEnd);
 }
 
 float TextEditControl::characterAdvance() const
 {
     return kApproximateCharacterWidth;
+}
+
+float TextEditControl::lineAdvance() const
+{
+    return kApproximateLineHeight;
 }
 
 } // namespace visiform::ui::editors

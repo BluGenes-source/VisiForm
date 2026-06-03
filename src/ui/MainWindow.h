@@ -211,7 +211,8 @@ private:
         ProjectSettings,
         ResourceManager,
         KeyboardShortcuts,
-        ItemListEditor
+        ItemListEditor,
+        TreeNodeEditor
     };
 
     struct ItemListEditorDialogState {
@@ -221,6 +222,14 @@ private:
         int selectedItemIndex = -1;
         std::string originalItemsText{};
         int originalSelectedIndex = -1;
+    };
+
+    struct TreeNodeEditorDialogState {
+        bool visible = false;
+        std::string widgetId{};
+        std::string originalNodesText{};
+        std::string originalSelectedNodePath{};
+        std::string originalExpandedNodePaths{};
     };
 
     struct EditorModalField {
@@ -393,7 +402,9 @@ private:
     bool addTabPageToSelectedTabControl();
     bool removeSelectedTabPageFromSelectedTabControl();
     bool openSelectedWidgetItemEditor();
+    bool openSelectedTreeNodeEditor();
     bool applyItemListEditor();
+    bool applyTreeNodeEditor();
     void setItemListEditorSelectedIndex(int index);
     bool applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange);
     void selectWidget(const std::string& widgetId);
@@ -447,6 +458,7 @@ private:
     [[nodiscard]] PanelBounds resourceManagerPreviewBounds() const;
     [[nodiscard]] PanelBounds itemListEditorPreviewBounds() const;
     [[nodiscard]] PanelBounds itemListEditorFormBounds() const;
+    [[nodiscard]] PanelBounds treeNodeEditorTextBounds() const;
     [[nodiscard]] PanelBounds editorModalStatusBounds() const;
     [[nodiscard]] std::vector<EditorModalField> editorModalFields() const;
     [[nodiscard]] std::vector<EditorModalFieldHit> editorModalFieldHits() const;
@@ -506,6 +518,7 @@ private:
     ResourceManagerDialogState resourceManagerDialog_{};
     KeyboardShortcutDialogState keyboardShortcutDialog_{};
     ItemListEditorDialogState itemListEditorDialog_{};
+    TreeNodeEditorDialogState treeNodeEditorDialog_{};
 
     // Apply a callback suggestion directly to the selected widget property
     bool applySelectedWidgetCallbackProperty(const std::string& propertyKey, const std::string& callbackName);

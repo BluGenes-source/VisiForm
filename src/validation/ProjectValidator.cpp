@@ -956,6 +956,45 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
             }
         }
 
+        if (model::supportsTreeNodes(widget->type)) {
+            const std::string nodesText = propertyString(*widget, "nodes");
+            const auto parseResult = model::parseTreeNodes(nodesText);
+            if (!model::validateTreeNodeData(nodesText)) {
+                addMessage(report, ValidationSeverity::Error,
+                    "TREEVIEW_INDENTATION_INVALID",
+                    "TreeView node indentation is invalid.",
+                    widget->id,
+                    "nodes");
+            }
+
+            std::set<std::string> nodePaths;
+            for (const auto& node : parseResult.nodes) {
+                nodePaths.insert(node.path);
+            }
+
+            const std::string selectedNodePath = trim(propertyString(*widget, "selectedNodePath"));
+            if (!selectedNodePath.empty() && !nodePaths.contains(selectedNodePath)) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "TREEVIEW_SELECTED_NODE_MISSING",
+                    "TreeView selected node does not exist.",
+                    widget->id,
+                    "selectedNodePath");
+            }
+
+            for (const auto& expandedNodePath : model::splitTreeNodePaths(propertyString(*widget, "expandedNodePaths"))) {
+                if (nodePaths.contains(expandedNodePath)) {
+                    continue;
+                }
+
+                addMessage(report, ValidationSeverity::Warning,
+                    "TREEVIEW_EXPANDED_NODE_MISSING",
+                    "TreeView expanded node does not exist.",
+                    widget->id,
+                    "expandedNodePaths");
+                break;
+            }
+        }
+
         if (widget->type == model::WidgetType::Image) {
             const std::string resourceId = trim(propertyString(*widget, "resourceId"));
             const std::string imagePath = imagePathProperty(*widget);

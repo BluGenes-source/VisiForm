@@ -99,6 +99,9 @@ constexpr float kItemListEditorModalHeight = 540.0f;
 constexpr float kItemListEditorPreviewHeight = 220.0f;
 constexpr float kItemListEditorPreviewRowHeight = 28.0f;
 constexpr float kItemListEditorPreviewGap = 14.0f;
+constexpr float kTreeNodeEditorModalWidth = 760.0f;
+constexpr float kTreeNodeEditorModalHeight = 560.0f;
+constexpr float kTreeNodeEditorLineHeight = 20.0f;
 
 bool pointInBounds(float x, float y, float left, float top, float width, float height)
 {
@@ -2143,6 +2146,7 @@ void MainWindow::resized()
 {
     updateLayout();
     updatePropertyEditorBounds();
+    updateEditorModalEditorBounds();
     redraw();
 }
 
@@ -5978,6 +5982,13 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
         }
     }
 
+    if (row.key == "nodes") {
+        const auto* selectedWidget = document_.selectedWidget();
+        if (selectedWidget != nullptr && model::supportsTreeNodes(selectedWidget->type)) {
+            return openSelectedTreeNodeEditor();
+        }
+    }
+
     if (row.editKind == PropertyInspector::PropertyEditKind::ReadOnly
         || row.editKind == PropertyInspector::PropertyEditKind::Bool
         || row.editKind == PropertyInspector::PropertyEditKind::Slider) {
@@ -6483,9 +6494,17 @@ void MainWindow::handleTextEditPendingAction()
         if (editorModalEdit_.active) {
             commitEditorModalFieldEdit();
         }
+        else if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+            redraw();
+        }
         else {
             commitInspectorEdit();
         }
+        return;
+    }
+
+    if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+        closeEditorModalDialog("cancel");
         return;
     }
 
@@ -6659,6 +6678,22 @@ MainWindow::PanelBounds MainWindow::itemListEditorFormBounds() const
 
     const PanelBounds previewBounds = itemListEditorPreviewBounds();
     const float top = previewBounds.y + previewBounds.height + kItemListEditorPreviewGap;
+    return {
+        bodyBounds.x,
+        top,
+        bodyBounds.width,
+        std::max(0.0f, bodyBounds.y + bodyBounds.height - top)
+    };
+}
+
+MainWindow::PanelBounds MainWindow::treeNodeEditorTextBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::TreeNodeEditor) {
+        return bodyBounds;
+    }
+
+    const float top = bodyBounds.y + 24.0f;
     return {
         bodyBounds.x,
         top,
@@ -6892,6 +6927,49 @@ bool MainWindow::beginEditorModalFieldEdit(const EditorModalField& field)
     updateEditorModalEditorBounds();
     redraw();
     return true;
+
+}
+
+bool MainWindow::openSelectedTreeNodeEditor()
+{
+    const auto* widget = document_.selectedWidget();
+    if (widget == nullptr || !model::supportsTreeNodes(widget->type)) {
+        return false;
+    }
+
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    treeNodeEditorDialog_.visible = true;
+    treeNodeEditorDialog_.widgetId = widget->id;
+    treeNodeEditorDialog_.originalNodesText = widget->getStringProperty("nodes", {});
+    treeNodeEditorDialog_.originalSelectedNodePath = widget->getStringProperty("selectedNodePath", {});
+    treeNodeEditorDialog_.originalExpandedNodePaths = widget->getStringProperty("expandedNodePaths", {});
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::TreeNodeEditor;
+    editorModal_.title = "Edit Tree Nodes";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = {
+        { "apply_tree_nodes", "Apply" },
+        { "cancel", "Cancel" }
+    };
+    editorModal_.result.clear();
+    editorModal_.statusText = "Edit indented tree text using two spaces per level, then click Apply.";
+    editorModal_.preferredWidth = kTreeNodeEditorModalWidth;
+    editorModal_.preferredHeight = kTreeNodeEditorModalHeight;
+    newProjectWizard_.visible = false;
+    projectSettingsDialog_.visible = false;
+    resourceManagerDialog_.visible = false;
+    keyboardShortcutDialog_.visible = false;
+
+    textEditControl_.begin(treeNodeEditorDialog_.originalNodesText, false, true);
+    updateEditorModalEditorBounds();
+    redraw();
+    return true;
 }
 
 bool MainWindow::commitEditorModalFieldEdit()
@@ -6947,6 +7025,12 @@ void MainWindow::cancelEditorModalFieldEdit()
 
 void MainWindow::updateEditorModalEditorBounds()
 {
+    if (editorModal_.mode == EditorModalMode::TreeNodeEditor && textEditControl_.isActive()) {
+        const PanelBounds bounds = treeNodeEditorTextBounds();
+        textEditControl_.setBounds(bounds.x + 1.0f, bounds.y + 1.0f, bounds.width - 2.0f, bounds.height - 2.0f);
+        return;
+    }
+
     if (!editorModalEdit_.active) {
         return;
     }
@@ -7255,6 +7339,7 @@ void MainWindow::closeEditorModalDialog(const std::string& result)
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
     itemListEditorDialog_ = {};
+    treeNodeEditorDialog_ = {};
     requestKeyboardFocus();
     redraw();
 }
@@ -7423,6 +7508,22 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                     previewBounds.x, previewBounds.y + previewBounds.height - 26.0f, previewBounds.width, 18.0f);
             }
         }
+        else if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+            const PanelBounds textBounds = treeNodeEditorTextBounds();
+            canvas.setColor(0xffd6dbe4);
+            canvas.text("Nodes Text", labelFont_, visage::Font::kTopLeft,
+                bodyBounds.x, bodyBounds.y, bodyBounds.width, 18.0f);
+            canvas.setColor(0xff1a2028);
+            canvas.fill(textBounds.x, textBounds.y, textBounds.width, textBounds.height);
+            canvas.setColor(0xff12161c);
+            canvas.fill(textBounds.x, textBounds.y, textBounds.width, 1.0f);
+            canvas.fill(textBounds.x, textBounds.y + textBounds.height - 1.0f, textBounds.width, 1.0f);
+            canvas.fill(textBounds.x, textBounds.y, 1.0f, textBounds.height);
+            canvas.fill(textBounds.x + textBounds.width - 1.0f, textBounds.y, 1.0f, textBounds.height);
+            canvas.setColor(0xff9eabbc);
+            canvas.text("Use two spaces per indent level. Empty lines are ignored.", labelFont_, visage::Font::kTopLeft,
+                textBounds.x + 8.0f, textBounds.y + 6.0f, textBounds.width - 16.0f, 18.0f);
+        }
 
         for (const auto& hit : editorModalFieldHits()) {
             const bool active = editorModalEdit_.active && editorModalEdit_.key == hit.field.key;
@@ -7546,7 +7647,8 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             || editorModal_.buttons[index].id == "apply"
             || editorModal_.buttons[index].id == "create"
             || editorModal_.buttons[index].id == "apply_shortcuts"
-            || editorModal_.buttons[index].id == "apply_items";
+            || editorModal_.buttons[index].id == "apply_items"
+            || editorModal_.buttons[index].id == "apply_tree_nodes";
         canvas.setColor(accentButton ? 0xff355382 : 0xff39414e);
         canvas.fill(buttonBounds[index].x, buttonBounds[index].y, buttonBounds[index].width, buttonBounds[index].height);
         canvas.setColor(0xff14161b);
@@ -7583,6 +7685,11 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
         if (!commitEditorModalFieldEdit()) {
             return true;
         }
+    }
+
+    if (editorModal_.mode == EditorModalMode::TreeNodeEditor && textEditControl_.mouseDown(e.position.x, e.position.y)) {
+        redraw();
+        return true;
     }
 
     const auto buttonBounds = editorModalButtonBounds();

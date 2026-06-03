@@ -728,6 +728,33 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         rows.push_back({ "__tabpage_note", "Ownership", "TabPage is owned by its parent TabControl.", "TabPage is owned by TabControl.", PropertyEditKind::ReadOnly });
     }
 
+    if (selectedWidget->type == model::WidgetType::TreeView) {
+        const std::string nodesText = selectedWidget->getStringProperty("nodes", {});
+        const auto parseResult = model::parseTreeNodes(nodesText);
+        const auto expandedPaths = model::splitTreeNodePaths(selectedWidget->getStringProperty("expandedNodePaths", {}));
+        rows.push_back({ "__section_treeview", "Tree View", {}, {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({
+            "nodes",
+            "Nodes",
+            "Click the value area or Edit... to edit indented tree-node text.",
+            std::to_string(parseResult.nodes.size()) + (parseResult.nodes.size() == 1 ? " node" : " nodes"),
+            PropertyEditKind::Text,
+            false,
+            {},
+            0.0f,
+            0.0f,
+            1.0f,
+            "Edit..."
+        });
+        rows.push_back({
+            "expandedNodePaths",
+            "Expanded Nodes",
+            "Comma-separated list of expanded node paths.",
+            selectedWidget->getStringProperty("expandedNodePaths", {}),
+            PropertyEditKind::Text
+        });
+    }
+
     std::set<std::string> drawnKeys;
     for (const auto& row : rows) {
         drawnKeys.insert(row.key);
@@ -810,6 +837,26 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                     1.0f,
                     "Edit..."
                 });
+                drawnKeys.insert(property.key);
+                continue;
+            }
+
+            if (model::supportsTreeNodes(selectedWidget->type) && property.key == "nodes") {
+                drawnKeys.insert(property.key);
+                continue;
+            }
+
+            if (model::supportsTreeNodes(selectedWidget->type) && property.key == "selectedNodePath") {
+                choices.clear();
+                choices.push_back(makeChoice({}, "<none>", "Clears the selected node path."));
+                const auto parsedNodes = model::parseTreeNodes(selectedWidget->getStringProperty("nodes", {}));
+                for (const auto& node : parsedNodes.nodes) {
+                    const std::string label = std::string(static_cast<std::size_t>(std::max(0, node.depth)) * 2, ' ') + node.path;
+                    choices.push_back(makeChoice(node.path, label, node.text));
+                }
+            }
+
+            if (model::supportsTreeNodes(selectedWidget->type) && property.key == "expandedNodePaths") {
                 drawnKeys.insert(property.key);
                 continue;
             }

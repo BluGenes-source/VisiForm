@@ -1056,6 +1056,82 @@ void drawWidget(visage::Canvas& canvas,
         }
         break;
     }
+    case model::WidgetType::TreeView: {
+        const std::string nodesText = getStringProperty(widget, "nodes", {});
+        const bool showRoot = getBoolProperty(widget, "showRoot", true);
+        const bool showLines = getBoolProperty(widget, "showLines", true);
+        const std::string expandedNodePaths = getStringProperty(widget, "expandedNodePaths", {});
+        const auto visibleNodes = model::flattenVisibleTreeNodes(nodesText, showRoot, expandedNodePaths);
+        const std::string selectedNodePath = model::clampSelectedTreeNode(
+            nodesText,
+            getStringProperty(widget, "selectedNodePath", {}),
+            showRoot,
+            expandedNodePaths);
+        const float rowHeight = std::max(18.0f, fontSize * 1.45f);
+        const float indentWidth = 16.0f;
+        const float markerSize = 10.0f;
+        const float listTop = bounds.y + 4.0f;
+        const float visibleHeight = std::max(0.0f, bounds.height - 8.0f);
+        const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+
+        float rowTop = listTop;
+        const int lineColor = blendColor(style.borderColor, style.fillColor, 0.35f);
+        for (std::size_t index = 0; index < std::min<std::size_t>(visibleCount, visibleNodes.size()); ++index) {
+            const auto& node = visibleNodes[index];
+            const bool selected = node.path == selectedNodePath;
+            const float markerCenterX = bounds.x + 12.0f + static_cast<float>(node.visualDepth) * indentWidth;
+            const float markerCenterY = rowTop + rowHeight * 0.5f;
+            const float textX = markerCenterX + (node.hasChildren ? 12.0f : 8.0f);
+
+            canvas.setColor(selected ? blendColor(style.accentColor, style.fillColor, 0.28f) : (index % 2 == 0 ? style.fillColor : blendColor(style.panelColor, style.fillColor, 0.14f)));
+            canvas.fill(bounds.x + 4.0f, rowTop, std::max(0.0f, bounds.width - 14.0f), rowHeight - 1.0f);
+
+            if (showLines && node.visualDepth > 0) {
+                canvas.setColor(lineColor);
+                const float indentX = bounds.x + 12.0f + static_cast<float>(node.visualDepth - 1) * indentWidth;
+                canvas.fill(indentX, rowTop, 1.0f, rowHeight);
+                canvas.fill(indentX, markerCenterY, markerCenterX - indentX, 1.0f);
+            }
+
+            if (node.hasChildren) {
+                const PanelRect markerBounds{ markerCenterX - markerSize * 0.5f, markerCenterY - markerSize * 0.5f, markerSize, markerSize };
+                canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.22f));
+                canvas.fill(markerBounds.x, markerBounds.y, markerBounds.width, markerBounds.height);
+                drawBorder(canvas, markerBounds, style.borderColor, 1.0f);
+                canvas.setColor(style.borderColor);
+                canvas.fill(markerBounds.x + 2.0f, markerCenterY, markerBounds.width - 4.0f, 1.0f);
+                if (!node.expanded) {
+                    canvas.fill(markerCenterX, markerBounds.y + 2.0f, 1.0f, markerBounds.height - 4.0f);
+                }
+            }
+
+            if (drawText) {
+                canvas.setColor(style.textColor);
+                canvas.text(node.text, widgetFont, visage::Font::kTopLeft,
+                    textX + 6.0f, rowTop + std::max(2.0f, (rowHeight - fontSize * 1.3f) * 0.5f),
+                    std::max(0.0f, bounds.x + bounds.width - textX - 18.0f), std::max(0.0f, rowHeight - 4.0f));
+            }
+
+            rowTop += rowHeight;
+        }
+
+        if (visibleNodes.size() > visibleCount) {
+            canvas.setColor(style.panelColor);
+            canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 4.0f, 4.0f, std::max(0.0f, bounds.height - 8.0f));
+            canvas.setColor(style.accentColor);
+            canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 10.0f, 4.0f, std::max(16.0f, bounds.height * 0.22f));
+        }
+
+        if (visibleNodes.empty() && drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text("<empty>", widgetFont, visage::Font::kCenter,
+                bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+        break;
+    }
     case model::WidgetType::CheckBox: {
         const float boxSize = 18.0f;
         const float squareX = bounds.x + 6.0f;

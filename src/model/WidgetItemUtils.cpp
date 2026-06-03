@@ -3,6 +3,8 @@
 #include "model/WidgetItemUtils.h"
 
 #include <algorithm>
+#include <map>
+#include <set>
 #include <cctype>
 #include <sstream>
 
@@ -34,6 +36,57 @@ std::vector<std::string> normalizeItems(const std::vector<std::string>& items)
         }
     }
     return normalizedItems;
+}
+
+std::string trimText(std::string_view text)
+{
+    std::size_t start = 0;
+    std::size_t end = text.size();
+    while (start < end && std::isspace(static_cast<unsigned char>(text[start])) != 0) {
+        ++start;
+    }
+    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) {
+        --end;
+    }
+
+    return std::string{ text.substr(start, end - start) };
+}
+
+std::vector<std::string> splitLines(std::string_view text)
+{
+    std::vector<std::string> lines;
+    if (text.empty()) {
+        return lines;
+    }
+
+    std::istringstream stream(std::string{ text });
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        lines.push_back(std::move(line));
+    }
+
+    return lines;
+}
+
+std::string joinPathParts(const std::vector<std::string>& parts)
+{
+    std::string path;
+    for (std::size_t index = 0; index < parts.size(); ++index) {
+        if (index > 0) {
+            path += '/';
+        }
+        path += parts[index];
+    }
+    return path;
+}
+
+std::set<std::string> expandedPathSet(std::string_view text)
+{
+    const auto paths = splitTreeNodePaths(text);
+    return std::set<std::string>(paths.begin(), paths.end());
 }
 
 } // namespace
@@ -136,6 +189,228 @@ void normalizeItemListProperties(WidgetNode& widget)
     if (widget.type == WidgetType::ComboBox) {
         widget.setProperty("text", getSelectedItemText(items, selectedIndex));
     }
+}
+
+bool supportsTreeNodes(WidgetType type)
+{
+    return type == WidgetType::TreeView;
+}
+
+TreeNodeParseResult parseTreeNodes(std::string_view text)
+{
+    TreeNodeParseResult result;
+    std::vector<std::string> pathParts;
+    for (const auto& rawLine : splitLines(text)) {
+        std::size_t leadingSpaces = 0;
+        while (leadingSpaces < rawLine.size() && rawLine[leadingSpaces] == ' ') {
+            ++leadingSpaces;
+        }
+
+        const std::string nodeText = trimText(rawLine.substr(leadingSpaces));
+        if (nodeText.empty()) {
+            continue;
+        }
+
+        const int rawDepth = static_cast<int>(leadingSpaces / 2);
+        const int safeDepth = std::min(rawDepth, static_cast<int>(pathParts.size()));
+        if ((leadingSpaces % 2) != 0 || safeDepth != rawDepth) {
+            result.indentationNormalized = true;
+        }
+
+        pathParts.resize(static_cast<std::size_t>(safeDepth));
+        pathParts.push_back(nodeText);
+
+        TreeNodeEntry node;
+        node.text = nodeText;
+        node.depth = safeDepth;
+        node.visualDepth = safeDepth;
+        node.parentIndex = safeDepth > 0 ? static_cast<int>(result.nodes.size()) - 1 : -1;
+        for (int index = static_cast<int>(result.nodes.size()) - 1; index >= 0; --index) {
+            if (result.nodes[static_cast<std::size_t>(index)].depth == safeDepth - 1) {
+                node.parentIndex = index;
+                break;
+            }
+        }
+        node.path = joinPathParts(pathParts);
+        result.nodes.push_back(std::move(node));
+    }
+
+    for (std::size_t index = 0; index + 1 < result.nodes.size(); ++index) {
+        if (result.nodes[index + 1].depth > result.nodes[index].depth) {
+            result.nodes[index].hasChildren = true;
+        }
+    }
+
+    return result;
+}
+
+std::string serializeTreeNodes(const std::vector<TreeNodeEntry>& nodes)
+{
+    std::string text;
+    for (std::size_t index = 0; index < nodes.size(); ++index) {
+        if (index > 0) {
+            text += '\n';
+        }
+        text.append(static_cast<std::size_t>(std::max(0, nodes[index].depth)) * 2, ' ');
+        text += trimText(nodes[index].text);
+    }
+    return text;
+}
+
+std::string normalizeTreeIndentation(std::string_view text)
+{
+    return serializeTreeNodes(parseTreeNodes(text).nodes);
+}
+
+std::vector<std::string> splitTreeNodePaths(std::string_view text)
+{
+    std::vector<std::string> paths;
+    std::istringstream stream(std::string{ text });
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        const std::string trimmedItem = trimText(item);
+        if (!trimmedItem.empty()) {
+            paths.push_back(trimmedItem);
+        }
+    }
+    return paths;
+}
+
+std::string joinTreeNodePaths(const std::vector<std::string>& paths)
+{
+    std::string text;
+    for (std::size_t index = 0; index < paths.size(); ++index) {
+        if (index > 0) {
+            text += ',';
+        }
+        text += trimText(paths[index]);
+    }
+    return text;
+}
+
+std::string normalizeExpandedTreeNodePaths(std::string_view nodesText, std::string_view expandedNodePathsText)
+{
+    const TreeNodeParseResult parseResult = parseTreeNodes(nodesText);
+    std::map<std::string, bool> expandablePaths;
+    for (const auto& node : parseResult.nodes) {
+        expandablePaths.insert_or_assign(node.path, node.hasChildren);
+    }
+
+    std::vector<std::string> normalizedPaths;
+    std::set<std::string> seenPaths;
+    for (const auto& path : splitTreeNodePaths(expandedNodePathsText)) {
+        const auto iterator = expandablePaths.find(path);
+        if (iterator == expandablePaths.end() || !iterator->second || seenPaths.contains(path)) {
+            continue;
+        }
+        normalizedPaths.push_back(path);
+        seenPaths.insert(path);
+    }
+
+    return joinTreeNodePaths(normalizedPaths);
+}
+
+std::vector<TreeNodeEntry> flattenVisibleTreeNodes(std::string_view nodesText, bool showRoot, std::string_view expandedNodePathsText)
+{
+    const TreeNodeParseResult parseResult = parseTreeNodes(nodesText);
+    const std::set<std::string> expandedPaths = expandedPathSet(expandedNodePathsText);
+
+    std::vector<TreeNodeEntry> visibleNodes;
+    visibleNodes.reserve(parseResult.nodes.size());
+    std::vector<bool> visibility(parseResult.nodes.size(), false);
+
+    for (std::size_t index = 0; index < parseResult.nodes.size(); ++index) {
+        TreeNodeEntry node = parseResult.nodes[index];
+        const bool expanded = expandedPaths.contains(node.path);
+        node.expanded = expanded;
+
+        bool isVisible = false;
+        if (node.parentIndex < 0) {
+            isVisible = showRoot;
+        }
+        else {
+            const auto& parent = parseResult.nodes[static_cast<std::size_t>(node.parentIndex)];
+            const bool parentVisible = visibility[static_cast<std::size_t>(node.parentIndex)];
+            const bool hiddenRootParent = !showRoot && parent.depth == 0;
+            isVisible = (parentVisible && expandedPaths.contains(parent.path)) || hiddenRootParent;
+        }
+
+        visibility[index] = isVisible;
+        if (!isVisible) {
+            continue;
+        }
+
+        node.visualDepth = showRoot ? node.depth : std::max(0, node.depth - 1);
+        visibleNodes.push_back(std::move(node));
+    }
+
+    return visibleNodes;
+}
+
+std::string getSelectedNodeText(std::string_view nodesText, std::string_view selectedNodePath)
+{
+    const std::string normalizedSelectedPath = trimText(selectedNodePath);
+    if (normalizedSelectedPath.empty()) {
+        return {};
+    }
+
+    const TreeNodeParseResult parseResult = parseTreeNodes(nodesText);
+    const auto iterator = std::find_if(parseResult.nodes.begin(), parseResult.nodes.end(), [&normalizedSelectedPath](const TreeNodeEntry& node) {
+        return node.path == normalizedSelectedPath;
+    });
+    return iterator == parseResult.nodes.end() ? std::string{} : iterator->text;
+}
+
+std::string clampSelectedTreeNode(std::string_view nodesText, std::string_view selectedNodePath, bool showRoot, std::string_view expandedNodePathsText)
+{
+    const std::string normalizedSelectedPath = trimText(selectedNodePath);
+    const auto visibleNodes = flattenVisibleTreeNodes(nodesText, showRoot, expandedNodePathsText);
+    const auto visibleIterator = std::find_if(visibleNodes.begin(), visibleNodes.end(), [&normalizedSelectedPath](const TreeNodeEntry& node) {
+        return node.path == normalizedSelectedPath;
+    });
+    if (visibleIterator != visibleNodes.end()) {
+        return visibleIterator->path;
+    }
+
+    const TreeNodeParseResult parseResult = parseTreeNodes(nodesText);
+    const auto anyIterator = std::find_if(parseResult.nodes.begin(), parseResult.nodes.end(), [&normalizedSelectedPath](const TreeNodeEntry& node) {
+        return node.path == normalizedSelectedPath;
+    });
+    if (anyIterator != parseResult.nodes.end() && !showRoot) {
+        return visibleNodes.empty() ? anyIterator->path : visibleNodes.front().path;
+    }
+
+    if (!visibleNodes.empty()) {
+        return visibleNodes.front().path;
+    }
+    return parseResult.nodes.empty() ? std::string{} : parseResult.nodes.front().path;
+}
+
+bool validateTreeNodeData(std::string_view text)
+{
+    return !parseTreeNodes(text).indentationNormalized;
+}
+
+void normalizeTreeViewProperties(WidgetNode& widget)
+{
+    if (!supportsTreeNodes(widget.type)) {
+        return;
+    }
+
+    const std::string normalizedNodes = normalizeTreeIndentation(widget.getStringProperty("nodes", {}));
+    const std::string normalizedExpandedPaths = normalizeExpandedTreeNodePaths(
+        normalizedNodes,
+        widget.getStringProperty("expandedNodePaths", {}));
+    const bool showRoot = widget.getBoolProperty("showRoot", true);
+    const std::string selectedNodePath = clampSelectedTreeNode(
+        normalizedNodes,
+        widget.getStringProperty("selectedNodePath", {}),
+        showRoot,
+        normalizedExpandedPaths);
+
+    widget.setProperty("nodes", normalizedNodes);
+    widget.setProperty("expandedNodePaths", normalizedExpandedPaths);
+    widget.setProperty("selectedNodePath", selectedNodePath);
 }
 
 } // namespace visiform::model

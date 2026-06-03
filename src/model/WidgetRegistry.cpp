@@ -1,6 +1,8 @@
 #include "model/WidgetRegistry.h"
 #include "model/WidgetRegistry.h"
 
+#include "model/WidgetItemUtils.h"
+
 #include <algorithm>
 
 namespace visiform::model {
@@ -84,6 +86,34 @@ WidgetDefinition makeFormWindowDefinition()
     definition.events = {
         { "onLoad", "onLoad", "void_event", "Called when the form loads." },
         { "onClose", "onClose", "void_event", "Called when the form closes." }
+    };
+    return definition;
+}
+
+WidgetDefinition makeTreeViewDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::TreeView;
+    definition.typeName = "TreeView";
+    definition.displayName = "Tree View";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "treeView";
+    definition.defaultHint = "Displays a hierarchical list of expandable tree nodes.";
+    definition.size = { 240.0f, 180.0f, 140.0f, 100.0f };
+    definition.properties = {
+        { "nodes", "Nodes", "Root\n  Child 1\n  Child 2\n    Grandchild 1", PropertyEditKind::Text, true, "Indented tree-node text using two spaces per level." },
+        { "selectedNodePath", "Selected Node", "Root/Child 1", PropertyEditKind::Text, true, "Selected node path within the tree." },
+        { "expandedNodePaths", "Expanded Nodes", "Root,Root/Child 2", PropertyEditKind::Text, true, "Comma-separated list of expanded node paths." },
+        { "showRoot", "Show Root", true, PropertyEditKind::Bool, true, "Show the root node in the tree preview and generated runtime." },
+        { "showLines", "Show Lines", true, PropertyEditKind::Bool, true, "Draw connecting guide lines between visible tree nodes." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    definition.events = {
+        { "onChanged", "On Changed", "void_event", "Called when the selected node changes." },
+        { "onDoubleClick", "On Double Click", "void_event", "Called when a node is double-clicked." }
     };
     return definition;
 }
@@ -608,6 +638,7 @@ WidgetRegistry::WidgetRegistry()
         makeTextBoxDefinition(),
         makeComboBoxDefinition(),
         makeListBoxDefinition(),
+        makeTreeViewDefinition(),
         makeCheckBoxDefinition(),
         makeRadioButtonDefinition(),
         makeSliderDefinition(),
@@ -659,6 +690,8 @@ WidgetNode WidgetRegistry::createDefaultWidget(WidgetType type, const std::strin
                 widget.setProperty(event.key, "");
             }
         }
+        normalizeItemListProperties(widget);
+        normalizeTreeViewProperties(widget);
         widget.syncHierarchyMetadata();
         return widget;
     }
