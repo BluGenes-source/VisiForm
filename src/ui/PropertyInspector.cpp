@@ -767,6 +767,47 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         });
     }
 
+    if (selectedWidget->type == model::WidgetType::TableGrid) {
+        const auto columns = model::splitTableColumns(selectedWidget->getStringProperty("columns", {}));
+        const auto rowsData = model::splitTableRows(selectedWidget->getStringProperty("rows", {}));
+        const auto selection = model::clampSelectedCell(
+            columns,
+            rowsData,
+            selectedWidget->getIntProperty("selectedRow", rowsData.empty() ? -1 : 0),
+            selectedWidget->getIntProperty("selectedColumn", columns.empty() ? -1 : 0));
+        rows.push_back({ "__section_tablegrid", "Table / Grid", {}, {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({
+            "columns",
+            "Columns",
+            "Click the value area or Edit... to open the visual table editor.",
+            std::to_string(columns.size()) + (columns.size() == 1 ? " column" : " columns"),
+            PropertyEditKind::Text,
+            false,
+            {},
+            0.0f,
+            0.0f,
+            1.0f,
+            "Edit..."
+        });
+        std::string rowsSummary = std::to_string(rowsData.size()) + (rowsData.size() == 1 ? " row" : " rows");
+        if (selection.row >= 0 && selection.column >= 0) {
+            rowsSummary += ", selected R" + std::to_string(selection.row + 1) + " C" + std::to_string(selection.column + 1);
+        }
+        rows.push_back({
+            "rows",
+            "Rows",
+            "Click the value area or Edit... to open the visual table editor.",
+            rowsSummary,
+            PropertyEditKind::Text,
+            false,
+            {},
+            0.0f,
+            0.0f,
+            1.0f,
+            "Edit..."
+        });
+    }
+
     std::set<std::string> drawnKeys;
     for (const auto& row : rows) {
         drawnKeys.insert(row.key);
@@ -849,6 +890,11 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                     1.0f,
                     "Edit..."
                 });
+                drawnKeys.insert(property.key);
+                continue;
+            }
+
+            if (model::supportsTableGrid(selectedWidget->type) && (property.key == "columns" || property.key == "rows")) {
                 drawnKeys.insert(property.key);
                 continue;
             }

@@ -658,6 +658,12 @@ std::string runtimeEventHandlerAccessor(std::string_view eventKey)
     if (eventKey == "onCancelled") {
         return "widget.events.onCancelled";
     }
+    if (eventKey == "onSelectionChanged") {
+        return "widget.events.onSelectionChanged";
+    }
+    if (eventKey == "onCellDoubleClick") {
+        return "widget.events.onCellDoubleClick";
+    }
 
     return {};
 }
@@ -1035,6 +1041,8 @@ std::string runtimeWidgetTypeLiteral(visiform::model::WidgetType type)
         return "RuntimeWidgetType::ComboBox";
     case visiform::model::WidgetType::ListBox:
         return "RuntimeWidgetType::ListBox";
+    case visiform::model::WidgetType::TableGrid:
+        return "RuntimeWidgetType::TableGrid";
     case visiform::model::WidgetType::CheckBox:
         return "RuntimeWidgetType::CheckBox";
     case visiform::model::WidgetType::RadioButton:
@@ -1079,6 +1087,20 @@ std::string emitStringVectorLiteral(const std::vector<std::string>& values)
             stream << ", ";
         }
         stream << emitStringLiteral(values[index]);
+    }
+    stream << "}";
+    return stream.str();
+}
+
+std::string emitStringMatrixLiteral(const std::vector<std::vector<std::string>>& values)
+{
+    std::ostringstream stream;
+    stream << "{";
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        if (index > 0) {
+            stream << ", ";
+        }
+        stream << emitStringVectorLiteral(values[index]);
     }
     stream << "}";
     return stream.str();
@@ -1141,6 +1163,8 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.events.onTextChanged = " << emitStringLiteral(widget.getStringProperty("onTextChanged", {})) << ";\n";
     stream << innerIndent << "widget.events.onAccepted = " << emitStringLiteral(widget.getStringProperty("onAccepted", {})) << ";\n";
     stream << innerIndent << "widget.events.onCancelled = " << emitStringLiteral(widget.getStringProperty("onCancelled", {})) << ";\n";
+    stream << innerIndent << "widget.events.onSelectionChanged = " << emitStringLiteral(widget.getStringProperty("onSelectionChanged", {})) << ";\n";
+    stream << innerIndent << "widget.events.onCellDoubleClick = " << emitStringLiteral(widget.getStringProperty("onCellDoubleClick", {})) << ";\n";
     stream << innerIndent << "widget.style.panelColor = " << emitRuntimeColorLiteral(spec.style.panelColor, "makeColor(0x1F, 0x24, 0x2D)") << ";\n";
     stream << innerIndent << "widget.style.fillColor = " << emitRuntimeColorLiteral(spec.style.fillColor, "makeColor(0x2B, 0x31, 0x3D)") << ";\n";
     stream << innerIndent << "widget.style.textColor = " << emitRuntimeColorLiteral(spec.style.textColor, "makeColor(0xEE, 0xF2, 0xF8)") << ";\n";
@@ -1187,6 +1211,24 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
         if (widget.type == visiform::model::WidgetType::ComboBox) {
             stream << innerIndent << "widget.text.value = " << emitStringLiteral(visiform::model::getSelectedItemText(items, selectedIndex)) << ";\n";
         }
+    }
+    else if (widget.type == visiform::model::WidgetType::TableGrid) {
+        const auto data = visiform::model::normalizeTableData(
+            widget.getStringProperty("columns", {}),
+            widget.getStringProperty("rows", {}));
+        const auto selection = visiform::model::clampSelectedCell(
+            data.columns,
+            data.rows,
+            widget.getIntProperty("selectedRow", data.rows.empty() ? -1 : 0),
+            widget.getIntProperty("selectedColumn", data.columns.empty() ? -1 : 0));
+        stream << innerIndent << "widget.tableColumns = " << emitStringVectorLiteral(data.columns) << ";\n";
+        stream << innerIndent << "widget.tableRows = " << emitStringMatrixLiteral(data.rows) << ";\n";
+        stream << innerIndent << "widget.selectedRow = " << selection.row << ";\n";
+        stream << innerIndent << "widget.selectedColumn = " << selection.column << ";\n";
+        stream << innerIndent << "widget.showHeader = " << (widget.getBoolProperty("showHeader", true) ? "true" : "false") << ";\n";
+        stream << innerIndent << "widget.showGridLines = " << (widget.getBoolProperty("showGridLines", true) ? "true" : "false") << ";\n";
+        stream << innerIndent << "widget.rowHeight = " << emitFloat(std::max(1.0f, widget.getFloatProperty("rowHeight", 28.0f))) << ";\n";
+        stream << innerIndent << "widget.headerHeight = " << emitFloat(std::max(0.0f, widget.getFloatProperty("headerHeight", 30.0f))) << ";\n";
     }
     else if (widget.type == visiform::model::WidgetType::ProgressBar) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
@@ -1328,6 +1370,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    TextBox,\n";
     stream << "    ComboBox,\n";
     stream << "    ListBox,\n";
+    stream << "    TableGrid,\n";
     stream << "    CheckBox,\n";
     stream << "    RadioButton,\n";
     stream << "    Slider,\n";
@@ -1401,6 +1444,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string onTextChanged;\n";
     stream << "    std::string onAccepted;\n";
     stream << "    std::string onCancelled;\n";
+    stream << "    std::string onSelectionChanged;\n";
+    stream << "    std::string onCellDoubleClick;\n";
     stream << "};\n\n";
     stream << "struct RuntimeInteractionState {\n";
     stream << "    bool pressed = false;\n";
@@ -1417,12 +1462,20 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string source;\n";
     stream << "    std::string colorValue = \"#2D7DFF\";\n";
     stream << "    std::vector<std::string> items;\n";
+    stream << "    std::vector<std::string> tableColumns;\n";
+    stream << "    std::vector<std::vector<std::string>> tableRows;\n";
     stream << "    int tabIndex = 0;\n";
     stream << "    int selectedTab = 0;\n";
     stream << "    int selectedIndex = -1;\n";
+    stream << "    int selectedRow = -1;\n";
+    stream << "    int selectedColumn = -1;\n";
     stream << "    bool multiSelect = false;\n";
+    stream << "    bool showHeader = true;\n";
+    stream << "    bool showGridLines = true;\n";
     stream << "    bool modal = true;\n";
     stream << "    bool visibleAtStartup = false;\n";
+    stream << "    float rowHeight = 28.0f;\n";
+    stream << "    float headerHeight = 30.0f;\n";
     stream << "    RuntimeTextState text;\n";
     stream << "    RuntimeButtonState button;\n";
     stream << "    RuntimeToggleState toggle;\n";
@@ -1466,6 +1519,11 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    [[nodiscard]] bool setSelected(const std::string& idOrName, bool selected);\n";
     stream << "    [[nodiscard]] std::optional<bool> getSelected(const std::string& idOrName) const;\n";
     stream << "    [[nodiscard]] bool getSelectedOr(const std::string& idOrName, bool fallback) const;\n\n";
+    stream << "    [[nodiscard]] std::optional<int> getSelectedRow(const std::string& idOrName) const;\n";
+    stream << "    [[nodiscard]] std::optional<int> getSelectedColumn(const std::string& idOrName) const;\n";
+    stream << "    [[nodiscard]] bool setSelectedCell(const std::string& idOrName, int row, int column);\n";
+    stream << "    [[nodiscard]] std::optional<std::string> getCellText(const std::string& idOrName, int row, int column) const;\n";
+    stream << "    [[nodiscard]] bool setCellText(const std::string& idOrName, int row, int column, const std::string& text);\n\n";
     stream << "    [[nodiscard]] bool setValue(const std::string& idOrName, float value);\n";
     stream << "    [[nodiscard]] std::optional<float> getValue(const std::string& idOrName) const;\n";
     stream << "    [[nodiscard]] float getValueOr(const std::string& idOrName, float fallback) const;\n\n";
@@ -1509,9 +1567,11 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    void drawActiveModalDialog(visage::Canvas& canvas, bool drawText) const;\n";
     stream << "    bool setWidgetValue(RuntimeWidget& widget, float value, bool emitEvent);\n";
     stream << "    bool setItemSelection(RuntimeWidget& widget, int selectedIndex, bool emitEvent);\n";
+    stream << "    bool setTableGridSelection(RuntimeWidget& widget, int row, int column, bool emitEvent);\n";
     stream << "    bool updateSliderFromPoint(RuntimeWidget& widget, float formX);\n";
     stream << "    RuntimeRect scrollBarThumbRect(const RuntimeWidget& widget) const;\n";
     stream << "    std::optional<int> listBoxRowIndexAt(const RuntimeWidget& widget, float x, float y) const;\n";
+    stream << "    std::optional<std::pair<int, int>> tableGridCellAt(const RuntimeWidget& widget, float x, float y) const;\n";
     stream << "    bool updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY);\n";
     stream << "    bool updateTextBoxText(RuntimeWidget& widget, const std::string& text, bool emitEvent);\n";
     stream << "    void emitVoidEvent(const RuntimeWidget& widget, std::string_view eventKey);\n";
@@ -1682,6 +1742,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::TextBox: return \"TextBox\";\n";
     stream << "    case RuntimeWidgetType::ComboBox: return \"ComboBox\";\n";
     stream << "    case RuntimeWidgetType::ListBox: return \"ListBox\";\n";
+    stream << "    case RuntimeWidgetType::TableGrid: return \"TableGrid\";\n";
     stream << "    case RuntimeWidgetType::CheckBox: return \"CheckBox\";\n";
     stream << "    case RuntimeWidgetType::RadioButton: return \"RadioButton\";\n";
     stream << "    case RuntimeWidgetType::Slider: return \"Slider\";\n";
@@ -1758,6 +1819,17 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "float listBoxRowHeight(const RuntimeWidget& widget)\n";
     stream << "{\n";
     stream << "    return std::max(18.0f, std::max(8.0f, widget.style.fontSize) * 1.5f);\n";
+    stream << "}\n\n";
+    stream << "std::string tableGridCellText(const RuntimeWidget& widget, int row, int column)\n";
+    stream << "{\n";
+    stream << "    if (row < 0 || column < 0 || row >= static_cast<int>(widget.tableRows.size())) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n";
+    stream << "    const auto& cells = widget.tableRows[static_cast<std::size_t>(row)];\n";
+    stream << "    if (column >= static_cast<int>(cells.size())) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n";
+    stream << "    return cells[static_cast<std::size_t>(column)];\n";
     stream << "}\n\n";
     stream << "std::vector<std::string> splitModalMessageLines(const std::string& text)\n";
     stream << "{\n";
@@ -1924,6 +1996,83 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        if (drawText && widget.items.empty()) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            canvas.text(\"<empty>\", font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::TableGrid: {\n";
+    stream << "        const bool showHeader = widget.showHeader;\n";
+    stream << "        const bool showGridLines = widget.showGridLines;\n";
+    stream << "        const float headerHeight = showHeader ? std::max(18.0f, widget.headerHeight) : 0.0f;\n";
+    stream << "        const float rowHeight = std::max(16.0f, widget.rowHeight);\n";
+    stream << "        const float contentX = x + 4.0f;\n";
+    stream << "        const float contentY = y + 4.0f;\n";
+    stream << "        const float contentWidth = std::max(0.0f, width - 8.0f);\n";
+    stream << "        const float contentHeight = std::max(0.0f, height - 8.0f);\n";
+    stream << "        const std::size_t columnCount = std::max<std::size_t>(1, widget.tableColumns.empty() ? 1 : widget.tableColumns.size());\n";
+    stream << "        const float columnWidth = contentWidth / static_cast<float>(columnCount);\n";
+    stream << "        const float visibleRowsHeight = std::max(0.0f, contentHeight - headerHeight);\n";
+    stream << "        const std::size_t visibleRowCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleRowsHeight / rowHeight)));\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        if (showHeader) {\n";
+    stream << "            canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.18f)));\n";
+    stream << "            canvas.fill(contentX, contentY, contentWidth, std::min(headerHeight, contentHeight));\n";
+    stream << "        }\n";
+    stream << "        for (std::size_t columnIndex = 0; columnIndex < columnCount; ++columnIndex) {\n";
+    stream << "            const float columnX = contentX + static_cast<float>(columnIndex) * columnWidth;\n";
+    stream << "            const bool selectedColumn = static_cast<int>(columnIndex) == widget.selectedColumn;\n";
+    stream << "            if (showHeader && selectedColumn) {\n";
+    stream << "                canvas.setColor(canvasColor(blendColor(widget.style.accentColor, widget.style.fillColor, 0.24f)));\n";
+    stream << "                canvas.fill(columnX, contentY, std::max(0.0f, columnWidth - 1.0f), std::min(headerHeight, contentHeight));\n";
+    stream << "            }\n";
+    stream << "            if (showGridLines && columnIndex > 0) {\n";
+    stream << "                canvas.setColor(canvasColor(blendColor(widget.style.borderColor, widget.style.fillColor, 0.35f)));\n";
+    stream << "                canvas.fill(columnX, contentY, 1.0f, contentHeight);\n";
+    stream << "            }\n";
+    stream << "            if (showHeader && drawText && columnIndex < widget.tableColumns.size()) {\n";
+    stream << "                const std::string& headerText = widget.tableColumns[columnIndex];\n";
+    stream << "                canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "                canvas.text(headerText.empty() ? std::string{ \"<empty>\" } : headerText, font, visage::Font::kTopLeft, columnX + 6.0f, contentY + std::max(3.0f, (headerHeight - std::max(8.0f, widget.style.fontSize) * 1.3f) * 0.35f), std::max(0.0f, columnWidth - 12.0f), std::max(0.0f, headerHeight - 6.0f));\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        float rowTop = contentY + headerHeight;\n";
+    stream << "        for (std::size_t rowIndex = 0; rowIndex < std::min<std::size_t>(visibleRowCount, widget.tableRows.size()); ++rowIndex) {\n";
+    stream << "            const bool selectedRow = static_cast<int>(rowIndex) == widget.selectedRow;\n";
+    stream << "            for (std::size_t columnIndex = 0; columnIndex < columnCount; ++columnIndex) {\n";
+    stream << "                const float columnX = contentX + static_cast<float>(columnIndex) * columnWidth;\n";
+    stream << "                const bool selectedCell = selectedRow && static_cast<int>(columnIndex) == widget.selectedColumn;\n";
+    stream << "                const RuntimeColor rowFill = selectedCell\n";
+    stream << "                    ? blendColor(widget.style.accentColor, widget.style.fillColor, 0.30f)\n";
+    stream << "                    : (selectedRow\n";
+    stream << "                        ? blendColor(widget.style.accentColor, widget.style.fillColor, 0.16f)\n";
+    stream << "                        : (rowIndex % 2 == 0 ? widget.style.fillColor : blendColor(widget.style.panelColor, widget.style.fillColor, 0.14f)));\n";
+    stream << "                canvas.setColor(canvasColor(rowFill));\n";
+    stream << "                canvas.fill(columnX, rowTop, std::max(0.0f, columnWidth - 1.0f), std::max(0.0f, rowHeight - 1.0f));\n";
+    stream << "                if (drawText) {\n";
+    stream << "                    canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "                    canvas.text(tableGridCellText(widget, static_cast<int>(rowIndex), static_cast<int>(columnIndex)), font, visage::Font::kTopLeft, columnX + 6.0f, rowTop + std::max(2.0f, (rowHeight - std::max(8.0f, widget.style.fontSize) * 1.3f) * 0.35f), std::max(0.0f, columnWidth - 12.0f), std::max(0.0f, rowHeight - 4.0f));\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            if (showGridLines) {\n";
+    stream << "                canvas.setColor(canvasColor(blendColor(widget.style.borderColor, widget.style.fillColor, 0.35f)));\n";
+    stream << "                canvas.fill(contentX, rowTop + rowHeight - 1.0f, contentWidth, 1.0f);\n";
+    stream << "            }\n";
+    stream << "            rowTop += rowHeight;\n";
+    stream << "        }\n";
+    stream << "        if (widget.tableRows.size() > visibleRowCount) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.panelColor));\n";
+    stream << "            canvas.fill(x + width - 8.0f, y + 4.0f, 4.0f, std::max(0.0f, height - 8.0f));\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.accentColor));\n";
+    stream << "            canvas.fill(x + width - 8.0f, y + 10.0f, 4.0f, std::max(16.0f, height * 0.22f));\n";
+    stream << "        }\n";
+    stream << "        if (drawText && widget.tableColumns.empty()) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "            canvas.text(\"<no columns>\", font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        else if (drawText && widget.tableRows.empty()) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "            canvas.text(\"<no rows>\", font, visage::Font::kCenter, x, y + headerHeight, width, std::max(0.0f, height - headerHeight));\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    }\n";
@@ -2548,6 +2697,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::TextBox:\n";
     stream << "    case RuntimeWidgetType::ComboBox:\n";
     stream << "    case RuntimeWidgetType::ListBox:\n";
+    stream << "    case RuntimeWidgetType::TableGrid:\n";
     stream << "    case RuntimeWidgetType::CheckBox:\n";
     stream << "    case RuntimeWidgetType::RadioButton:\n";
     stream << "    case RuntimeWidgetType::Slider:\n";
@@ -2563,6 +2713,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Panel:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
+    stream << "    case RuntimeWidgetType::TableGrid:\n";
     stream << "        return false;\n";
     stream << "    }\n";
     stream << "    return false;\n";
@@ -2699,6 +2850,20 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    return true;\n";
     stream << "}\n\n";
+    stream << "bool " << className << "::setTableGridSelection(RuntimeWidget& widget, int row, int column, bool emitEvent)\n";
+    stream << "{\n";
+    stream << "    const int safeRow = widget.tableRows.empty() ? -1 : std::clamp(row, 0, static_cast<int>(widget.tableRows.size()) - 1);\n";
+    stream << "    const int safeColumn = widget.tableColumns.empty() ? -1 : std::clamp(column, 0, static_cast<int>(widget.tableColumns.size()) - 1);\n";
+    stream << "    if (widget.selectedRow == safeRow && widget.selectedColumn == safeColumn) {\n";
+    stream << "        return false;\n";
+    stream << "    }\n";
+    stream << "    widget.selectedRow = safeRow;\n";
+    stream << "    widget.selectedColumn = safeColumn;\n";
+    stream << "    if (emitEvent && !widget.events.onSelectionChanged.empty()) {\n";
+    stream << "        emitVoidEvent(widget, \"onSelectionChanged\");\n";
+    stream << "    }\n";
+    stream << "    return true;\n";
+    stream << "}\n\n";
     stream << "bool " << className << "::setItemSelection(RuntimeWidget& widget, int selectedIndex, bool emitEvent)\n";
     stream << "{\n";
     stream << "    const int safeIndex = sanitizeItemIndex(widget, selectedIndex);\n";
@@ -2741,6 +2906,27 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return std::nullopt;\n";
     stream << "    }\n";
     stream << "    return rowIndex;\n";
+    stream << "}\n\n";
+    stream << "std::optional<std::pair<int, int>> " << className << "::tableGridCellAt(const RuntimeWidget& widget, float x, float y) const\n";
+    stream << "{\n";
+    stream << "    if (!widget.bounds.contains(x, y) || widget.tableColumns.empty()) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    const float contentX = widget.bounds.x + 4.0f;\n";
+    stream << "    const float contentY = widget.bounds.y + 4.0f;\n";
+    stream << "    const float contentWidth = std::max(0.0f, widget.bounds.width - 8.0f);\n";
+    stream << "    const float columnWidth = contentWidth / static_cast<float>(std::max<std::size_t>(1, widget.tableColumns.size()));\n";
+    stream << "    const float headerHeight = widget.showHeader ? std::max(18.0f, widget.headerHeight) : 0.0f;\n";
+    stream << "    const float rowHeight = std::max(16.0f, widget.rowHeight);\n";
+    stream << "    if (y < contentY + headerHeight || columnWidth <= 0.0f) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    const int column = std::clamp(static_cast<int>((x - contentX) / columnWidth), 0, static_cast<int>(widget.tableColumns.size()) - 1);\n";
+    stream << "    const int row = static_cast<int>((y - (contentY + headerHeight)) / rowHeight);\n";
+    stream << "    if (row < 0 || row >= static_cast<int>(widget.tableRows.size())) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    return std::make_pair(row, column);\n";
     stream << "}\n\n";
     stream << "bool " << className << "::updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY)\n";
     stream << "{\n";
@@ -2858,6 +3044,14 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        clearPressedState();\n";
     stream << "        if (const auto rowIndex = listBoxRowIndexAt(*widget, formX, formY); rowIndex.has_value()) {\n";
     stream << "            if (setItemSelection(*widget, *rowIndex, true)) {\n";
+    stream << "                redraw();\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::TableGrid:\n";
+    stream << "        clearPressedState();\n";
+    stream << "        if (const auto cell = tableGridCellAt(*widget, formX, formY); cell.has_value()) {\n";
+    stream << "            if (setTableGridSelection(*widget, cell->first, cell->second, true)) {\n";
     stream << "                redraw();\n";
     stream << "            }\n";
     stream << "        }\n";
@@ -3054,6 +3248,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        case RuntimeWidgetType::TextBox:\n";
     stream << "        case RuntimeWidgetType::Slider:\n";
     stream << "        case RuntimeWidgetType::ScrollBar:\n";
+    stream << "        case RuntimeWidgetType::TableGrid:\n";
     stream << "        case RuntimeWidgetType::ProgressBar:\n";
     stream << "        case RuntimeWidgetType::StatusBar:\n";
     stream << "        case RuntimeWidgetType::Label:\n";
@@ -3093,6 +3288,17 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        if (const auto rowIndex = listBoxRowIndexAt(*widget, e.position.x - kFormOffsetX, e.position.y - kFormOffsetY); rowIndex.has_value()) {\n";
     stream << "            setItemSelection(*widget, *rowIndex, true);\n";
     stream << "            emitVoidEvent(*widget, \"onDoubleClick\");\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    if (widget->type == RuntimeWidgetType::TableGrid) {\n";
+    stream << "        if (widget->events.onCellDoubleClick.empty()) {\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        if (const auto cell = tableGridCellAt(*widget, e.position.x - kFormOffsetX, e.position.y - kFormOffsetY); cell.has_value()) {\n";
+    stream << "            setTableGridSelection(*widget, cell->first, cell->second, true);\n";
+    stream << "            emitVoidEvent(*widget, \"onCellDoubleClick\");\n";
     stream << "            redraw();\n";
     stream << "        }\n";
     stream << "    }\n";

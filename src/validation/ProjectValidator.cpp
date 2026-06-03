@@ -956,6 +956,61 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
             }
         }
 
+        if (model::supportsTableGrid(widget->type)) {
+            const auto columns = model::splitTableColumns(propertyString(*widget, "columns"));
+            const auto rowsData = model::splitTableRows(propertyString(*widget, "rows"));
+            if (columns.empty()) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "TABLEGRID_COLUMNS_EMPTY",
+                    "Table/Grid has no columns.",
+                    widget->id,
+                    "columns");
+            }
+            else if (std::any_of(columns.begin(), columns.end(), [](const std::string& column) { return trim(column).empty(); })) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "TABLEGRID_COLUMN_EMPTY",
+                    "Table/Grid has an empty column name.",
+                    widget->id,
+                    "columns");
+            }
+
+            const int selectedRow = widget->getIntProperty("selectedRow", rowsData.empty() ? -1 : 0);
+            const int selectedColumn = widget->getIntProperty("selectedColumn", columns.empty() ? -1 : 0);
+            const auto safeSelection = model::clampSelectedCell(columns, rowsData, selectedRow, selectedColumn);
+            if (selectedRow != safeSelection.row) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "TABLEGRID_SELECTED_ROW_OUT_OF_RANGE",
+                    "selectedRow is out of range.",
+                    widget->id,
+                    "selectedRow");
+            }
+            if (selectedColumn != safeSelection.column) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "TABLEGRID_SELECTED_COLUMN_OUT_OF_RANGE",
+                    "selectedColumn is out of range.",
+                    widget->id,
+                    "selectedColumn");
+            }
+
+            const double rowHeight = propertyNumber(*widget, "rowHeight").value_or(28.0);
+            if (rowHeight <= 0.0) {
+                addMessage(report, ValidationSeverity::Error,
+                    "TABLEGRID_ROW_HEIGHT_INVALID",
+                    "rowHeight must be greater than zero.",
+                    widget->id,
+                    "rowHeight");
+            }
+
+            const double headerHeight = propertyNumber(*widget, "headerHeight").value_or(30.0);
+            if (headerHeight < 0.0) {
+                addMessage(report, ValidationSeverity::Error,
+                    "TABLEGRID_HEADER_HEIGHT_INVALID",
+                    "headerHeight must be zero or greater.",
+                    widget->id,
+                    "headerHeight");
+            }
+        }
+
         if (model::supportsTreeNodes(widget->type)) {
             const std::string nodesText = propertyString(*widget, "nodes");
             const auto parseResult = model::parseTreeNodes(nodesText);
@@ -1059,7 +1114,7 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
             if (!utils::isValidCppIdentifier(callbackName)) {
                 addMessage(report, ValidationSeverity::Error,
                     "CALLBACK_NAME_INVALID",
-                    "Callback name must be a valid C++ identifier.",
+                    "Invalid callback name for " + event.key + ".",
                     widget->id,
                     event.key);
                 continue;

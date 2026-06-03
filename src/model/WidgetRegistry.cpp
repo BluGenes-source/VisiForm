@@ -90,6 +90,37 @@ WidgetDefinition makeFormWindowDefinition()
     return definition;
 }
 
+WidgetDefinition makeTableGridDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::TableGrid;
+    definition.typeName = "TableGrid";
+    definition.displayName = "Table / Grid";
+    definition.paletteGroup = "Basic";
+    definition.defaultNamePrefix = "tableGrid";
+    definition.defaultHint = "Displays editable rows and columns of data.";
+    definition.size = { 360.0f, 220.0f, 180.0f, 120.0f };
+    definition.properties = {
+        { "columns", "Columns", "Name\nType\nValue", PropertyEditKind::Text, true, "Newline-delimited table column names." },
+        { "rows", "Rows", "Row 1\tText\tHello\nRow 2\tNumber\t100\nRow 3\tBool\ttrue", PropertyEditKind::Text, true, "Newline-delimited table rows with tab-delimited cells." },
+        { "selectedRow", "Selected Row", 0, PropertyEditKind::Integer, true, "Zero-based selected row index. Use -1 when there are no rows." },
+        { "selectedColumn", "Selected Column", 0, PropertyEditKind::Integer, true, "Zero-based selected column index. Use -1 when there are no columns." },
+        { "showHeader", "Show Header", true, PropertyEditKind::Bool, true, "Draw the header row in the designer and generated runtime." },
+        { "showGridLines", "Show Grid Lines", true, PropertyEditKind::Bool, true, "Draw table row and column grid lines." },
+        { "rowHeight", "Row Height", 28, PropertyEditKind::Integer, true, "Height of each table data row." },
+        { "headerHeight", "Header Height", 30, PropertyEditKind::Integer, true, "Height of the table header row." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    definition.events = {
+        { "onSelectionChanged", "On Selection Changed", "void_event", "Called when the selected cell changes." },
+        { "onCellDoubleClick", "On Cell Double Click", "void_event", "Called when a table cell is double-clicked." }
+    };
+    return definition;
+}
+
 WidgetDefinition makeTreeViewDefinition()
 {
     WidgetDefinition definition;
@@ -638,6 +669,7 @@ WidgetRegistry::WidgetRegistry()
         makeTextBoxDefinition(),
         makeComboBoxDefinition(),
         makeListBoxDefinition(),
+        makeTableGridDefinition(),
         makeTreeViewDefinition(),
         makeCheckBoxDefinition(),
         makeRadioButtonDefinition(),
@@ -691,6 +723,7 @@ WidgetNode WidgetRegistry::createDefaultWidget(WidgetType type, const std::strin
             }
         }
         normalizeItemListProperties(widget);
+        normalizeTableGridProperties(widget);
         normalizeTreeViewProperties(widget);
         widget.syncHierarchyMetadata();
         return widget;

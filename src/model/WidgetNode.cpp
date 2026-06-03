@@ -21,6 +21,7 @@ const std::string& widgetTypeName(WidgetType type)
     static const std::string textBox = "TextBox";
     static const std::string comboBox = "ComboBox";
     static const std::string listBox = "ListBox";
+    static const std::string tableGrid = "TableGrid";
     static const std::string treeView = "TreeView";
     static const std::string checkBox = "CheckBox";
     static const std::string radioButton = "RadioButton";
@@ -56,6 +57,8 @@ const std::string& widgetTypeName(WidgetType type)
         return comboBox;
     case WidgetType::ListBox:
         return listBox;
+    case WidgetType::TableGrid:
+        return tableGrid;
     case WidgetType::TreeView:
         return treeView;
     case WidgetType::CheckBox:
@@ -223,6 +226,9 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     }
     if (value == "ListBox") {
         return WidgetType::ListBox;
+    }
+    if (value == "TableGrid") {
+        return WidgetType::TableGrid;
     }
     if (value == "TreeView") {
         return WidgetType::TreeView;

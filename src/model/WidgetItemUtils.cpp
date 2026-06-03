@@ -96,6 +96,11 @@ bool supportsItemList(WidgetType type)
     return type == WidgetType::ComboBox || type == WidgetType::ListBox;
 }
 
+bool supportsTableGrid(WidgetType type)
+{
+    return type == WidgetType::TableGrid;
+}
+
 std::vector<std::string> splitItems(std::string_view text)
 {
     if (text.empty()) {
@@ -194,6 +199,134 @@ void normalizeItemListProperties(WidgetNode& widget)
 bool supportsTreeNodes(WidgetType type)
 {
     return type == WidgetType::TreeView;
+}
+
+std::vector<std::string> splitTableColumns(std::string_view text)
+{
+    std::vector<std::string> columns;
+    for (const auto& rawLine : splitLines(text)) {
+        columns.push_back(trimText(rawLine));
+    }
+    return columns;
+}
+
+std::string joinTableColumns(const std::vector<std::string>& columns)
+{
+    std::string text;
+    for (std::size_t index = 0; index < columns.size(); ++index) {
+        if (index > 0) {
+            text += '\n';
+        }
+        text += trimText(columns[index]);
+    }
+    return text;
+}
+
+std::vector<std::vector<std::string>> splitTableRows(std::string_view text)
+{
+    std::vector<std::vector<std::string>> rows;
+    for (const auto& rawLine : splitLines(text)) {
+        std::vector<std::string> row;
+        std::size_t start = 0;
+        while (start <= rawLine.size()) {
+            const std::size_t separator = rawLine.find('\t', start);
+            const std::size_t end = separator == std::string::npos ? rawLine.size() : separator;
+            row.push_back(trimText(std::string_view{ rawLine }.substr(start, end - start)));
+            if (separator == std::string::npos) {
+                break;
+            }
+            start = separator + 1;
+        }
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+std::string joinTableRows(const std::vector<std::vector<std::string>>& rows)
+{
+    std::string text;
+    for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        if (rowIndex > 0) {
+            text += '\n';
+        }
+
+        const auto& row = rows[rowIndex];
+        for (std::size_t columnIndex = 0; columnIndex < row.size(); ++columnIndex) {
+            if (columnIndex > 0) {
+                text += '\t';
+            }
+            text += trimText(row[columnIndex]);
+        }
+    }
+    return text;
+}
+
+TableGridParseResult normalizeTableData(std::string_view columnsText, std::string_view rowsText)
+{
+    TableGridParseResult result;
+    result.columns = splitTableColumns(columnsText);
+    result.rows = splitTableRows(rowsText);
+    return result;
+}
+
+TableGridSelection clampSelectedCell(const std::vector<std::string>& columns,
+    const std::vector<std::vector<std::string>>& rows,
+    int selectedRow,
+    int selectedColumn)
+{
+    TableGridSelection selection;
+    selection.row = rows.empty() ? -1 : std::clamp(selectedRow, 0, static_cast<int>(rows.size()) - 1);
+    selection.column = columns.empty() ? -1 : std::clamp(selectedColumn, 0, static_cast<int>(columns.size()) - 1);
+    return selection;
+}
+
+std::string getCellText(const std::vector<std::vector<std::string>>& rows, int row, int column)
+{
+    if (row < 0 || column < 0 || row >= static_cast<int>(rows.size())) {
+        return {};
+    }
+
+    const auto& cells = rows[static_cast<std::size_t>(row)];
+    if (column >= static_cast<int>(cells.size())) {
+        return {};
+    }
+
+    return cells[static_cast<std::size_t>(column)];
+}
+
+void setCellText(std::vector<std::vector<std::string>>& rows, int row, int column, std::string_view text)
+{
+    if (row < 0 || column < 0 || row >= static_cast<int>(rows.size())) {
+        return;
+    }
+
+    auto& cells = rows[static_cast<std::size_t>(row)];
+    if (column >= static_cast<int>(cells.size())) {
+        cells.resize(static_cast<std::size_t>(column + 1));
+    }
+
+    cells[static_cast<std::size_t>(column)] = trimText(text);
+}
+
+void normalizeTableGridProperties(WidgetNode& widget)
+{
+    if (!supportsTableGrid(widget.type)) {
+        return;
+    }
+
+    const TableGridParseResult data = normalizeTableData(
+        widget.getStringProperty("columns", {}),
+        widget.getStringProperty("rows", {}));
+    const TableGridSelection selection = clampSelectedCell(
+        data.columns,
+        data.rows,
+        widget.getIntProperty("selectedRow", data.rows.empty() ? -1 : 0),
+        widget.getIntProperty("selectedColumn", data.columns.empty() ? -1 : 0));
+
+    widget.setProperty("columns", joinTableColumns(data.columns));
+    widget.setProperty("rows", joinTableRows(data.rows));
+    widget.setProperty("selectedRow", selection.row);
+    widget.setProperty("selectedColumn", selection.column);
 }
 
 TreeNodeParseResult parseTreeNodes(std::string_view text)

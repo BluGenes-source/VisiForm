@@ -212,6 +212,7 @@ private:
         ResourceManager,
         KeyboardShortcuts,
         ItemListEditor,
+        TableGridEditor,
         TreeNodeEditor
     };
 
@@ -222,6 +223,32 @@ private:
         int selectedItemIndex = -1;
         std::string originalItemsText{};
         int originalSelectedIndex = -1;
+    };
+
+    struct TableGridEditorDialogState {
+        bool visible = false;
+        std::string widgetId{};
+        std::string originalColumnsText{};
+        std::string originalRowsText{};
+        int originalSelectedRow = -1;
+        int originalSelectedColumn = -1;
+        std::vector<std::string> columns{};
+        std::vector<std::vector<std::string>> rows{};
+        int selectedRow = -1;
+        int selectedColumn = -1;
+    };
+
+    struct TableGridEditorActionButton {
+        std::string id{};
+        std::string text{};
+        PanelBounds bounds{};
+        bool enabled = true;
+    };
+
+    struct TableGridEditorCellHit {
+        int row = -1;
+        int column = -1;
+        bool header = false;
     };
 
     struct TreeEditorNode {
@@ -428,10 +455,15 @@ private:
     bool addTabPageToSelectedTabControl();
     bool removeSelectedTabPageFromSelectedTabControl();
     bool openSelectedWidgetItemEditor();
+    bool openSelectedTableGridEditor();
     bool openSelectedTreeNodeEditor();
     bool applyItemListEditor();
+    bool applyTableGridEditor();
     bool applyTreeNodeEditor();
     void setItemListEditorSelectedIndex(int index);
+    void refreshTableGridEditorState();
+    void selectTableGridEditorCell(int row, int column, bool preserveRow = false);
+    bool activateTableGridEditorAction(const std::string& actionId);
     bool applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange);
     void selectWidget(const std::string& widgetId);
     [[nodiscard]] std::string statusText() const;
@@ -485,6 +517,8 @@ private:
     [[nodiscard]] PanelBounds resourceManagerPreviewBounds() const;
     [[nodiscard]] PanelBounds itemListEditorPreviewBounds() const;
     [[nodiscard]] PanelBounds itemListEditorFormBounds() const;
+    [[nodiscard]] PanelBounds tableGridEditorGridBounds() const;
+    [[nodiscard]] PanelBounds tableGridEditorFormBounds() const;
     [[nodiscard]] PanelBounds treeNodeEditorTextBounds() const;
     [[nodiscard]] PanelBounds treeNodeEditorFormBounds() const;
     [[nodiscard]] PanelBounds editorModalStatusBounds() const;
@@ -492,6 +526,7 @@ private:
     [[nodiscard]] std::vector<EditorModalFieldHit> editorModalFieldHits() const;
     [[nodiscard]] std::optional<EditorModalFieldHit> editorModalFieldAt(float x, float y) const;
     [[nodiscard]] std::optional<int> itemListEditorPreviewIndexAt(float x, float y) const;
+    [[nodiscard]] std::optional<TableGridEditorCellHit> tableGridEditorCellAt(float x, float y) const;
     [[nodiscard]] std::optional<int> treeNodeEditorRowAt(float x, float y) const;
     [[nodiscard]] std::string editorModalFieldValue(const std::string& key) const;
     void setEditorModalFieldValue(const std::string& key, const std::string& valueText);
@@ -501,6 +536,7 @@ private:
     void updateEditorModalEditorBounds();
     void openEditorModalDropdown(const EditorModalField& field);
     bool applyEditorModalDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
+    [[nodiscard]] std::vector<TableGridEditorActionButton> tableGridEditorActionButtons() const;
     [[nodiscard]] std::vector<TreeNodeEditorRow> visibleTreeNodeEditorRows() const;
     [[nodiscard]] std::vector<TreeNodeEditorActionButton> treeNodeEditorActionButtons() const;
     [[nodiscard]] TreeEditorNode* findTreeEditorNode(int nodeId);
@@ -558,6 +594,7 @@ private:
     ResourceManagerDialogState resourceManagerDialog_{};
     KeyboardShortcutDialogState keyboardShortcutDialog_{};
     ItemListEditorDialogState itemListEditorDialog_{};
+    TableGridEditorDialogState tableGridEditorDialog_{};
     TreeNodeEditorDialogState treeNodeEditorDialog_{};
 
     // Apply a callback suggestion directly to the selected widget property

@@ -27,6 +27,7 @@ enum class WidgetType {
     TextBox,
     ComboBox,
     ListBox,
+    TableGrid,
     TreeView,
     CheckBox,
     RadioButton,

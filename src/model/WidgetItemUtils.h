@@ -24,6 +24,16 @@ struct TreeNodeParseResult {
     bool indentationNormalized = false;
 };
 
+struct TableGridSelection {
+    int row = -1;
+    int column = -1;
+};
+
+struct TableGridParseResult {
+    std::vector<std::string> columns{};
+    std::vector<std::vector<std::string>> rows{};
+};
+
 [[nodiscard]] bool supportsItemList(WidgetType type);
 [[nodiscard]] std::vector<std::string> splitItems(std::string_view text);
 [[nodiscard]] std::string joinItems(const std::vector<std::string>& items);
@@ -35,6 +45,19 @@ void setWidgetItems(WidgetNode& widget, const std::vector<std::string>& items);
 void normalizeItemListProperties(WidgetNode& widget);
 
 [[nodiscard]] bool supportsTreeNodes(WidgetType type);
+[[nodiscard]] bool supportsTableGrid(WidgetType type);
+[[nodiscard]] std::vector<std::string> splitTableColumns(std::string_view text);
+[[nodiscard]] std::string joinTableColumns(const std::vector<std::string>& columns);
+[[nodiscard]] std::vector<std::vector<std::string>> splitTableRows(std::string_view text);
+[[nodiscard]] std::string joinTableRows(const std::vector<std::vector<std::string>>& rows);
+[[nodiscard]] TableGridParseResult normalizeTableData(std::string_view columnsText, std::string_view rowsText);
+[[nodiscard]] TableGridSelection clampSelectedCell(const std::vector<std::string>& columns,
+    const std::vector<std::vector<std::string>>& rows,
+    int selectedRow,
+    int selectedColumn);
+[[nodiscard]] std::string getCellText(const std::vector<std::vector<std::string>>& rows, int row, int column);
+void setCellText(std::vector<std::vector<std::string>>& rows, int row, int column, std::string_view text);
+void normalizeTableGridProperties(WidgetNode& widget);
 [[nodiscard]] TreeNodeParseResult parseTreeNodes(std::string_view text);
 [[nodiscard]] std::string serializeTreeNodes(const std::vector<TreeNodeEntry>& nodes);
 [[nodiscard]] std::string normalizeTreeIndentation(std::string_view text);

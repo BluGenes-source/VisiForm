@@ -1056,6 +1056,103 @@ void drawWidget(visage::Canvas& canvas,
         }
         break;
     }
+    case model::WidgetType::TableGrid: {
+        const auto columns = model::splitTableColumns(getStringProperty(widget, "columns", {}));
+        const auto rows = model::splitTableRows(getStringProperty(widget, "rows", {}));
+        const auto selection = model::clampSelectedCell(
+            columns,
+            rows,
+            widget.getIntProperty("selectedRow", rows.empty() ? -1 : 0),
+            widget.getIntProperty("selectedColumn", columns.empty() ? -1 : 0));
+        const bool showHeader = getBoolProperty(widget, "showHeader", true);
+        const bool showGridLines = getBoolProperty(widget, "showGridLines", true);
+        const float headerHeight = showHeader ? std::max(18.0f, getNumericProperty(widget, "headerHeight", 30.0f)) : 0.0f;
+        const float rowHeight = std::max(16.0f, getNumericProperty(widget, "rowHeight", 28.0f));
+        const float contentX = bounds.x + 4.0f;
+        const float contentY = bounds.y + 4.0f;
+        const float contentWidth = std::max(0.0f, bounds.width - 8.0f);
+        const float contentHeight = std::max(0.0f, bounds.height - 8.0f);
+        const float columnWidth = contentWidth / static_cast<float>(std::max<std::size_t>(1, columns.empty() ? 1 : columns.size()));
+        const float visibleRowsHeight = std::max(0.0f, contentHeight - headerHeight);
+        const std::size_t visibleRowCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleRowsHeight / rowHeight)));
+
+        canvas.setColor(style.fillColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+
+        if (showHeader) {
+            canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.18f));
+            canvas.fill(contentX, contentY, contentWidth, std::min(headerHeight, contentHeight));
+        }
+
+        for (std::size_t columnIndex = 0; columnIndex < std::max<std::size_t>(1, columns.empty() ? 1 : columns.size()); ++columnIndex) {
+            const float columnX = contentX + static_cast<float>(columnIndex) * columnWidth;
+            const bool selectedColumn = static_cast<int>(columnIndex) == selection.column;
+            if (showHeader && selectedColumn) {
+                canvas.setColor(blendColor(style.accentColor, style.fillColor, 0.24f));
+                canvas.fill(columnX, contentY, std::max(0.0f, columnWidth - 1.0f), std::min(headerHeight, contentHeight));
+            }
+
+            if (showGridLines && columnIndex > 0) {
+                canvas.setColor(blendColor(style.borderColor, style.fillColor, 0.35f));
+                canvas.fill(columnX, contentY, 1.0f, contentHeight);
+            }
+
+            if (showHeader && drawText && columnIndex < columns.size()) {
+                const std::string& headerText = columns[columnIndex];
+                canvas.setColor(style.textColor);
+                canvas.text(headerText.empty() ? std::string{ "<empty>" } : headerText, widgetFont, visage::Font::kTopLeft,
+                    columnX + 6.0f, contentY + std::max(3.0f, (headerHeight - fontSize * 1.3f) * 0.35f),
+                    std::max(0.0f, columnWidth - 12.0f), std::max(0.0f, headerHeight - 6.0f));
+            }
+        }
+
+        float rowTop = contentY + headerHeight;
+        for (std::size_t rowIndex = 0; rowIndex < std::min<std::size_t>(visibleRowCount, rows.size()); ++rowIndex) {
+            const bool selectedRow = static_cast<int>(rowIndex) == selection.row;
+            for (std::size_t columnIndex = 0; columnIndex < std::max<std::size_t>(1, columns.empty() ? 1 : columns.size()); ++columnIndex) {
+                const float columnX = contentX + static_cast<float>(columnIndex) * columnWidth;
+                const bool selectedCell = selectedRow && static_cast<int>(columnIndex) == selection.column;
+                canvas.setColor(selectedCell ? blendColor(style.accentColor, style.fillColor, 0.30f)
+                    : (selectedRow ? blendColor(style.accentColor, style.fillColor, 0.16f)
+                                   : (rowIndex % 2 == 0 ? style.fillColor : blendColor(style.panelColor, style.fillColor, 0.14f))));
+                canvas.fill(columnX, rowTop, std::max(0.0f, columnWidth - 1.0f), std::max(0.0f, rowHeight - 1.0f));
+
+                if (drawText) {
+                    canvas.setColor(style.textColor);
+                    canvas.text(model::getCellText(rows, static_cast<int>(rowIndex), static_cast<int>(columnIndex)), widgetFont, visage::Font::kTopLeft,
+                        columnX + 6.0f, rowTop + std::max(2.0f, (rowHeight - fontSize * 1.3f) * 0.35f),
+                        std::max(0.0f, columnWidth - 12.0f), std::max(0.0f, rowHeight - 4.0f));
+                }
+            }
+
+            if (showGridLines) {
+                canvas.setColor(blendColor(style.borderColor, style.fillColor, 0.35f));
+                canvas.fill(contentX, rowTop + rowHeight - 1.0f, contentWidth, 1.0f);
+            }
+
+            rowTop += rowHeight;
+        }
+
+        if (rows.size() > visibleRowCount) {
+            canvas.setColor(style.panelColor);
+            canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 4.0f, 4.0f, std::max(0.0f, bounds.height - 8.0f));
+            canvas.setColor(style.accentColor);
+            canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 10.0f, 4.0f, std::max(16.0f, bounds.height * 0.22f));
+        }
+
+        if (columns.empty() && drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text("<no columns>", widgetFont, visage::Font::kCenter,
+                bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+        else if (rows.empty() && drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text("<no rows>", widgetFont, visage::Font::kCenter,
+                bounds.x, bounds.y + headerHeight, bounds.width, std::max(0.0f, bounds.height - headerHeight));
+        }
+        break;
+    }
     case model::WidgetType::TreeView: {
         const std::string nodesText = getStringProperty(widget, "nodes", {});
         const bool showRoot = getBoolProperty(widget, "showRoot", true);

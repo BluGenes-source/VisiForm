@@ -99,6 +99,17 @@ constexpr float kItemListEditorModalHeight = 540.0f;
 constexpr float kItemListEditorPreviewHeight = 220.0f;
 constexpr float kItemListEditorPreviewRowHeight = 28.0f;
 constexpr float kItemListEditorPreviewGap = 14.0f;
+constexpr float kTableGridEditorModalWidth = 820.0f;
+constexpr float kTableGridEditorModalHeight = 660.0f;
+constexpr float kTableGridEditorInstructionHeight = 24.0f;
+constexpr float kTableGridEditorGridPreferredHeight = 280.0f;
+constexpr float kTableGridEditorGridMinHeight = 220.0f;
+constexpr float kTableGridEditorSectionGap = 10.0f;
+constexpr float kTableGridEditorActionLabelHeight = 22.0f;
+constexpr float kTableGridEditorActionButtonHeight = 32.0f;
+constexpr float kTableGridEditorActionRowGap = 10.0f;
+constexpr float kTableGridEditorHeaderHeight = 30.0f;
+constexpr float kTableGridEditorRowHeight = 28.0f;
 constexpr float kTreeNodeEditorModalWidth = 760.0f;
 constexpr float kTreeNodeEditorModalHeight = 620.0f;
 constexpr float kTreeNodeEditorLineHeight = 20.0f;
@@ -134,6 +145,16 @@ std::string itemListEditorRowLabel(const std::vector<std::string>& items, int in
     }
 
     return std::to_string(index) + ": " + items[static_cast<std::size_t>(index)];
+}
+
+std::string tableGridEditorColumnLabel(const std::vector<std::string>& columns, int index)
+{
+    if (index < 0 || index >= static_cast<int>(columns.size())) {
+        return "<none>";
+    }
+
+    const std::string& title = columns[static_cast<std::size_t>(index)];
+    return std::to_string(index) + ": " + (title.empty() ? std::string{ "<empty>" } : title);
 }
 
 bool isAdditiveSelectionModifierDown()
@@ -4158,6 +4179,9 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     if (model::supportsItemList(widget->type) && (key == "items" || key == "selectedIndex" || key == "text")) {
         model::normalizeItemListProperties(*widget);
     }
+    if (model::supportsTableGrid(widget->type) && (key == "columns" || key == "rows" || key == "selectedRow" || key == "selectedColumn")) {
+        model::normalizeTableGridProperties(*widget);
+    }
     if (widget->type == model::WidgetType::FormWindow && document_.isRootWidgetId(widget->id) && key == "title") {
         document_.windowTitle = widget->getStringProperty("title", document_.projectName);
     }
@@ -4217,6 +4241,17 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
 
     if (key == "name") {
         return setSelectedWidgetName(trimmedValue);
+    }
+
+    if ((key == "selectedRow" || key == "selectedColumn") && widget->type == model::WidgetType::TableGrid) {
+        const auto parsedValue = tryParseInt(trimmedValue);
+        if (!parsedValue.has_value()) {
+            setOperationStatus("Invalid table selection index");
+            redraw();
+            return false;
+        }
+
+        return setSelectedWidgetProperty(key, *parsedValue);
     }
 
     if ((key == "selectedTabIndex" || key == "selectedTab") && widget->type == model::WidgetType::TabControl) {
@@ -4520,7 +4555,8 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
     if (key == "onClick" || key == "onToggle" || key == "onChanged"
         || key == "onTextChanged" || key == "onLoad" || key == "onClose" || key == "onSelected"
         || key == "onRelease" || key == "onDoubleClick"
-        || key == "onAccepted" || key == "onCancelled") {
+        || key == "onAccepted" || key == "onCancelled"
+        || key == "onSelectionChanged" || key == "onCellDoubleClick") {
         if (!trimmedValue.empty() && !utils::isValidCppIdentifier(trimmedValue)) {
             setOperationStatus("Invalid event handler name");
             redraw();
@@ -6004,6 +6040,13 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
         }
     }
 
+    if (row.key == "columns" || row.key == "rows") {
+        const auto* selectedWidget = document_.selectedWidget();
+        if (selectedWidget != nullptr && model::supportsTableGrid(selectedWidget->type)) {
+            return openSelectedTableGridEditor();
+        }
+    }
+
     if (row.key == "nodes") {
         const auto* selectedWidget = document_.selectedWidget();
         if (selectedWidget != nullptr && model::supportsTreeNodes(selectedWidget->type)) {
@@ -6524,6 +6567,337 @@ bool MainWindow::applyItemListEditor()
     return true;
 }
 
+bool MainWindow::openSelectedTableGridEditor()
+{
+    const auto* widget = document_.selectedWidget();
+    if (widget == nullptr || !model::supportsTableGrid(widget->type)) {
+        return false;
+    }
+
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    tableGridEditorDialog_.visible = true;
+    tableGridEditorDialog_.widgetId = widget->id;
+    tableGridEditorDialog_.originalColumnsText = widget->getStringProperty("columns", {});
+    tableGridEditorDialog_.originalRowsText = widget->getStringProperty("rows", {});
+    tableGridEditorDialog_.originalSelectedRow = widget->getIntProperty("selectedRow", -1);
+    tableGridEditorDialog_.originalSelectedColumn = widget->getIntProperty("selectedColumn", -1);
+
+    const auto data = model::normalizeTableData(
+        tableGridEditorDialog_.originalColumnsText,
+        tableGridEditorDialog_.originalRowsText);
+    tableGridEditorDialog_.columns = data.columns;
+    tableGridEditorDialog_.rows = data.rows;
+    refreshTableGridEditorState();
+    const auto selection = model::clampSelectedCell(
+        tableGridEditorDialog_.columns,
+        tableGridEditorDialog_.rows,
+        tableGridEditorDialog_.originalSelectedRow,
+        tableGridEditorDialog_.originalSelectedColumn);
+    tableGridEditorDialog_.selectedRow = selection.row;
+    tableGridEditorDialog_.selectedColumn = selection.column;
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::TableGridEditor;
+    editorModal_.title = "Edit Table/Grid Data";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = {
+        { "apply_table_grid", "Apply" },
+        { "cancel", "Cancel" }
+    };
+    editorModal_.result.clear();
+    editorModal_.statusText = tableGridEditorDialog_.rows.empty()
+        ? "No rows yet. Add a row, select a cell, then click Apply to commit the table."
+        : "Select a cell, edit Cell Text below, then click Apply to commit the table.";
+    editorModal_.preferredWidth = kTableGridEditorModalWidth;
+    editorModal_.preferredHeight = kTableGridEditorModalHeight;
+    newProjectWizard_.visible = false;
+    projectSettingsDialog_.visible = false;
+    resourceManagerDialog_.visible = false;
+    keyboardShortcutDialog_.visible = false;
+    updateEditorModalEditorBounds();
+    redraw();
+    return true;
+}
+
+void MainWindow::refreshTableGridEditorState()
+{
+    const auto selection = model::clampSelectedCell(
+        tableGridEditorDialog_.columns,
+        tableGridEditorDialog_.rows,
+        tableGridEditorDialog_.selectedRow,
+        tableGridEditorDialog_.selectedColumn);
+    tableGridEditorDialog_.selectedRow = selection.row;
+    tableGridEditorDialog_.selectedColumn = selection.column;
+}
+
+void MainWindow::selectTableGridEditorCell(int row, int column, bool preserveRow)
+{
+    refreshTableGridEditorState();
+    if (!preserveRow) {
+        tableGridEditorDialog_.selectedRow = row;
+    }
+    tableGridEditorDialog_.selectedColumn = column;
+    refreshTableGridEditorState();
+
+    if (tableGridEditorDialog_.selectedRow >= 0 && tableGridEditorDialog_.selectedColumn >= 0) {
+        editorModal_.statusText = "Selected cell R" + std::to_string(tableGridEditorDialog_.selectedRow + 1)
+            + " C" + std::to_string(tableGridEditorDialog_.selectedColumn + 1) + ".";
+    }
+    else if (tableGridEditorDialog_.selectedColumn >= 0) {
+        editorModal_.statusText = "Selected column " + tableGridEditorColumnLabel(tableGridEditorDialog_.columns, tableGridEditorDialog_.selectedColumn) + ".";
+    }
+    else if (tableGridEditorDialog_.rows.empty()) {
+        editorModal_.statusText = "No rows yet. Add a row, select a cell, then click Apply to commit the table.";
+    }
+    else {
+        editorModal_.statusText = "Select a cell to edit its text.";
+    }
+}
+
+std::vector<MainWindow::TableGridEditorActionButton> MainWindow::tableGridEditorActionButtons() const
+{
+    std::vector<TableGridEditorActionButton> buttons;
+    if (editorModal_.mode != EditorModalMode::TableGridEditor) {
+        return buttons;
+    }
+
+    const PanelBounds formBounds = tableGridEditorFormBounds();
+    const float gap = 10.0f;
+    const float buttonWidth = std::max(120.0f, (formBounds.width - gap * 3.0f) / 4.0f);
+    const bool hasColumn = tableGridEditorDialog_.selectedColumn >= 0 && tableGridEditorDialog_.selectedColumn < static_cast<int>(tableGridEditorDialog_.columns.size());
+    const bool hasRow = tableGridEditorDialog_.selectedRow >= 0 && tableGridEditorDialog_.selectedRow < static_cast<int>(tableGridEditorDialog_.rows.size());
+
+    const std::array<std::pair<const char*, const char*>, 7> definitions = {{
+        { "add_column", "Add Column" },
+        { "remove_column", "Remove Column" },
+        { "rename_column", "Rename Column" },
+        { "add_row", "Add Row" },
+        { "remove_row", "Remove Row" },
+        { "move_row_up", "Move Row Up" },
+        { "move_row_down", "Move Row Down" }
+    }};
+
+    buttons.reserve(definitions.size());
+    for (std::size_t index = 0; index < definitions.size(); ++index) {
+        const int row = index < 4 ? 0 : 1;
+        const int column = index < 4 ? static_cast<int>(index) : static_cast<int>(index - 4);
+        bool enabled = true;
+        if (std::string_view{ definitions[index].first } == "remove_column" || std::string_view{ definitions[index].first } == "rename_column") {
+            enabled = hasColumn;
+        }
+        else if (std::string_view{ definitions[index].first } == "remove_row") {
+            enabled = hasRow;
+        }
+        else if (std::string_view{ definitions[index].first } == "move_row_up") {
+            enabled = hasRow && tableGridEditorDialog_.selectedRow > 0;
+        }
+        else if (std::string_view{ definitions[index].first } == "move_row_down") {
+            enabled = hasRow && tableGridEditorDialog_.selectedRow + 1 < static_cast<int>(tableGridEditorDialog_.rows.size());
+        }
+
+        buttons.push_back({
+            definitions[index].first,
+            definitions[index].second,
+            {
+                formBounds.x + static_cast<float>(column) * (buttonWidth + gap),
+                formBounds.y + kTableGridEditorActionLabelHeight + static_cast<float>(row) * (kTableGridEditorActionButtonHeight + kTableGridEditorActionRowGap),
+                buttonWidth,
+                kTableGridEditorActionButtonHeight
+            },
+            enabled
+        });
+    }
+
+    return buttons;
+}
+
+std::optional<MainWindow::TableGridEditorCellHit> MainWindow::tableGridEditorCellAt(float x, float y) const
+{
+    if (editorModal_.mode != EditorModalMode::TableGridEditor || tableGridEditorDialog_.columns.empty()) {
+        return std::nullopt;
+    }
+
+    const PanelBounds bounds = tableGridEditorGridBounds();
+    if (!pointInBounds(x, y, bounds.x, bounds.y, bounds.width, bounds.height)) {
+        return std::nullopt;
+    }
+
+    const float innerX = bounds.x + 6.0f;
+    const float innerY = bounds.y + 6.0f;
+    const float innerWidth = std::max(0.0f, bounds.width - 12.0f);
+    const float cellWidth = innerWidth / static_cast<float>(std::max<std::size_t>(1, tableGridEditorDialog_.columns.size()));
+    if (x < innerX || y < innerY || cellWidth <= 0.0f) {
+        return std::nullopt;
+    }
+
+    const int column = std::clamp(static_cast<int>((x - innerX) / cellWidth), 0, static_cast<int>(tableGridEditorDialog_.columns.size()) - 1);
+    if (y <= innerY + kTableGridEditorHeaderHeight) {
+        return TableGridEditorCellHit{ -1, column, true };
+    }
+
+    const float rowAreaY = y - (innerY + kTableGridEditorHeaderHeight);
+    if (rowAreaY < 0.0f) {
+        return std::nullopt;
+    }
+
+    const int row = static_cast<int>(rowAreaY / kTableGridEditorRowHeight);
+    if (row < 0 || row >= static_cast<int>(tableGridEditorDialog_.rows.size())) {
+        return std::nullopt;
+    }
+
+    return TableGridEditorCellHit{ row, column, false };
+}
+
+bool MainWindow::activateTableGridEditorAction(const std::string& actionId)
+{
+    if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+        return false;
+    }
+
+    if (actionId == "add_column") {
+        tableGridEditorDialog_.columns.push_back("Column " + std::to_string(tableGridEditorDialog_.columns.size() + 1));
+        for (auto& row : tableGridEditorDialog_.rows) {
+            row.push_back({});
+        }
+        selectTableGridEditorCell(tableGridEditorDialog_.selectedRow, static_cast<int>(tableGridEditorDialog_.columns.size()) - 1, true);
+        editorModal_.statusText = "Added a new column.";
+        redraw();
+        return true;
+    }
+
+    if (actionId == "remove_column") {
+        if (tableGridEditorDialog_.selectedColumn < 0 || tableGridEditorDialog_.selectedColumn >= static_cast<int>(tableGridEditorDialog_.columns.size())) {
+            editorModal_.statusText = "Select a column before removing it.";
+            redraw();
+            return false;
+        }
+
+        const int selectedColumn = tableGridEditorDialog_.selectedColumn;
+        tableGridEditorDialog_.columns.erase(tableGridEditorDialog_.columns.begin() + selectedColumn);
+        for (auto& row : tableGridEditorDialog_.rows) {
+            if (selectedColumn >= 0 && selectedColumn < static_cast<int>(row.size())) {
+                row.erase(row.begin() + selectedColumn);
+            }
+        }
+        refreshTableGridEditorState();
+        editorModal_.statusText = "Removed the selected column.";
+        redraw();
+        return true;
+    }
+
+    if (actionId == "rename_column") {
+        if (tableGridEditorDialog_.selectedColumn < 0 || tableGridEditorDialog_.selectedColumn >= static_cast<int>(tableGridEditorDialog_.columns.size())) {
+            editorModal_.statusText = "Select a column before renaming it.";
+            redraw();
+            return false;
+        }
+
+        for (const auto& field : editorModalFields()) {
+            if (field.key == "columnName") {
+                beginEditorModalFieldEdit(field);
+                editorModal_.statusText = "Edit Column Name, then press Enter to rename it.";
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (actionId == "add_row") {
+        tableGridEditorDialog_.rows.push_back(std::vector<std::string>(tableGridEditorDialog_.columns.size()));
+        selectTableGridEditorCell(static_cast<int>(tableGridEditorDialog_.rows.size()) - 1,
+            tableGridEditorDialog_.selectedColumn >= 0 ? tableGridEditorDialog_.selectedColumn : (tableGridEditorDialog_.columns.empty() ? -1 : 0));
+        editorModal_.statusText = "Added a new row.";
+        redraw();
+        return true;
+    }
+
+    if (actionId == "remove_row") {
+        if (tableGridEditorDialog_.selectedRow < 0 || tableGridEditorDialog_.selectedRow >= static_cast<int>(tableGridEditorDialog_.rows.size())) {
+            editorModal_.statusText = "Select a row before removing it.";
+            redraw();
+            return false;
+        }
+
+        tableGridEditorDialog_.rows.erase(tableGridEditorDialog_.rows.begin() + tableGridEditorDialog_.selectedRow);
+        refreshTableGridEditorState();
+        editorModal_.statusText = "Removed the selected row.";
+        redraw();
+        return true;
+    }
+
+    if (actionId == "move_row_up" || actionId == "move_row_down") {
+        const int currentRow = tableGridEditorDialog_.selectedRow;
+        if (currentRow < 0 || currentRow >= static_cast<int>(tableGridEditorDialog_.rows.size())) {
+            editorModal_.statusText = "Select a row before reordering it.";
+            redraw();
+            return false;
+        }
+
+        const int targetRow = actionId == "move_row_up" ? currentRow - 1 : currentRow + 1;
+        if (targetRow < 0 || targetRow >= static_cast<int>(tableGridEditorDialog_.rows.size())) {
+            editorModal_.statusText = actionId == "move_row_up"
+                ? "Selected row is already first."
+                : "Selected row is already last.";
+            redraw();
+            return false;
+        }
+
+        std::swap(tableGridEditorDialog_.rows[static_cast<std::size_t>(currentRow)], tableGridEditorDialog_.rows[static_cast<std::size_t>(targetRow)]);
+        tableGridEditorDialog_.selectedRow = targetRow;
+        editorModal_.statusText = actionId == "move_row_up" ? "Moved row up." : "Moved row down.";
+        redraw();
+        return true;
+    }
+
+    return false;
+}
+
+bool MainWindow::applyTableGridEditor()
+{
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr || selectedWidget->id != tableGridEditorDialog_.widgetId || !model::supportsTableGrid(selectedWidget->type)) {
+        return false;
+    }
+
+    if (editorModalEdit_.active && !commitEditorModalFieldEdit()) {
+        return false;
+    }
+
+    const std::string columnsText = model::joinTableColumns(tableGridEditorDialog_.columns);
+    const std::string rowsText = model::joinTableRows(tableGridEditorDialog_.rows);
+    const auto selection = model::clampSelectedCell(
+        tableGridEditorDialog_.columns,
+        tableGridEditorDialog_.rows,
+        tableGridEditorDialog_.selectedRow,
+        tableGridEditorDialog_.selectedColumn);
+
+    const bool applied = applyUndoableDocumentChange("Edit table data", [this, &columnsText, &rowsText, &selection]() {
+        auto* widget = document_.selectedWidget();
+        if (widget == nullptr || !model::supportsTableGrid(widget->type)) {
+            return false;
+        }
+
+        widget->setProperty("columns", columnsText);
+        widget->setProperty("rows", rowsText);
+        widget->setProperty("selectedRow", selection.row);
+        widget->setProperty("selectedColumn", selection.column);
+        model::normalizeTableGridProperties(*widget);
+        return true;
+    });
+    if (!applied) {
+        return false;
+    }
+
+    setOperationStatus("Updated Table/Grid data.");
+    closeEditorModalDialog("apply_table_grid");
+    return true;
+}
+
 void MainWindow::handleTextEditPendingAction()
 {
     const auto action = textEditControl_.consumePendingAction();
@@ -6646,6 +7020,24 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
                 : std::string{},
             itemListEditorDialog_.selectedItemIndex >= 0 ? PropertyInspector::PropertyEditKind::Text : PropertyInspector::PropertyEditKind::ReadOnly });
     }
+    else if (editorModal_.mode == EditorModalMode::TableGridEditor) {
+        fields.push_back(EditorModalField{ "columnCount", "Column Count", std::to_string(tableGridEditorDialog_.columns.size()), PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "rowCount", "Row Count", std::to_string(tableGridEditorDialog_.rows.size()), PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "selectedRow", "Selected Row", tableGridEditorDialog_.selectedRow >= 0
+                ? std::to_string(tableGridEditorDialog_.selectedRow)
+                : std::string{ "<none>" }, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "selectedColumn", "Selected Column", tableGridEditorDialog_.selectedColumn >= 0
+                ? tableGridEditorColumnLabel(tableGridEditorDialog_.columns, tableGridEditorDialog_.selectedColumn)
+                : std::string{ "<none>" }, PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "columnName", "Column Name", tableGridEditorDialog_.selectedColumn >= 0
+                ? tableGridEditorDialog_.columns[static_cast<std::size_t>(tableGridEditorDialog_.selectedColumn)]
+                : std::string{},
+            tableGridEditorDialog_.selectedColumn >= 0 ? PropertyInspector::PropertyEditKind::Text : PropertyInspector::PropertyEditKind::ReadOnly });
+        fields.push_back(EditorModalField{ "cellText", "Cell Text", model::getCellText(tableGridEditorDialog_.rows, tableGridEditorDialog_.selectedRow, tableGridEditorDialog_.selectedColumn),
+            tableGridEditorDialog_.selectedRow >= 0 && tableGridEditorDialog_.selectedColumn >= 0
+                ? PropertyInspector::PropertyEditKind::Text
+                : PropertyInspector::PropertyEditKind::ReadOnly });
+    }
     else if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
         const auto* selectedNode = findTreeEditorNode(treeNodeEditorDialog_.selectedNodeId);
         fields.push_back(EditorModalField{ "nodeCount", "Node Count", std::to_string(visibleTreeNodeEditorRows().size()), PropertyInspector::PropertyEditKind::ReadOnly });
@@ -6669,6 +7061,50 @@ MainWindow::PanelBounds MainWindow::editorModalBodyBounds() const
         top,
         dialogBounds.width - 28.0f,
         std::max(0.0f, bottom - top)
+    };
+}
+
+MainWindow::PanelBounds MainWindow::tableGridEditorGridBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::TableGridEditor) {
+        return bodyBounds;
+    }
+
+    const float top = bodyBounds.y + kTableGridEditorInstructionHeight + kTableGridEditorSectionGap;
+    const float reservedBottom = kTableGridEditorSectionGap
+        + kTableGridEditorActionLabelHeight
+        + kTableGridEditorActionButtonHeight * 2.0f
+        + kTableGridEditorActionRowGap
+        + kTableGridEditorSectionGap
+        + (kEditorModalFormRowHeight * 6.0f)
+        + (kEditorModalFormRowSpacing * 5.0f);
+    const float availableHeight = std::max(0.0f, bodyBounds.y + bodyBounds.height - top - reservedBottom);
+    const float gridHeight = availableHeight >= kTableGridEditorGridMinHeight
+        ? std::min(kTableGridEditorGridPreferredHeight, availableHeight)
+        : availableHeight;
+    return {
+        bodyBounds.x,
+        top,
+        bodyBounds.width,
+        gridHeight
+    };
+}
+
+MainWindow::PanelBounds MainWindow::tableGridEditorFormBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::TableGridEditor) {
+        return bodyBounds;
+    }
+
+    const PanelBounds gridBounds = tableGridEditorGridBounds();
+    const float top = gridBounds.y + gridBounds.height + kTableGridEditorSectionGap;
+    return {
+        bodyBounds.x,
+        top,
+        bodyBounds.width,
+        std::max(0.0f, bodyBounds.y + bodyBounds.height - top)
     };
 }
 
@@ -6803,13 +7239,17 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
         ? resourceManagerDetailBounds()
         : (editorModal_.mode == EditorModalMode::ItemListEditor
                 ? itemListEditorFormBounds()
-                : (editorModal_.mode == EditorModalMode::TreeNodeEditor ? treeNodeEditorFormBounds() : editorModalBodyBounds()));
+                : (editorModal_.mode == EditorModalMode::TableGridEditor
+                        ? tableGridEditorFormBounds()
+                        : (editorModal_.mode == EditorModalMode::TreeNodeEditor ? treeNodeEditorFormBounds() : editorModalBodyBounds())));
     const float labelWidth = editorModal_.mode == EditorModalMode::ResourceManager
         ? kResourceManagerFieldLabelWidth
         : kEditorModalFormLabelWidth;
     float top = editorModal_.mode == EditorModalMode::TreeNodeEditor
         ? bodyBounds.y + kTreeNodeEditorActionLabelHeight + kTreeNodeEditorActionButtonHeight + kTreeNodeEditorSectionGap
-        : bodyBounds.y;
+        : (editorModal_.mode == EditorModalMode::TableGridEditor
+                ? bodyBounds.y + kTableGridEditorActionLabelHeight + kTableGridEditorActionButtonHeight * 2.0f + kTableGridEditorActionRowGap + kTableGridEditorSectionGap
+                : bodyBounds.y);
     hits.reserve(fields.size());
     for (const auto& field : fields) {
         const PanelBounds valueBounds{
@@ -7368,6 +7808,20 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
         return;
     }
 
+    if (editorModal_.mode == EditorModalMode::TableGridEditor) {
+        if (key == "columnName") {
+            if (tableGridEditorDialog_.selectedColumn >= 0 && tableGridEditorDialog_.selectedColumn < static_cast<int>(tableGridEditorDialog_.columns.size())) {
+                tableGridEditorDialog_.columns[static_cast<std::size_t>(tableGridEditorDialog_.selectedColumn)] = trimmedValue;
+                editorModal_.statusText = "Updated selected column name. Click Apply to commit the table.";
+            }
+        }
+        else if (key == "cellText") {
+            model::setCellText(tableGridEditorDialog_.rows, tableGridEditorDialog_.selectedRow, tableGridEditorDialog_.selectedColumn, valueText);
+            editorModal_.statusText = "Updated selected cell text. Click Apply to commit the table.";
+        }
+        return;
+    }
+
     if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
         if (key == "nodeText") {
             renameSelectedTreeEditorNode(valueText);
@@ -7717,8 +8171,14 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
         resetSelectedKeyboardShortcut();
         return true;
     }
+    if (buttonId == "apply_table_grid" && editorModal_.mode == EditorModalMode::TableGridEditor) {
+        return applyTableGridEditor();
+    }
     if (buttonId == "apply_tree_nodes" && editorModal_.mode == EditorModalMode::TreeNodeEditor) {
         return applyTreeNodeEditor();
+    }
+    if (editorModal_.mode == EditorModalMode::TableGridEditor) {
+        return activateTableGridEditorAction(buttonId);
     }
     if (editorModal_.mode == EditorModalMode::ItemListEditor) {
         if (buttonId == "add_item") {
@@ -7916,6 +8376,7 @@ void MainWindow::closeEditorModalDialog(const std::string& result)
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
     itemListEditorDialog_ = {};
+    tableGridEditorDialog_ = {};
     treeNodeEditorDialog_ = {};
     requestKeyboardFocus();
     redraw();
@@ -8042,7 +8503,9 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
     else {
         const PanelBounds bodyBounds = editorModal_.mode == EditorModalMode::ResourceManager
             ? resourceManagerDetailBounds()
-            : (editorModal_.mode == EditorModalMode::ItemListEditor ? itemListEditorFormBounds() : editorModalBodyBounds());
+            : (editorModal_.mode == EditorModalMode::ItemListEditor
+                    ? itemListEditorFormBounds()
+                    : (editorModal_.mode == EditorModalMode::TableGridEditor ? tableGridEditorFormBounds() : editorModalBodyBounds()));
         const float fieldLabelWidth = editorModal_.mode == EditorModalMode::ResourceManager
             ? kResourceManagerFieldLabelWidth
             : kEditorModalFormLabelWidth;
@@ -8083,6 +8546,98 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                 canvas.setColor(0xff9eabbc);
                 canvas.text("...", labelFont_, visage::Font::kCenter,
                     previewBounds.x, previewBounds.y + previewBounds.height - 26.0f, previewBounds.width, 18.0f);
+            }
+        }
+        else if (editorModal_.mode == EditorModalMode::TableGridEditor) {
+            const PanelBounds gridBounds = tableGridEditorGridBounds();
+            const PanelBounds formBounds = tableGridEditorFormBounds();
+            const std::size_t columnCount = std::max<std::size_t>(1, tableGridEditorDialog_.columns.size());
+            const float innerX = gridBounds.x + 6.0f;
+            const float innerY = gridBounds.y + 6.0f;
+            const float innerWidth = std::max(0.0f, gridBounds.width - 12.0f);
+            const float innerHeight = std::max(0.0f, gridBounds.height - 12.0f);
+            const float cellWidth = innerWidth / static_cast<float>(columnCount);
+            const std::size_t visibleRowCount = std::min<std::size_t>(
+                tableGridEditorDialog_.rows.size(),
+                std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(std::max(0.0f, innerHeight - kTableGridEditorHeaderHeight) / kTableGridEditorRowHeight))));
+
+            canvas.setColor(0xffd6dbe4);
+            canvas.text("Table / Grid", labelFont_, visage::Font::kTopLeft,
+                bodyBounds.x, bodyBounds.y, bodyBounds.width, 20.0f);
+            canvas.setColor(0xff9eabbc);
+            canvas.text("Select a cell, edit Cell Text below, then click Apply.", labelFont_, visage::Font::kTopLeft,
+                bodyBounds.x, bodyBounds.y + 18.0f, bodyBounds.width, kTableGridEditorInstructionHeight - 2.0f);
+            canvas.setColor(0xff1a2028);
+            canvas.fill(gridBounds.x, gridBounds.y, gridBounds.width, gridBounds.height);
+            canvas.setColor(0xff12161c);
+            canvas.fill(gridBounds.x, gridBounds.y, gridBounds.width, 1.0f);
+            canvas.fill(gridBounds.x, gridBounds.y + gridBounds.height - 1.0f, gridBounds.width, 1.0f);
+            canvas.fill(gridBounds.x, gridBounds.y, 1.0f, gridBounds.height);
+            canvas.fill(gridBounds.x + gridBounds.width - 1.0f, gridBounds.y, 1.0f, gridBounds.height);
+
+            canvas.saveState();
+            canvas.setClampBounds(gridBounds.x + 1.0f, gridBounds.y + 1.0f, std::max(0.0f, gridBounds.width - 2.0f), std::max(0.0f, gridBounds.height - 2.0f));
+
+            for (std::size_t columnIndex = 0; columnIndex < columnCount; ++columnIndex) {
+                const float columnX = innerX + static_cast<float>(columnIndex) * cellWidth;
+                const bool selectedColumn = static_cast<int>(columnIndex) == tableGridEditorDialog_.selectedColumn;
+                canvas.setColor(selectedColumn ? 0xff355382 : 0xff2a3442);
+                canvas.fill(columnX, innerY, cellWidth - 1.0f, kTableGridEditorHeaderHeight - 1.0f);
+                canvas.setColor(0xff12161c);
+                canvas.fill(columnX + cellWidth - 1.0f, innerY, 1.0f, innerHeight);
+                canvas.setColor(0xffeef2f8);
+                const std::string headerText = columnIndex < tableGridEditorDialog_.columns.size()
+                    ? tableGridEditorDialog_.columns[columnIndex]
+                    : std::string{};
+                canvas.text(headerText.empty() ? std::string{ "<empty>" } : headerText, labelFont_, visage::Font::kTopLeft,
+                    columnX + 8.0f, innerY + 6.0f, std::max(0.0f, cellWidth - 14.0f), kTableGridEditorHeaderHeight - 10.0f);
+            }
+
+            float rowTop = innerY + kTableGridEditorHeaderHeight;
+            for (std::size_t rowIndex = 0; rowIndex < visibleRowCount; ++rowIndex) {
+                const bool selectedRow = static_cast<int>(rowIndex) == tableGridEditorDialog_.selectedRow;
+                for (std::size_t columnIndex = 0; columnIndex < columnCount; ++columnIndex) {
+                    const float columnX = innerX + static_cast<float>(columnIndex) * cellWidth;
+                    const bool selectedCell = selectedRow && static_cast<int>(columnIndex) == tableGridEditorDialog_.selectedColumn;
+                    canvas.setColor(selectedCell ? 0xff355382 : (selectedRow ? 0xff263749 : (rowIndex % 2 == 0 ? 0xff222936 : 0xff1d2430)));
+                    canvas.fill(columnX, rowTop, cellWidth - 1.0f, kTableGridEditorRowHeight - 1.0f);
+                    canvas.setColor(selectedCell ? 0xfff3f7ff : 0xffdde2ea);
+                    canvas.text(model::getCellText(tableGridEditorDialog_.rows, static_cast<int>(rowIndex), static_cast<int>(columnIndex)),
+                        labelFont_, visage::Font::kTopLeft,
+                        columnX + 8.0f, rowTop + 5.0f, std::max(0.0f, cellWidth - 14.0f), kTableGridEditorRowHeight - 8.0f);
+                }
+                rowTop += kTableGridEditorRowHeight;
+            }
+
+            canvas.restoreState();
+
+            if (tableGridEditorDialog_.columns.empty()) {
+                canvas.setColor(0xff9eabbc);
+                canvas.text("No columns yet. Add a column to start building the table.", labelFont_, visage::Font::kCenter,
+                    gridBounds.x + 12.0f, gridBounds.y + 12.0f, gridBounds.width - 24.0f, gridBounds.height - 24.0f);
+            }
+            else if (tableGridEditorDialog_.rows.empty()) {
+                canvas.setColor(0xff9eabbc);
+                canvas.text("No rows yet. Add a row, then select a cell to edit.", labelFont_, visage::Font::kCenter,
+                    gridBounds.x + 12.0f, gridBounds.y + 48.0f, gridBounds.width - 24.0f, gridBounds.height - 60.0f);
+            }
+            else if (visibleRowCount < tableGridEditorDialog_.rows.size()) {
+                canvas.setColor(0xff9eabbc);
+                canvas.text("...", labelFont_, visage::Font::kCenter,
+                    gridBounds.x, gridBounds.y + gridBounds.height - 26.0f, gridBounds.width, 18.0f);
+            }
+
+            canvas.setColor(0xffd6dbe4);
+            canvas.text("Actions", labelFont_, visage::Font::kTopLeft,
+                formBounds.x, formBounds.y, formBounds.width, kTableGridEditorActionLabelHeight);
+            for (const auto& button : tableGridEditorActionButtons()) {
+                canvas.setColor(button.enabled ? 0xff39414e : 0xff2a3039);
+                canvas.fill(button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
+                canvas.setColor(0xff14161b);
+                canvas.fill(button.bounds.x, button.bounds.y + button.bounds.height - 1.0f, button.bounds.width, 1.0f);
+                canvas.setColor(button.enabled ? 0xfff3f5f8 : 0xff7f8997);
+                canvas.text(button.text, labelFont_, visage::Font::kCenter,
+                    button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
             }
         }
         else if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
@@ -8277,6 +8832,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             || editorModal_.buttons[index].id == "apply"
             || editorModal_.buttons[index].id == "create"
             || editorModal_.buttons[index].id == "apply_shortcuts"
+            || editorModal_.buttons[index].id == "apply_table_grid"
             || editorModal_.buttons[index].id == "apply_items"
             || editorModal_.buttons[index].id == "apply_tree_nodes";
         canvas.setColor(accentButton ? 0xff355382 : 0xff39414e);
@@ -8335,6 +8891,27 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
         if (editorModal_.mode == EditorModalMode::ItemListEditor) {
             if (const auto previewIndex = itemListEditorPreviewIndexAt(e.position.x, e.position.y)) {
                 setItemListEditorSelectedIndex(*previewIndex);
+                redraw();
+                return true;
+            }
+        }
+        else if (editorModal_.mode == EditorModalMode::TableGridEditor) {
+            for (const auto& actionButton : tableGridEditorActionButtons()) {
+                if (!actionButton.enabled) {
+                    continue;
+                }
+                if (pointInBounds(e.position.x, e.position.y,
+                        actionButton.bounds.x,
+                        actionButton.bounds.y,
+                        actionButton.bounds.width,
+                        actionButton.bounds.height)) {
+                    activateTableGridEditorAction(actionButton.id);
+                    return true;
+                }
+            }
+
+            if (const auto cellHit = tableGridEditorCellAt(e.position.x, e.position.y)) {
+                selectTableGridEditorCell(cellHit->row, cellHit->column, cellHit->header);
                 redraw();
                 return true;
             }
