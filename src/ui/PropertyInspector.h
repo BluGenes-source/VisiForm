@@ -91,6 +91,7 @@ private:
     [[nodiscard]] float labelColumnWidth() const;
     [[nodiscard]] float valueCellWidth() const;
     [[nodiscard]] std::optional<PendingEdit> sliderEditAtPoint(const std::vector<PropertyRow>& rows, float x, float y);
+    bool setScrollOffsetY(float newScrollOffsetY);
 
     float x_{};
     float y_{};

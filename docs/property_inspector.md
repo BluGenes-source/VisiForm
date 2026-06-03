@@ -28,6 +28,14 @@ While a property dropdown is open:
 - `Escape` closes the dropdown
 - global shortcuts do not fire
 
+When the `Property Inspector` scrolls:
+
+- the shared property dropdown popup closes immediately on mouse-wheel scrolling
+- the shared property dropdown popup closes immediately when the inspector scrollbar thumb is captured or dragged
+- the shared property dropdown popup closes immediately on scrollbar arrow clicks or track/page scrolling
+- this applies to enum, resource, callback, look-and-feel, dock, anchor, and `TreeView` `Selected Node` dropdowns
+- scrolling should not leave a floating dropdown behind after the property rows move
+
 ## Shortcut ownership
 
 The main editor only evaluates global shortcuts after the property inspector's inline editors decline the key event.

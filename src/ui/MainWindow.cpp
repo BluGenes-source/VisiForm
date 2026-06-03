@@ -100,12 +100,16 @@ constexpr float kItemListEditorPreviewHeight = 220.0f;
 constexpr float kItemListEditorPreviewRowHeight = 28.0f;
 constexpr float kItemListEditorPreviewGap = 14.0f;
 constexpr float kTreeNodeEditorModalWidth = 760.0f;
-constexpr float kTreeNodeEditorModalHeight = 560.0f;
+constexpr float kTreeNodeEditorModalHeight = 620.0f;
 constexpr float kTreeNodeEditorLineHeight = 20.0f;
 constexpr float kTreeNodeEditorRowHeight = 26.0f;
 constexpr float kTreeNodeEditorRowIndent = 20.0f;
-constexpr float kTreeNodeEditorSectionGap = 14.0f;
-constexpr float kTreeNodeEditorActionButtonHeight = 30.0f;
+constexpr float kTreeNodeEditorInstructionHeight = 24.0f;
+constexpr float kTreeNodeEditorListPreferredHeight = 220.0f;
+constexpr float kTreeNodeEditorListMinHeight = 190.0f;
+constexpr float kTreeNodeEditorSectionGap = 10.0f;
+constexpr float kTreeNodeEditorActionLabelHeight = 22.0f;
+constexpr float kTreeNodeEditorActionButtonHeight = 32.0f;
 
 bool pointInBounds(float x, float y, float left, float top, float width, float height)
 {
@@ -2746,6 +2750,17 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 bool MainWindow::mouseWheel(const visage::MouseEvent& e)
 {
     const float deltaY = e.precise_wheel_delta_y != 0.0f ? e.precise_wheel_delta_y : e.wheel_delta_y;
+    if (!isEditorModalVisible() && propertyInspector_.contains(e.position.x, e.position.y)) {
+        if (propertyInspector_.mouseWheel(document_, settings_, deltaY, e.position.x, e.position.y)) {
+            if (propertyInspector_.consumeScrollInteraction()) {
+                cancelPopupEditors();
+            }
+            updatePropertyEditorBounds();
+            redraw();
+            return true;
+        }
+    }
+
     if (dropdownControl_.mouseWheel(deltaY, e.position.x, e.position.y)) {
         redraw();
         return true;
@@ -2765,6 +2780,9 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
     }
 
     if (propertyInspector_.mouseWheel(document_, settings_, deltaY, e.position.x, e.position.y)) {
+        if (propertyInspector_.consumeScrollInteraction()) {
+            cancelPopupEditors();
+        }
         updatePropertyEditorBounds();
         redraw();
         return true;
@@ -6725,13 +6743,22 @@ MainWindow::PanelBounds MainWindow::treeNodeEditorTextBounds() const
         return bodyBounds;
     }
 
-    const float top = bodyBounds.y + 32.0f;
-    const float reservedBottom = std::min(180.0f, std::max(120.0f, bodyBounds.height * 0.38f));
+    const float top = bodyBounds.y + kTreeNodeEditorInstructionHeight + kTreeNodeEditorSectionGap;
+    const float reservedBottom = kTreeNodeEditorSectionGap
+        + kTreeNodeEditorActionLabelHeight
+        + kTreeNodeEditorActionButtonHeight
+        + kTreeNodeEditorSectionGap
+        + (kEditorModalFormRowHeight * 3.0f)
+        + (kEditorModalFormRowSpacing * 2.0f);
+    const float availableHeight = std::max(0.0f, bodyBounds.y + bodyBounds.height - top - reservedBottom);
+    const float listHeight = availableHeight >= kTreeNodeEditorListMinHeight
+        ? std::min(kTreeNodeEditorListPreferredHeight, availableHeight)
+        : availableHeight;
     return {
         bodyBounds.x,
         top,
         bodyBounds.width,
-        std::max(120.0f, bodyBounds.y + bodyBounds.height - top - reservedBottom)
+        listHeight
     };
 }
 
@@ -6781,7 +6808,7 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
         ? kResourceManagerFieldLabelWidth
         : kEditorModalFormLabelWidth;
     float top = editorModal_.mode == EditorModalMode::TreeNodeEditor
-        ? bodyBounds.y + kTreeNodeEditorActionButtonHeight + 28.0f
+        ? bodyBounds.y + kTreeNodeEditorActionLabelHeight + kTreeNodeEditorActionButtonHeight + kTreeNodeEditorSectionGap
         : bodyBounds.y;
     hits.reserve(fields.size());
     for (const auto& field : fields) {
@@ -6928,7 +6955,7 @@ std::vector<MainWindow::TreeNodeEditorActionButton> MainWindow::treeNodeEditorAc
         buttons.push_back({
             definition.first,
             definition.second,
-            { left, formBounds.y + 22.0f, buttonWidth, kTreeNodeEditorActionButtonHeight },
+            { left, formBounds.y + kTreeNodeEditorActionLabelHeight, buttonWidth, kTreeNodeEditorActionButtonHeight },
             enabled
         });
         left += buttonWidth + gap;
@@ -8064,10 +8091,10 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             const auto rows = visibleTreeNodeEditorRows();
             canvas.setColor(0xffd6dbe4);
             canvas.text("Tree Nodes", labelFont_, visage::Font::kTopLeft,
-                bodyBounds.x, bodyBounds.y, bodyBounds.width, 18.0f);
+                bodyBounds.x, bodyBounds.y, bodyBounds.width, 20.0f);
             canvas.setColor(0xff9eabbc);
             canvas.text("Select a node, edit Node Text below, then click Apply.", labelFont_, visage::Font::kTopLeft,
-                bodyBounds.x, bodyBounds.y + 16.0f, bodyBounds.width, 18.0f);
+                bodyBounds.x, bodyBounds.y + 18.0f, bodyBounds.width, kTreeNodeEditorInstructionHeight - 2.0f);
             canvas.setColor(0xff1a2028);
             canvas.fill(listBounds.x, listBounds.y, listBounds.width, listBounds.height);
             canvas.setColor(0xff12161c);
@@ -8076,6 +8103,8 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             canvas.fill(listBounds.x, listBounds.y, 1.0f, listBounds.height);
             canvas.fill(listBounds.x + listBounds.width - 1.0f, listBounds.y, 1.0f, listBounds.height);
 
+            canvas.saveState();
+            canvas.setClampBounds(listBounds.x + 1.0f, listBounds.y + 1.0f, std::max(0.0f, listBounds.width - 2.0f), std::max(0.0f, listBounds.height - 2.0f));
             float rowTop = listBounds.y + 8.0f;
             const std::size_t visibleCount = std::min<std::size_t>(
                 rows.size(),
@@ -8095,10 +8124,11 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                 }
                 canvas.setColor(selected ? 0xfff3f7ff : 0xffdde2ea);
                 canvas.text(title, labelFont_, visage::Font::kTopLeft,
-                    listBounds.x + indent + 14.0f, rowTop + 5.0f,
-                    listBounds.width - indent - 24.0f, kTreeNodeEditorRowHeight - 8.0f);
+                    listBounds.x + indent + 14.0f, rowTop + 4.0f,
+                    listBounds.width - indent - 28.0f, kTreeNodeEditorRowHeight - 6.0f);
                 rowTop += kTreeNodeEditorRowHeight;
             }
+            canvas.restoreState();
 
             if (rows.empty()) {
                 canvas.setColor(0xff9eabbc);
@@ -8113,7 +8143,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
 
             canvas.setColor(0xffd6dbe4);
             canvas.text("Actions", labelFont_, visage::Font::kTopLeft,
-                formBounds.x, formBounds.y, formBounds.width, 18.0f);
+                formBounds.x, formBounds.y, formBounds.width, kTreeNodeEditorActionLabelHeight);
             for (const auto& button : treeNodeEditorActionButtons()) {
                 canvas.setColor(button.enabled ? 0xff39414e : 0xff2a3039);
                 canvas.fill(button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);

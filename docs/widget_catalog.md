@@ -114,12 +114,22 @@ Current editor behavior:
 
 - the `Property Inspector` shows a `Nodes` row with a node-count summary and an `Edit...` action
 - clicking the `Nodes` value area opens a modal `Edit Tree Nodes` workflow
-- the modal draws a tree-style row list with indentation and selected-row highlighting
-- the modal exposes a `Node Text` field for the selected node
+- the modal lays out a header instruction line above the tree list so helper text does not overlap the rows
+- the modal draws a tree-style row list with indentation, selected-row highlighting, and clipped row rendering inside the list rectangle
+- the modal exposes dedicated lower rows for `Node Count`, `Selected Node`, and editable `Node Text`
 - the modal supports `Add Child`, `Add Sibling`, `Remove`, `Move Up`, and `Move Down`
 - `Apply` commits the edited tree back to the selected `TreeView`
 - `Cancel` closes the editor without changing the widget
 - the canvas preview updates from the applied `nodes`, `selectedNodePath`, and `expandedNodePaths` properties
+
+Current `TreeView` modal controls:
+
+- `Add Child` adds the first root node when nothing is selected, or adds a child under the selected node
+- `Add Sibling` adds a sibling next to the selected node
+- `Remove` removes the selected node subtree
+- `Move Up` and `Move Down` reorder the selected node within its sibling list
+- `Node Text` edits the currently selected node title
+- `Apply` and `Cancel` stay in the bottom button row below the lower fields
 
 Current storage and selection behavior:
 

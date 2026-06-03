@@ -452,6 +452,18 @@ void PropertyInspector::clampScrollOffset()
     }
 }
 
+bool PropertyInspector::setScrollOffsetY(float newScrollOffsetY)
+{
+    const float previousOffsetY = scrollOffsetY_;
+    scrollOffsetY_ = newScrollOffsetY;
+    clampScrollOffset();
+    const bool changed = std::abs(scrollOffsetY_ - previousOffsetY) > 0.5f;
+    if (changed) {
+        pendingScrollInteraction_ = true;
+    }
+    return changed;
+}
+
 float PropertyInspector::rowYWithScroll(float originalY) const
 {
     return originalY - scrollOffsetY_;
@@ -1015,23 +1027,22 @@ bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const 
         if (thumb.has_value() && containsPoint(*thumb, x, y)) {
             draggingScrollBarThumb_ = true;
             scrollBarDragOffsetY_ = y - thumb->y;
+            pendingScrollInteraction_ = true;
             return true;
         }
 
         if (y < scrollBar->y + arrowSize) {
-            scrollOffsetY_ -= kRowHeight;
+            setScrollOffsetY(scrollOffsetY_ - kRowHeight);
         }
         else if (y > scrollBar->y + scrollBar->height - arrowSize) {
-            scrollOffsetY_ += kRowHeight;
+            setScrollOffsetY(scrollOffsetY_ + kRowHeight);
         }
         else if (thumb.has_value() && y < thumb->y) {
-            scrollOffsetY_ -= std::max(kRowHeight, visibleHeight_ * 0.85f);
+            setScrollOffsetY(scrollOffsetY_ - std::max(kRowHeight, visibleHeight_ * 0.85f));
         }
         else {
-            scrollOffsetY_ += std::max(kRowHeight, visibleHeight_ * 0.85f);
+            setScrollOffsetY(scrollOffsetY_ + std::max(kRowHeight, visibleHeight_ * 0.85f));
         }
-
-        clampScrollOffset();
         return true;
     }
 
@@ -1101,13 +1112,11 @@ bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, const 
     const float thumbTop = std::clamp(y - scrollBarDragOffsetY_, trackTop, maxThumbTop);
     const float maxScroll = std::max(0.0f, contentHeight_ - visibleHeight_);
     if (trackHeight > thumb->height && maxScroll > 0.0f) {
-        scrollOffsetY_ = maxScroll * ((thumbTop - trackTop) / (trackHeight - thumb->height));
+        setScrollOffsetY(maxScroll * ((thumbTop - trackTop) / (trackHeight - thumb->height)));
     }
     else {
-        scrollOffsetY_ = 0.0f;
+        setScrollOffsetY(0.0f);
     }
-
-    clampScrollOffset();
     return true;
 }
 
@@ -1133,8 +1142,7 @@ bool PropertyInspector::mouseWheel(const model::ProjectDocument& document, const
         return false;
     }
 
-    scrollOffsetY_ += -deltaY * kMouseWheelSensitivity;
-    clampScrollOffset();
+    setScrollOffsetY(scrollOffsetY_ + (-deltaY * kMouseWheelSensitivity));
     return true;
 }
 

@@ -176,6 +176,7 @@ Add safe first-pass `TreeView` support with a simple hierarchical node text form
 
 - `TreeView` support is now present in the editor-side registry, inspector, designer, persistence, validation, and current repair-pass workflow.
 - The Phase 76 repair pass completed the inspector dropdown collapse fix and replaced the raw node-text modal with a visual `TreeView` node editor.
+- Repair Pass 2 completed the remaining inspector scroll-close path fixes and the TreeView modal spacing/layout repair.
 - The main `VisiForm` app builds successfully with the required `build-static-debug` workflow.
 
 ## Remaining TODOs
@@ -279,3 +280,94 @@ Add safe first-pass `TreeView` support with a simple hierarchical node text form
 ### Remaining TODOs
 
 - Run the manual editor verification items in the checklist above inside Visual Studio.
+
+## Repair Pass 2 - Dropdown Scroll Collapse and Node Editor Layout
+
+### Current failed behavior
+
+- Opening the `PropertyInspector` `Selected Node` dropdown and scrolling the inspector still leaves the popup visible after the rows move.
+- The same floating-popup problem can still affect other inspector-owned dropdowns that share the same popup control.
+- The visual `TreeView` node editor no longer uses raw text, but the instruction text, list area, lower fields, status area, and bottom buttons still compete for vertical space.
+- The `Node Text` field and lower rows can become clipped or appear too close to the bottom button row.
+
+### Exact root cause diagnosis
+
+- `PropertyInspector` still changes `scrollOffsetY_` through direct assignments in mouse-wheel, scrollbar track-click, and scrollbar thumb-drag paths instead of routing all scroll changes through a single setter.
+- Because those direct assignments do not consistently mark scroll changes through a central path, popup-close behavior can be skipped when the inspector scrolls.
+- `MainWindow::mouseWheel()` still gives wheel input to the shared `DropdownControl` before the inspector scroll path, so an open inspector dropdown can stay alive while the inspector is supposed to move.
+- No keyboard or page-scroll-specific inspector path is currently implemented; the active scroll-mutating paths are mouse wheel, scrollbar thumb drag, scrollbar arrow clicks, and scrollbar track page clicks.
+- The visual `TreeView` editor layout uses mixed fixed offsets: the instruction text is drawn against `editorModalBodyBounds()`, the list starts from `treeNodeEditorTextBounds()`, and the lower form rows start from `treeNodeEditorFormBounds()` plus another hard-coded action offset.
+- The current `TreeView` dialog height and reserved-bottom calculations are not based on one explicit stacked layout, so the list, action row, fields, status area, and `Apply`/`Cancel` buttons can crowd or clip one another.
+
+### Files inspected
+
+- `src/ui/PropertyInspector.h`
+- `src/ui/PropertyInspector.cpp`
+- `src/ui/MainWindow.h`
+- `src/ui/MainWindow.cpp`
+- `src/ui/editors/DropdownControl.h`
+- `src/ui/editors/DropdownControl.cpp`
+- `src/ui/editors/TextEditControl.h`
+- `src/ui/editors/TextEditControl.cpp`
+- `src/ui/DesignerCanvas.h`
+- `src/ui/DesignerCanvas.cpp`
+- `src/model/WidgetNode.h`
+- `src/model/WidgetRegistry.h`
+- `src/model/WidgetDefinition.h`
+- `docs/widget_catalog.md`
+- `docs/property_inspector.md`
+- `docs/agent_plans/phase_76_treeview_widget_and_tree_node_editor_plan.md`
+
+### Specific code paths changed
+
+- `PropertyInspector` now uses a central scroll-offset setter for wheel, scrollbar arrow/track clicks, and thumb dragging, and marks thumb capture as a scroll interaction so popup cancellation can happen on the same repaint cycle.
+- `MainWindow` now prioritizes `PropertyInspector` wheel scrolling over shared dropdown wheel handling when the pointer is inside the inspector and closes inspector-owned popup editors immediately after scroll interactions from wheel, scrollbar clicks, or thumb dragging.
+- `MainWindow` now uses explicit `TreeView` modal layout constants for the instruction line, list rectangle, actions row, lower fields, and larger dialog height, and tree rows are clamped to the list rectangle.
+- `docs/property_inspector.md` and `docs/widget_catalog.md` now document inspector dropdown collapse on scroll and the repaired `TreeView` editor layout and controls.
+
+### TODO checklist
+
+- [x] Inspect every current `PropertyInspector` scroll path that mutates `scrollOffsetY_`.
+- [x] Inspect the current visual `TreeView` modal layout and clipping points.
+- [x] Add a central `PropertyInspector` scroll-offset setter and route every scroll change through it.
+- [x] Close all active inspector dropdown popups when the inspector scrolls by wheel, scrollbar drag, or scrollbar track/page movement.
+- [x] Ensure the same repaint cycle removes floating dropdown pixels immediately after scroll.
+- [x] Replace the fragile `TreeView` modal vertical offsets with one explicit stacked layout.
+- [x] Separate instruction text from the tree list rectangle.
+- [x] Keep the lower `TreeView` fields and `Apply`/`Cancel` buttons visible without clipping.
+- [x] Update `docs/property_inspector.md` for dropdown-collapse-on-scroll behavior.
+- [x] Update `docs/widget_catalog.md` for the `TreeView` editor controls and layout behavior.
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Fix any compile errors introduced by this repair pass.
+- [x] Update this repair-pass section with build validation, final summary, and remaining TODOs.
+
+### Build validation checklist
+
+- [x] Build the main `VisiForm` app with `build-static-debug`.
+- [x] Confirm the main `VisiForm` app built successfully.
+- [x] Confirm `VisiForm.exe` was not run.
+- [x] Confirm no generated apps were launched.
+
+### Manual test checklist
+
+- [ ] Open `Selected Node`, scroll the `PropertyInspector` with the mouse wheel, and confirm the dropdown closes immediately.
+- [ ] Open `Selected Node`, drag the `PropertyInspector` scrollbar, and confirm the dropdown closes immediately.
+- [ ] Open another choice dropdown such as `dock`, `anchor`, `lookAndFeel`, resource, or callback and confirm it also closes when the inspector scrolls.
+- [ ] Confirm no dropdown remains floating after inspector rows move.
+- [ ] Open the visual `TreeView` node editor and confirm the instruction text is above the list, not inside it.
+- [ ] Confirm the tree list, action buttons, `Node Count`, `Selected Node`, `Node Text`, status text, and `Apply`/`Cancel` each have clear space.
+- [ ] Confirm the `Node Text` field is visible and editable.
+- [ ] Confirm the lower fields are not clipped under the bottom button row.
+- [ ] Confirm `Apply` and `Cancel` remain visible and clickable.
+- [ ] Confirm add, remove, rename, and move actions still work and update the `TreeView` after `Apply`.
+
+### Final result summary
+
+- Fixed the remaining inspector-popup issue by routing user-driven `PropertyInspector` scrolling through a shared setter and by canceling the shared dropdown popup immediately when inspector scrolling starts from mouse wheel, scrollbar arrows, scrollbar track clicks, or scrollbar thumb dragging.
+- Fixed the remaining `TreeView` modal layout issue by enlarging the dialog, separating the instruction line from the list rectangle, stacking the actions row and lower fields with explicit spacing, and clamping tree-row drawing to the list area.
+- Updated `docs/property_inspector.md` and `docs/widget_catalog.md` to describe the repaired behavior.
+- Verified the main `VisiForm` app builds successfully with the required `build-static-debug` workflow.
+
+### Remaining TODOs
+
+- Run the manual verification checklist above inside Visual Studio to confirm the repaired scroll-close behavior and modal spacing visually.
