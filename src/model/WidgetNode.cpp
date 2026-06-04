@@ -16,6 +16,8 @@ const std::string& widgetTypeName(WidgetType type)
     static const std::string panel = "Panel";
     static const std::string tabControl = "TabControl";
     static const std::string tabPage = "TabPage";
+    static const std::string menuBar = "MenuBar";
+    static const std::string toolBar = "ToolBar";
     static const std::string label = "Label";
     static const std::string button = "Button";
     static const std::string textBox = "TextBox";
@@ -47,6 +49,10 @@ const std::string& widgetTypeName(WidgetType type)
         return tabControl;
     case WidgetType::TabPage:
         return tabPage;
+    case WidgetType::MenuBar:
+        return menuBar;
+    case WidgetType::ToolBar:
+        return toolBar;
     case WidgetType::Label:
         return label;
     case WidgetType::Button:
@@ -211,6 +217,12 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     }
     if (value == "TabPage") {
         return WidgetType::TabPage;
+    }
+    if (value == "MenuBar") {
+        return WidgetType::MenuBar;
+    }
+    if (value == "ToolBar") {
+        return WidgetType::ToolBar;
     }
     if (value == "Label") {
         return WidgetType::Label;

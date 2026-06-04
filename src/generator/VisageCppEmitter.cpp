@@ -938,6 +938,67 @@ void emitWidgetDraw(std::ostringstream& stream,
         }
         break;
     }
+    case visiform::model::WidgetType::MenuBar: {
+        const auto items = visiform::model::splitItems(widget.getStringProperty("items", {}));
+        const std::string selectedIndexKey = std::string(visiform::model::selectedItemIndexPropertyKey(widget.type));
+        const int selectedIndex = visiform::model::sanitizeSelectedIndex(items,
+            widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
+        stream << indent << "canvas.setColor(" << emitColorExpression(style.panelColor, "0xff2B313D") << ");\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        float itemOffset = 6.0f;
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            const float itemWidth = std::max(56.0f, static_cast<float>(items[index].size()) * 11.2f + 36.0f);
+            if (static_cast<int>(index) == selectedIndex) {
+                stream << indent << "canvas.setColor(" << emitColorExpression(style.accentColor, "0xff2D7FF9") << ");\n";
+                stream << indent << "canvas.fill(" << xExpr << " + " << emitFloat(itemOffset) << ", " << yExpr << " + 4.0f, " << emitFloat(itemWidth) << ", " << heightExpr << " - 8.0f);\n";
+            }
+            stream << indent << "if (drawText) {\n";
+            stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
+            stream << indent << "    canvas.text(" << emitStringLiteral(items[index])
+                   << ", labelFont_, visage::Font::kCenter, " << xExpr << " + " << emitFloat(itemOffset + 4.0f)
+                   << ", " << yExpr << " + 4.0f, " << emitFloat(std::max(0.0f, itemWidth - 8.0f)) << ", " << heightExpr << " - 8.0f);\n";
+            stream << indent << "}\n";
+            itemOffset += itemWidth + 4.0f;
+        }
+        if (items.empty()) {
+            stream << indent << "if (drawText) {\n";
+            stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
+            stream << indent << "    canvas.text(\"<empty>\", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+            stream << indent << "}\n";
+        }
+        break;
+    }
+    case visiform::model::WidgetType::ToolBar: {
+        const auto items = visiform::model::splitItems(widget.getStringProperty("items", {}));
+        const std::string selectedIndexKey = std::string(visiform::model::selectedItemIndexPropertyKey(widget.type));
+        const int selectedIndex = visiform::model::sanitizeSelectedIndex(items,
+            widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
+        stream << indent << "canvas.setColor(" << emitColorExpression(style.panelColor, "0xff2B313D") << ");\n";
+        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        float itemOffset = 6.0f;
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            const float itemWidth = std::max(64.0f, static_cast<float>(items[index].size()) * 11.2f + 42.0f);
+            stream << indent << "canvas.setColor(" << emitColorExpression(static_cast<int>(index) == selectedIndex ? style.accentColor : style.fillColor, "0xff2B313D") << ");\n";
+            stream << indent << "canvas.fill(" << xExpr << " + " << emitFloat(itemOffset) << ", " << yExpr << " + 5.0f, " << emitFloat(itemWidth) << ", " << heightExpr << " - 10.0f);\n";
+            stream << indent << "drawBorder(canvas, " << xExpr << " + " << emitFloat(itemOffset) << ", " << yExpr << " + 5.0f, " << emitFloat(itemWidth) << ", " << heightExpr << " - 10.0f, " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+            stream << indent << "if (drawText) {\n";
+            stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
+            stream << indent << "    canvas.text(" << emitStringLiteral(items[index])
+                   << ", labelFont_, visage::Font::kCenter, " << xExpr << " + " << emitFloat(itemOffset + 4.0f)
+                   << ", " << yExpr << " + 5.0f, " << emitFloat(std::max(0.0f, itemWidth - 8.0f)) << ", " << heightExpr << " - 10.0f);\n";
+            stream << indent << "}\n";
+            itemOffset += itemWidth + 6.0f;
+        }
+        if (items.empty()) {
+            stream << indent << "if (drawText) {\n";
+            stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
+            stream << indent << "    canvas.text(\"<empty>\", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+            stream << indent << "}\n";
+        }
+        break;
+    }
     case visiform::model::WidgetType::StatusBar: {
         const int fields = std::clamp(widget.getIntProperty("fields", 1), 1, 4);
         stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
@@ -1067,6 +1128,10 @@ std::string runtimeWidgetTypeLiteral(visiform::model::WidgetType type)
         return "RuntimeWidgetType::Panel";
     case visiform::model::WidgetType::TabControl:
         return "RuntimeWidgetType::TabControl";
+    case visiform::model::WidgetType::MenuBar:
+        return "RuntimeWidgetType::MenuBar";
+    case visiform::model::WidgetType::ToolBar:
+        return "RuntimeWidgetType::ToolBar";
     case visiform::model::WidgetType::Image:
         return "RuntimeWidgetType::Image";
     case visiform::model::WidgetType::Spacer:
@@ -1202,12 +1267,19 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     else if (widget.type == visiform::model::WidgetType::TextBox) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("text", {})) << ";\n";
     }
-    else if (widget.type == visiform::model::WidgetType::ComboBox || widget.type == visiform::model::WidgetType::ListBox) {
+    else if (widget.type == visiform::model::WidgetType::ComboBox
+        || widget.type == visiform::model::WidgetType::ListBox
+        || widget.type == visiform::model::WidgetType::MenuBar
+        || widget.type == visiform::model::WidgetType::ToolBar) {
         const auto items = visiform::model::splitItems(widget.getStringProperty("items", {}));
-        const int selectedIndex = visiform::model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+        const std::string selectedIndexKey = std::string(visiform::model::selectedItemIndexPropertyKey(widget.type));
+        const int selectedIndex = visiform::model::sanitizeSelectedIndex(items,
+            widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
         stream << innerIndent << "widget.items = " << emitStringVectorLiteral(items) << ";\n";
         stream << innerIndent << "widget.selectedIndex = " << selectedIndex << ";\n";
-        stream << innerIndent << "widget.multiSelect = " << (widget.getBoolProperty("multiSelect", false) ? "true" : "false") << ";\n";
+        if (widget.type == visiform::model::WidgetType::ListBox) {
+            stream << innerIndent << "widget.multiSelect = " << (widget.getBoolProperty("multiSelect", false) ? "true" : "false") << ";\n";
+        }
         if (widget.type == visiform::model::WidgetType::ComboBox) {
             stream << innerIndent << "widget.text.value = " << emitStringLiteral(visiform::model::getSelectedItemText(items, selectedIndex)) << ";\n";
         }
@@ -1383,6 +1455,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    GroupBox,\n";
     stream << "    Panel,\n";
     stream << "    TabControl,\n";
+    stream << "    MenuBar,\n";
+    stream << "    ToolBar,\n";
     stream << "    Image,\n";
     stream << "    Spacer,\n";
     stream << "    ColorPicker\n";
@@ -1755,6 +1829,8 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::GroupBox: return \"GroupBox\";\n";
     stream << "    case RuntimeWidgetType::Panel: return \"Panel\";\n";
     stream << "    case RuntimeWidgetType::TabControl: return \"TabControl\";\n";
+    stream << "    case RuntimeWidgetType::MenuBar: return \"MenuBar\";\n";
+    stream << "    case RuntimeWidgetType::ToolBar: return \"ToolBar\";\n";
     stream << "    case RuntimeWidgetType::Image: return \"Image\";\n";
     stream << "    case RuntimeWidgetType::Spacer: return \"Spacer\";\n";
     stream << "    case RuntimeWidgetType::ColorPicker: return \"ColorPicker\";\n";
@@ -1913,6 +1989,62 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "                const std::string label = index < widget.items.size() ? widget.items[index] : std::string{ \"Tab\" };\n";
     stream << "                canvas.text(label, font, visage::Font::kCenter, tabX, y, tabWidth, kTabHeaderHeight);\n";
     stream << "            }\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::MenuBar: {\n";
+    stream << "        canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.35f)));\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        const int selectedIndex = sanitizeItemIndex(widget, widget.selectedIndex);\n";
+    stream << "        const float itemHeight = std::max(0.0f, height - 8.0f);\n";
+    stream << "        float itemLeft = x + 6.0f;\n";
+    stream << "        for (std::size_t index = 0; index < widget.items.size() && itemLeft < x + width - 6.0f; ++index) {\n";
+    stream << "            const std::string& item = widget.items[index];\n";
+    stream << "            const float idealWidth = std::max(56.0f, static_cast<float>(item.size()) * std::max(8.0f, widget.style.fontSize) * 0.70f + 36.0f);\n";
+    stream << "            const float itemWidth = std::min(idealWidth, std::max(0.0f, x + width - 6.0f - itemLeft));\n";
+    stream << "            if (static_cast<int>(index) == selectedIndex) {\n";
+    stream << "                canvas.setColor(canvasColor(blendColor(widget.style.accentColor, widget.style.fillColor, 0.32f)));\n";
+    stream << "                canvas.fill(itemLeft, y + 4.0f, itemWidth, itemHeight);\n";
+    stream << "            }\n";
+    stream << "            if (drawText) {\n";
+    stream << "                canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "                canvas.text(item, font, visage::Font::kCenter, itemLeft + 4.0f, y + 4.0f, std::max(0.0f, itemWidth - 8.0f), itemHeight);\n";
+    stream << "            }\n";
+    stream << "            itemLeft += itemWidth + 4.0f;\n";
+    stream << "        }\n";
+    stream << "        if (drawText && widget.items.empty()) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "            canvas.text(\"<empty>\", font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
+    stream << "        break;\n";
+    stream << "    }\n";
+    stream << "    case RuntimeWidgetType::ToolBar: {\n";
+    stream << "        canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.22f)));\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        const int selectedIndex = sanitizeItemIndex(widget, widget.selectedIndex);\n";
+    stream << "        const float itemHeight = std::max(0.0f, height - 10.0f);\n";
+    stream << "        float itemLeft = x + 6.0f;\n";
+    stream << "        for (std::size_t index = 0; index < widget.items.size() && itemLeft < x + width - 6.0f; ++index) {\n";
+    stream << "            const std::string& item = widget.items[index];\n";
+    stream << "            const float idealWidth = std::max(64.0f, static_cast<float>(item.size()) * std::max(8.0f, widget.style.fontSize) * 0.70f + 42.0f);\n";
+    stream << "            const float itemWidth = std::min(idealWidth, std::max(0.0f, x + width - 6.0f - itemLeft));\n";
+    stream << "            const RuntimeColor buttonFill = static_cast<int>(index) == selectedIndex\n";
+    stream << "                ? blendColor(widget.style.accentColor, widget.style.fillColor, 0.34f)\n";
+    stream << "                : widget.style.fillColor;\n";
+    stream << "            canvas.setColor(canvasColor(buttonFill));\n";
+    stream << "            canvas.fill(itemLeft, y + 5.0f, itemWidth, itemHeight);\n";
+    stream << "            drawBorder(canvas, itemLeft, y + 5.0f, itemWidth, itemHeight, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "            if (drawText) {\n";
+    stream << "                canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "                canvas.text(item, font, visage::Font::kCenter, itemLeft + 4.0f, y + 5.0f, std::max(0.0f, itemWidth - 8.0f), itemHeight);\n";
+    stream << "            }\n";
+    stream << "            itemLeft += itemWidth + 6.0f;\n";
+    stream << "        }\n";
+    stream << "        if (drawText && widget.items.empty()) {\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
+    stream << "            canvas.text(\"<empty>\", font, visage::Font::kCenter, x, y, width, height);\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    }\n";

@@ -131,7 +131,7 @@ WidgetDefinition makeTableGridDefinition()
     definition.type = WidgetType::TableGrid;
     definition.typeName = "TableGrid";
     definition.displayName = "Table / Grid";
-    setPaletteMetadata(definition, true, 12, "Input/List");
+    setPaletteMetadata(definition, true, 15, "Input/List");
     definition.defaultNamePrefix = "tableGrid";
     definition.defaultHint = "Displays editable rows and columns of data.";
     definition.size = { 360.0f, 220.0f, 180.0f, 120.0f };
@@ -162,7 +162,7 @@ WidgetDefinition makeTreeViewDefinition()
     definition.type = WidgetType::TreeView;
     definition.typeName = "TreeView";
     definition.displayName = "Tree View";
-    setPaletteMetadata(definition, true, 11, "Input/List");
+    setPaletteMetadata(definition, true, 14, "Input/List");
     definition.defaultNamePrefix = "treeView";
     definition.defaultHint = "Displays a hierarchical list of expandable tree nodes.";
     definition.size = { 240.0f, 180.0f, 140.0f, 100.0f };
@@ -190,7 +190,7 @@ WidgetDefinition makeStatusBarDefinition()
     definition.type = WidgetType::StatusBar;
     definition.typeName = "StatusBar";
     definition.displayName = "Status Bar";
-    setPaletteMetadata(definition, true, 16, "Value/Feedback");
+    setPaletteMetadata(definition, true, 6, "Application Structure");
     definition.defaultNamePrefix = "statusBar";
     definition.defaultHint = "Displays status messages in one or more fields.";
     definition.size = { 600.0f, 50.0f, 200.0f, 44.0f };
@@ -216,7 +216,7 @@ WidgetDefinition makeProgressBarDefinition()
     definition.type = WidgetType::ProgressBar;
     definition.typeName = "ProgressBar";
     definition.displayName = "Progress Bar";
-    setPaletteMetadata(definition, true, 15, "Value/Feedback");
+    setPaletteMetadata(definition, true, 18, "Value/Feedback");
     definition.defaultNamePrefix = "progressBar";
     definition.defaultHint = "Displays task progress.";
     definition.size = { 240.0f, 32.0f, 100.0f, 24.0f };
@@ -366,13 +366,55 @@ WidgetDefinition makeTabPageDefinition()
     return definition;
 }
 
+WidgetDefinition makeMenuBarDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::MenuBar;
+    definition.typeName = "MenuBar";
+    definition.displayName = "Menu Bar";
+    setPaletteMetadata(definition, true, 4, "Application Structure");
+    definition.defaultNamePrefix = "menuBar";
+    definition.defaultHint = "Displays a top-level application menu.";
+    definition.size = { 900.0f, 32.0f, 220.0f, 28.0f };
+    definition.properties = {
+        { "items", "Items", "File\nEdit\nView\nProject\nExport\nHelp", PropertyEditKind::Text, true, "Newline-delimited top-level menu item labels." },
+        { "selectedMenuIndex", "Selected Menu Index", 0, PropertyEditKind::Integer, true, "Zero-based selected menu item index. Use -1 when the menu has no items." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    return definition;
+}
+
+WidgetDefinition makeToolBarDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::ToolBar;
+    definition.typeName = "ToolBar";
+    definition.displayName = "Tool Bar";
+    setPaletteMetadata(definition, true, 5, "Application Structure");
+    definition.defaultNamePrefix = "toolBar";
+    definition.defaultHint = "Displays command buttons in a toolbar.";
+    definition.size = { 900.0f, 40.0f, 240.0f, 32.0f };
+    definition.properties = {
+        { "items", "Items", "New\nOpen\nSave\nExport\nValidate", PropertyEditKind::Text, true, "Newline-delimited toolbar item labels." },
+        { "selectedToolIndex", "Selected Tool Index", 0, PropertyEditKind::Integer, true, "Zero-based selected tool item index. Use -1 when the toolbar has no items." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    return definition;
+}
+
 WidgetDefinition makeLabelDefinition()
 {
     WidgetDefinition definition;
     definition.type = WidgetType::Label;
     definition.typeName = "Label";
     definition.displayName = "Label";
-    setPaletteMetadata(definition, true, 4, "Basic");
+    setPaletteMetadata(definition, true, 7, "Basic");
     definition.defaultNamePrefix = "label";
     definition.defaultHint = "Displays static text.";
     definition.size = { 260.0f, 64.0f, 140.0f, 58.0f };
@@ -392,7 +434,7 @@ WidgetDefinition makeButtonDefinition()
     definition.type = WidgetType::Button;
     definition.typeName = "Button";
     definition.displayName = "Button";
-    setPaletteMetadata(definition, true, 5, "Basic");
+    setPaletteMetadata(definition, true, 8, "Basic");
     definition.defaultNamePrefix = "button";
     definition.defaultHint = "Runs an action when clicked.";
     definition.size = { 260.0f, 56.0f, 140.0f, 52.0f };
@@ -423,7 +465,7 @@ WidgetDefinition makeTextBoxDefinition()
     definition.type = WidgetType::TextBox;
     definition.typeName = "TextBox";
     definition.displayName = "Text Box";
-    setPaletteMetadata(definition, true, 6, "Basic");
+    setPaletteMetadata(definition, true, 9, "Basic");
     definition.defaultNamePrefix = "textBox";
     definition.defaultHint = "Allows text entry.";
     definition.size = { 260.0f, 48.0f, 160.0f, 44.0f };
@@ -446,7 +488,7 @@ WidgetDefinition makeComboBoxDefinition()
     definition.type = WidgetType::ComboBox;
     definition.typeName = "ComboBox";
     definition.displayName = "Combo Box";
-    setPaletteMetadata(definition, true, 9, "Input/List");
+    setPaletteMetadata(definition, true, 12, "Input/List");
     definition.defaultNamePrefix = "comboBox";
     definition.defaultHint = "Selects one item from a dropdown list.";
     definition.size = { 180.0f, 32.0f, 120.0f, 28.0f };
@@ -471,7 +513,7 @@ WidgetDefinition makeListBoxDefinition()
     definition.type = WidgetType::ListBox;
     definition.typeName = "ListBox";
     definition.displayName = "List Box";
-    setPaletteMetadata(definition, true, 10, "Input/List");
+    setPaletteMetadata(definition, true, 13, "Input/List");
     definition.defaultNamePrefix = "listBox";
     definition.defaultHint = "Displays a selectable list of items.";
     definition.size = { 220.0f, 140.0f, 140.0f, 80.0f };
@@ -497,7 +539,7 @@ WidgetDefinition makeCheckBoxDefinition()
     definition.type = WidgetType::CheckBox;
     definition.typeName = "CheckBox";
     definition.displayName = "Check Box";
-    setPaletteMetadata(definition, true, 7, "Basic");
+    setPaletteMetadata(definition, true, 10, "Basic");
     definition.defaultNamePrefix = "checkBox";
     definition.defaultHint = "Toggles an option on or off.";
     definition.size = { 300.0f, 68.0f, 200.0f, 62.0f };
@@ -521,7 +563,7 @@ WidgetDefinition makeRadioButtonDefinition()
     definition.type = WidgetType::RadioButton;
     definition.typeName = "RadioButton";
     definition.displayName = "Radio Button";
-    setPaletteMetadata(definition, true, 8, "Basic");
+    setPaletteMetadata(definition, true, 11, "Basic");
     definition.defaultNamePrefix = "radioButton";
     definition.defaultHint = "Selects one option from a group.";
     definition.size = { 280.0f, 52.0f, 180.0f, 48.0f };
@@ -546,7 +588,7 @@ WidgetDefinition makeSliderDefinition()
     definition.type = WidgetType::Slider;
     definition.typeName = "Slider";
     definition.displayName = "Slider";
-    setPaletteMetadata(definition, true, 13, "Value/Feedback");
+    setPaletteMetadata(definition, true, 16, "Value/Feedback");
     definition.defaultNamePrefix = "slider";
     definition.defaultHint = "Adjusts a numeric value.";
     definition.size = { 240.0f, 44.0f, 120.0f, 40.0f };
@@ -570,7 +612,7 @@ WidgetDefinition makeScrollBarDefinition()
     definition.type = WidgetType::ScrollBar;
     definition.typeName = "ScrollBar";
     definition.displayName = "Scroll Bar";
-    setPaletteMetadata(definition, true, 14, "Value/Feedback");
+    setPaletteMetadata(definition, true, 17, "Value/Feedback");
     definition.defaultNamePrefix = "scrollBar";
     definition.defaultHint = "Scrolls through a range of values.";
     definition.size = { 240.0f, 36.0f, 100.0f, 28.0f };
@@ -596,7 +638,7 @@ WidgetDefinition makeImageDefinition()
     definition.type = WidgetType::Image;
     definition.typeName = "Image";
     definition.displayName = "Image";
-    setPaletteMetadata(definition, true, 17, "Resources/Other");
+    setPaletteMetadata(definition, true, 19, "Resources/Other");
     definition.defaultNamePrefix = "image";
     definition.defaultHint = "Displays or reserves space for an image.";
     definition.size = { 200.0f, 140.0f, 100.0f, 80.0f };
@@ -617,7 +659,7 @@ WidgetDefinition makeColorPickerDefinition()
     definition.type = WidgetType::ColorPicker;
     definition.typeName = "ColorPicker";
     definition.displayName = "Color Picker";
-    setPaletteMetadata(definition, true, 18, "Resources/Other");
+    setPaletteMetadata(definition, true, 22, "Resources/Other");
     definition.defaultNamePrefix = "colorPicker";
     definition.defaultHint = "Selects a color value.";
     definition.size = { 220.0f, 40.0f, 140.0f, 34.0f };
@@ -642,7 +684,7 @@ WidgetDefinition makeModalDialogDefinition()
     definition.type = WidgetType::ModalDialog;
     definition.typeName = "ModalDialog";
     definition.displayName = "Modal Dialog";
-    setPaletteMetadata(definition, true, 19, "Resources/Other");
+    setPaletteMetadata(definition, true, 21, "Resources/Other");
     definition.defaultNamePrefix = "modalDialog";
     definition.defaultHint = "Displays a modal dialog.";
     definition.size = { 420.0f, 240.0f, 260.0f, 160.0f };
@@ -699,6 +741,8 @@ WidgetRegistry::WidgetRegistry()
         makePanelDefinition(),
         makeTabControlDefinition(),
         makeTabPageDefinition(),
+        makeMenuBarDefinition(),
+        makeToolBarDefinition(),
         makeLabelDefinition(),
         makeButtonDefinition(),
         makeTextBoxDefinition(),

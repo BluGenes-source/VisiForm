@@ -147,6 +147,22 @@ std::string itemListSummaryText(std::size_t itemCount)
     return std::to_string(itemCount) + (itemCount == 1 ? " item" : " items");
 }
 
+std::string itemListWidgetTypeLabel(model::WidgetType type)
+{
+    switch (type) {
+    case model::WidgetType::ComboBox:
+        return "ComboBox";
+    case model::WidgetType::ListBox:
+        return "ListBox";
+    case model::WidgetType::MenuBar:
+        return "MenuBar";
+    case model::WidgetType::ToolBar:
+        return "ToolBar";
+    default:
+        return model::toString(type);
+    }
+}
+
 std::string itemListEditorRowLabel(const std::vector<std::string>& items, int index)
 {
     if (index < 0 || index >= static_cast<int>(items.size())) {
@@ -673,7 +689,9 @@ std::string insertionParentIdForNewWidget(const model::ProjectDocument& document
         return document.root.id;
     }
 
-    if (type == model::WidgetType::TabControl) {
+    if (type == model::WidgetType::TabControl
+        || type == model::WidgetType::MenuBar
+        || type == model::WidgetType::ToolBar) {
         return document.root.id;
     }
 
@@ -3290,6 +3308,20 @@ model::WidgetNode MainWindow::createDefaultWidget(model::WidgetType type, const 
         widget.setProperty("dock", "Bottom");
         widget.setProperty("fillWidth", true);
     }
+    else if (type == model::WidgetType::MenuBar || type == model::WidgetType::ToolBar) {
+        const model::WidgetNode* parent = parentId.empty() ? &document_.root : document_.findWidgetById(parentId);
+        const model::Rect parentClientBounds = parent != nullptr
+            ? model::LayoutEngine::clientBoundsForParent(*parent)
+            : model::LayoutEngine::clientBoundsForParent(document_.root);
+        widget.bounds = {
+            parentClientBounds.x,
+            parentClientBounds.y,
+            parentClientBounds.width,
+            widget.bounds.height
+        };
+        widget.setProperty("dock", "Top");
+        widget.setProperty("anchor", "Top Left");
+    }
     else {
         widget.bounds = nextDefaultWidgetBounds(type, parentId);
     }
@@ -4211,7 +4243,9 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     else {
         widget->setProperty(key, std::move(value));
     }
-    if (model::supportsItemList(widget->type) && (key == "items" || key == "selectedIndex" || key == "text")) {
+    const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(widget->type));
+    if (model::supportsItemList(widget->type)
+        && (key == "items" || key == selectedIndexKey || key == "text")) {
         model::normalizeItemListProperties(*widget);
     }
     if (model::supportsTableGrid(widget->type) && (key == "columns" || key == "rows" || key == "selectedRow" || key == "selectedColumn")) {
@@ -6528,14 +6562,15 @@ bool MainWindow::openSelectedWidgetItemEditor()
     itemListEditorDialog_.widgetId = widget->id;
     itemListEditorDialog_.originalItemsText = widget->getStringProperty("items", {});
     itemListEditorDialog_.items = model::getWidgetItems(*widget);
+    const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(widget->type));
     itemListEditorDialog_.originalSelectedIndex = model::clampSelectedIndex(
         itemListEditorDialog_.items,
-        widget->getIntProperty("selectedIndex", itemListEditorDialog_.items.empty() ? -1 : 0));
+        widget->getIntProperty(selectedIndexKey, itemListEditorDialog_.items.empty() ? -1 : 0));
     itemListEditorDialog_.selectedItemIndex = itemListEditorDialog_.originalSelectedIndex;
 
     editorModal_.visible = true;
     editorModal_.mode = EditorModalMode::ItemListEditor;
-    editorModal_.title = "Edit Items";
+    editorModal_.title = "Edit " + itemListWidgetTypeLabel(widget->type) + " Items";
     editorModal_.message.clear();
     editorModal_.lines.clear();
     editorModal_.buttons = {
@@ -6580,16 +6615,17 @@ bool MainWindow::applyItemListEditor()
 
     const std::string itemsText = model::joinItems(itemListEditorDialog_.items);
     const int selectedIndex = model::clampSelectedIndex(itemListEditorDialog_.items, itemListEditorDialog_.originalSelectedIndex);
-    const std::string widgetTypeName = selectedWidget->type == model::WidgetType::ComboBox ? "ComboBox" : "ListBox";
+    const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(selectedWidget->type));
+    const std::string widgetTypeName = itemListWidgetTypeLabel(selectedWidget->type);
 
-    const bool applied = applyUndoableDocumentChange("Edit items", [this, &itemsText, selectedIndex]() {
+    const bool applied = applyUndoableDocumentChange("Edit items", [this, &itemsText, &selectedIndexKey, selectedIndex]() {
         auto* widget = document_.selectedWidget();
         if (widget == nullptr || !model::supportsItemList(widget->type)) {
             return false;
         }
 
         widget->setProperty("items", itemsText);
-        widget->setProperty("selectedIndex", selectedIndex);
+        widget->setProperty(selectedIndexKey, selectedIndex);
         model::normalizeItemListProperties(*widget);
         return true;
     });

@@ -22,6 +22,8 @@ enum class WidgetType {
     Panel,
     TabControl,
     TabPage,
+    MenuBar,
+    ToolBar,
     Label,
     Button,
     TextBox,

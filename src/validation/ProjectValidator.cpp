@@ -935,16 +935,28 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
 
         if (model::supportsItemList(widget->type)) {
             const auto items = model::splitItems(propertyString(*widget, "items"));
-            const int selectedIndex = widget->getIntProperty("selectedIndex", items.empty() ? -1 : 0);
+            const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(widget->type));
+            const int selectedIndex = widget->getIntProperty(selectedIndexKey, items.empty() ? -1 : 0);
             const int safeSelectedIndex = model::sanitizeSelectedIndex(items, selectedIndex);
             if (selectedIndex != safeSelectedIndex) {
+                std::string code = "WIDGET_SELECTED_INDEX_OUT_OF_RANGE";
+                std::string message = items.empty()
+                    ? "selectedIndex should be -1 when the item list is empty."
+                    : "selectedIndex is outside the available item range and will be clamped.";
+                if (widget->type == model::WidgetType::MenuBar) {
+                    code = "MENUBAR_SELECTED_INDEX_OUT_OF_RANGE";
+                    message = "MenuBar selectedMenuIndex is out of range.";
+                }
+                else if (widget->type == model::WidgetType::ToolBar) {
+                    code = "TOOLBAR_SELECTED_INDEX_OUT_OF_RANGE";
+                    message = "ToolBar selectedToolIndex is out of range.";
+                }
+
                 addMessage(report, ValidationSeverity::Warning,
-                    "WIDGET_SELECTED_INDEX_OUT_OF_RANGE",
-                    items.empty()
-                        ? "selectedIndex should be -1 when the item list is empty."
-                        : "selectedIndex is outside the available item range and will be clamped.",
+                    code,
+                    message,
                     widget->id,
-                    "selectedIndex");
+                    selectedIndexKey);
             }
 
             if (widget->type == model::WidgetType::ComboBox && items.empty()) {
@@ -953,6 +965,40 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                     "ComboBox has no items, so no selection can be shown.",
                     widget->id,
                     "items");
+            }
+            else if (widget->type == model::WidgetType::MenuBar) {
+                if (items.empty()) {
+                    addMessage(report, ValidationSeverity::Warning,
+                        "MENUBAR_ITEMS_EMPTY",
+                        "MenuBar has no menu items.",
+                        widget->id,
+                        "items");
+                }
+
+                if (dock != "Top") {
+                    addMessage(report, ValidationSeverity::Warning,
+                        "MENUBAR_DOCK_TOP_RECOMMENDED",
+                        "MenuBar is usually expected to use Dock = Top.",
+                        widget->id,
+                        "dock");
+                }
+            }
+            else if (widget->type == model::WidgetType::ToolBar) {
+                if (items.empty()) {
+                    addMessage(report, ValidationSeverity::Warning,
+                        "TOOLBAR_ITEMS_EMPTY",
+                        "ToolBar has no tool items.",
+                        widget->id,
+                        "items");
+                }
+
+                if (dock != "Top") {
+                    addMessage(report, ValidationSeverity::Warning,
+                        "TOOLBAR_DOCK_TOP_RECOMMENDED",
+                        "ToolBar is usually expected to use Dock = Top.",
+                        widget->id,
+                        "dock");
+                }
             }
         }
 

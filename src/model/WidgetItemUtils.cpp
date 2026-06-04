@@ -93,7 +93,25 @@ std::set<std::string> expandedPathSet(std::string_view text)
 
 bool supportsItemList(WidgetType type)
 {
-    return type == WidgetType::ComboBox || type == WidgetType::ListBox;
+    return type == WidgetType::ComboBox
+        || type == WidgetType::ListBox
+        || type == WidgetType::MenuBar
+        || type == WidgetType::ToolBar;
+}
+
+std::string_view selectedItemIndexPropertyKey(WidgetType type)
+{
+    switch (type) {
+    case WidgetType::ComboBox:
+    case WidgetType::ListBox:
+        return "selectedIndex";
+    case WidgetType::MenuBar:
+        return "selectedMenuIndex";
+    case WidgetType::ToolBar:
+        return "selectedToolIndex";
+    default:
+        return {};
+    }
 }
 
 bool supportsTableGrid(WidgetType type)
@@ -186,10 +204,13 @@ void normalizeItemListProperties(WidgetNode& widget)
     }
 
     const std::vector<std::string> items = getWidgetItems(widget);
+    const std::string_view selectedIndexKey = selectedItemIndexPropertyKey(widget.type);
     const int defaultIndex = items.empty() ? -1 : 0;
-    const int selectedIndex = clampSelectedIndex(items, widget.getIntProperty("selectedIndex", defaultIndex));
+    const int selectedIndex = clampSelectedIndex(items, widget.getIntProperty(std::string(selectedIndexKey), defaultIndex));
     widget.setProperty("items", joinItems(items));
-    widget.setProperty("selectedIndex", selectedIndex);
+    if (!selectedIndexKey.empty()) {
+        widget.setProperty(std::string(selectedIndexKey), selectedIndex);
+    }
 
     if (widget.type == WidgetType::ComboBox) {
         widget.setProperty("text", getSelectedItemText(items, selectedIndex));

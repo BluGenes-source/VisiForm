@@ -864,7 +864,9 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
 
             if (model::supportsItemList(selectedWidget->type) && property.key == "items") {
                 const auto items = model::getWidgetItems(*selectedWidget);
-                const int selectedIndex = model::clampSelectedIndex(items, selectedWidget->getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+                const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(selectedWidget->type));
+                const int selectedIndex = model::clampSelectedIndex(items,
+                    selectedWidget->getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
                 const std::string selectedItemText = model::getSelectedItemText(items, selectedIndex);
                 std::string summary = std::to_string(items.size()) + (items.size() == 1 ? " item" : " items");
                 if (selectedIndex >= 0) {

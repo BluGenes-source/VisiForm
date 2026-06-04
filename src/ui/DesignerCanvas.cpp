@@ -779,6 +779,69 @@ void drawWidget(visage::Canvas& canvas,
         }
         break;
     }
+    case model::WidgetType::MenuBar: {
+        const auto items = model::splitItems(getStringProperty(widget, "items", {}));
+        const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(widget.type));
+        const int selectedIndex = model::sanitizeSelectedIndex(items,
+            widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
+        const float itemHeight = std::max(0.0f, bounds.height - 8.0f);
+        float itemLeft = bounds.x + 6.0f;
+        canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.35f));
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        for (std::size_t index = 0; index < items.size() && itemLeft < bounds.x + bounds.width - 6.0f; ++index) {
+            const std::string& item = items[index];
+            const float idealWidth = std::max(56.0f, estimateDesignerTextWidth(item, fontSize) + 12.0f);
+            const float itemWidth = std::min(idealWidth, std::max(0.0f, bounds.x + bounds.width - 6.0f - itemLeft));
+            const bool selected = static_cast<int>(index) == selectedIndex;
+            if (selected) {
+                canvas.setColor(blendColor(style.accentColor, style.fillColor, 0.32f));
+                canvas.fill(itemLeft, bounds.y + 4.0f, itemWidth, itemHeight);
+            }
+            if (drawText) {
+                canvas.setColor(style.textColor);
+                canvas.text(item, widgetFont, visage::Font::kCenter,
+                    itemLeft + 4.0f, bounds.y + 4.0f, std::max(0.0f, itemWidth - 8.0f), itemHeight);
+            }
+            itemLeft += itemWidth + 4.0f;
+        }
+        if (items.empty() && drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text("<empty>", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+        break;
+    }
+    case model::WidgetType::ToolBar: {
+        const auto items = model::splitItems(getStringProperty(widget, "items", {}));
+        const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(widget.type));
+        const int selectedIndex = model::sanitizeSelectedIndex(items,
+            widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
+        const float itemHeight = std::max(0.0f, bounds.height - 10.0f);
+        float itemLeft = bounds.x + 6.0f;
+        canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.22f));
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        for (std::size_t index = 0; index < items.size() && itemLeft < bounds.x + bounds.width - 6.0f; ++index) {
+            const std::string& item = items[index];
+            const float idealWidth = std::max(64.0f, estimateDesignerTextWidth(item, fontSize) + 18.0f);
+            const float itemWidth = std::min(idealWidth, std::max(0.0f, bounds.x + bounds.width - 6.0f - itemLeft));
+            const bool selected = static_cast<int>(index) == selectedIndex;
+            canvas.setColor(selected ? blendColor(style.accentColor, style.fillColor, 0.34f) : style.fillColor);
+            canvas.fill(itemLeft, bounds.y + 5.0f, itemWidth, itemHeight);
+            drawBorder(canvas, { itemLeft, bounds.y + 5.0f, itemWidth, itemHeight }, style.borderColor, style.borderThickness);
+            if (drawText) {
+                canvas.setColor(style.textColor);
+                canvas.text(item, widgetFont, visage::Font::kCenter,
+                    itemLeft + 4.0f, bounds.y + 5.0f, std::max(0.0f, itemWidth - 8.0f), itemHeight);
+            }
+            itemLeft += itemWidth + 6.0f;
+        }
+        if (items.empty() && drawText) {
+            canvas.setColor(style.textColor);
+            canvas.text("<empty>", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+        break;
+    }
     case model::WidgetType::StatusBar: {
         canvas.setColor(style.fillColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);

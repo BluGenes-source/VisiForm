@@ -35,6 +35,7 @@ struct TableGridParseResult {
 };
 
 [[nodiscard]] bool supportsItemList(WidgetType type);
+[[nodiscard]] std::string_view selectedItemIndexPropertyKey(WidgetType type);
 [[nodiscard]] std::vector<std::string> splitItems(std::string_view text);
 [[nodiscard]] std::string joinItems(const std::vector<std::string>& items);
 [[nodiscard]] std::vector<std::string> getWidgetItems(const WidgetNode& widget);
