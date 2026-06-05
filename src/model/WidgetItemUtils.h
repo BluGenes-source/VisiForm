@@ -34,15 +34,29 @@ struct TableGridParseResult {
     std::vector<std::vector<std::string>> rows{};
 };
 
+struct WidgetItemActionBinding {
+    std::string label{};
+    std::string action{};
+};
+
 [[nodiscard]] bool supportsItemList(WidgetType type);
+[[nodiscard]] bool supportsItemActions(WidgetType type);
 [[nodiscard]] std::string_view selectedItemIndexPropertyKey(WidgetType type);
 [[nodiscard]] std::vector<std::string> splitItems(std::string_view text);
 [[nodiscard]] std::string joinItems(const std::vector<std::string>& items);
 [[nodiscard]] std::vector<std::string> getWidgetItems(const WidgetNode& widget);
 void setWidgetItems(WidgetNode& widget, const std::vector<std::string>& items);
+[[nodiscard]] std::vector<std::string> splitItemActions(std::string_view text);
+[[nodiscard]] std::string joinItemActions(const std::vector<std::string>& actions);
+[[nodiscard]] std::vector<std::string> getWidgetItemActions(const WidgetNode& widget);
+void setWidgetItemActions(WidgetNode& widget, const std::vector<std::string>& actions);
+[[nodiscard]] std::vector<WidgetItemActionBinding> getWidgetItemActionBindings(const WidgetNode& widget);
+void setWidgetItemActionBindings(WidgetNode& widget, const std::vector<WidgetItemActionBinding>& bindings);
 [[nodiscard]] int clampSelectedIndex(const std::vector<std::string>& items, int selectedIndex);
 [[nodiscard]] int sanitizeSelectedIndex(const std::vector<std::string>& items, int selectedIndex);
 [[nodiscard]] std::string getSelectedItemText(const std::vector<std::string>& items, int selectedIndex);
+[[nodiscard]] std::string getSelectedItemAction(const std::vector<std::string>& actions, int selectedIndex);
+[[nodiscard]] std::string getSelectedItemAction(const WidgetNode& widget);
 void normalizeItemListProperties(WidgetNode& widget);
 
 [[nodiscard]] bool supportsTreeNodes(WidgetType type);

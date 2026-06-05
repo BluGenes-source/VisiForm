@@ -154,6 +154,26 @@ Normalization rules:
 - if the final item list is empty, `selectedIndex` becomes `-1`
 - if the final item list is non-empty, `selectedIndex` is clamped into the valid `0..count-1` range
 
+## MenuBar and ToolBar item-action storage
+
+`MenuBar` and `ToolBar` use these widget properties:
+
+- `items` - saved as a JSON string array in `.vfb.json`, then normalized back to newline-delimited editor text in memory
+- `itemActions` - saved as a JSON string array in `.vfb.json`, then normalized back to newline-delimited editor text in memory
+- `selectedMenuIndex` - stored as the current `MenuBar` selection
+- `selectedToolIndex` - stored as the current `ToolBar` selection
+
+Normalization and compatibility rules:
+
+- blank item lines are ignored
+- leading and trailing whitespace is trimmed from each item label and each action name
+- `itemActions` are aligned to the normalized `items` count by index
+- missing `itemActions` entries become empty callback names
+- extra stored `itemActions` entries are ignored safely during normalization and validation warns about the mismatch
+- if the final item list is empty, the selected index becomes `-1`
+- if the final item list is non-empty, the selected index is clamped into the valid `0..count-1` range
+- older projects that only contain `items` remain loadable because `itemActions` defaults to an empty aligned list
+
 ## TreeView node storage
 
 `TreeView` uses these widget properties:

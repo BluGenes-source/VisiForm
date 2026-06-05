@@ -581,6 +581,12 @@ std::vector<std::string> handlerExampleLines(const HandlerInfo& handler)
             "// setStatusBarField(\"statusBar_1\", 0, value);"
         };
     }
+    if ((binding.widgetType == "MenuBar" || binding.widgetType == "ToolBar") && binding.eventKey == "onItemAction") {
+        return {
+            "// Example:",
+            "// setStatusBarField(\"statusBar_1\", 0, event.itemAction.empty() ? event.itemLabel.data() : std::string{ event.itemAction });"
+        };
+    }
     if (binding.widgetType == "FormWindow" && binding.eventKey == "onLoad") {
         return {
             "// Example:",
@@ -722,6 +728,28 @@ void collectEventBindings(const visiform::model::WidgetNode& widget, std::vector
             widget.typeName(),
             signatureForEventKind(eventDefinition == nullptr ? std::string{} : eventDefinition->handlerSignatureKind)
         });
+    }
+
+    if (visiform::model::supportsItemActions(widget.type)) {
+        for (const auto& handlerName : visiform::model::getWidgetItemActions(widget)) {
+            if (handlerName.empty()) {
+                continue;
+            }
+
+            if (!utils::isValidCppIdentifier(handlerName)) {
+                errorMessage = "Invalid event handler name: " + handlerName;
+                return;
+            }
+
+            bindings.push_back(EventBinding{
+                "onItemAction",
+                handlerName,
+                widget.id,
+                widget.name.empty() ? widget.id : widget.name,
+                widget.typeName(),
+                HandlerSignature::Void
+            });
+        }
     }
 
     for (const auto& child : widget.children) {
@@ -1425,6 +1453,9 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string_view senderId{};\n";
     stream << "    std::string_view senderName{};\n";
     stream << "    std::string_view senderType{};\n";
+    stream << "    int itemIndex = -1;\n";
+    stream << "    std::string_view itemLabel{};\n";
+    stream << "    std::string_view itemAction{};\n";
     stream << "};\n\n";
     stream << "struct RuntimeColor {\n";
     stream << "    std::uint8_t r = 0;\n";
@@ -1536,6 +1567,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string source;\n";
     stream << "    std::string colorValue = \"#2D7DFF\";\n";
     stream << "    std::vector<std::string> items;\n";
+    stream << "    std::vector<std::string> itemActions;\n";
     stream << "    std::vector<std::string> tableColumns;\n";
     stream << "    std::vector<std::vector<std::string>> tableRows;\n";
     stream << "    int tabIndex = 0;\n";
@@ -1628,13 +1660,15 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    const RuntimeWidget* activeModalWidget() const;\n";
     stream << "    [[nodiscard]] bool isWidgetVisible(const RuntimeWidget& widget) const;\n";
     stream << "    [[nodiscard]] std::optional<int> hitTestTabHeader(const RuntimeWidget& widget, float x, float y) const;\n";
+    stream << "    [[nodiscard]] std::optional<int> menuBarItemIndexAt(const RuntimeWidget& widget, float x, float y) const;\n";
+    stream << "    [[nodiscard]] std::optional<int> toolBarItemIndexAt(const RuntimeWidget& widget, float x, float y) const;\n";
     stream << "    RuntimeWidget* hitTest(float x, float y);\n";
     stream << "    RuntimeWidget* focusedTextBox();\n";
     stream << "    const RuntimeWidget* focusedTextBox() const;\n";
     stream << "    void setFocusedWidget(const std::string& widgetId);\n";
     stream << "    void clearPressedState();\n";
     stream << "    bool isInteractive(const RuntimeWidget& widget) const;\n";
-    stream << "    [[nodiscard]] WidgetEvent makeWidgetEvent(const RuntimeWidget& widget) const;\n";
+    stream << "    [[nodiscard]] WidgetEvent makeWidgetEvent(const RuntimeWidget& widget, int itemIndex = -1) const;\n";
     stream << "    [[nodiscard]] RuntimeRect activeModalDialogRect() const;\n";
     stream << "    [[nodiscard]] RuntimeRect activeModalButtonRect(std::size_t buttonIndex) const;\n";
     stream << "    void handleActiveModalButton(std::size_t buttonIndex);\n";
@@ -1648,6 +1682,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::optional<std::pair<int, int>> tableGridCellAt(const RuntimeWidget& widget, float x, float y) const;\n";
     stream << "    bool updateScrollBarFromPointer(RuntimeWidget& widget, float formX, float formY);\n";
     stream << "    bool updateTextBoxText(RuntimeWidget& widget, const std::string& text, bool emitEvent);\n";
+    stream << "    void emitItemAction(const RuntimeWidget& widget, int itemIndex);\n";
     stream << "    void emitVoidEvent(const RuntimeWidget& widget, std::string_view eventKey);\n";
     stream << "    void emitBoolEvent(const RuntimeWidget& widget, std::string_view eventKey, bool value);\n";
     stream << "    void emitFloatEvent(const RuntimeWidget& widget, std::string_view eventKey, float value);\n";
@@ -1891,6 +1926,17 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return {};\n";
     stream << "    }\n";
     stream << "    return widget.items[static_cast<std::size_t>(safeIndex)];\n";
+    stream << "}\n\n";
+    stream << "std::string itemActionAt(const RuntimeWidget& widget, int index)\n";
+    stream << "{\n";
+    stream << "    if (index < 0 || index >= static_cast<int>(widget.itemActions.size())) {\n";
+    stream << "        return {};\n";
+    stream << "    }\n";
+    stream << "    return widget.itemActions[static_cast<std::size_t>(index)];\n";
+    stream << "}\n\n";
+    stream << "std::string selectedItemAction(const RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    return itemActionAt(widget, sanitizeItemIndex(widget, widget.selectedIndex));\n";
     stream << "}\n\n";
     stream << "float listBoxRowHeight(const RuntimeWidget& widget)\n";
     stream << "{\n";
@@ -2829,6 +2875,8 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::TextBox:\n";
     stream << "    case RuntimeWidgetType::ComboBox:\n";
     stream << "    case RuntimeWidgetType::ListBox:\n";
+    stream << "    case RuntimeWidgetType::MenuBar:\n";
+    stream << "    case RuntimeWidgetType::ToolBar:\n";
     stream << "    case RuntimeWidgetType::TableGrid:\n";
     stream << "    case RuntimeWidgetType::CheckBox:\n";
     stream << "    case RuntimeWidgetType::RadioButton:\n";
@@ -2850,9 +2898,46 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    return false;\n";
     stream << "}\n\n";
-    stream << "WidgetEvent " << className << "::makeWidgetEvent(const RuntimeWidget& widget) const\n";
+    stream << "std::optional<int> " << className << "::menuBarItemIndexAt(const RuntimeWidget& widget, float x, float y) const\n";
     stream << "{\n";
-    stream << "    return WidgetEvent{ widget.id, widget.name, runtimeWidgetTypeName(widget.type) };\n";
+    stream << "    if (!widget.bounds.contains(x, y)) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    float itemOffset = 6.0f;\n";
+    stream << "    for (std::size_t index = 0; index < widget.items.size(); ++index) {\n";
+    stream << "        const float itemWidth = std::max(56.0f, static_cast<float>(widget.items[index].size()) * 11.2f + 36.0f);\n";
+    stream << "        const RuntimeRect itemRect{ widget.bounds.x + itemOffset, widget.bounds.y + 4.0f, itemWidth, std::max(0.0f, widget.bounds.height - 8.0f) };\n";
+    stream << "        if (itemRect.contains(x, y)) {\n";
+    stream << "            return static_cast<int>(index);\n";
+    stream << "        }\n";
+    stream << "        itemOffset += itemWidth + 4.0f;\n";
+    stream << "    }\n";
+    stream << "    return std::nullopt;\n";
+    stream << "}\n\n";
+    stream << "std::optional<int> " << className << "::toolBarItemIndexAt(const RuntimeWidget& widget, float x, float y) const\n";
+    stream << "{\n";
+    stream << "    if (!widget.bounds.contains(x, y)) {\n";
+    stream << "        return std::nullopt;\n";
+    stream << "    }\n";
+    stream << "    float itemOffset = 6.0f;\n";
+    stream << "    for (std::size_t index = 0; index < widget.items.size(); ++index) {\n";
+    stream << "        const float itemWidth = std::max(64.0f, static_cast<float>(widget.items[index].size()) * 11.2f + 42.0f);\n";
+    stream << "        const RuntimeRect itemRect{ widget.bounds.x + itemOffset, widget.bounds.y + 5.0f, itemWidth, std::max(0.0f, widget.bounds.height - 10.0f) };\n";
+    stream << "        if (itemRect.contains(x, y)) {\n";
+    stream << "            return static_cast<int>(index);\n";
+    stream << "        }\n";
+    stream << "        itemOffset += itemWidth + 6.0f;\n";
+    stream << "    }\n";
+    stream << "    return std::nullopt;\n";
+    stream << "}\n\n";
+    stream << "WidgetEvent " << className << "::makeWidgetEvent(const RuntimeWidget& widget, int itemIndex) const\n";
+    stream << "{\n";
+    stream << "    const int safeItemIndex = itemIndex >= 0 && itemIndex < static_cast<int>(widget.items.size()) ? itemIndex : -1;\n";
+    stream << "    const std::string_view itemLabel = safeItemIndex >= 0 ? std::string_view{ widget.items[static_cast<std::size_t>(safeItemIndex)] } : std::string_view{};\n";
+    stream << "    const std::string_view itemAction = safeItemIndex >= 0 && safeItemIndex < static_cast<int>(widget.itemActions.size())\n";
+    stream << "        ? std::string_view{ widget.itemActions[static_cast<std::size_t>(safeItemIndex)] }\n";
+    stream << "        : std::string_view{};\n";
+    stream << "    return WidgetEvent{ widget.id, widget.name, runtimeWidgetTypeName(widget.type), safeItemIndex, itemLabel, itemAction };\n";
     stream << "}\n\n";
     stream << "RuntimeRect " << className << "::activeModalDialogRect() const\n";
     stream << "{\n";
@@ -3178,6 +3263,22 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            if (setItemSelection(*widget, *rowIndex, true)) {\n";
     stream << "                redraw();\n";
     stream << "            }\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::MenuBar:\n";
+    stream << "        clearPressedState();\n";
+    stream << "        if (const auto itemIndex = menuBarItemIndexAt(*widget, formX, formY); itemIndex.has_value()) {\n";
+    stream << "            setItemSelection(*widget, *itemIndex, false);\n";
+    stream << "            emitItemAction(*widget, *itemIndex);\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
+    stream << "        return;\n";
+    stream << "    case RuntimeWidgetType::ToolBar:\n";
+    stream << "        clearPressedState();\n";
+    stream << "        if (const auto itemIndex = toolBarItemIndexAt(*widget, formX, formY); itemIndex.has_value()) {\n";
+    stream << "            setItemSelection(*widget, *itemIndex, false);\n";
+    stream << "            emitItemAction(*widget, *itemIndex);\n";
+    stream << "            redraw();\n";
     stream << "        }\n";
     stream << "        return;\n";
     stream << "    case RuntimeWidgetType::TableGrid:\n";
@@ -3529,6 +3630,45 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
         "\nvoid " + className + "::emitStringEvent(const RuntimeWidget& widget, std::string_view eventKey, const std::string& value)",
         HandlerSignature::String,
         bindings);
+
+    stream << "\nvoid " << className << "::emitItemAction(const RuntimeWidget& widget, int itemIndex)\n";
+    stream << "{\n";
+    stream << "    const std::string handlerName = itemActionAt(widget, itemIndex);\n";
+    stream << "    if (handlerName.empty()) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    const WidgetEvent event = makeWidgetEvent(widget, itemIndex);\n";
+    {
+        std::vector<std::string> emittedItemHandlers;
+        bool emittedItemActionMatch = false;
+        for (const auto& binding : bindings) {
+            if (binding.signature != HandlerSignature::Void || binding.eventKey != "onItemAction") {
+                continue;
+            }
+
+            if (std::find(emittedItemHandlers.begin(), emittedItemHandlers.end(), binding.handlerName) != emittedItemHandlers.end()) {
+                continue;
+            }
+            emittedItemHandlers.push_back(binding.handlerName);
+            emittedItemActionMatch = true;
+            stream << "    if (handlerName == " << emitStringLiteral(binding.handlerName) << ") {\n";
+            stream << "        " << binding.handlerName << "(event);\n";
+            stream << "        return;\n";
+            stream << "    }\n";
+        }
+
+        if (!emittedItemActionMatch) {
+            stream << "    (void)widget;\n";
+            stream << "    (void)itemIndex;\n";
+            stream << "    return;\n";
+        }
+        else {
+            stream << "    (void)widget;\n";
+            stream << "    (void)itemIndex;\n";
+            stream << "    return;\n";
+        }
+    }
+    stream << "}\n";
 
     for (const auto& handler : handlers) {
         stream << "\n" << handlerDefinitionSignature(className, handler) << "\n";

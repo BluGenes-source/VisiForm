@@ -378,6 +378,7 @@ WidgetDefinition makeMenuBarDefinition()
     definition.size = { 900.0f, 32.0f, 220.0f, 28.0f };
     definition.properties = {
         { "items", "Items", "File\nEdit\nView\nProject\nExport\nHelp", PropertyEditKind::Text, true, "Newline-delimited top-level menu item labels." },
+        { "itemActions", "Action Bindings", "", PropertyEditKind::Text, true, "Newline-delimited callback names aligned to the MenuBar items by index." },
         { "selectedMenuIndex", "Selected Menu Index", 0, PropertyEditKind::Integer, true, "Zero-based selected menu item index. Use -1 when the menu has no items." },
         { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
@@ -399,6 +400,7 @@ WidgetDefinition makeToolBarDefinition()
     definition.size = { 900.0f, 40.0f, 240.0f, 32.0f };
     definition.properties = {
         { "items", "Items", "New\nOpen\nSave\nExport\nValidate", PropertyEditKind::Text, true, "Newline-delimited toolbar item labels." },
+        { "itemActions", "Action Bindings", "", PropertyEditKind::Text, true, "Newline-delimited callback names aligned to the ToolBar items by index." },
         { "selectedToolIndex", "Selected Tool Index", 0, PropertyEditKind::Integer, true, "Zero-based selected tool item index. Use -1 when the toolbar has no items." },
         { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };

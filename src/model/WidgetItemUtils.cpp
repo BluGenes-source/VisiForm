@@ -38,6 +38,18 @@ std::vector<std::string> normalizeItems(const std::vector<std::string>& items)
     return normalizedItems;
 }
 
+std::vector<std::string> normalizeItemActions(const std::vector<std::string>& actions, std::size_t itemCount)
+{
+    std::vector<std::string> normalizedActions;
+    normalizedActions.resize(itemCount);
+    for (std::size_t index = 0; index < itemCount; ++index) {
+        if (index < actions.size()) {
+            normalizedActions[index] = trimItemText(actions[index]);
+        }
+    }
+    return normalizedActions;
+}
+
 std::string trimText(std::string_view text)
 {
     std::size_t start = 0;
@@ -96,6 +108,12 @@ bool supportsItemList(WidgetType type)
     return type == WidgetType::ComboBox
         || type == WidgetType::ListBox
         || type == WidgetType::MenuBar
+        || type == WidgetType::ToolBar;
+}
+
+bool supportsItemActions(WidgetType type)
+{
+    return type == WidgetType::MenuBar
         || type == WidgetType::ToolBar;
 }
 
@@ -173,6 +191,85 @@ void setWidgetItems(WidgetNode& widget, const std::vector<std::string>& items)
     normalizeItemListProperties(widget);
 }
 
+std::vector<std::string> splitItemActions(std::string_view text)
+{
+    std::vector<std::string> actions;
+    for (const auto& rawLine : splitLines(text)) {
+        actions.push_back(trimText(rawLine));
+    }
+    return actions;
+}
+
+std::string joinItemActions(const std::vector<std::string>& actions)
+{
+    std::string text;
+    for (std::size_t index = 0; index < actions.size(); ++index) {
+        if (index > 0) {
+            text += '\n';
+        }
+        text += trimText(actions[index]);
+    }
+    return text;
+}
+
+std::vector<std::string> getWidgetItemActions(const WidgetNode& widget)
+{
+    if (!supportsItemActions(widget.type)) {
+        return {};
+    }
+
+    const auto items = getWidgetItems(widget);
+    return normalizeItemActions(splitItemActions(widget.getStringProperty("itemActions", {})), items.size());
+}
+
+void setWidgetItemActions(WidgetNode& widget, const std::vector<std::string>& actions)
+{
+    if (!supportsItemActions(widget.type)) {
+        return;
+    }
+
+    const auto items = getWidgetItems(widget);
+    widget.setProperty("itemActions", joinItemActions(normalizeItemActions(actions, items.size())));
+    normalizeItemListProperties(widget);
+}
+
+std::vector<WidgetItemActionBinding> getWidgetItemActionBindings(const WidgetNode& widget)
+{
+    const auto items = getWidgetItems(widget);
+    const auto actions = getWidgetItemActions(widget);
+    std::vector<WidgetItemActionBinding> bindings;
+    bindings.reserve(items.size());
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        bindings.push_back({
+            items[index],
+            index < actions.size() ? actions[index] : std::string{}
+        });
+    }
+    return bindings;
+}
+
+void setWidgetItemActionBindings(WidgetNode& widget, const std::vector<WidgetItemActionBinding>& bindings)
+{
+    if (!supportsItemList(widget.type)) {
+        return;
+    }
+
+    std::vector<std::string> items;
+    items.reserve(bindings.size());
+    std::vector<std::string> actions;
+    actions.reserve(bindings.size());
+    for (const auto& binding : bindings) {
+        items.push_back(binding.label);
+        actions.push_back(binding.action);
+    }
+
+    widget.setProperty("items", joinItems(items));
+    if (supportsItemActions(widget.type)) {
+        widget.setProperty("itemActions", joinItemActions(actions));
+    }
+    normalizeItemListProperties(widget);
+}
+
 int clampSelectedIndex(const std::vector<std::string>& items, int selectedIndex)
 {
     if (items.empty()) {
@@ -197,6 +294,26 @@ std::string getSelectedItemText(const std::vector<std::string>& items, int selec
     return items[static_cast<std::size_t>(safeIndex)];
 }
 
+std::string getSelectedItemAction(const std::vector<std::string>& actions, int selectedIndex)
+{
+    if (selectedIndex < 0 || selectedIndex >= static_cast<int>(actions.size())) {
+        return {};
+    }
+
+    return actions[static_cast<std::size_t>(selectedIndex)];
+}
+
+std::string getSelectedItemAction(const WidgetNode& widget)
+{
+    if (!supportsItemActions(widget.type)) {
+        return {};
+    }
+
+    const auto actions = getWidgetItemActions(widget);
+    const std::string selectedIndexKey = std::string(selectedItemIndexPropertyKey(widget.type));
+    return getSelectedItemAction(actions, widget.getIntProperty(selectedIndexKey, actions.empty() ? -1 : 0));
+}
+
 void normalizeItemListProperties(WidgetNode& widget)
 {
     if (!supportsItemList(widget.type)) {
@@ -210,6 +327,11 @@ void normalizeItemListProperties(WidgetNode& widget)
     widget.setProperty("items", joinItems(items));
     if (!selectedIndexKey.empty()) {
         widget.setProperty(std::string(selectedIndexKey), selectedIndex);
+    }
+
+    if (supportsItemActions(widget.type)) {
+        const auto itemActions = normalizeItemActions(splitItemActions(widget.getStringProperty("itemActions", {})), items.size());
+        widget.setProperty("itemActions", joinItemActions(itemActions));
     }
 
     if (widget.type == WidgetType::ComboBox) {

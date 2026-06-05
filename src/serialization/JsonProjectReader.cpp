@@ -174,6 +174,22 @@ bool parseProperties(const nlohmann::json& json, std::map<std::string, model::Pr
             continue;
         }
 
+        if (key == "itemActions" && value.is_array()) {
+            std::vector<std::string> actions;
+            actions.reserve(value.size());
+            for (const auto& actionValue : value) {
+                if (!actionValue.is_string()) {
+                    errorMessage = "Invalid property 'itemActions': every array element must be a string.";
+                    return false;
+                }
+
+                actions.push_back(actionValue.get<std::string>());
+            }
+
+            properties.insert_or_assign(key, model::PropertyValue{ model::joinItemActions(actions) });
+            continue;
+        }
+
         model::PropertyValue propertyValue;
         if (!parsePropertyValue(value, propertyValue, errorMessage)) {
             errorMessage = "Invalid property '" + key + "': " + errorMessage;

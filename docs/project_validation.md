@@ -111,6 +111,9 @@ Current callback validation includes:
 - non-empty callback names must be valid C++ identifiers
 - callback names may be reused only when every use shares the same `handlerSignatureKind`
 - incompatible callback signature reuse is reported as an error
+- `MenuBar.itemActions` and `ToolBar.itemActions` participate in the same identifier and signature checks as regular widget event properties
+- extra `itemActions` entries beyond the normalized `items` count are reported as warnings because those bindings will be ignored
+- missing `itemActions` entries are allowed and are treated as empty callback bindings
 
 Supported signature groups:
 

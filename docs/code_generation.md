@@ -245,6 +245,8 @@ For generated item-list widgets:
 - exported `selectedIndex` values are clamped against the emitted item count during generation and runtime initialization
 - generated `ComboBox` text is derived from the selected item so it stays aligned with the edited item list
 - generated `ListBox` rows use the edited item strings and preserve `onChanged` / `onDoubleClick` callback wiring where supported
+- exported `MenuBar` and `ToolBar` widgets preserve their edited `items`, aligned `itemActions`, and selected index state
+- generated runtime `MenuBar` and `ToolBar` clicks update the selected item and invoke configured non-empty item callbacks
 - `TabControl`
 - `Label`
 - `Button`
@@ -265,6 +267,7 @@ Rendering now uses a simple generated runtime widget model.
 Generated runtime type highlights:
 
 - `WidgetEvent` now uses `std::string_view` sender metadata for synchronous callback dispatch
+- `WidgetEvent` now also carries item metadata through `itemIndex`, `itemLabel`, and `itemAction` for menu and toolbar callbacks
 - `RuntimeWidgetType` now uses `std::uint8_t` with an `Unknown` default value
 - `RuntimeOrientation` replaces string-based runtime orientation checks
 - `RuntimeColor` replaces plain integer color fields in the generated runtime model
@@ -416,6 +419,8 @@ Supported event properties:
 - `Button.onClick`
 - `Button.onRelease`
 - `Button.onDoubleClick`
+- `MenuBar.itemActions[*]`
+- `ToolBar.itemActions[*]`
 - `CheckBox.onToggle`
 - `RadioButton.onSelected`
 - `Slider.onChanged`
@@ -426,6 +431,13 @@ Supported event properties:
 - `FormWindow.onClose`
 - `ModalDialog.onAccepted`
 - `ModalDialog.onCancelled`
+
+Generated item-action callback behavior:
+
+- `MenuBar` and `ToolBar` callback names are emitted exactly as entered in `itemActions`
+- duplicate callback names are deduplicated by handler name and signature before the user subclass is generated
+- repeated item-action callbacks therefore reuse the same generated virtual override and preservation block
+- generated `USER CODE BEGIN <handler>` / `USER CODE END <handler>` regions remain keyed by handler name, so re-export preserves menu and toolbar callback bodies the same way as button callbacks
 
 ## Generated base class and user subclass
 

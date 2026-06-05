@@ -172,6 +172,26 @@ std::string itemListEditorRowLabel(const std::vector<std::string>& items, int in
     return std::to_string(index) + ": " + items[static_cast<std::size_t>(index)];
 }
 
+std::string itemListEditorRowLabel(const std::vector<std::string>& items,
+    const std::vector<std::string>& actions,
+    bool includeActions,
+    int index)
+{
+    if (!includeActions) {
+        return itemListEditorRowLabel(items, index);
+    }
+
+    if (index < 0 || index >= static_cast<int>(items.size())) {
+        return "<none>";
+    }
+
+    const std::string& item = items[static_cast<std::size_t>(index)];
+    const std::string action = index < static_cast<int>(actions.size())
+        ? actions[static_cast<std::size_t>(index)]
+        : std::string{};
+    return std::to_string(index) + ": " + item + "  ->  " + (action.empty() ? std::string{ "<none>" } : action);
+}
+
 std::string tableGridEditorColumnLabel(const std::vector<std::string>& columns, int index)
 {
     if (index < 0 || index >= static_cast<int>(columns.size())) {
@@ -4245,7 +4265,7 @@ bool MainWindow::setSelectedWidgetProperty(const std::string& key, model::Proper
     }
     const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(widget->type));
     if (model::supportsItemList(widget->type)
-        && (key == "items" || key == selectedIndexKey || key == "text")) {
+        && (key == "items" || key == "itemActions" || key == selectedIndexKey || key == "text")) {
         model::normalizeItemListProperties(*widget);
     }
     if (model::supportsTableGrid(widget->type) && (key == "columns" || key == "rows" || key == "selectedRow" || key == "selectedColumn")) {
@@ -6102,7 +6122,7 @@ std::string MainWindow::editorModalFieldLabel(const std::string& key) const
 
 bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
 {
-    if (row.key == "items") {
+    if (row.key == "items" || row.key == "itemActions") {
         const auto* selectedWidget = document_.selectedWidget();
         if (selectedWidget != nullptr && model::supportsItemList(selectedWidget->type)) {
             return openSelectedWidgetItemEditor();
@@ -6561,7 +6581,12 @@ bool MainWindow::openSelectedWidgetItemEditor()
     itemListEditorDialog_.visible = true;
     itemListEditorDialog_.widgetId = widget->id;
     itemListEditorDialog_.originalItemsText = widget->getStringProperty("items", {});
+    itemListEditorDialog_.originalActionsText = widget->getStringProperty("itemActions", {});
     itemListEditorDialog_.items = model::getWidgetItems(*widget);
+    itemListEditorDialog_.supportsActions = model::supportsItemActions(widget->type);
+    itemListEditorDialog_.actions = itemListEditorDialog_.supportsActions
+        ? model::getWidgetItemActions(*widget)
+        : std::vector<std::string>{};
     const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(widget->type));
     itemListEditorDialog_.originalSelectedIndex = model::clampSelectedIndex(
         itemListEditorDialog_.items,
@@ -6570,7 +6595,8 @@ bool MainWindow::openSelectedWidgetItemEditor()
 
     editorModal_.visible = true;
     editorModal_.mode = EditorModalMode::ItemListEditor;
-    editorModal_.title = "Edit " + itemListWidgetTypeLabel(widget->type) + " Items";
+    editorModal_.title = "Edit " + itemListWidgetTypeLabel(widget->type)
+        + (itemListEditorDialog_.supportsActions ? " Items and Actions" : " Items");
     editorModal_.message.clear();
     editorModal_.lines.clear();
     editorModal_.buttons = {
@@ -6582,7 +6608,9 @@ bool MainWindow::openSelectedWidgetItemEditor()
         { "cancel", "Cancel" }
     };
     editorModal_.result.clear();
-    editorModal_.statusText = "Select an item row, edit its text, then click Apply to commit the list.";
+    editorModal_.statusText = itemListEditorDialog_.supportsActions
+        ? "Select an item row, edit its text and action, then click Apply to commit the list."
+        : "Select an item row, edit its text, then click Apply to commit the list.";
     editorModal_.preferredWidth = kItemListEditorModalWidth;
     editorModal_.preferredHeight = kItemListEditorModalHeight;
     newProjectWizard_.visible = false;
@@ -6597,9 +6625,18 @@ void MainWindow::setItemListEditorSelectedIndex(int index)
 {
     const int safeIndex = model::sanitizeSelectedIndex(itemListEditorDialog_.items, index);
     itemListEditorDialog_.selectedItemIndex = safeIndex;
-    editorModal_.statusText = safeIndex >= 0
-        ? "Selected item " + std::to_string(safeIndex + 1) + " of " + std::to_string(itemListEditorDialog_.items.size()) + "."
-        : "No item selected. Click Add to create a new item.";
+    if (safeIndex >= 0) {
+        editorModal_.statusText = "Selected item " + std::to_string(safeIndex + 1) + " of " + std::to_string(itemListEditorDialog_.items.size()) + ".";
+        if (itemListEditorDialog_.supportsActions) {
+            const std::string action = safeIndex < static_cast<int>(itemListEditorDialog_.actions.size())
+                ? itemListEditorDialog_.actions[static_cast<std::size_t>(safeIndex)]
+                : std::string{};
+            editorModal_.statusText += action.empty() ? " No action bound." : " Action: " + action + ".";
+        }
+    }
+    else {
+        editorModal_.statusText = "No item selected. Click Add to create a new item.";
+    }
 }
 
 bool MainWindow::applyItemListEditor()
@@ -6614,17 +6651,23 @@ bool MainWindow::applyItemListEditor()
     }
 
     const std::string itemsText = model::joinItems(itemListEditorDialog_.items);
-    const int selectedIndex = model::clampSelectedIndex(itemListEditorDialog_.items, itemListEditorDialog_.originalSelectedIndex);
+    const std::string actionsText = itemListEditorDialog_.supportsActions
+        ? model::joinItemActions(itemListEditorDialog_.actions)
+        : std::string{};
+    const int selectedIndex = model::clampSelectedIndex(itemListEditorDialog_.items, itemListEditorDialog_.selectedItemIndex);
     const std::string selectedIndexKey = std::string(model::selectedItemIndexPropertyKey(selectedWidget->type));
     const std::string widgetTypeName = itemListWidgetTypeLabel(selectedWidget->type);
 
-    const bool applied = applyUndoableDocumentChange("Edit items", [this, &itemsText, &selectedIndexKey, selectedIndex]() {
+    const bool applied = applyUndoableDocumentChange("Edit items", [this, &itemsText, &actionsText, &selectedIndexKey, selectedIndex]() {
         auto* widget = document_.selectedWidget();
         if (widget == nullptr || !model::supportsItemList(widget->type)) {
             return false;
         }
 
         widget->setProperty("items", itemsText);
+        if (model::supportsItemActions(widget->type)) {
+            widget->setProperty("itemActions", actionsText);
+        }
         widget->setProperty(selectedIndexKey, selectedIndex);
         model::normalizeItemListProperties(*widget);
         return true;
@@ -7090,6 +7133,14 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
                 ? itemListEditorDialog_.items[static_cast<std::size_t>(itemListEditorDialog_.selectedItemIndex)]
                 : std::string{},
             itemListEditorDialog_.selectedItemIndex >= 0 ? PropertyInspector::PropertyEditKind::Text : PropertyInspector::PropertyEditKind::ReadOnly });
+        if (itemListEditorDialog_.supportsActions) {
+            fields.push_back(EditorModalField{ "itemAction", "Item Action", itemListEditorDialog_.selectedItemIndex >= 0
+                    ? (itemListEditorDialog_.selectedItemIndex < static_cast<int>(itemListEditorDialog_.actions.size())
+                            ? itemListEditorDialog_.actions[static_cast<std::size_t>(itemListEditorDialog_.selectedItemIndex)]
+                            : std::string{})
+                    : std::string{},
+                itemListEditorDialog_.selectedItemIndex >= 0 ? PropertyInspector::PropertyEditKind::Text : PropertyInspector::PropertyEditKind::ReadOnly });
+        }
     }
     else if (editorModal_.mode == EditorModalMode::TableGridEditor) {
         fields.push_back(EditorModalField{ "columnCount", "Column Count", std::to_string(tableGridEditorDialog_.columns.size()), PropertyInspector::PropertyEditKind::ReadOnly });
@@ -7913,6 +7964,13 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
             itemListEditorDialog_.items[static_cast<std::size_t>(itemListEditorDialog_.selectedItemIndex)] = valueText;
             editorModal_.statusText = "Updated row " + std::to_string(itemListEditorDialog_.selectedItemIndex + 1) + ". Click Apply to commit the list.";
         }
+        else if (key == "itemAction" && itemListEditorDialog_.selectedItemIndex >= 0) {
+            if (itemListEditorDialog_.selectedItemIndex >= static_cast<int>(itemListEditorDialog_.actions.size())) {
+                itemListEditorDialog_.actions.resize(itemListEditorDialog_.items.size());
+            }
+            itemListEditorDialog_.actions[static_cast<std::size_t>(itemListEditorDialog_.selectedItemIndex)] = trimmedValue;
+            editorModal_.statusText = "Updated action for row " + std::to_string(itemListEditorDialog_.selectedItemIndex + 1) + ". Click Apply to commit the list.";
+        }
     }
 }
 
@@ -8270,6 +8328,10 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
                 : static_cast<int>(itemListEditorDialog_.items.size());
             const auto iterator = itemListEditorDialog_.items.begin() + std::clamp(insertIndex, 0, static_cast<int>(itemListEditorDialog_.items.size()));
             itemListEditorDialog_.items.insert(iterator, "Item " + std::to_string(itemListEditorDialog_.items.size() + 1));
+            if (itemListEditorDialog_.supportsActions) {
+                const auto actionIterator = itemListEditorDialog_.actions.begin() + std::clamp(insertIndex, 0, static_cast<int>(itemListEditorDialog_.actions.size()));
+                itemListEditorDialog_.actions.insert(actionIterator, {});
+            }
             setItemListEditorSelectedIndex(std::clamp(insertIndex, 0, static_cast<int>(itemListEditorDialog_.items.size()) - 1));
             redraw();
             return true;
@@ -8286,6 +8348,9 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
             }
 
             itemListEditorDialog_.items.erase(itemListEditorDialog_.items.begin() + itemListEditorDialog_.selectedItemIndex);
+            if (itemListEditorDialog_.supportsActions && itemListEditorDialog_.selectedItemIndex < static_cast<int>(itemListEditorDialog_.actions.size())) {
+                itemListEditorDialog_.actions.erase(itemListEditorDialog_.actions.begin() + itemListEditorDialog_.selectedItemIndex);
+            }
             setItemListEditorSelectedIndex(std::min(itemListEditorDialog_.selectedItemIndex, static_cast<int>(itemListEditorDialog_.items.size()) - 1));
             if (editorModalEdit_.active) {
                 cancelEditorModalFieldEdit();
@@ -8316,6 +8381,11 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
             }
 
             std::swap(itemListEditorDialog_.items[static_cast<std::size_t>(currentIndex)], itemListEditorDialog_.items[static_cast<std::size_t>(targetIndex)]);
+            if (itemListEditorDialog_.supportsActions
+                && currentIndex < static_cast<int>(itemListEditorDialog_.actions.size())
+                && targetIndex < static_cast<int>(itemListEditorDialog_.actions.size())) {
+                std::swap(itemListEditorDialog_.actions[static_cast<std::size_t>(currentIndex)], itemListEditorDialog_.actions[static_cast<std::size_t>(targetIndex)]);
+            }
             setItemListEditorSelectedIndex(targetIndex);
             redraw();
             return true;
@@ -8603,7 +8673,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             canvas.fill(previewBounds.x, previewBounds.y, 1.0f, previewBounds.height);
             canvas.fill(previewBounds.x + previewBounds.width - 1.0f, previewBounds.y, 1.0f, previewBounds.height);
             canvas.setColor(0xffd6dbe4);
-            canvas.text("Items", labelFont_, visage::Font::kTopLeft,
+            canvas.text(itemListEditorDialog_.supportsActions ? "Items / Actions" : "Items", labelFont_, visage::Font::kTopLeft,
                 previewBounds.x + 10.0f, previewBounds.y + 6.0f, previewBounds.width - 20.0f, 20.0f);
 
             float rowTop = previewBounds.y + 34.0f;
@@ -8615,7 +8685,10 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                 canvas.setColor(selected ? 0xff355382 : (index % 2 == 0 ? 0xff222936 : 0xff1d2430));
                 canvas.fill(previewBounds.x + 8.0f, rowTop, previewBounds.width - 16.0f, kItemListEditorPreviewRowHeight - 2.0f);
                 canvas.setColor(selected ? 0xfff3f7ff : 0xffdde2ea);
-                canvas.text(itemListEditorRowLabel(itemListEditorDialog_.items, static_cast<int>(index)), labelFont_, visage::Font::kTopLeft,
+                canvas.text(itemListEditorRowLabel(itemListEditorDialog_.items,
+                        itemListEditorDialog_.actions,
+                        itemListEditorDialog_.supportsActions,
+                        static_cast<int>(index)), labelFont_, visage::Font::kTopLeft,
                     previewBounds.x + 16.0f, rowTop + 5.0f, previewBounds.width - 32.0f, kItemListEditorPreviewRowHeight - 8.0f);
                 rowTop += kItemListEditorPreviewRowHeight;
             }

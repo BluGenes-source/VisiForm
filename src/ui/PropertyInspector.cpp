@@ -882,7 +882,9 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 rows.push_back({
                     property.key,
                     property.label,
-                    "Click the value area or Edit... to open the item list editor.",
+                    model::supportsItemActions(selectedWidget->type)
+                        ? "Click the value area or Edit... to open the item/action editor."
+                        : "Click the value area or Edit... to open the item list editor.",
                     summary,
                     PropertyEditKind::Text,
                     false,
@@ -893,6 +895,45 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                     "Edit..."
                 });
                 drawnKeys.insert(property.key);
+                continue;
+            }
+
+            if (model::supportsItemActions(selectedWidget->type) && property.key == "itemActions") {
+                const auto bindings = model::getWidgetItemActionBindings(*selectedWidget);
+                const std::size_t boundCount = static_cast<std::size_t>(std::count_if(bindings.begin(), bindings.end(), [](const model::WidgetItemActionBinding& binding) {
+                    return !binding.action.empty();
+                }));
+                const std::string selectedAction = model::getSelectedItemAction(*selectedWidget);
+                std::string summary;
+                if (bindings.empty()) {
+                    summary = "No items";
+                }
+                else {
+                    summary = std::to_string(boundCount) + " bound of " + std::to_string(bindings.size());
+                }
+
+                rows.push_back({
+                    property.key,
+                    property.label,
+                    "Click the value area or Edit... to open the item/action editor.",
+                    summary,
+                    PropertyEditKind::Text,
+                    false,
+                    {},
+                    0.0f,
+                    0.0f,
+                    1.0f,
+                    "Edit..."
+                });
+                rows.push_back({
+                    "__selected_item_action",
+                    "Selected Action",
+                    "Action bound to the currently selected menu or tool item.",
+                    selectedAction.empty() ? std::string{ "<none>" } : selectedAction,
+                    PropertyEditKind::ReadOnly
+                });
+                drawnKeys.insert(property.key);
+                drawnKeys.insert("__selected_item_action");
                 continue;
             }
 

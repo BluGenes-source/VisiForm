@@ -51,6 +51,14 @@ nlohmann::json propertiesToJson(const model::WidgetNode& widget)
             continue;
         }
 
+        if (key == "itemActions" && model::supportsItemActions(widget.type)) {
+            json[key] = nlohmann::json::array();
+            for (const auto& action : model::splitItemActions(widget.getStringProperty("itemActions", {}))) {
+                json[key].push_back(action);
+            }
+            continue;
+        }
+
         json[key] = propertyValueToJson(value);
     }
 

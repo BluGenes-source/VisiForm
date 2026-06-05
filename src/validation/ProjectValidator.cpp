@@ -1000,6 +1000,52 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                         "dock");
                 }
             }
+
+            if (model::supportsItemActions(widget->type)) {
+                const auto rawActions = model::splitItemActions(propertyString(*widget, "itemActions"));
+                const auto actions = model::getWidgetItemActions(*widget);
+                if (rawActions.size() > items.size()) {
+                    addMessage(report, ValidationSeverity::Warning,
+                        widget->type == model::WidgetType::MenuBar
+                            ? "MENUBAR_ITEM_ACTION_COUNT_MISMATCH"
+                            : "TOOLBAR_ITEM_ACTION_COUNT_MISMATCH",
+                        widget->type == model::WidgetType::MenuBar
+                            ? "MenuBar itemActions has more entries than items. Extra action bindings will be ignored."
+                            : "ToolBar itemActions has more entries than items. Extra action bindings will be ignored.",
+                        widget->id,
+                        "itemActions");
+                }
+
+                for (std::size_t index = 0; index < actions.size(); ++index) {
+                    const std::string callbackName = trim(actions[index]);
+                    if (callbackName.empty()) {
+                        continue;
+                    }
+
+                    if (!utils::isValidCppIdentifier(callbackName)) {
+                        addMessage(report, ValidationSeverity::Error,
+                            widget->type == model::WidgetType::MenuBar
+                                ? "MENUBAR_ITEM_ACTION_NAME_INVALID"
+                                : "TOOLBAR_ITEM_ACTION_NAME_INVALID",
+                            (widget->type == model::WidgetType::MenuBar
+                                    ? std::string{ "Invalid MenuBar item action name at item index " }
+                                    : std::string{ "Invalid ToolBar item action name at item index " })
+                                + std::to_string(index) + ".",
+                            widget->id,
+                            "itemActions");
+                        continue;
+                    }
+
+                    const auto [iterator, inserted] = callbackUsages.emplace(callbackName, CallbackUsage{ "void_event", widget->id, "itemActions" });
+                    if (!inserted && iterator->second.signatureKind != "void_event") {
+                        addMessage(report, ValidationSeverity::Error,
+                            "CALLBACK_SIGNATURE_CONFLICT",
+                            "Callback name is reused with incompatible event signature kinds.",
+                            widget->id,
+                            "itemActions");
+                    }
+                }
+            }
         }
 
         if (model::supportsTableGrid(widget->type)) {

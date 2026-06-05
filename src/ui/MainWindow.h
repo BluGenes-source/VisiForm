@@ -220,8 +220,11 @@ private:
         bool visible = false;
         std::string widgetId{};
         std::vector<std::string> items{};
+        std::vector<std::string> actions{};
+        bool supportsActions = false;
         int selectedItemIndex = -1;
         std::string originalItemsText{};
+        std::string originalActionsText{};
         int originalSelectedIndex = -1;
     };
 

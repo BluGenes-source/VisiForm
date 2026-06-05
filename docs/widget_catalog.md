@@ -41,6 +41,8 @@ Current `GroupBox` limitations in this repair pass:
 - `TextBox`
 - `ComboBox`
 - `ListBox`
+- `MenuBar`
+- `ToolBar`
 - `TreeView`
 - `CheckBox`
 - `RadioButton`
@@ -71,6 +73,8 @@ Both entry points use the same add-widget flow in `MainWindow`.
 
 Current `Widget Palette` order for user-placeable widgets:
 
+- `MenuBar`
+- `ToolBar`
 - `Frame`
 - `GroupBox`
 - `Panel`
@@ -98,6 +102,23 @@ Current palette behavior:
 - the palette list is derived from `WidgetRegistry` palette metadata instead of a separate hard-coded UI list
 - `FormWindow` and `TabPage` stay hidden from the palette because they are not direct user-placeable entries
 - the palette now supports mouse-wheel scrolling and a draggable scrollbar thumb so lower entries remain reachable on smaller window heights
+
+## Item-list and action-binding widgets
+
+Current item-list widget behavior:
+
+- `ComboBox` and `ListBox` edit newline-delimited `items`
+- `MenuBar` and `ToolBar` also edit newline-delimited `items`
+- `MenuBar` uses `selectedMenuIndex` for the currently highlighted item in the editor and generated runtime
+- `ToolBar` uses `selectedToolIndex` for the currently highlighted item in the editor and generated runtime
+
+Current `MenuBar` and `ToolBar` action-binding behavior:
+
+- `itemActions` stores newline-delimited callback names aligned to the `items` list by index
+- the `Property Inspector` summarizes both the item count and bound-action count
+- the `Property Inspector` shows a read-only `Selected Action` row for the current menu or tool selection
+- the shared item editor lets the user add, remove, reorder, and edit label/action pairs in one modal flow
+- empty action entries are allowed and mean that the item is visual-only until a callback name is assigned
 
 ## Hierarchy and container metadata
 
