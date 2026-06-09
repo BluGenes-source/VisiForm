@@ -10,6 +10,8 @@
 namespace visiform::generator {
 namespace {
 
+constexpr const char* kVsWhereVersionRange = "[17.0,18.0)";
+
 std::string sanitizeProjectNameForCMake(const std::string& value)
 {
     const std::string source = value.empty() ? std::string{"VisiFormProject"} : value;
@@ -186,13 +188,14 @@ std::string emitVsDevCmdBatchScript(const char* cmakeCommand)
     stream << "setlocal\r\n\r\n";
     stream << "cd /d \"%~dp0\\..\"\r\n\r\n";
     stream << "set \"VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\"\r\n\r\n";
+    stream << "set \"VSWHERE_VERSION_RANGE=" << kVsWhereVersionRange << "\"\r\n\r\n";
     stream << "if not exist \"%VSWHERE%\" (\r\n";
     stream << "    echo ERROR: vswhere.exe not found.\r\n";
     stream << "    echo Install Visual Studio 2022 with Desktop development with C++.\r\n";
     stream << "    exit /b 1\r\n";
     stream << ")\r\n\r\n";
     stream << "set \"VSINSTALL=\"\r\n";
-    stream << "for /f \"usebackq tokens=*\" %%i in (`\"%VSWHERE%\" -latest -version [17.0,18.0) -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (\r\n";
+    stream << "for /f \"usebackq tokens=*\" %%i in (`\"%VSWHERE%\" -latest -version \"%VSWHERE_VERSION_RANGE%\" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (\r\n";
     stream << "    set \"VSINSTALL=%%i\"\r\n";
     stream << ")\r\n\r\n";
     stream << "if \"%VSINSTALL%\"==\"\" (\r\n";
@@ -223,7 +226,8 @@ std::string emitVsDevCmdPowerShellScript(const char* cmakeCommand)
     stream << "if (-not (Test-Path $vswhere)) {\n";
     stream << "    Write-Error 'vswhere.exe not found. Install Visual Studio 2022 with Desktop development with C++.'\n";
     stream << "}\n\n";
-    stream << "$vsInstall = & $vswhere -latest -version [17.0,18.0) -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\n";
+    stream << "$vswhereVersionRange = '" << kVsWhereVersionRange << "'\n";
+    stream << "$vsInstall = & $vswhere -latest -version $vswhereVersionRange -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath\n";
     stream << "if ([string]::IsNullOrWhiteSpace($vsInstall)) {\n";
     stream << "    Write-Error 'Visual Studio 2022 C++ tools were not found. Install Desktop development with C++.'\n";
     stream << "}\n\n";

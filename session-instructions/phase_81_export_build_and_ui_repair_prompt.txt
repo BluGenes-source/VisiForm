@@ -1,0 +1,363 @@
+DEPRECATED BROAD PROMPT - DO NOT USE AS THE ACTIVE COPILOT PROMPT.
+
+This prompt was too broad and allowed Copilot to drift into diagnostic script creation and generated-folder edits.
+
+Use the split prompts instead:
+- session-instructions/phase_81A_generated_batch_script_fix_prompt.txt
+- session-instructions/phase_81B_menubar_toolbar_insert_menu_prompt.txt
+- session-instructions/phase_81C_palette_button_tree_tests_prompt.txt
+
+We are working in the existing C++ project at:
+
+J:\Dev\CeePlusPlus\VisiForm
+
+This is a Visual Studio 2022 + CMake + Ninja C++ project for VisiForm.
+
+Important instruction-source note:
+- Treat this file as the active session/phase prompt.
+- Do not confuse these session prompts with `.github` repository instructions.
+- The `.github` files may contain general repository rules, but this phase prompt is the implementation target.
+- Do not rename, move, or edit `.github` instruction files for this phase.
+
+Important Agent Mode constraints:
+- Do not run `VisiForm.exe`.
+- Do not launch generated applications.
+- Do not automate keyboard input.
+- Do not use `Start-Process`.
+- Build-only validation is allowed.
+- You may build the main VisiForm app with `scripts\build_static_debug.cmd`.
+- You may build generated projects only to validate compilation/scripts, but do not run their executables.
+
+Create a NEW phase plan before changing code:
+
+docs/agent_plans/phase_81_export_build_and_ui_repair_plan.md
+
+The plan must include:
+- Phase title
+- Current state
+- Goal
+- Files to inspect
+- Root-cause notes
+- Step-by-step TODO checklist with markdown checkboxes
+- Build validation checklist
+- Manual test checklist
+- Final result summary
+
+Update the plan as work progresses.
+Mark completed items complete.
+Do not finish without updating the plan.
+The plan must include whether the main VisiForm app built successfully.
+The plan must include whether generated project build validation was attempted and the result.
+
+Current state:
+- VisiForm is version `1.0.0`.
+- Phase 80 added or partially added `MenuBar` / `ToolBar` action binding through `itemActions`.
+- Main VisiForm currently builds successfully with `build-static-debug`.
+- Existing generated project build scripts fail before compilation with:
+  `-products was unexpected at this time.`
+- The failure appears to come from generated `.cmd` scripts that run `vswhere` inside a parenthesized batch `for (...) do (...)` block.
+- The generated command contains the Visual Studio version range `[17.0,18.0)`, and the closing parenthesis breaks `cmd.exe` parsing unless it is escaped or otherwise handled safely.
+- The `Insert` menu is hard-coded and is missing newer palette widgets.
+- The widget palette is sorted by `paletteOrder` first, then display name, so it is not globally alphabetical.
+- `Button` exposes `Text`, `Normal Text`, and `Pressed Text`; this is probably valid but needs clearer documentation or inspector labeling.
+- `cornerRadius` is stored and editable, but button preview rendering still draws square rectangles.
+- The `TreeView` node editor can show more nodes than fit, but there is no usable scrolling path.
+- `tests/CMakeLists.txt` exists, but the root CMake file does not wire the test target into normal configuration.
+
+Primary goal:
+Create a Phase 81 repair pass that makes export/build validation reliable first, then fixes the highest-impact editor usability issues from the current notes.
+
+Files to inspect first:
+- src/generator/CMakeEmitter.h
+- src/generator/CMakeEmitter.cpp
+- src/generator/CodeGenerator.cpp
+- Generated/menu/scripts/build_static_debug.cmd
+- Generated/menu/scripts/configure_static_debug.cmd
+- Generated/Validate/scripts/build_static_debug.cmd
+- Generated/Export-Test/scripts/build_static_debug.cmd
+- src/ui/MainWindow.h
+- src/ui/MainWindow.cpp
+- src/ui/PropertyInspector.h
+- src/ui/PropertyInspector.cpp
+- src/ui/WidgetPalette.cpp
+- src/model/WidgetRegistry.h
+- src/model/WidgetRegistry.cpp
+- src/ui/DesignerCanvas.h
+- src/ui/DesignerCanvas.cpp
+- src/model/WidgetItemUtils.h
+- src/model/WidgetItemUtils.cpp
+- CMakeLists.txt
+- tests/CMakeLists.txt
+- docs/widget_catalog.md
+- docs/menu_bar.md
+- docs/code_generation.md
+- docs/project_file_format.md
+- docs/agent_plans/phase_81_export_build_and_ui_repair_plan.md
+
+Part A - Fix generated project build scripts first
+
+1. Reproduce the generated script failure without launching generated apps.
+
+Try build-only validation from existing generated project folders, such as:
+- Generated\menu
+- Generated\Validate
+- Generated\Export-Test
+
+Expected current failure:
+- `-products was unexpected at this time.`
+
+2. Fix generated `.cmd` script emission.
+
+Inspect `src/generator/CMakeEmitter.cpp`.
+
+Current suspected problem:
+- `emitVsDevCmdBatchScript(...)` emits:
+  `for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -version [17.0,18.0) -products * ...`) do (`
+- The `)` in `[17.0,18.0)` is parsed by `cmd.exe` as the end of the parenthesized `for` body.
+
+Acceptable fixes:
+- Escape the closing parenthesis in the batch command as `^)`.
+- Or move the version range into a quoted variable before the `for`.
+- Or otherwise make the generated batch script valid in normal `cmd.exe`.
+
+Do not remove the Visual Studio 2022 version range unless there is a strong reason.
+Do not break PowerShell scripts.
+Check whether PowerShell generated scripts need quoting improvements too.
+
+3. Regenerate or update generated script outputs as needed for validation.
+
+Do not launch generated apps.
+Build-only validation is enough.
+
+4. Validate generated project build scripts.
+
+At minimum:
+- Verify the corrected `.cmd` scripts no longer fail at the `vswhere` line.
+- If configuration/build reaches CMake compiler errors, capture the first real compile/configure error and fix if it is in generated code.
+- If the generated project requires external local Visage source, preserve the existing `VISIFORM_VISAGE_SOURCE_DIR` behavior.
+
+Part B - Repair MenuBar / ToolBar item-action editor usability
+
+5. Inspect current `MenuBar` / `ToolBar` property inspector rows.
+
+Current concern:
+- `Items` and `Action Bindings` both open the same dialog.
+- The dialog can look like it only edits text unless the user notices the selected-row `Item Action` field.
+
+Goal:
+- Make the item/action editing workflow obvious.
+
+Preferred behavior:
+- For `MenuBar`, dialog title: `Edit Menu Items`
+- For `ToolBar`, dialog title: `Edit Tool Items`
+- Show a clear two-column preview/list with both item label and callback/action name.
+- Selected row editor should include:
+  - `Label`
+  - `Callback / Action`
+- Buttons should be widget-specific where practical:
+  - `Add Menu Item`, `Remove Menu Item`, or `Add Tool`, `Remove Tool`
+  - `Move Up`
+  - `Move Down`
+  - `Apply`
+  - `Cancel`
+
+Minimum acceptable:
+- Keep the shared modal implementation, but make visible labels/status text clear enough that action binding is not hidden.
+- Ensure both `items` and `itemActions` remain aligned when adding, removing, and moving rows.
+
+Do not break:
+- ComboBox/ListBox item editor behavior.
+- Existing undo/redo behavior for item edits.
+- Existing save/load for `items` and `itemActions`.
+
+Part C - Fix Insert menu widget coverage
+
+6. Inspect the hard-coded Insert menu in `MainWindow::menus()`.
+
+Current issue:
+- Insert menu omits newer/addable widgets such as:
+  - GroupBox
+  - Panel
+  - TabControl
+  - MenuBar
+  - ToolBar
+  - ComboBox
+  - ListBox
+  - TableGrid
+  - TreeView
+
+Goal:
+- Make the Insert menu reflect the same addable palette widgets.
+
+Preferred approach:
+- Build Insert menu items from `WidgetRegistry::paletteDefinitions()` so it stays in sync with the widget palette.
+- Keep command ids stable enough for menu click handling.
+- Preserve root-parent insertion behavior for application-structure widgets such as `MenuBar`, `ToolBar`, and `StatusBar`.
+
+Do not include:
+- `FormWindow`
+- `TabPage` as a directly addable Insert item unless the existing app already supports direct `TabPage` insertion safely.
+
+Part D - Make widget palette alphabetical
+
+7. Change widget palette sorting to alphabetical.
+
+Current behavior:
+- `WidgetRegistry::paletteDefinitions()` sorts by `paletteOrder`, then `displayName`.
+
+Goal:
+- The visible Widget Palette should display widgets alphabetically by display name.
+
+Consider:
+- If category/group display exists, decide whether alphabetical should be global or per category.
+- The user requested alphabetical order, so prefer simple visible alphabetical order by display name.
+
+Part E - Button text fields clarification
+
+8. Clarify Button text properties.
+
+Current Button properties:
+- `Text`
+- `Normal Text`
+- `Pressed Text`
+
+Expected meaning:
+- `Text` is the general/default label.
+- `Normal Text` optionally overrides the normal-state label.
+- `Pressed Text` optionally overrides the pressed/toggled-state label.
+
+Goal:
+- Make labels/hints/docs clear enough that the Property Inspector does not look like duplicate text fields.
+
+Possible fixes:
+- Update property hints.
+- Rename labels if safe, for example:
+  - `Default Text`
+  - `Normal Override`
+  - `Pressed Text`
+- Be careful with property keys; do not break save/load/export by renaming keys unless migration is handled.
+
+Part F - Button corner radius preview
+
+9. Implement rounded button preview if feasible.
+
+Current issue:
+- Changing `cornerRadius` on a Button does not visually affect the editor canvas.
+
+Inspect:
+- `src/ui/DesignerCanvas.cpp`
+- existing helper functions such as `fillCircleApprox(...)`
+- any available Visage rounded-rectangle APIs.
+
+Goal:
+- Button preview should visibly respect `cornerRadius`.
+
+Acceptable implementation:
+- Use a proper Visage rounded rectangle API if available.
+- Or implement a small safe approximation for filled rounded rectangles and border drawing in the editor preview.
+
+Scope:
+- Prioritize `Button`.
+- Do not destabilize every widget's rendering unless the helper is clean and low risk.
+- If generated runtime also has the same square-button limitation and can be safely fixed, do so; otherwise document it as follow-up.
+
+Part G - TreeView node editor scrolling/layout
+
+10. Fix TreeView node editor overflow.
+
+Current issue:
+- Adding more child nodes than fit in the dialog leaves no way to view/select them.
+- Top text/instructions appear poorly formatted.
+
+Goal:
+- Provide a usable way to access all tree nodes in the editor dialog.
+
+Preferred behavior:
+- Add scroll offset state for the TreeView node editor list.
+- Keep selected node visible when adding child/sibling nodes or moving selection.
+- Mouse wheel should scroll the list if existing modal wheel handling supports it.
+- At minimum, add Previous/Next page or selection navigation so all nodes can be reached.
+- Improve top instruction text layout to avoid overlap/truncation.
+
+Do not break:
+- Tree node hierarchy serialization.
+- `selectedNodePath`
+- `expandedNodePaths`
+- save/load behavior.
+
+Part H - Wire tests into CMake
+
+11. Inspect root `CMakeLists.txt` and `tests/CMakeLists.txt`.
+
+Current issue:
+- `tests/CMakeLists.txt` defines `VisiFormTests`, but root CMake does not add the tests directory.
+
+Goal:
+- Add an option such as `VISIFORM_BUILD_TESTS` defaulting to `ON` or `OFF` based on repository style.
+- When enabled, `VisiFormTests` should configure and build.
+- Avoid making the main app build fail if test dependencies are unavailable unless the option is enabled.
+
+Part I - Documentation
+
+12. Update documentation for the fixes.
+
+Update as appropriate:
+- docs/widget_catalog.md
+- docs/menu_bar.md
+- docs/code_generation.md
+- docs/project_file_format.md
+- docs/project_validation.md if validation behavior changes
+- README.md only if build instructions materially change
+
+Documentation should mention:
+- Generated batch scripts correctly locate VS2022 with `vswhere`.
+- MenuBar/ToolBar item action editing behavior.
+- Button text field meanings.
+- Button corner radius preview behavior if implemented.
+- TreeView node editor scrolling/overflow behavior if implemented.
+
+Part J - Build validation
+
+After changes:
+
+1. Build main VisiForm:
+- `scripts\build_static_debug.cmd`
+
+2. Build-only validate generated project scripts:
+- Use an existing generated sample or regenerate if needed.
+- Do not run generated executables.
+- Validate Debug at minimum.
+- Validate Release if practical.
+
+3. If tests are wired into CMake:
+- Configure/build tests if enabled.
+- Run tests only if they are non-UI and do not launch apps.
+
+Acceptance criteria:
+- Main `VisiForm` builds successfully.
+- Generated `.cmd` scripts no longer fail with `-products was unexpected at this time.`
+- At least one generated project reaches a successful Debug build, or the remaining failure is documented as a real compile/configuration issue with next steps.
+- Insert menu includes all intended palette widgets.
+- Widget palette displays alphabetically.
+- MenuBar action editing is visibly clear.
+- ToolBar action editing is visibly clear.
+- Item labels and action names remain aligned after add/remove/move.
+- Button text field purpose is clear in the inspector/docs.
+- Button `cornerRadius` visibly affects preview if implemented.
+- TreeView node editor can access nodes beyond the visible area if implemented.
+- Existing save/load behavior remains backward compatible.
+- Existing Button callback behavior remains intact.
+- Existing GroupBox, TabControl, docking/anchor, ComboBox/ListBox, TreeView, TableGrid, StatusBar, and resource behavior remain intact.
+- Phase plan is updated with final result summary.
+
+When complete, summarize:
+1. Phase plan updated.
+2. Files changed.
+3. Generated build-script fix.
+4. Generated project build validation result.
+5. MenuBar/ToolBar editor improvements.
+6. Insert menu and palette ordering changes.
+7. Button text/corner-radius result.
+8. TreeView editor result.
+9. Tests/CMake result.
+10. Manual tests I should perform in Visual Studio.

@@ -1,0 +1,101 @@
+Follow this prompt exactly. Do not use the deprecated broad prompt
+We are working in the existing C++ project at:
+
+J:\Dev\CeePlusPlus\VisiForm
+
+This is a Visual Studio 2022 + CMake + Ninja C++ project.
+
+Important source-of-instructions note:
+- Treat this file as the active Copilot session prompt.
+- Do not confuse this with `.github` instructions.
+- Do not rename, move, or edit `.github` instruction files.
+
+Strict guardrails:
+- Do not edit anything under `Generated/`.
+- Do not create temporary scripts, helper scripts, diagnostic scripts, markdown scratch files, or one-off files.
+- Do not run build scripts.
+- Do not run terminal build commands.
+- Do not run PowerShell build commands.
+- Do not run `cmd.exe` build commands.
+- Do not run `VisiForm.exe`.
+- Do not launch generated applications.
+- Do not automate keyboard input.
+- Do not use `Start-Process`.
+- Do not change Visual Studio startup/debug target selection.
+- Do not select, build, launch, or validate against `freetype.vcxproj`.
+- The intended application target is VisiForm, not any dependency target.
+- Do not modify unrelated UI/editor features in this phase.
+- Do not continue into Phase 81B or 81C work.
+
+Create a new focused phase plan before changing code:
+
+docs/agent_plans/phase_81A_generated_batch_script_fix_plan.md
+
+The plan must include:
+- Phase title
+- Current state
+- Goal
+- Files to inspect
+- Root cause
+- TODO checklist with markdown checkboxes
+- Build validation checklist
+- Final result summary
+
+Update the plan as work progresses.
+Mark completed checklist items complete.
+Do not finish without updating the plan.
+
+Current problem:
+- Generated project `.cmd` helper scripts fail with:
+  `-products was unexpected at this time.`
+- The likely source is `src/generator/CMakeEmitter.cpp`.
+- The generated batch script emits a `for /f (...) do (...)` block that runs `vswhere`.
+- The `vswhere` argument `-version [17.0,18.0)` contains a closing parenthesis.
+- Inside a parenthesized batch block, that `)` must be escaped or otherwise handled safely.
+
+Goal:
+Fix generated batch script emission so newly exported `.cmd` scripts can call `vswhere` without `cmd.exe` treating the `)` in `[17.0,18.0)` as the end of the block.
+
+Files to inspect:
+- src/generator/CMakeEmitter.h
+- src/generator/CMakeEmitter.cpp
+- src/generator/CodeGenerator.cpp
+- docs/agent_plans/phase_81A_generated_batch_script_fix_plan.md
+
+Inspect-only references:
+- Existing generated script files under `Generated/` may be read to understand current output.
+- Do not edit any file under `Generated/`.
+
+Implementation guidance:
+- Prefer a small, targeted change in `src/generator/CMakeEmitter.cpp`.
+- Keep the Visual Studio 2022 version range unless there is a strong reason to change it.
+- Acceptable fixes include:
+  - escaping the closing parenthesis as `^)` in generated batch output
+  - or storing the version range in a variable outside the parenthesized block and using that variable
+- Make sure PowerShell script generation remains valid.
+- Do not create diagnostic scripts.
+- Do not add broad new validation helpers.
+
+Build validation:
+- Do not use `scripts\build_static_debug.cmd`.
+- Do not use any generated or repository build script.
+- Do not run `cmake --build` from the terminal.
+- Use only the Visual Studio workspace build pipeline for the VisiForm target if it is available and unambiguous.
+- If the workspace build pipeline is unavailable, ambiguous, or appears to target `freetype.vcxproj`, stop and ask the user to build manually.
+- Do not build generated projects in this phase.
+- Do not run any executable.
+
+Acceptance criteria:
+- The phase plan exists and is updated.
+- `src/generator/CMakeEmitter.cpp` emits valid batch syntax for the VS2022 version range.
+- Main VisiForm build validation is completed through the Visual Studio workspace build pipeline, or explicitly deferred to the user if the pipeline is unavailable or ambiguous.
+- No files under `Generated/` were modified.
+- No temporary or diagnostic scripts were created.
+
+When complete, summarize:
+1. Phase plan updated.
+2. Files changed.
+3. Exact batch escaping or variable approach used.
+4. Main app build result.
+5. Confirmation that `Generated/` was not edited.
+6. Manual validation I should perform after exporting a fresh project.

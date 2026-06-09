@@ -1,0 +1,131 @@
+We are working in the existing C++ project at:
+
+J:\Dev\CeePlusPlus\VisiForm
+
+Use this only after Phase 81A and Phase 81B are complete or intentionally skipped.
+
+Strict guardrails:
+- Do not edit anything under `Generated/`.
+- Do not create temporary scripts, helper scripts, diagnostic scripts, markdown scratch files, or one-off files.
+- Do not run build scripts.
+- Do not run terminal build commands.
+- Do not run PowerShell build commands.
+- Do not run `cmd.exe` build commands.
+- Do not run `VisiForm.exe`.
+- Do not launch generated applications.
+- Do not automate keyboard input.
+- Do not use `Start-Process`.
+- Do not change Visual Studio startup/debug target selection.
+- Do not select, build, launch, or validate against `freetype.vcxproj`.
+- The intended application target is VisiForm, not any dependency target.
+- Do not modify generated export script emission or Insert menu behavior in this phase.
+
+Create a new focused phase plan before changing code:
+
+docs/agent_plans/phase_81C_palette_button_tree_tests_plan.md
+
+Goal:
+Finish smaller stabilization items: alphabetical palette ordering, clearer Button text meanings, Button corner-radius preview, TreeView node editor overflow handling, and optional test wiring.
+
+Files to inspect:
+- src/model/WidgetRegistry.h
+- src/model/WidgetRegistry.cpp
+- src/ui/WidgetPalette.cpp
+- src/ui/DesignerCanvas.h
+- src/ui/DesignerCanvas.cpp
+- src/ui/MainWindow.h
+- src/ui/MainWindow.cpp
+- src/ui/PropertyInspector.h
+- src/ui/PropertyInspector.cpp
+- CMakeLists.txt
+- tests/CMakeLists.txt
+- docs/widget_catalog.md
+- docs/project_file_format.md
+- docs/agent_plans/phase_81C_palette_button_tree_tests_plan.md
+
+Part A - Alphabetical widget palette
+
+Current issue:
+- `WidgetRegistry::paletteDefinitions()` sorts by palette order first, then display name.
+
+Goal:
+- Visible widget palette should display alphabetically by display name.
+
+Part B - Button text property clarity
+
+Current Button properties:
+- `Text`
+- `Normal Text`
+- `Pressed Text`
+
+Expected meaning:
+- `Text` is the default/general label.
+- `Normal Text` optionally overrides the normal-state label.
+- `Pressed Text` optionally overrides pressed/toggled-state label.
+
+Goal:
+- Improve labels/hints/docs so these do not look like duplicate text fields.
+- Do not rename property keys unless migration is handled.
+
+Part C - Button corner-radius preview
+
+Current issue:
+- Editing `cornerRadius` on a Button does not visibly affect the editor preview.
+
+Goal:
+- Button preview should visibly respect `cornerRadius`.
+
+Guidance:
+- Prefer existing Visage rounded rectangle APIs if available.
+- If not available, add a small local helper in `DesignerCanvas.cpp` only if safe.
+- Keep scope focused on Button preview unless a shared helper is clean and low risk.
+
+Part D - TreeView node editor overflow
+
+Current issue:
+- More TreeView nodes than visible space cannot be reached easily.
+
+Goal:
+- Add safe scrolling or paging behavior so all nodes can be selected.
+- Keep selected node visible when adding child/sibling nodes.
+- Improve top text layout if it overlaps or truncates badly.
+
+Part E - Optional test wiring
+
+Current issue:
+- `tests/CMakeLists.txt` exists but root CMake does not add it.
+
+Goal:
+- Add optional test wiring if low risk.
+- Prefer a CMake option such as `VISIFORM_BUILD_TESTS`.
+- Do not make main app configuration fail when tests are disabled.
+
+Build validation:
+- Do not use `scripts\build_static_debug.cmd`.
+- Do not use any generated or repository build script.
+- Do not run `cmake --build` from the terminal.
+- Use only the Visual Studio workspace build pipeline for the VisiForm target if it is available and unambiguous.
+- If the workspace build pipeline is unavailable, ambiguous, or appears to target `freetype.vcxproj`, stop and ask the user to build manually.
+- If test wiring is added, do not build tests unless the Visual Studio workspace pipeline exposes a clear test target and the user asks for it.
+- Do not run UI apps or generated apps.
+
+Acceptance criteria:
+- Phase plan exists and is updated.
+- Palette displays alphabetically.
+- Button text property purpose is clearer.
+- Button corner-radius preview visibly changes if implemented.
+- TreeView node editor can access overflow nodes if implemented.
+- Test target wiring is added only if safe.
+- Main VisiForm build validation is completed through the Visual Studio workspace build pipeline, or explicitly deferred to the user if the pipeline is unavailable or ambiguous.
+- No files under `Generated/` were modified.
+- No temporary or diagnostic scripts were created.
+
+When complete, summarize:
+1. Phase plan updated.
+2. Files changed.
+3. Palette ordering result.
+4. Button text/corner-radius result.
+5. TreeView editor result.
+6. Test wiring result.
+7. Main app build result.
+8. Manual tests I should perform in Visual Studio.

@@ -1,7 +1,5 @@
 #include "generator/VisageCppEmitter.h"
 
-#include "generator/VisageCppEmitter.h"
-
 #include "app/Version.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
@@ -21,7 +19,7 @@
 namespace visiform::generator {
 namespace {
 
-const std::string kGeneratedFileHeader = generatedByComment()
+const std::string kGeneratedFileHeader = "// " + generatedByComment()
     + ".\n"
       "// This file is generated.\n"
       "// Manual changes may be overwritten.\n\n";
@@ -1604,7 +1602,6 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    void showWindow();\n";
     stream << "    void draw(visage::Canvas& canvas) override;\n\n";
     stream << "    void mouseDown(const visage::MouseEvent& e) override;\n";
-    stream << "    void mouseDoubleClick(const visage::MouseEvent& e) override;\n";
     stream << "    void mouseMove(const visage::MouseEvent& e) override;\n";
     stream << "    void mouseDrag(const visage::MouseEvent& e) override;\n";
     stream << "    void mouseUp(const visage::MouseEvent& e) override;\n";
@@ -2893,7 +2890,6 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Panel:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
-    stream << "    case RuntimeWidgetType::TableGrid:\n";
     stream << "        return false;\n";
     stream << "    }\n";
     stream << "    return false;\n";
@@ -3247,6 +3243,35 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        redraw();\n";
     stream << "        return;\n";
     stream << "    }\n\n";
+    stream << "    if (e.repeatClickCount() >= 2) {\n";
+    stream << "        if (widget->type == RuntimeWidgetType::Button) {\n";
+    stream << "            if (!widget->events.onDoubleClick.empty()) {\n";
+    stream << "                emitVoidEvent(*widget, \"onDoubleClick\");\n";
+    stream << "                redraw();\n";
+    stream << "            }\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        if (widget->type == RuntimeWidgetType::ListBox) {\n";
+    stream << "            if (!widget->events.onDoubleClick.empty()) {\n";
+    stream << "                if (const auto rowIndex = listBoxRowIndexAt(*widget, formX, formY); rowIndex.has_value()) {\n";
+    stream << "                    setItemSelection(*widget, *rowIndex, true);\n";
+    stream << "                    emitVoidEvent(*widget, \"onDoubleClick\");\n";
+    stream << "                    redraw();\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        if (widget->type == RuntimeWidgetType::TableGrid) {\n";
+    stream << "            if (!widget->events.onCellDoubleClick.empty()) {\n";
+    stream << "                if (const auto cell = tableGridCellAt(*widget, formX, formY); cell.has_value()) {\n";
+    stream << "                    setTableGridSelection(*widget, cell->first, cell->second, true);\n";
+    stream << "                    emitVoidEvent(*widget, \"onCellDoubleClick\");\n";
+    stream << "                    redraw();\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "    }\n\n";
     stream << "    setFocusedWidget(std::string{});\n";
     stream << "    switch (widget->type) {\n";
     stream << "    case RuntimeWidgetType::Unknown:\n";
@@ -3494,47 +3519,6 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    pressedWidgetId_.clear();\n";
     stream << "    redraw();\n";
-    stream << "}\n\n";
-    stream << "void " << className << "::mouseDoubleClick(const visage::MouseEvent& e)\n";
-    stream << "{\n";
-    stream << "    if (!e.isLeftButton() || modalState_.visible) {\n";
-    stream << "        return;\n";
-    stream << "    }\n";
-    stream << "    RuntimeWidget* widget = formBounds_.contains(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
-    stream << "        ? hitTest(e.position.x - kFormOffsetX, e.position.y - kFormOffsetY)\n";
-    stream << "        : nullptr;\n";
-    stream << "    if (widget == nullptr) {\n";
-    stream << "        return;\n";
-    stream << "    }\n";
-    stream << "    if (widget->type == RuntimeWidgetType::Button) {\n";
-    stream << "        if (widget->events.onDoubleClick.empty()) {\n";
-    stream << "            return;\n";
-    stream << "        }\n";
-    stream << "        emitVoidEvent(*widget, \"onDoubleClick\");\n";
-    stream << "        redraw();\n";
-    stream << "        return;\n";
-    stream << "    }\n";
-    stream << "    if (widget->type == RuntimeWidgetType::ListBox) {\n";
-    stream << "        if (widget->events.onDoubleClick.empty()) {\n";
-    stream << "            return;\n";
-    stream << "        }\n";
-    stream << "        if (const auto rowIndex = listBoxRowIndexAt(*widget, e.position.x - kFormOffsetX, e.position.y - kFormOffsetY); rowIndex.has_value()) {\n";
-    stream << "            setItemSelection(*widget, *rowIndex, true);\n";
-    stream << "            emitVoidEvent(*widget, \"onDoubleClick\");\n";
-    stream << "            redraw();\n";
-    stream << "        }\n";
-    stream << "        return;\n";
-    stream << "    }\n";
-    stream << "    if (widget->type == RuntimeWidgetType::TableGrid) {\n";
-    stream << "        if (widget->events.onCellDoubleClick.empty()) {\n";
-    stream << "            return;\n";
-    stream << "        }\n";
-    stream << "        if (const auto cell = tableGridCellAt(*widget, e.position.x - kFormOffsetX, e.position.y - kFormOffsetY); cell.has_value()) {\n";
-    stream << "            setTableGridSelection(*widget, cell->first, cell->second, true);\n";
-    stream << "            emitVoidEvent(*widget, \"onCellDoubleClick\");\n";
-    stream << "            redraw();\n";
-    stream << "        }\n";
-    stream << "    }\n";
     stream << "}\n\n";
     stream << "bool " << className << "::keyPress(const visage::KeyEvent& e)\n";
     stream << "{\n";

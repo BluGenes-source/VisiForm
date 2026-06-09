@@ -1,0 +1,117 @@
+We are working in the existing C++ project at:
+
+J:\Dev\CeePlusPlus\VisiForm
+
+Use this only after Phase 81A is complete or intentionally skipped.
+
+Strict guardrails:
+- Do not edit anything under `Generated/`.
+- Do not create temporary scripts, helper scripts, diagnostic scripts, markdown scratch files, or one-off files.
+- Do not run build scripts.
+- Do not run terminal build commands.
+- Do not run PowerShell build commands.
+- Do not run `cmd.exe` build commands.
+- Do not run `VisiForm.exe`.
+- Do not launch generated applications.
+- Do not automate keyboard input.
+- Do not use `Start-Process`.
+- Do not change Visual Studio startup/debug target selection.
+- Do not select, build, launch, or validate against `freetype.vcxproj`.
+- The intended application target is VisiForm, not any dependency target.
+- Do not modify palette ordering, button radius, TreeView scrolling, or test wiring in this phase.
+
+Create a new focused phase plan before changing code:
+
+docs/agent_plans/phase_81B_menubar_toolbar_insert_menu_plan.md
+
+Goal:
+Improve MenuBar/ToolBar action-editor clarity and make the Insert menu reflect the same addable widgets as the palette.
+
+Files to inspect:
+- src/ui/MainWindow.h
+- src/ui/MainWindow.cpp
+- src/ui/PropertyInspector.h
+- src/ui/PropertyInspector.cpp
+- src/model/WidgetRegistry.h
+- src/model/WidgetRegistry.cpp
+- src/model/WidgetItemUtils.h
+- src/model/WidgetItemUtils.cpp
+- docs/widget_catalog.md
+- docs/menu_bar.md
+- docs/project_file_format.md
+- docs/agent_plans/phase_81B_menubar_toolbar_insert_menu_plan.md
+
+Part A - MenuBar / ToolBar item-action editor
+
+Current issue:
+- `Items` and `Action Bindings` both open the same dialog.
+- The action field exists, but the workflow can look like it only edits item text.
+
+Goal:
+- Make the dialog clearly show both item labels and callback/action names.
+
+Preferred behavior:
+- MenuBar title: `Edit Menu Items`
+- ToolBar title: `Edit Tool Items`
+- Preview/list text clearly includes label and callback/action.
+- Selected row fields should be labeled clearly:
+  - `Label`
+  - `Callback / Action`
+- Status text should explicitly mention action binding.
+- Add/remove button labels may be widget-specific if safe.
+
+Do not break:
+- ComboBox/ListBox item editing.
+- Undo/redo behavior.
+- Save/load of `items` and `itemActions`.
+- Existing action alignment during add/remove/move.
+
+Part B - Insert menu coverage
+
+Current issue:
+- `MainWindow::menus()` hard-codes Insert menu items and omits newer widgets.
+
+Goal:
+- Insert menu should include intended addable palette widgets.
+
+Preferred approach:
+- Build Insert menu items from `WidgetRegistry::paletteDefinitions()` or another registry-driven source.
+- Keep item ids stable and predictable.
+- Do not include `FormWindow`.
+- Do not include direct `TabPage` insertion unless existing behavior safely supports it.
+
+Likely missing items include:
+- GroupBox
+- Panel
+- TabControl
+- MenuBar
+- ToolBar
+- ComboBox
+- ListBox
+- TableGrid
+- TreeView
+
+Build validation:
+- Do not use `scripts\build_static_debug.cmd`.
+- Do not use any generated or repository build script.
+- Do not run `cmake --build` from the terminal.
+- Use only the Visual Studio workspace build pipeline for the VisiForm target if it is available and unambiguous.
+- If the workspace build pipeline is unavailable, ambiguous, or appears to target `freetype.vcxproj`, stop and ask the user to build manually.
+- Do not build generated projects.
+- Do not run any executable.
+
+Acceptance criteria:
+- Phase plan exists and is updated.
+- MenuBar/ToolBar item-action editor is clearer.
+- Insert menu covers intended addable widgets.
+- Main VisiForm build validation is completed through the Visual Studio workspace build pipeline, or explicitly deferred to the user if the pipeline is unavailable or ambiguous.
+- No files under `Generated/` were modified.
+- No temporary or diagnostic scripts were created.
+
+When complete, summarize:
+1. Phase plan updated.
+2. Files changed.
+3. MenuBar/ToolBar editor changes.
+4. Insert menu changes.
+5. Main app build result.
+6. Manual tests I should perform in Visual Studio.
