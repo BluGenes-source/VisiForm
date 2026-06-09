@@ -117,6 +117,9 @@ Current `MenuBar` and `ToolBar` action-binding behavior:
 - `itemActions` stores newline-delimited callback names aligned to the `items` list by index
 - the `Property Inspector` summarizes both the item count and bound-action count
 - the `Property Inspector` shows a read-only `Selected Action` row for the current menu or tool selection
+- the shared item editor uses `Edit Menu Items` and `Edit Tool Items` modal titles for those widgets
+- the shared item editor preview rows now show both `Label` and `Callback / Action` text for each row
+- the shared item editor exposes `Label` and `Callback / Action` fields for the selected row
 - the shared item editor lets the user add, remove, reorder, and edit label/action pairs in one modal flow
 - empty action entries are allowed and mean that the item is visual-only until a callback name is assigned
 

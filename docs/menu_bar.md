@@ -70,15 +70,24 @@ Shared command examples:
 
 ### Insert
 
-The `Insert` menu uses the same add-widget flow as the `Widget Palette`.
+The `Insert` menu uses the same add-widget flow and the same registry-driven palette source as the `Widget Palette`.
 Current insertable widget types include:
 
+- `Menu Bar`
+- `Tool Bar`
 - `Frame`
+- `Group Box`
+- `Panel`
+- `Tab Control`
 - `Label`
 - `Button`
 - `Text Box`
+- `ComboBox`
+- `ListBox`
+- `Tree View`
 - `Check Box`
 - `Radio Button`
+- `Table / Grid`
 - `Slider`
 - `Scroll Bar`
 - `Status Bar`

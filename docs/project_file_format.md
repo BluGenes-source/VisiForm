@@ -173,6 +173,7 @@ Normalization and compatibility rules:
 - if the final item list is empty, the selected index becomes `-1`
 - if the final item list is non-empty, the selected index is clamped into the valid `0..count-1` range
 - older projects that only contain `items` remain loadable because `itemActions` defaults to an empty aligned list
+- the editor presents `MenuBar` and `ToolBar` rows as paired `Label` and `Callback / Action` fields, but the persisted storage format remains the same aligned `items` and `itemActions` arrays
 
 ## TreeView node storage
 

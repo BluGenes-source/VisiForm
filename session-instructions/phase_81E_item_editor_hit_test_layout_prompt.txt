@@ -1,0 +1,199 @@
+We are working in the existing C++ project at:
+
+J:\Dev\CeePlusPlus\VisiForm
+
+Use this after Phase 81B/81D work if the shared item editor dialog still has row hit-test and formatting problems.
+Phase 81C has not run yet; do not start Phase 81C work from this prompt.
+
+Important source-of-instructions note:
+- Treat this file as the active Copilot session prompt.
+- Do not use the deprecated broad Phase 81 prompt.
+- Do not confuse this with `.github` instructions.
+- Do not rename, move, or edit `.github` instruction files.
+
+Strict guardrails:
+- Do not edit anything under `Generated/`.
+- Do not create temporary scripts, helper scripts, diagnostic scripts, markdown scratch files, or one-off files.
+- Do not run build scripts.
+- Do not run terminal build commands.
+- Do not run PowerShell build commands.
+- Do not run `cmd.exe` build commands.
+- Do not run `VisiForm.exe`.
+- Do not launch generated applications.
+- Do not automate keyboard input.
+- Do not use `Start-Process`.
+- Do not change Visual Studio startup/debug target selection.
+- Do not select, build, launch, or validate against `freetype.vcxproj`.
+- The intended application target is VisiForm, not any dependency target.
+- Do not modify palette ordering, button radius, TreeView scrolling, export generation, generated build scripts, or test wiring in this phase.
+
+Create a new focused phase plan before changing code:
+
+docs/agent_plans/phase_81E_item_editor_hit_test_layout_plan.md
+
+The plan must include:
+- Phase title
+- Current state
+- Goal
+- Files to inspect
+- Root-cause notes
+- TODO checklist with markdown checkboxes
+- Build validation checklist
+- Manual test checklist
+- Final result summary
+
+Update the plan as work progresses.
+Mark completed checklist items complete.
+Do not finish without updating the plan.
+
+Current problem:
+- In the `Edit Menu Items` dialog, clicking rows selects the wrong row because the hit test is too high.
+- The row hit area should match the visible formatted text row height and y-position.
+- The same hit-test issue exists in the item list editor used by ComboBox/ListBox item editing.
+- The dialog has a field or status area above the Add/Remove/Move/Apply buttons that is hard to read because the text is clipped/truncated.
+- Text formatting in the item editor preview could be improved.
+- The screenshot shows long text such as:
+  `Select a row, edit its Label and Callback / Action fields, then click Apply to ...`
+  being clipped in a narrow field near the bottom of the modal.
+
+Goal:
+Repair the shared item-list editor layout and hit testing so MenuBar, ToolBar, ComboBox, and ListBox item editing feel reliable and readable.
+
+Files to inspect:
+- src/ui/MainWindow.h
+- src/ui/MainWindow.cpp
+- src/ui/PropertyInspector.h
+- src/ui/PropertyInspector.cpp
+- src/model/WidgetItemUtils.h
+- src/model/WidgetItemUtils.cpp
+- docs/widget_catalog.md
+- docs/menu_bar.md
+- docs/agent_plans/phase_81E_item_editor_hit_test_layout_plan.md
+
+Likely code areas to inspect:
+- `MainWindow::itemListEditorPreviewBounds()`
+- `MainWindow::itemListEditorFormBounds()`
+- `MainWindow::itemListEditorPreviewIndexAt(...)`
+- `MainWindow::visible` or draw logic for `EditorModalMode::ItemListEditor`
+- constants such as:
+  - `kItemListEditorPreviewHeight`
+  - `kItemListEditorPreviewRowHeight`
+  - `kItemListEditorPreviewGap`
+  - editor modal form/status heights
+- `editorModalFields()` handling for `EditorModalMode::ItemListEditor`
+- mouse handling for item editor row selection
+
+Part A - Fix item row hit testing
+
+1. Inspect how item editor rows are drawn.
+
+Document:
+- row list top y-position
+- header/title area height
+- row height
+- visible row count
+- row x/y bounds
+
+2. Inspect how row clicks are mapped to indices.
+
+Current expected issue:
+- The hit-test y-origin does not match the draw y-origin.
+- The clickable row region is vertically offset from the rendered row.
+
+Fix:
+- Make `itemListEditorPreviewIndexAt(...)` use the same row top, row height, and visible-row math as the draw code.
+- Hit test should only return a row when the click lands inside the visible formatted row area.
+- If there is a heading area above the rows, clicking the heading should not select a row.
+- Keep behavior shared for:
+  - MenuBar item/action editing
+  - ToolBar item/action editing
+  - ComboBox item editing
+  - ListBox item editing
+
+Part B - Improve item editor text layout
+
+3. Fix clipped bottom status/form text.
+
+Current issue:
+- The text/status field above the Add/Remove/Move/Apply/Cancel buttons is clipped and unreadable.
+
+Preferred behavior:
+- Use the existing modal status area for short status text only, or wrap/truncate cleanly with a readable height.
+- Do not render long instruction text inside a single-line field that clips.
+- Keep the selected-row editable fields readable:
+  - Item Count
+  - Selected Row
+  - Label or Item Text
+  - Callback / Action when supported
+
+4. Improve field labels for action-supported editors.
+
+For MenuBar/ToolBar:
+- Use `Label` for the item label field.
+- Use `Callback / Action` for the action binding field.
+
+For ComboBox/ListBox:
+- Use `Item Text` or a similarly clear label.
+- Do not show action binding fields for widgets that do not support actions.
+
+5. Improve preview row formatting.
+
+For MenuBar/ToolBar:
+- Preview rows should be readable and not overly dense.
+- A row may show:
+  `1. File    onFile`
+  or
+  `1. Label: File | Callback / Action: <none>`
+- Prefer a format that fits the dialog better.
+
+For ComboBox/ListBox:
+- Preview rows should show item text clearly without action wording.
+
+Part C - Keep scope tight
+
+Do not implement:
+- TreeView scrolling
+- palette ordering
+- button corner radius
+- test CMake wiring
+- generated export changes
+- generated project build script changes
+
+Build validation:
+- Do not use `scripts\build_static_debug.cmd`.
+- Do not use any generated or repository build script.
+- Do not run `cmake --build` from the terminal.
+- Use only the Visual Studio workspace build pipeline for the VisiForm target if it is available and unambiguous.
+- If the workspace build pipeline is unavailable, ambiguous, or appears to target `freetype.vcxproj`, stop and ask the user to build manually.
+- Do not build generated projects.
+- Do not run any executable.
+
+Acceptance criteria:
+- Phase plan exists and is updated.
+- Clicking a visible row in `Edit Menu Items` selects the row that was clicked.
+- Clicking above the visible row list does not select a row.
+- ComboBox/ListBox item editor row hit testing is corrected too.
+- The bottom status/instruction area is readable and no longer clipped.
+- MenuBar/ToolBar action field labels are readable and clear.
+- ComboBox/ListBox item labels remain clear and do not show irrelevant action fields.
+- Main VisiForm build validation is completed through the Visual Studio workspace build pipeline, or explicitly deferred to the user if the pipeline is unavailable or ambiguous.
+- No files under `Generated/` were modified.
+- No temporary or diagnostic scripts were created.
+
+Manual test checklist:
+- Open `Edit Menu Items`.
+- Click each visible menu row and confirm the correct selected row updates.
+- Edit a menu label and callback/action, then Apply.
+- Open `Edit Tool Items`.
+- Click each visible tool row and confirm the correct selected row updates.
+- Open ComboBox/ListBox item editing and confirm row hit testing is correct.
+- Confirm the bottom instruction/status text is readable.
+- Confirm Add, Remove, Move Up, Move Down, Apply, and Cancel still work.
+
+When complete, summarize:
+1. Phase plan updated.
+2. Files changed.
+3. Root cause of the hit-test offset.
+4. Layout/text formatting changes.
+5. Widgets verified by manual test.
+6. Build validation result or whether validation was deferred to the user.

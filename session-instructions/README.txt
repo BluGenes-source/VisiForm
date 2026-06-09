@@ -5,7 +5,9 @@ Use these files as active Copilot prompts instead of the older broad Phase 81 pr
 Recommended order:
 1. phase_81A_generated_batch_script_fix_prompt.txt
 2. phase_81B_menubar_toolbar_insert_menu_prompt.txt
-3. phase_81C_palette_button_tree_tests_prompt.txt
+3. phase_81D_generated_code_compile_repair_prompt is not present because the generator compile repair was handled directly; see `docs/agent_plans/phase_81D_generated_code_compile_repair_plan.md`
+4. phase_81E_item_editor_hit_test_layout_prompt.txt
+5. phase_81C_palette_button_tree_tests_prompt.txt
 
 Guardrails for all split prompts:
 - Do not edit anything under Generated/.

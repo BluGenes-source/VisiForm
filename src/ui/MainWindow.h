@@ -219,6 +219,7 @@ private:
     struct ItemListEditorDialogState {
         bool visible = false;
         std::string widgetId{};
+        model::WidgetType widgetType = model::WidgetType::FormWindow;
         std::vector<std::string> items{};
         std::vector<std::string> actions{};
         bool supportsActions = false;
