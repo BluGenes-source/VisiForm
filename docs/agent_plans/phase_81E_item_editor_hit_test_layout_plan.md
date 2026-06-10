@@ -68,3 +68,12 @@ Repair the shared item-list editor layout and hit testing so row selection match
 ## Remaining TODOs
 - Developer should build the main `VisiForm` target in Visual Studio.
 - Developer should manually verify `Edit Menu Items`, `Edit Tool Items`, and ComboBox/ListBox item editing row clicks and button/status formatting.
+
+## Work log
+
+- 2026-06-09: Started implementation phase-81E code changes. Performed repository-wide search for item-list editor draw and hit-test functions (expected names like `itemListEditorPreviewIndexAt`, preview draw/hit-test math). Could not locate a single dedicated implementation for the shared item-list editor preview in the workspace; related helpers (row geometry constants and utility helpers) are present but the modal draw/hit-test binding appears absent or moved.
+- Action taken: documented discovery and will continue targeted searches and safe documentation updates. Next steps: locate the editor modal draw/hit-test implementation (likely in `MainWindow.cpp` or an editor-specific file), align hit-test math with drawn preview origin, add hit-test unit tests, and update this plan with concrete file edits and build validation status.
+
+## Notes for developer
+
+- If you have a path or commit that contains the item-list editor modal implementation, please point me to that file (e.g., `src/ui/MainWindow.cpp` region or `src/ui/editors/ItemListEditor.cpp`). If the implementation is intentionally distributed across UI and inspector layers, I will reconcile by introducing a single shared row-origin utility and updating both draw and hit-test callsites to use it.

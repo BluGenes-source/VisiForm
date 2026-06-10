@@ -126,6 +126,42 @@ git clone https://github.com/BluGenes-source/VisiForm.git ~/dev/VisiForm
 git clone https://github.com/VitalAudio/visage.git ~/dev/visage
 ```
 
+## Updating an existing clone
+
+If you already cloned `VisiForm`, update it before configuring or building:
+
+```powershell
+cd path\to\VisiForm
+git pull
+```
+
+Keep a local `Visage` checkout near the `VisiForm` folder when possible. This
+layout is discovered automatically:
+
+```text
+path\to\VisiForm
+path\to\visage
+```
+
+For example:
+
+```text
+J:\Dev\CeePlusPlus\VisiForm
+J:\Dev\CeePlusPlus\visage
+```
+
+CMake checks `VISIFORM_VISAGE_SOURCE_DIR`, the matching environment variable,
+and nearby sibling folders such as `../visage`, `../../visage`, and
+`../../../visage` before falling back to `FetchContent`.
+
+If your `Visage` checkout is elsewhere, set `VISIFORM_VISAGE_SOURCE_DIR` in
+`CMakeUserPresets.json`, as an environment variable, or on the CMake command
+line.
+
+After pulling changes, reconfigure CMake in `Visual Studio 2022`. If you are
+building a project exported by `VisiForm`, re-export it so the generated
+`CMakeLists.txt` receives the latest local-first dependency logic.
+
 ## `vcpkg` setup
 
 ### Windows
@@ -443,7 +479,7 @@ Generated `USER CODE` blocks are preserved across re-export for recognized handl
 
 Exported projects use similar CMake logic:
 
-- optional `VISIFORM_VISAGE_SOURCE_DIR` local source support
+- local `Visage` source auto-discovery
 - `FetchContent` fallback for `Visage`
 - Windows-specific static presets for the main tested path
 - generic Ninja presets for contributor-oriented cross-platform builds
@@ -454,7 +490,8 @@ macOS and Linux generated-project builds depend on the same `Visage` platform su
 ## Local `Visage` support
 
 `VISIFORM_VISAGE_SOURCE_DIR` can be used in both the main repository and exported projects.
-If the path is empty or invalid, CMake falls back to `FetchContent` using the configured repository and tag.
+CMake first checks that configured path, then the `VISIFORM_VISAGE_SOURCE_DIR` environment variable, then nearby `visage` sibling folders such as `../visage`, `../../visage`, and `../../../visage`.
+If no valid local source tree is found, CMake falls back to `FetchContent` using the configured repository and tag.
 
 ## Project files
 
@@ -503,7 +540,7 @@ Install the `Desktop development with C++` workload in `Visual Studio 2022`.
 
 ### `Visage` downloads every time
 
-Set `VISIFORM_VISAGE_SOURCE_DIR` to a valid local `Visage` checkout.
+Put a valid `Visage` checkout in a nearby sibling folder such as `../visage`, or set `VISIFORM_VISAGE_SOURCE_DIR` to the checkout path.
 
 ### Native file dialogs are missing on macOS or Linux
 

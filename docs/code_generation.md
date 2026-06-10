@@ -63,8 +63,8 @@ The generated project includes:
 
 - CMake 3.24 minimum
 - C++20
-- optional local-source support for `visage` via `VISIFORM_VISAGE_SOURCE_DIR`
-- `FetchContent` fallback for `visage` when no valid local source is configured
+- local-source auto-discovery for `visage`
+- `FetchContent` fallback for `visage` when no valid local source is found
 - the same core Visage options currently used by `VisiForm`
 - static MSVC runtime settings for Debug and Release on Windows
 - generated `CMakePresets.json` presets for Windows static Debug and Release builds
@@ -80,8 +80,11 @@ Generated dependency variables in exported `CMakeLists.txt`:
 
 Dependency behavior:
 
-- if `VISIFORM_VISAGE_SOURCE_DIR` is non-empty and contains `CMakeLists.txt`, the generated project uses `add_subdirectory(...)` with the local Visage source tree
-- otherwise the generated project falls back to `FetchContent`
+- CMake first checks `VISIFORM_VISAGE_SOURCE_DIR` from cache or presets
+- CMake then checks the `VISIFORM_VISAGE_SOURCE_DIR` environment variable
+- CMake then checks nearby `visage` sibling folders such as `../visage`, `../../visage`, and `../../../visage`
+- the first candidate containing `CMakeLists.txt` is used through `add_subdirectory(...)`
+- if no valid local source is found, the generated project falls back to `FetchContent`
 - this avoids repeated dependency downloads when a developer keeps a local Visage checkout
 
 ## Managed assets
@@ -169,7 +172,8 @@ The emitted path uses forward slashes, for example:
 
 You can also use Unix-like paths such as `/Users/you/dev/visage` or `/home/you/dev/visage`.
 
-That local source path is still controlled by `VISIFORM_VISAGE_SOURCE_DIR`. If it is unset or invalid, the generated project still falls back to `FetchContent` using the configured repository and tag values.
+That local source path can still be controlled by `VISIFORM_VISAGE_SOURCE_DIR`.
+If it is unset or invalid, the generated project checks nearby sibling checkout paths before falling back to `FetchContent` using the configured repository and tag values.
 
 The root `FormWindow` property inspector and `Project Settings` dialog both expose the app-level export dependency values. These values are stored in `AppSettings`, not in `.vfb.json` project files.
 

@@ -91,7 +91,12 @@ Generated-project export also stores dependency settings used for emitted CMake 
 Generated project dependency behavior:
 
 - valid `localVisageSourceDirectory` prefers local `add_subdirectory(...)`
-- empty or invalid `localVisageSourceDirectory` falls back to `FetchContent`
+- if that setting is empty or invalid, generated CMake checks the
+  `VISIFORM_VISAGE_SOURCE_DIR` environment variable
+- generated CMake then checks nearby `visage` sibling folders such as
+  `../visage`, `../../visage`, and `../../../visage`
+- if no valid local source is found, generated CMake falls back to
+  `FetchContent`
 - this avoids re-downloading Visage for repeated local exports when a shared checkout already exists
 - when editing `localVisageSourceDirectory`, an invalid path shows a warning status if `CMakeLists.txt` is missing, but export is still allowed
 
