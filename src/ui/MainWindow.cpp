@@ -104,6 +104,8 @@ constexpr float kItemListEditorPreviewRowInsetX = 8.0f;
 constexpr float kItemListEditorPreviewRowTextInsetX = 16.0f;
 constexpr float kItemListEditorPreviewRowFillHeight = kItemListEditorPreviewRowHeight - 2.0f;
 constexpr float kItemListEditorPreviewGap = 14.0f;
+constexpr std::size_t kItemListEditorBaseFieldCount = 3;
+constexpr std::size_t kItemListEditorActionFieldCount = 4;
 constexpr float kTableGridEditorModalWidth = 820.0f;
 constexpr float kTableGridEditorModalHeight = 720.0f;
 constexpr float kTableGridEditorMaxWidth = 920.0f;
@@ -7351,11 +7353,19 @@ MainWindow::PanelBounds MainWindow::itemListEditorPreviewBounds() const
         return bodyBounds;
     }
 
+    const std::size_t fieldCount = itemListEditorDialog_.supportsActions
+        ? kItemListEditorActionFieldCount
+        : kItemListEditorBaseFieldCount;
+    const float requiredFormHeight = kEditorModalFormRowHeight * static_cast<float>(fieldCount)
+        + kEditorModalFormRowSpacing * static_cast<float>(fieldCount - 1);
+    const float availablePreviewHeight = std::max(0.0f,
+        bodyBounds.height - kItemListEditorPreviewGap - requiredFormHeight);
+
     return {
         bodyBounds.x,
         bodyBounds.y,
         bodyBounds.width,
-        std::min(kItemListEditorPreviewHeight, bodyBounds.height)
+        std::min(kItemListEditorPreviewHeight, availablePreviewHeight)
     };
 }
 
@@ -8808,22 +8818,21 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                     previewBounds.x + 12.0f, previewBounds.y + 50.0f, previewBounds.width - 24.0f, previewBounds.height - 62.0f);
             }
             else if (visibleCount < itemListEditorDialog_.items.size()) {
-                // Give a clearer overflow hint instead of an ambiguous ellipsis
                 std::string overflowHint;
                 const int firstVisible = itemListEditorDialog_.previewScrollOffset;
                 const int lastVisible = itemListEditorDialog_.previewScrollOffset + static_cast<int>(visibleCount) - 1;
                 if (firstVisible > 0 && lastVisible < static_cast<int>(itemListEditorDialog_.items.size()) - 1) {
-                    overflowHint = "More items above and below - use mouse wheel or Move buttons";
+                    overflowHint = "More above/below";
                 }
                 else if (firstVisible > 0) {
-                    overflowHint = "More items above - use mouse wheel or Move buttons";
+                    overflowHint = "More above";
                 }
                 else {
-                    overflowHint = "More items below - use mouse wheel or Move buttons";
+                    overflowHint = "More below";
                 }
                 canvas.setColor(0xff9eabbc);
-                canvas.text(overflowHint, labelFont_, visage::Font::kCenter,
-                    previewBounds.x + 8.0f, previewBounds.y + previewBounds.height - 28.0f, previewBounds.width - 16.0f, 18.0f);
+                canvas.text(overflowHint, labelFont_, visage::Font::kTopRight,
+                    previewBounds.x + 10.0f, previewBounds.y + 6.0f, previewBounds.width - 20.0f, 20.0f);
             }
         }
         else if (editorModal_.mode == EditorModalMode::TableGridEditor) {
