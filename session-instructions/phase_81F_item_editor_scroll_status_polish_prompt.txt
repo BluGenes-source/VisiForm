@@ -1,0 +1,197 @@
+We are working in the existing C++ project at:
+
+J:\Dev\CeePlusPlus\VisiForm
+
+Use this after Phase 81E. Phase 81E fixed row hit testing, but manual testing found remaining item-editor polish and overflow issues.
+Phase 81C has not run yet; do not start Phase 81C work from this prompt.
+
+Important source-of-instructions note:
+- Treat this file as the active Copilot session prompt.
+- Do not use the deprecated broad Phase 81 prompt.
+- Do not confuse this with `.github` instructions.
+- Do not rename, move, or edit `.github` instruction files.
+
+Strict guardrails:
+- Do not edit anything under `Generated/`.
+- Do not create temporary scripts, helper scripts, diagnostic scripts, markdown scratch files, or one-off files.
+- Do not run build scripts.
+- Do not run terminal build commands.
+- Do not run PowerShell build commands.
+- Do not run `cmd.exe` build commands.
+- Do not run `VisiForm.exe`.
+- Do not launch generated applications.
+- Do not automate keyboard input.
+- Do not use `Start-Process`.
+- Do not change Visual Studio startup/debug target selection.
+- Do not select, build, launch, or validate against `freetype.vcxproj`.
+- The intended application target is VisiForm, not any dependency target.
+- Do not modify palette ordering, button radius, TreeView scrolling, export generation, generated build scripts, or test wiring in this phase.
+
+Create a new focused phase plan before changing code:
+
+docs/agent_plans/phase_81F_item_editor_scroll_status_polish_plan.md
+
+The plan must include:
+- Phase title
+- Current state
+- Goal
+- Files to inspect
+- Root-cause notes
+- TODO checklist with markdown checkboxes
+- Build validation checklist
+- Manual test checklist
+- Final result summary
+
+Update the plan as work progresses.
+Mark completed checklist items complete.
+Do not finish without updating the plan.
+
+Current state:
+- Manual testing confirms Phase 81E fixed the row click / hit-test offset.
+- Remaining issue 1: the status/instruction strip above the Add/Remove/Move/Apply/Cancel buttons looks like an editable field or like there is another field underneath it.
+- Remaining issue 2: when the item list has more entries than can fit in the preview panel, the preview shows an overflow marker (`...`) but there is no way to scroll or page to hidden rows.
+- This issue affects the shared item editor used by:
+  - MenuBar item/action editing
+  - ToolBar item/action editing
+  - ComboBox item editing
+  - ListBox item editing
+
+Goal:
+Polish the shared item-list editor so the status/instruction area is visually distinct and readable, and overflowing item lists can be scrolled or paged so every item can be selected and edited.
+
+Files to inspect:
+- src/ui/MainWindow.h
+- src/ui/MainWindow.cpp
+- src/model/WidgetItemUtils.h
+- src/model/WidgetItemUtils.cpp
+- docs/widget_catalog.md
+- docs/menu_bar.md
+- docs/agent_plans/phase_81F_item_editor_scroll_status_polish_plan.md
+
+Likely code areas to inspect:
+- `MainWindow::itemListEditorPreviewBounds()`
+- `MainWindow::itemListEditorFormBounds()`
+- `MainWindow::itemListEditorPreviewIndexAt(...)`
+- `MainWindow::setItemListEditorSelectedIndex(...)`
+- draw logic for `EditorModalMode::ItemListEditor`
+- mouse wheel handling while editor modal is open
+- editor modal status rendering near `editorModalStatusBounds()`
+- item-editor dialog state in `MainWindow.h`
+
+Part A - Add item-editor list scrolling or paging
+
+1. Add a small scroll/page state to the item editor dialog.
+
+Preferred:
+- Add `int previewScrollOffset = 0` to `ItemListEditorDialogState`.
+- The offset represents the first visible item index in the preview list.
+
+2. Make visible row rendering use the scroll offset.
+
+Expected behavior:
+- If there are 10 items and only 6 visible rows, the preview can show rows 1-6, then 2-7, etc.
+- Row labels should still show the real item number, not just the visible row number.
+- Selected row highlighting should work even after scrolling.
+- The overflow marker should become more informative, such as:
+  - `Scroll for more items`
+  - or up/down indicators if both directions are available.
+
+3. Make hit testing account for scroll offset.
+
+Expected behavior:
+- Clicking visible preview row 1 selects `previewScrollOffset + 0`.
+- Clicking visible preview row 2 selects `previewScrollOffset + 1`.
+- Header and non-row clicks should still not select anything.
+
+4. Keep the selected row visible.
+
+When selecting a row through:
+- preview click
+- Add Item
+- Remove Item
+- Move Up
+- Move Down
+
+Clamp the scroll offset so the selected row remains visible when practical.
+
+5. Support mouse wheel if feasible.
+
+Preferred:
+- If the editor modal is in `ItemListEditor` mode and the pointer is over the preview area, mouse wheel scrolls the preview list.
+
+Acceptable minimum if wheel handling is risky:
+- Add small `Prev` / `Next` or `Page Up` / `Page Down` buttons in the item-editor workflow.
+- Keep scope tight and avoid disturbing other editor modals.
+
+Part B - Fix status/instruction strip appearance
+
+6. Inspect the status area above the buttons.
+
+Current visual problem:
+- The strip looks like another text field underneath the actual fields.
+- It has a dark fill and border-like line similar to editable input boxes, which makes it visually ambiguous.
+
+Goal:
+- Make it read as status/help text, not an editable input.
+
+Preferred behavior:
+- Use a flatter or subtler status treatment for `EditorModalMode::ItemListEditor`.
+- Add enough vertical separation from editable fields.
+- Avoid drawing it with the same strong input-box styling.
+- Keep text short, readable, and unclipped.
+
+Possible approaches:
+- Draw item-editor status as plain muted text with no filled rectangle.
+- Or draw a lighter/non-input help strip with a distinct color and padding.
+- Or move the status text into the preview/header area if that simplifies the modal.
+
+Do not remove useful status feedback entirely.
+
+Part C - Keep scope tight
+
+Do not implement:
+- TreeView editor scrolling
+- palette ordering
+- button corner radius
+- test CMake wiring
+- generated export changes
+- generated project build script changes
+
+Build validation:
+- Do not use `scripts\build_static_debug.cmd`.
+- Do not use any generated or repository build script.
+- Do not run `cmake --build` from the terminal.
+- Use only the Visual Studio workspace build pipeline for the VisiForm target if it is available and unambiguous.
+- If the workspace build pipeline is unavailable, ambiguous, or appears to target `freetype.vcxproj`, stop and ask the user to build manually.
+- Do not build generated projects.
+- Do not run any executable.
+
+Acceptance criteria:
+- Phase plan exists and is updated.
+- Item editor list overflow can be navigated so every item can be selected.
+- Clicking visible rows still selects the correct item after scrolling.
+- Add/Remove/Move Up/Move Down keep selection and scroll offset sane.
+- Status/instruction area no longer looks like an editable field or hidden field underneath.
+- Status/instruction text is readable and unclipped.
+- MenuBar, ToolBar, ComboBox, and ListBox shared item editing still work.
+- Main VisiForm build validation is completed through the Visual Studio workspace build pipeline, or explicitly deferred to the user if the pipeline is unavailable or ambiguous.
+- No files under `Generated/` were modified.
+- No temporary or diagnostic scripts were created.
+
+Manual test checklist:
+- Open `Edit Menu Items`.
+- Add enough items that the preview list overflows.
+- Scroll or page through the list and confirm hidden rows can be selected.
+- Click visible rows after scrolling and confirm the correct real item is selected.
+- Edit an item after scrolling and confirm the correct row changes.
+- Use Add, Remove, Move Up, and Move Down near the top and bottom of the list.
+- Repeat basic overflow testing in ComboBox or ListBox item editing.
+- Confirm the status/instruction area is visually readable and no longer resembles an input field.
+
+When complete, summarize:
+1. Phase plan updated.
+2. Files changed.
+3. Scrolling/paging behavior added.
+4. Status/instruction styling changes.
+5. Manual tests to perform.
+6. Build validation result or whether validation was deferred to the user.

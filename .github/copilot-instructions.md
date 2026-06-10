@@ -21,6 +21,7 @@ Key rules for automated agents
 - For automated validation, use only the Visual Studio workspace build pipeline for the main `VisiForm` target when it is available and unambiguous.
 - If the Visual Studio workspace build pipeline is unavailable, ambiguous, or appears to target a dependency such as `freetype.vcxproj`, stop and ask the developer to build manually.
 - Never select, build, launch, or validate against `freetype.vcxproj`; the intended application target is `VisiForm`.
+- Preserve Windows CRLF line endings. Do not mix LF and CRLF in the same file. When editing existing files, keep their current line-ending style and normalize touched C++/header/markdown/text files to CRLF before finishing.
 - Always create or update a persistent phase plan file in `docs/agent_plans/` for multi-step changes.
 - Every phase must create a new `docs/agent_plans/phase_N_<name>_plan.md` file.
 - The phase plan must include a markdown TODO checklist.

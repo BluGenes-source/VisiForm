@@ -2920,6 +2920,18 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
     }
 
     if (isEditorModalVisible()) {
+        // Allow item list editor preview to handle wheel scrolling when visible
+        if (editorModal_.mode == EditorModalMode::ItemListEditor) {
+            const PanelBounds preview = itemListEditorPreviewBounds();
+            if (pointInBounds(e.position.x, e.position.y, preview.x, preview.y, preview.width, preview.height)) {
+                // positive deltaY -> scroll up (towards earlier items)
+                const int delta = deltaY > 0.0f ? -1 : 1;
+                const int maxOffset = std::max(0, static_cast<int>(itemListEditorDialog_.items.size()) - static_cast<int>(itemListEditorVisibleRowCount(preview.height, itemListEditorDialog_.items.size())));
+                itemListEditorDialog_.previewScrollOffset = std::clamp(itemListEditorDialog_.previewScrollOffset + delta, 0, maxOffset);
+                redraw();
+                return true;
+            }
+        }
         return true;
     }
 
@@ -6652,6 +6664,7 @@ bool MainWindow::openSelectedWidgetItemEditor()
         itemListEditorDialog_.items,
         widget->getIntProperty(selectedIndexKey, itemListEditorDialog_.items.empty() ? -1 : 0));
     itemListEditorDialog_.selectedItemIndex = itemListEditorDialog_.originalSelectedIndex;
+    itemListEditorDialog_.previewScrollOffset = 0;
 
     editorModal_.visible = true;
     editorModal_.mode = EditorModalMode::ItemListEditor;
@@ -6683,7 +6696,22 @@ void MainWindow::setItemListEditorSelectedIndex(int index)
 {
     const int safeIndex = model::sanitizeSelectedIndex(itemListEditorDialog_.items, index);
     itemListEditorDialog_.selectedItemIndex = safeIndex;
+
+    // Ensure the selected index remains visible by clamping previewScrollOffset
     if (safeIndex >= 0) {
+        const PanelBounds preview = itemListEditorPreviewBounds();
+        const std::size_t visibleCount = itemListEditorVisibleRowCount(preview.height, itemListEditorDialog_.items.size());
+        if (visibleCount > 0) {
+            const int maxOffset = std::max(0, static_cast<int>(itemListEditorDialog_.items.size()) - static_cast<int>(visibleCount));
+            if (safeIndex < itemListEditorDialog_.previewScrollOffset) {
+                itemListEditorDialog_.previewScrollOffset = safeIndex;
+            }
+            else if (safeIndex >= itemListEditorDialog_.previewScrollOffset + static_cast<int>(visibleCount)) {
+                itemListEditorDialog_.previewScrollOffset = safeIndex - static_cast<int>(visibleCount) + 1;
+            }
+            itemListEditorDialog_.previewScrollOffset = std::clamp(itemListEditorDialog_.previewScrollOffset, 0, maxOffset);
+        }
+
         editorModal_.statusText = itemListEditorSelectedStatus(safeIndex, itemListEditorDialog_.items.size());
     }
     else {
@@ -7473,6 +7501,7 @@ std::optional<int> MainWindow::itemListEditorPreviewIndexAt(float x, float y) co
         return std::nullopt;
     }
 
+
     const int rowIndex = static_cast<int>(rowOffset / kItemListEditorPreviewRowHeight);
     const std::size_t visibleCount = itemListEditorVisibleRowCount(bounds.height, itemListEditorDialog_.items.size());
     if (rowIndex < 0 || rowIndex >= static_cast<int>(visibleCount)) {
@@ -7489,7 +7518,12 @@ std::optional<int> MainWindow::itemListEditorPreviewIndexAt(float x, float y) co
         return std::nullopt;
     }
 
-    return rowIndex;
+    // Map visible row index to actual item index using scroll offset
+    const int realIndex = itemListEditorDialog_.previewScrollOffset + rowIndex;
+    if (realIndex < 0 || realIndex >= static_cast<int>(itemListEditorDialog_.items.size())) {
+        return std::nullopt;
+    }
+    return realIndex;
 }
 
 std::optional<int> MainWindow::treeNodeEditorRowAt(float x, float y) const
@@ -8750,7 +8784,8 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             const std::size_t visibleCount = itemListEditorVisibleRowCount(previewBounds.height, itemListEditorDialog_.items.size());
             for (std::size_t index = 0; index < visibleCount; ++index) {
                 const float rowTop = itemListEditorRowTop(previewBounds.y, index);
-                const bool selected = static_cast<int>(index) == itemListEditorDialog_.selectedItemIndex;
+                const int realIndex = itemListEditorDialog_.previewScrollOffset + static_cast<int>(index);
+                const bool selected = realIndex == itemListEditorDialog_.selectedItemIndex;
                 canvas.setColor(selected ? 0xff355382 : (index % 2 == 0 ? 0xff222936 : 0xff1d2430));
                 canvas.fill(previewBounds.x + kItemListEditorPreviewRowInsetX,
                     rowTop,
@@ -8760,7 +8795,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                 canvas.text(itemListEditorRowLabel(itemListEditorDialog_.items,
                         itemListEditorDialog_.actions,
                         itemListEditorDialog_.supportsActions,
-                        static_cast<int>(index)), labelFont_, visage::Font::kTopLeft,
+                        realIndex), labelFont_, visage::Font::kTopLeft,
                     previewBounds.x + kItemListEditorPreviewRowTextInsetX,
                     rowTop + 5.0f,
                     previewBounds.width - kItemListEditorPreviewRowTextInsetX * 2.0f,
@@ -8773,9 +8808,22 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
                     previewBounds.x + 12.0f, previewBounds.y + 50.0f, previewBounds.width - 24.0f, previewBounds.height - 62.0f);
             }
             else if (visibleCount < itemListEditorDialog_.items.size()) {
+                // Give a clearer overflow hint instead of an ambiguous ellipsis
+                std::string overflowHint;
+                const int firstVisible = itemListEditorDialog_.previewScrollOffset;
+                const int lastVisible = itemListEditorDialog_.previewScrollOffset + static_cast<int>(visibleCount) - 1;
+                if (firstVisible > 0 && lastVisible < static_cast<int>(itemListEditorDialog_.items.size()) - 1) {
+                    overflowHint = "More items above and below - use mouse wheel or Move buttons";
+                }
+                else if (firstVisible > 0) {
+                    overflowHint = "More items above - use mouse wheel or Move buttons";
+                }
+                else {
+                    overflowHint = "More items below - use mouse wheel or Move buttons";
+                }
                 canvas.setColor(0xff9eabbc);
-                canvas.text("...", labelFont_, visage::Font::kCenter,
-                    previewBounds.x, previewBounds.y + previewBounds.height - 26.0f, previewBounds.width, 18.0f);
+                canvas.text(overflowHint, labelFont_, visage::Font::kCenter,
+                    previewBounds.x + 8.0f, previewBounds.y + previewBounds.height - 28.0f, previewBounds.width - 16.0f, 18.0f);
             }
         }
         else if (editorModal_.mode == EditorModalMode::TableGridEditor) {
@@ -9052,13 +9100,21 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
         }
 
         const PanelBounds statusBounds = editorModalStatusBounds();
-        canvas.setColor(0xff1a2028);
-        canvas.fill(statusBounds.x, statusBounds.y, statusBounds.width, statusBounds.height);
-        canvas.setColor(0xff12161c);
-        canvas.fill(statusBounds.x, statusBounds.y + statusBounds.height - 1.0f, statusBounds.width, 1.0f);
-        canvas.setColor(0xffd6dbe4);
-        canvas.text(editorModal_.statusText, labelFont_, visage::Font::kTopLeft,
-            statusBounds.x + 8.0f, statusBounds.y + 6.0f, statusBounds.width - 16.0f, statusBounds.height - 8.0f);
+        if (editorModal_.mode == EditorModalMode::ItemListEditor) {
+            // Draw status as plain muted text for item list editor so it does not resemble an editable field
+            canvas.setColor(0xff9eabbc);
+            canvas.text(editorModal_.statusText, labelFont_, visage::Font::kTopLeft,
+                statusBounds.x + 4.0f, statusBounds.y + 8.0f, statusBounds.width - 8.0f, statusBounds.height - 12.0f);
+        }
+        else {
+            canvas.setColor(0xff1a2028);
+            canvas.fill(statusBounds.x, statusBounds.y, statusBounds.width, statusBounds.height);
+            canvas.setColor(0xff12161c);
+            canvas.fill(statusBounds.x, statusBounds.y + statusBounds.height - 1.0f, statusBounds.width, 1.0f);
+            canvas.setColor(0xffd6dbe4);
+            canvas.text(editorModal_.statusText, labelFont_, visage::Font::kTopLeft,
+                statusBounds.x + 8.0f, statusBounds.y + 6.0f, statusBounds.width - 16.0f, statusBounds.height - 8.0f);
+        }
     }
 
     const auto buttonBounds = editorModalButtonBounds();

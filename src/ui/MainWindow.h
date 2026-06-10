@@ -227,6 +227,7 @@ private:
         std::string originalItemsText{};
         std::string originalActionsText{};
         int originalSelectedIndex = -1;
+        int previewScrollOffset = 0;
     };
 
     struct TableGridEditorDialogState {

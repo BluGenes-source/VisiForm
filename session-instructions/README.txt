@@ -7,7 +7,8 @@ Recommended order:
 2. phase_81B_menubar_toolbar_insert_menu_prompt.txt
 3. phase_81D_generated_code_compile_repair_prompt is not present because the generator compile repair was handled directly; see `docs/agent_plans/phase_81D_generated_code_compile_repair_plan.md`
 4. phase_81E_item_editor_hit_test_layout_prompt.txt
-5. phase_81C_palette_button_tree_tests_prompt.txt
+5. phase_81F_item_editor_scroll_status_polish_prompt.txt
+6. phase_81C_palette_button_tree_tests_prompt.txt
 
 Guardrails for all split prompts:
 - Do not edit anything under Generated/.
@@ -19,3 +20,4 @@ Guardrails for all split prompts:
 - If validation is needed, use only the Visual Studio workspace build pipeline for the VisiForm target.
 - If the Visual Studio workspace build pipeline is unavailable or ambiguous, stop and ask the user to build manually.
 - Never select, build, launch, or validate against `freetype.vcxproj`; the intended app target is VisiForm.
+- Preserve Windows CRLF line endings. Do not mix LF and CRLF in one file.
