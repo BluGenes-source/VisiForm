@@ -43,6 +43,73 @@ struct PanelRect {
     }
 };
 
+void fillCircleApprox(visage::Canvas& canvas, float centerX, float centerY, float radius, int color);
+
+void fillRoundedRect(visage::Canvas& canvas, float x, float y, float width, float height, float radius, int color)
+{
+    if (width <= 0.0f || height <= 0.0f) {
+        return;
+    }
+
+    if (radius <= 1.0f) {
+        canvas.setColor(color);
+        canvas.fill(x, y, width, height);
+        return;
+    }
+
+    const float r = std::min(radius, std::min(width, height) * 0.5f);
+    canvas.setColor(color);
+    // center rect
+    canvas.fill(x + r, y, std::max(0.0f, width - r * 2.0f), height);
+    // left and right rects
+    canvas.fill(x, y + r, r, std::max(0.0f, height - r * 2.0f));
+    canvas.fill(x + width - r, y + r, r, std::max(0.0f, height - r * 2.0f));
+    // corner circles
+    fillCircleApprox(canvas, x + r, y + r, r, color);
+    fillCircleApprox(canvas, x + width - r, y + r, r, color);
+    fillCircleApprox(canvas, x + r, y + height - r, r, color);
+    fillCircleApprox(canvas, x + width - r, y + height - r, r, color);
+}
+
+void drawRoundedRectBorder(visage::Canvas& canvas, float x, float y, float width, float height, float radius, int borderColor, float thickness, int fillColor)
+{
+    if (thickness <= 0.0f) {
+        return;
+    }
+
+    if (radius <= 1.0f) {
+        // Fallback to rectangular border
+        canvas.setColor(borderColor);
+        canvas.fill(x, y, width, thickness);
+        canvas.fill(x, y + height - thickness, width, thickness);
+        canvas.fill(x, y, thickness, height);
+        canvas.fill(x + width - thickness, y, thickness, height);
+        return;
+    }
+
+    const float r = std::min(radius, std::min(width, height) * 0.5f);
+    // draw edge bars
+    canvas.setColor(borderColor);
+    canvas.fill(x + r, y, std::max(0.0f, width - r * 2.0f), thickness); // top
+    canvas.fill(x + r, y + height - thickness, std::max(0.0f, width - r * 2.0f), thickness); // bottom
+    canvas.fill(x, y + r, thickness, std::max(0.0f, height - r * 2.0f)); // left
+    canvas.fill(x + width - thickness, y + r, thickness, std::max(0.0f, height - r * 2.0f)); // right
+
+    // draw corner caps as filled circles
+    fillCircleApprox(canvas, x + r, y + r, r, borderColor);
+    fillCircleApprox(canvas, x + width - r, y + r, r, borderColor);
+    fillCircleApprox(canvas, x + r, y + height - r, r, borderColor);
+    fillCircleApprox(canvas, x + width - r, y + height - r, r, borderColor);
+
+    // carve inner area back out to create border thickness
+    const float innerX = x + thickness;
+    const float innerY = y + thickness;
+    const float innerW = std::max(0.0f, width - thickness * 2.0f);
+    const float innerH = std::max(0.0f, height - thickness * 2.0f);
+    const float innerR = std::max(0.0f, r - thickness);
+    fillRoundedRect(canvas, innerX, innerY, innerW, innerH, innerR, fillColor);
+}
+
 struct PreviewLayout {
     PanelRect preview{};
     PanelRect form{};
@@ -1041,9 +1108,10 @@ void drawWidget(visage::Canvas& canvas,
         const std::string pressedText = !configuredPressedText.empty() ? configuredPressedText : normalText;
         const int normalFillColor = parseColorOrDefault(getStringProperty(widget, "normalFillColor", {}), style.fillColor);
         const int pressedFillColor = parseColorOrDefault(getStringProperty(widget, "pressedFillColor", {}), blendColor(style.fillColor, style.accentColor, 0.18f));
+        const float radius = std::clamp(style.cornerRadius, 0.0f, std::min(bounds.width, bounds.height) * 0.5f);
         canvas.setColor(pressedState ? pressedFillColor : normalFillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        fillRoundedRect(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, pressedState ? pressedFillColor : normalFillColor);
+        drawRoundedRectBorder(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, style.borderColor, style.borderThickness, pressedState ? pressedFillColor : normalFillColor);
         if (drawText) {
             canvas.setColor(style.textColor);
             canvas.text(pressedState ? pressedText : normalText, widgetFont, visage::Font::kCenter,

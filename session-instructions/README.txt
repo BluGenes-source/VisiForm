@@ -1,14 +1,16 @@
 Session instruction prompts for VisiForm phase work.
 
-Use these files as active Copilot prompts instead of the older broad Phase 81 prompt.
+Keep this folder focused on active prompts and reusable notes.
 
-Recommended order:
-1. phase_81A_generated_batch_script_fix_prompt.txt
-2. phase_81B_menubar_toolbar_insert_menu_prompt.txt
-3. phase_81D_generated_code_compile_repair_prompt is not present because the generator compile repair was handled directly; see `docs/agent_plans/phase_81D_generated_code_compile_repair_plan.md`
-4. phase_81E_item_editor_hit_test_layout_prompt.txt
-5. phase_81F_item_editor_scroll_status_polish_prompt.txt
-6. phase_81C_palette_button_tree_tests_prompt.txt
+Active files:
+1. notes.txt - reusable debugging notes. Do not archive this file.
+2. phase_81_export_build_and_ui_repair_prompt.txt - broad Phase 81 prompt; keep active while its plan remains pending.
+3. phase_81C_palette_button_tree_tests_prompt.txt - pending split prompt.
+
+Archived files:
+- Completed dated prompts belong in old/.
+- Do not archive active, pending, or ambiguous prompts until completion is clear.
+- See AGENTS.md for the session-instruction accounting rules.
 
 Guardrails for all split prompts:
 - Do not edit anything under Generated/.

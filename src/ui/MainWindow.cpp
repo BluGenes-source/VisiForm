@@ -2934,6 +2934,25 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
                 return true;
             }
         }
+
+        // Allow tree node editor preview to handle wheel scrolling when visible
+        if (editorModal_.mode == EditorModalMode::TreeNodeEditor) {
+            // Use the text/list bounds (not the form bounds) for the scrollable area
+            const PanelBounds preview = treeNodeEditorTextBounds();
+            if (pointInBounds(e.position.x, e.position.y, preview.x, preview.y, preview.width, preview.height)) {
+                const int delta = deltaY > 0.0f ? -1 : 1;
+                const auto rows = visibleTreeNodeEditorRows();
+                const int totalRows = static_cast<int>(rows.size());
+                const std::size_t visibleCount = std::min<std::size_t>(
+                    rows.size(),
+                    std::max<std::size_t>(1, static_cast<std::size_t>(std::floor((preview.height - 16.0f) / kTreeNodeEditorRowHeight))));
+                const int maxOffset = std::max(0, totalRows - static_cast<int>(visibleCount));
+                treeNodeEditorDialog_.previewScrollOffset = std::clamp(treeNodeEditorDialog_.previewScrollOffset + delta, 0, maxOffset);
+                redraw();
+                return true;
+            }
+        }
+
         return true;
     }
 
@@ -7553,16 +7572,22 @@ std::optional<int> MainWindow::treeNodeEditorRowAt(float x, float y) const
         return std::nullopt;
     }
 
-    const int rowIndex = static_cast<int>(rowOffset / kTreeNodeEditorRowHeight);
     const auto rows = visibleTreeNodeEditorRows();
     const std::size_t visibleCount = std::min<std::size_t>(
         rows.size(),
         std::max<std::size_t>(1, static_cast<std::size_t>(std::floor((bounds.height - 16.0f) / kTreeNodeEditorRowHeight))));
-    if (rowIndex < 0 || static_cast<std::size_t>(rowIndex) >= visibleCount) {
+    const int rowIndex = static_cast<int>(rowOffset / kTreeNodeEditorRowHeight);
+    if (rowIndex < 0) {
         return std::nullopt;
     }
 
-    return rows[static_cast<std::size_t>(rowIndex)].nodeId;
+    const int maxOffset = std::max(0, static_cast<int>(rows.size()) - static_cast<int>(visibleCount));
+    const int start = std::clamp(treeNodeEditorDialog_.previewScrollOffset, 0, maxOffset);
+    if (static_cast<std::size_t>(rowIndex) >= visibleCount || start + rowIndex >= static_cast<int>(rows.size())) {
+        return std::nullopt;
+    }
+
+    return rows[static_cast<std::size_t>(start + rowIndex)].nodeId;
 }
 
 std::vector<MainWindow::TreeNodeEditorRow> MainWindow::visibleTreeNodeEditorRows() const
@@ -7740,6 +7765,32 @@ void MainWindow::selectTreeEditorNode(int nodeId)
 {
     treeNodeEditorDialog_.selectedNodeId = findTreeEditorNode(nodeId) != nullptr ? nodeId : -1;
     if (treeNodeEditorDialog_.selectedNodeId >= 0) {
+        // Ensure the selected node is visible in the preview by adjusting scroll offset
+        const auto rows = visibleTreeNodeEditorRows();
+        const PanelBounds bounds = treeNodeEditorTextBounds();
+        const std::size_t visibleCount = std::min<std::size_t>(
+            rows.size(),
+            std::max<std::size_t>(1, static_cast<std::size_t>(std::floor((bounds.height - 16.0f) / kTreeNodeEditorRowHeight))));
+
+        int selectedIndex = -1;
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].nodeId == treeNodeEditorDialog_.selectedNodeId) {
+                selectedIndex = static_cast<int>(i);
+                break;
+            }
+        }
+
+        if (selectedIndex >= 0 && visibleCount > 0) {
+            const int maxOffset = std::max(0, static_cast<int>(rows.size()) - static_cast<int>(visibleCount));
+            if (selectedIndex < treeNodeEditorDialog_.previewScrollOffset) {
+                treeNodeEditorDialog_.previewScrollOffset = selectedIndex;
+            }
+            else if (selectedIndex >= treeNodeEditorDialog_.previewScrollOffset + static_cast<int>(visibleCount)) {
+                treeNodeEditorDialog_.previewScrollOffset = selectedIndex - static_cast<int>(visibleCount) + 1;
+            }
+            treeNodeEditorDialog_.previewScrollOffset = std::clamp(treeNodeEditorDialog_.previewScrollOffset, 0, maxOffset);
+        }
+
         editorModal_.statusText = "Selected node: " + treeNodeEditorNodePath(treeNodeEditorDialog_.selectedNodeId);
     }
     else if (treeNodeEditorDialog_.nodes.empty()) {
@@ -8955,8 +9006,12 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             const std::size_t visibleCount = std::min<std::size_t>(
                 rows.size(),
                 std::max<std::size_t>(1, static_cast<std::size_t>(std::floor((listBounds.height - 16.0f) / kTreeNodeEditorRowHeight))));
+
+            const int maxOffset = std::max(0, static_cast<int>(rows.size()) - static_cast<int>(visibleCount));
+            const int start = std::clamp(treeNodeEditorDialog_.previewScrollOffset, 0, maxOffset);
+
             for (std::size_t index = 0; index < visibleCount; ++index) {
-                const auto& row = rows[index];
+                const auto& row = rows[static_cast<std::size_t>(start + static_cast<int>(index))];
                 const bool selected = row.nodeId == treeNodeEditorDialog_.selectedNodeId;
                 const float indent = 10.0f + static_cast<float>(row.depth) * kTreeNodeEditorRowIndent;
                 const auto* node = findTreeEditorNode(row.nodeId);

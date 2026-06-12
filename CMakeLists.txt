@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.24)
 
 project(VisiForm
     VERSION 1.0.0
@@ -135,4 +135,14 @@ endif()
 
 if (WIN32)
     target_link_libraries(VisiForm PRIVATE comdlg32)
+endif()
+
+# Optional test wiring. Tests are built only when explicitly enabled.
+option(VISIFORM_BUILD_TESTS "Build VisiForm unit tests (Catch2)" OFF)
+if (VISIFORM_BUILD_TESTS)
+    if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/tests/CMakeLists.txt")
+        add_subdirectory(tests)
+    else()
+        message(WARNING "VISIFORM_BUILD_TESTS is ON but tests/CMakeLists.txt is missing.")
+    endif()
 endif()

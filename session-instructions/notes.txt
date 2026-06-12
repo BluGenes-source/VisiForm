@@ -1,1 +1,0 @@
-when editing menu items, the hit test is off for the mouse click. The hit is to high, but, should be the height of the formated text row. The dialog looks like it has a field above the add item, remove item, buttons, but, I can not read it. The text formatting could improve. The same hit test for item list box editing is present.

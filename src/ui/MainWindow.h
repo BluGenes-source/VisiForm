@@ -274,6 +274,7 @@ private:
         std::vector<int> rootNodeIds{};
         int nextNodeId = 1;
         int selectedNodeId = -1;
+        int previewScrollOffset = 0;
     };
 
     struct TreeNodeEditorRow {

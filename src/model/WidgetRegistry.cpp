@@ -441,9 +441,9 @@ WidgetDefinition makeButtonDefinition()
     definition.defaultHint = "Runs an action when clicked.";
     definition.size = { 260.0f, 56.0f, 140.0f, 52.0f };
     definition.properties = {
-        { "text", "Text", "Button", PropertyEditKind::Text, true, "Button label text." },
-        { "normalText", "Normal Text", "Button", PropertyEditKind::Text, true, "Optional label shown when the button is not pressed or toggled on." },
-        { "pressedText", "Pressed Text", "", PropertyEditKind::Text, true, "Optional label shown while the button is pressed or toggled on." },
+        { "text", "Text", "Button", PropertyEditKind::Text, true, "Default/general label. Used when no state-specific label is provided." },
+        { "normalText", "Normal Text", "Button", PropertyEditKind::Text, true, "Optional override for the normal (unpressed) label. If empty, the value of 'Text' is used." },
+        { "pressedText", "Pressed Text", "", PropertyEditKind::Text, true, "Optional override shown while the button is pressed or toggled on. If empty, uses 'Normal Text' or 'Text'." },
         { "toggleMode", "Toggle Mode", false, PropertyEditKind::Bool, true, "Keeps the button in a checked state after click." },
         { "checked", "Checked", false, PropertyEditKind::Bool, true, "Initial checked state used when toggle mode is enabled." },
         { "normalFillColor", "Normal Fill Color", "", PropertyEditKind::Color, true, "Optional fill color used for the normal button state." },
@@ -803,11 +803,10 @@ std::vector<const WidgetDefinition*> WidgetRegistry::paletteDefinitions() const
         paletteDefinitions.push_back(&definition);
     }
 
+    // Sort palette entries alphabetically by display name to present an
+    // alphabetical widget palette to the user. Previously entries were
+    // ordered by paletteOrder first which made alphabetical lookup harder.
     std::stable_sort(paletteDefinitions.begin(), paletteDefinitions.end(), [](const WidgetDefinition* left, const WidgetDefinition* right) {
-        if (left->paletteOrder != right->paletteOrder) {
-            return left->paletteOrder < right->paletteOrder;
-        }
-
         return left->displayName < right->displayName;
     });
 
