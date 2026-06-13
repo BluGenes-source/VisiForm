@@ -1,0 +1,1424 @@
+You are working in the existing VisiForm repository.
+
+VisiForm is a C++17/C++20 visual form builder built with the Visage graphics
+and UI library. It is inspired by wxFormBuilder, saves projects as
+`.vfb.json`, and exports complete Visage-based C++ projects.
+
+This work is:
+
+# Phase 86 — BoxSizer Layout System
+
+The existing repository already contains preliminary Sizer support for
+Vertical and Horizontal layouts, padding, gap, parenting, editor layout, save
+and load, validation, and generated-project export.
+
+Your task is to inspect the current implementation and upgrade it into a
+proper wxWidgets-inspired BoxSizer system while preserving all existing
+VisiForm architecture and behavior.
+
+wxWidgets is a behavioral reference only.
+
+Do not add wxWidgets as a dependency.
+Do not replace Visage.
+Generated applications must remain Visage applications.
+
+============================================================
+MANDATORY REPOSITORY AND COPILOT RULES
+======================================
+
+Before making changes, read and obey all repository instructions, including:
+
+* `.github/copilot-instructions.md`
+* any `*.instructions.md` files
+* `README.md`
+* `AGENTS.md`, if present
+* relevant documentation under `docs/`
+* existing phase plans under `docs/agent_plans/`
+
+The following rules are mandatory:
+
+* Do not change the `VisiForm` target name.
+* Do not change the produced executable name `VisiForm.exe`.
+* Do not change CMake presets unless explicitly requested.
+* Do not change the vcpkg triplet unless explicitly requested.
+* Do not change `CMAKE_MSVC_RUNTIME_LIBRARY`.
+* Preserve the existing static runtime configuration.
+* Do not run `VisiForm.exe`.
+* Do not launch generated applications.
+* Do not use `Start-Process`.
+* Do not automate keyboard or mouse input.
+* Do not run repository build scripts.
+* Do not run generated build scripts.
+* Do not run terminal build commands.
+* Do not run PowerShell build commands.
+* Do not run `cmd.exe` build commands.
+* Do not run CMake commands unless the developer explicitly requests that
+  exact command.
+* Do not run Ninja commands unless the developer explicitly requests that
+  exact command.
+* Automated validation may use only the Visual Studio workspace build pipeline
+  for the main `VisiForm` target when that target is available and
+  unambiguous.
+* Never select, build, launch, or validate `freetype.vcxproj`.
+* If the Visual Studio workspace build pipeline is unavailable, ambiguous, or
+  appears to select a dependency instead of `VisiForm`, do not build.
+* In that case, record that build validation is deferred to the developer.
+* Preserve Windows CRLF line endings.
+* Do not mix LF and CRLF in the same file.
+* Normalize touched C++, header, Markdown, and text files to CRLF before
+  finishing.
+* Keep Visage-dependent UI code in the UI layer, normally under `src/ui/`.
+* Keep model, serialization, validation, and generator layers independent of
+  Visage UI headers.
+* Generated projects must not be compiled into the main `VisiForm` target.
+* Preserve the generated base class naming rule `MainWindow`.
+* Preserve all `USER CODE BEGIN` / `USER CODE END` regions.
+* Do not delete arbitrary user files during export.
+* Only overwrite files that VisiForm owns as known generated files.
+* Use `WidgetRegistry` and `WidgetDefinition` when adding or changing widget
+  types.
+* Update documentation whenever behavior, persistence, validation, or export
+  changes.
+* Do not claim successful validation unless the approved validation actually
+  ran successfully.
+
+============================================================
+PHASE 86 PLAN REQUIREMENTS
+==========================
+
+Create this file before implementing the feature:
+
+`docs/agent_plans/phase_86_box_sizer_layout_system_plan.md`
+
+Do not choose another phase number.
+
+The Phase 86 plan must be persistent and must contain:
+
+1. Phase title
+2. Scope
+3. Existing implementation findings
+4. Architectural decisions
+5. Files and subsystems expected to change
+6. Model changes
+7. Layout algorithm
+8. Designer changes
+9. Property Inspector changes
+10. Project Tree changes
+11. Serialization and migration strategy
+12. Validation changes
+13. Undo/Redo changes
+14. Generated runtime changes
+15. Documentation changes
+16. Automated tests
+17. Risks
+18. Acceptance criteria
+19. Build-validation status
+20. Remaining TODOs
+21. Final result summary
+
+The plan must include a Markdown TODO checklist using:
+
+* `[ ]` for incomplete work
+* `[x]` for completed work
+
+Update the checklist continuously as work progresses.
+
+Do not create the plan and leave it untouched.
+
+Before finishing:
+
+* mark completed items
+* leave unfinished items unchecked
+* record the actual validation status
+* state whether validation used the Visual Studio workspace pipeline or was
+  deferred to the developer
+* add a final result summary
+* list all remaining TODOs
+
+Do not claim Phase 86 is complete unless the phase plan contains all of these
+updates.
+
+============================================================
+PRIMARY GOAL
+============
+
+Upgrade VisiForm’s existing Sizer feature into a production-quality
+BoxSizer-style layout system supporting:
+
+1. Vertical orientation
+2. Horizontal orientation
+3. Ordered child layout items
+4. Per-child proportion
+5. Per-child cross-axis expansion
+6. Per-child cross-axis alignment
+7. Sizer padding
+8. Gap between children
+9. Per-child border or margin
+10. Per-child border sides
+11. Per-child minimum-size overrides
+12. Nested Sizers
+13. Fixed spacers
+14. Stretch spacers
+15. Designer visualization
+16. Property Inspector editing
+17. Project Tree integration
+18. Undo/Redo
+19. Save/load compatibility
+20. Validation
+21. Generated-project runtime layout
+22. Automated layout tests
+23. Documentation
+
+Do not replace the current Sizer with a parallel, conflicting implementation.
+
+Inspect and extend the existing implementation.
+
+============================================================
+WHAT A SIZER IS
+===============
+
+A Sizer is a nonvisual layout manager.
+
+It calculates the bounds of its children whenever its own assigned bounds
+change.
+
+A Sizer:
+
+* does not represent a visible control at runtime
+* does not need a background
+* does not need a border
+* does not need text
+* does not need its own native window
+* may have a dashed design-time outline in the VisiForm Designer
+* may have a design-time label such as `Vertical Sizer`
+
+The Sizer must manage an ordered sequence of layout items.
+
+A layout item may represent:
+
+* a normal widget
+* a nested Sizer
+* a fixed spacer
+* a stretch spacer
+
+============================================================
+SIZER PROPERTIES VERSUS SIZER-ITEM PROPERTIES
+=============================================
+
+This distinction is mandatory.
+
+Properties belonging to the Sizer itself include:
+
+* orientation
+* padding left
+* padding top
+* padding right
+* padding bottom
+* gap
+* optional design-time visualization settings
+
+Properties describing how one child participates in its parent Sizer include:
+
+* proportion
+* expand
+* alignment
+* border
+* border sides
+* minimum width
+* minimum height
+* shown or participates-in-layout, if compatible with the current model
+
+These child-layout settings belong conceptually to the relationship between
+the parent Sizer and the child.
+
+They are not intrinsic visual properties of the child widget.
+
+Inspect the current model before choosing the representation.
+
+Preferred representation:
+
+```cpp
+struct ChildPlacement
+{
+    std::unique_ptr<WidgetNode> child;
+    SizerItemLayout layout;
+};
+```
+
+If changing the existing child relationship structure would be excessively
+invasive, a dedicated `SizerItemLayout` value may be stored on the child, but
+it must only be interpreted when the child’s direct parent is a Sizer.
+
+Do not duplicate layout metadata in multiple sources of truth.
+
+Do not spread string-based property access throughout unrelated code when
+typed helpers, registry metadata, enums, or property abstractions already
+exist.
+
+============================================================
+CONCEPTUAL TYPES
+================
+
+Adapt names and ownership to the existing repository conventions.
+
+The conceptual model should resemble:
+
+```cpp
+enum class SizerOrientation
+{
+    Vertical,
+    Horizontal
+};
+
+enum class SizerAlignment
+{
+    Start,
+    Center,
+    End
+};
+
+enum class SizerBorderSide : unsigned
+{
+    None   = 0,
+    Left   = 1u << 0,
+    Top    = 1u << 1,
+    Right  = 1u << 2,
+    Bottom = 1u << 3,
+    All    = Left | Top | Right | Bottom
+};
+
+struct SizerItemLayout
+{
+    int proportion = 0;
+    bool expand = false;
+    SizerAlignment alignment = SizerAlignment::Start;
+
+    int border = 0;
+    SizerBorderSide borderSides = SizerBorderSide::None;
+
+    int minimumWidth = -1;
+    int minimumHeight = -1;
+
+    bool shown = true;
+};
+
+struct BoxSizerLayout
+{
+    SizerOrientation orientation = SizerOrientation::Vertical;
+
+    int paddingLeft = 0;
+    int paddingTop = 0;
+    int paddingRight = 0;
+    int paddingBottom = 0;
+
+    int gap = 0;
+};
+```
+
+Reuse or extend existing VisiForm types rather than creating duplicate
+structures.
+
+Keep these types outside the Visage UI layer when they are part of the model,
+serialization, validation, or generation architecture.
+
+============================================================
+ORIENTATION AND AXES
+====================
+
+A Vertical Sizer arranges items from top to bottom.
+
+A Horizontal Sizer arranges items from left to right.
+
+For a Vertical Sizer:
+
+* main axis is vertical
+* cross axis is horizontal
+
+For a Horizontal Sizer:
+
+* main axis is horizontal
+* cross axis is vertical
+
+The concepts of proportion, Expand, alignment, minimum size, border, and gap
+must use these definitions consistently.
+
+============================================================
+PROPORTION
+==========
+
+Proportion distributes extra space along the main axis.
+
+A proportion of zero means:
+
+* use the child’s minimum or preferred size along the main axis
+* do not receive a weighted share of remaining space
+
+A proportion of zero does not mean zero size.
+
+Positive values are relative weights.
+
+Example:
+
+* Child A: proportion 0, minimum main-axis size 30
+* Child B: proportion 1, minimum main-axis size 50
+* Child C: proportion 2, minimum main-axis size 50
+* remaining extra space: 150
+
+Total positive proportion:
+
+```text
+1 + 2 = 3
+```
+
+Extra allocation:
+
+```text
+Child A: 0
+Child B: 150 × 1 / 3 = 50
+Child C: 150 × 2 / 3 = 100
+```
+
+Final main-axis sizes:
+
+```text
+Child A: 30
+Child B: 100
+Child C: 150
+```
+
+Use deterministic remainder distribution.
+
+When integer division leaves pixels unassigned:
+
+* assign them in stable child order, or
+* use another documented deterministic method
+
+The same input must always produce the same rectangles.
+
+============================================================
+EXPAND
+======
+
+Expand controls the cross axis only.
+
+For a Vertical Sizer:
+
+* `Expand = true` fills available width
+* `Expand = false` keeps preferred width and uses horizontal alignment
+
+For a Horizontal Sizer:
+
+* `Expand = true` fills available height
+* `Expand = false` keeps preferred height and uses vertical alignment
+
+Do not use Expand to allocate main-axis growth.
+
+Main-axis growth is controlled by proportion.
+
+============================================================
+ALIGNMENT
+=========
+
+Support:
+
+* Start
+* Center
+* End
+
+For a Vertical Sizer:
+
+* Start means left
+* Center means horizontally centered
+* End means right
+
+For a Horizontal Sizer:
+
+* Start means top
+* Center means vertically centered
+* End means bottom
+
+Alignment has no visible effect while Expand is enabled.
+
+That combination may produce an informational validation message, but it must
+not be a fatal error.
+
+============================================================
+PADDING, GAP, AND BORDER
+========================
+
+Keep these concepts separate.
+
+Sizer padding:
+
+* space inside the Sizer around the complete child collection
+
+Gap:
+
+* automatic space between adjacent participating children
+
+Item border:
+
+* space around one child
+
+Border sides:
+
+* determine which sides receive the item border value
+
+Support:
+
+* None
+* Left
+* Top
+* Right
+* Bottom
+* All
+
+A typed bitmask is preferred if it fits the current codebase.
+
+============================================================
+LAYOUT ENGINE
+=============
+
+Implement the BoxSizer mathematics as shared, testable layout logic.
+
+The layout engine should:
+
+* depend on model-level geometry types
+* not depend on Visage painting
+* not depend on Designer selection state
+* accept a parent rectangle and ordered layout items
+* calculate deterministic child rectangles
+* calculate Sizer minimum size
+* support nested Sizers recursively
+* support fixed and stretch spacers
+* safely handle undersized parents
+
+The Designer and generated runtime should use the same algorithm or the same
+single source of layout mathematics whenever practical.
+
+Do not maintain two independently written BoxSizer algorithms.
+
+============================================================
+PASS 1 — MINIMUM SIZE
+=====================
+
+For each participating child:
+
+1. Obtain its intrinsic preferred or minimum size.
+2. Apply explicit Sizer-item minimum-width and minimum-height overrides.
+3. Add enabled border sides.
+4. Record its bordered main-axis minimum.
+5. Record its bordered cross-axis minimum.
+6. Recursively calculate nested Sizer minimum sizes.
+7. Include spacer minimum sizes.
+
+For a Vertical Sizer:
+
+```text
+itemMainMinimum =
+    childMinimumHeight + topBorder + bottomBorder
+
+itemCrossMinimum =
+    childMinimumWidth + leftBorder + rightBorder
+```
+
+For a Horizontal Sizer:
+
+```text
+itemMainMinimum =
+    childMinimumWidth + leftBorder + rightBorder
+
+itemCrossMinimum =
+    childMinimumHeight + topBorder + bottomBorder
+```
+
+Vertical Sizer minimum:
+
+```text
+minimumWidth =
+    paddingLeft
+    + maximum(itemCrossMinimum)
+    + paddingRight
+
+minimumHeight =
+    paddingTop
+    + sum(itemMainMinimum)
+    + totalGap
+    + paddingBottom
+```
+
+Horizontal Sizer minimum:
+
+```text
+minimumWidth =
+    paddingLeft
+    + sum(itemMainMinimum)
+    + totalGap
+    + paddingRight
+
+minimumHeight =
+    paddingTop
+    + maximum(itemCrossMinimum)
+    + paddingBottom
+```
+
+Total gap:
+
+```text
+gap * max(0, participatingChildCount - 1)
+```
+
+============================================================
+PASS 2 — MAIN-AXIS DISTRIBUTION
+===============================
+
+Create the usable content rectangle by subtracting Sizer padding.
+
+Subtract the total gap size from the available main-axis length.
+
+Calculate:
+
+```text
+minimumMainTotal =
+    sum of bordered item main-axis minimum sizes
+
+extraSpace =
+    max(0, availableMainAxisLength - minimumMainTotal)
+
+totalProportion =
+    sum of positive proportions
+```
+
+Each item begins with its bordered minimum main-axis size.
+
+If:
+
+```text
+item.proportion > 0
+```
+
+and:
+
+```text
+totalProportion > 0
+```
+
+then assign its weighted share of `extraSpace`.
+
+Use deterministic integer remainder allocation.
+
+Never produce negative child sizes.
+
+============================================================
+CROSS-AXIS PLACEMENT
+====================
+
+Remove applicable item borders from the cross-axis slot.
+
+When Expand is true:
+
+* fill all remaining cross-axis space
+
+When Expand is false:
+
+* use the effective preferred cross-axis size
+* clamp it to the available space
+* apply Start, Center, or End alignment
+
+Ensure all final rectangles remain valid.
+
+============================================================
+UNDERSIZED PARENT BEHAVIOR
+==========================
+
+A parent may be smaller than the calculated Sizer minimum.
+
+In that situation:
+
+* preserve child order
+* never generate negative width or height
+* clamp rectangles safely
+* avoid integer underflow
+* avoid overflow
+* avoid crashes
+* remain deterministic
+* produce an appropriate diagnostic where the validation system supports it
+
+Do not add complex shrink-weight behavior in Phase 86 unless the existing
+architecture already supports it cleanly.
+
+============================================================
+PREFERRED AND MINIMUM SIZE API
+==============================
+
+Inspect the existing widget registry and size handling.
+
+Consolidate or introduce clear concepts for:
+
+* intrinsic preferred size
+* configured widget minimum size
+* Sizer-item minimum override
+* effective minimum size
+
+The Sizer must not depend only on an arbitrary current Designer rectangle as
+its sole preferred-size source.
+
+Use `WidgetRegistry` and `WidgetDefinition` metadata where appropriate.
+
+Nested Sizers must calculate their minimum sizes recursively.
+
+Detect and reject model cycles.
+
+============================================================
+NESTED SIZERS
+=============
+
+A Sizer may contain:
+
+* widgets
+* nested Sizers
+* fixed spacers
+* stretch spacers
+
+When a parent Sizer assigns bounds to a nested Sizer:
+
+1. store or pass the nested Sizer’s assigned bounds
+2. recursively lay out the nested Sizer’s children
+3. do not create a visible runtime widget merely to represent the Sizer
+
+Nested Sizers must work in:
+
+* the model
+* the Designer
+* the Property Inspector
+* the Project Tree
+* selection
+* hit testing
+* drag/drop
+* reordering
+* reparenting
+* save/load
+* copy/paste, if supported
+* validation
+* Undo/Redo
+* export
+* generated runtime resizing
+
+============================================================
+SPACERS
+=======
+
+Implement two nonvisual layout item types.
+
+Fixed Spacer:
+
+* configurable fixed main-axis size
+* proportion defaults to 0
+* has no visible runtime component
+* appears in the Project Tree
+* has a clear design-time representation
+
+Stretch Spacer:
+
+* minimum main-axis size defaults to 0
+* proportion defaults to 1
+* consumes remaining main-axis space
+* has no visible runtime component
+* appears in the Project Tree
+* has a clear design-time representation
+
+Register spacer types through `WidgetRegistry` or the repository’s appropriate
+registry mechanism if they are represented as model nodes.
+
+Do not generate unnecessary Visage components for spacers.
+
+============================================================
+PROPERTY INSPECTOR
+==================
+
+When a Sizer is selected, expose a Sizer category containing:
+
+* Orientation
+* Padding Left
+* Padding Top
+* Padding Right
+* Padding Bottom
+* Gap
+
+Use the existing property architecture and editor controls.
+
+When a direct child of a Sizer is selected, expose a Sizer Item category:
+
+* Proportion
+* Expand
+* Alignment
+* Border
+* Border Sides
+* Minimum Width
+* Minimum Height
+* Shown, only if compatible with the current model
+
+Use appropriate typed editors:
+
+* dropdown for orientation
+* dropdown for alignment
+* checkbox for Expand
+* validated integer editor for numeric properties
+* flags editor, checkbox group, or compatible editor for border sides
+
+A layout-property change must:
+
+1. update the model
+2. create an Undo/Redo command
+3. mark the project modified
+4. recalculate layout immediately
+5. refresh the Designer
+6. refresh relevant inspector state
+
+Hide or disable Sizer Item properties when the selected item is not a direct
+child of a Sizer.
+
+============================================================
+DOCK, ANCHOR, AND ABSOLUTE BOUNDS
+=================================
+
+VisiForm already supports Dock and Anchor.
+
+Use these precedence rules:
+
+* A direct child of a Sizer is positioned and sized by that Sizer.
+* Dock does not control the final bounds of a direct Sizer child.
+* Anchor does not control the final bounds of a direct Sizer child.
+* X and Y do not control the final bounds of a direct Sizer child.
+* Width and Height do not directly control the final bounds of a direct Sizer
+  child, except where existing preferred/minimum-size behavior deliberately
+  uses them.
+* A Sizer inside a normal container may itself use existing Dock or Anchor
+  behavior.
+* A Sizer nested inside another Sizer is controlled by its parent Sizer item
+  settings.
+
+In the inspector, disable or annotate inactive properties.
+
+Use wording similar to:
+
+`Position and size are controlled by the parent Sizer.`
+
+Do not delete dormant absolute bounds if they are useful when moving a widget
+back to an absolute-layout parent.
+
+Do not allow Dock and Sizer layout to compete for the same child.
+
+============================================================
+DESIGNER CANVAS
+===============
+
+Implement or improve:
+
+* dashed Sizer outline
+* orientation label
+* selection highlight
+* padding visualization where useful
+* insertion indicators between children
+* drag/drop insertion by child index
+* child reordering
+* reparenting into and out of Sizers
+* nested Sizer selection
+* fixed spacer representation
+* stretch spacer representation
+* immediate relayout
+
+Children managed by a Sizer must not be freely positioned with arbitrary X/Y
+dragging.
+
+Dragging a Sizer child should perform one of:
+
+* reorder
+* reparent
+* move into another compatible container
+
+Manual resize handles must not create misleading layout state.
+
+Either:
+
+* disable incompatible resize handles, or
+* translate a supported resize into an appropriate minimum-size override
+
+Use the existing Designer interaction, selection, hit-testing, drag/drop, and
+command systems.
+
+Do not create a parallel input architecture.
+
+============================================================
+PROJECT TREE
+============
+
+The Project Tree must show:
+
+* Sizer nodes
+* nested Sizers
+* fixed spacers
+* stretch spacers
+* children in exact layout order
+
+Tree reorder operations must update the Sizer layout order.
+
+Tree reparent operations must initialize or preserve Sizer-item metadata.
+
+Moving a widget out of a Sizer should restore or calculate reasonable
+absolute-layout bounds.
+
+All tree mutations must support Undo/Redo.
+
+============================================================
+DEFAULT SIZER-ITEM SETTINGS
+===========================
+
+Centralize insertion defaults.
+
+Suggested defaults:
+
+```text
+Label:
+    proportion = 0
+    expand = false
+
+Button:
+    proportion = 0
+    expand = false
+
+CheckBox:
+    proportion = 0
+    expand = false
+
+RadioButton:
+    proportion = 0
+    expand = false
+
+TextBox:
+    proportion = 0
+    expand = true
+
+ComboBox:
+    proportion = 0
+    expand = true
+
+ListBox:
+    proportion = 1
+    expand = true
+
+TreeView:
+    proportion = 1
+    expand = true
+
+Panel:
+    proportion = 1
+    expand = true
+
+Nested Sizer:
+    proportion = 1
+    expand = true
+
+Fixed Spacer:
+    proportion = 0
+    expand = false
+
+Stretch Spacer:
+    proportion = 1
+    expand = false
+```
+
+Adapt these defaults to current VisiForm conventions.
+
+Prefer registry metadata or one centralized helper.
+
+Do not scatter widget-name comparisons across multiple subsystems.
+
+============================================================
+SAVE, LOAD, AND MIGRATION
+=========================
+
+Extend `.vfb.json` persistence to include:
+
+Sizer properties:
+
+* orientation
+* padding left
+* padding top
+* padding right
+* padding bottom
+* gap
+
+Per-child Sizer-item properties:
+
+* proportion
+* expand
+* alignment
+* border
+* border sides
+* minimum width
+* minimum height
+* shown, if supported
+
+Spacer properties:
+
+* spacer type
+* fixed size
+* stretch proportion where applicable
+
+Maintain backward compatibility with existing VisiForm project files.
+
+Existing preliminary Sizer projects must continue to load.
+
+For missing fields:
+
+* apply documented safe defaults
+
+If migration is necessary:
+
+* implement it explicitly
+* make it deterministic
+* document it
+* add tests
+
+Do not silently discard unknown project properties.
+
+Add round-trip tests:
+
+```text
+load -> save -> load
+```
+
+The resulting model and Sizer settings must remain equivalent.
+
+============================================================
+VALIDATION
+==========
+
+Add validation errors for:
+
+* invalid orientation
+* negative padding
+* negative gap
+* negative proportion
+* negative border
+* invalid alignment
+* invalid border-side values
+* malformed spacer data
+* parent-child cycles
+* nodes with multiple parents
+* invalid nested relationships
+* unsupported active Dock behavior on a direct Sizer child, when it cannot be
+  normalized safely
+
+Add warnings or informational diagnostics for:
+
+* empty Sizer
+* alignment ignored because Expand is active
+* absolute bounds ignored because the parent Sizer controls layout
+* Sizer assigned less space than its calculated minimum
+* stretch spacer with nonpositive proportion
+* invalid negative minimum override other than the designated automatic value
+
+Use the existing validation framework.
+
+Keep validation independent of Visage UI headers.
+
+============================================================
+UNDO AND REDO
+=============
+
+Every user-visible Sizer operation must be undoable:
+
+* add child
+* remove child
+* reorder child
+* reparent child
+* change orientation
+* change padding
+* change gap
+* change proportion
+* change Expand
+* change alignment
+* change border
+* change border sides
+* change minimum width
+* change minimum height
+* add spacer
+* remove spacer
+* change spacer type
+* change spacer size
+
+A reparent command must preserve enough information to restore:
+
+* previous parent
+* previous child index
+* previous Sizer-item settings
+* previous bounds metadata
+* new parent
+* new child index
+* new Sizer-item settings
+* new bounds metadata
+
+Use the existing command or transaction system.
+
+One drag/drop operation should normally create one Undo entry.
+
+============================================================
+GENERATED VISAGE PROJECTS
+=========================
+
+Generated projects must remain Visage projects.
+
+Do not emit wxWidgets code.
+
+Implement generated runtime BoxSizer behavior.
+
+Preferred design:
+
+* reusable generated/runtime layout helper
+* model-level layout structures
+* generated window resize callback invokes the layout engine
+* no visible runtime component for a Sizer
+* no visible runtime component for a spacer
+
+Generated runtime support must include:
+
+* Vertical Sizer
+* Horizontal Sizer
+* nested Sizers
+* proportion
+* Expand
+* alignment
+* padding
+* gap
+* border
+* border sides
+* minimum-size overrides
+* fixed spacers
+* stretch spacers
+* relayout when parent bounds change
+
+Preserve:
+
+* `MainWindow` generated base class
+* user subclass files
+* `USER CODE BEGIN`
+* `USER CODE END`
+* existing local Visage dependency behavior
+* existing generated CMake behavior
+* known generated-file overwrite rules
+
+Do not put generated layout implementation into user-owned regions.
+
+Do not require users to edit generated base classes manually.
+
+Keep generator code free of Visage UI headers where the existing architecture
+requires model/generator independence.
+
+============================================================
+EDITOR AND RUNTIME PARITY
+=========================
+
+The Designer and generated runtime must produce equivalent or nearly equivalent
+rectangles from identical layout data and parent bounds.
+
+The BoxSizer mathematics must have one source of truth where practical.
+
+Acceptable differences may include platform text measurement.
+
+The following must not differ:
+
+* proportion allocation
+* padding
+* gap
+* border
+* alignment
+* Expand
+* spacer sizing
+* nesting behavior
+* deterministic remainder handling
+
+============================================================
+TESTS
+=====
+
+Inspect the existing Catch2 test organization.
+
+Add focused tests for at least:
+
+1. Empty Sizer
+2. One child
+3. Vertical fixed-size children
+4. Horizontal fixed-size children
+5. Proportion zero
+6. Equal proportions
+7. Unequal proportions
+8. Deterministic remainder allocation
+9. Expand true
+10. Expand false with Start
+11. Expand false with Center
+12. Expand false with End
+13. Padding
+14. Gap
+15. Left border
+16. Top border
+17. Right border
+18. Bottom border
+19. All borders
+20. Minimum-width override
+21. Minimum-height override
+22. Parent smaller than minimum
+23. Nested Vertical and Horizontal Sizers
+24. Fixed spacer
+25. Stretch spacer
+26. Hidden or nonparticipating item, if supported
+27. Existing Sizer JSON compatibility
+28. New JSON round trip
+29. Validation errors
+30. Validation warnings
+31. Undo/Redo for Sizer property change
+32. Undo/Redo for Sizer-item property change
+33. Undo/Redo for reorder
+34. Undo/Redo for reparent
+35. Generated source contains runtime Sizer setup
+36. Representative generated layout metadata
+37. Editor/runtime rectangle parity where practical
+
+Use exact rectangle assertions for the pure layout engine.
+
+Do not run prohibited command-line build or test commands.
+
+Tests may be added without being executed if the approved Visual Studio
+workspace validation pipeline is unavailable.
+
+Record that status accurately in the Phase 86 plan.
+
+============================================================
+PHASE 86 ACCEPTANCE SCENARIO
+============================
+
+Create a test model equivalent to:
+
+```text
+Root Form
+└── Vertical Sizer
+    ├── Label
+    │   proportion = 0
+    │   expand = false
+    ├── TextBox
+    │   proportion = 0
+    │   expand = true
+    ├── TreeView
+    │   proportion = 1
+    │   expand = true
+    └── Horizontal Sizer
+        proportion = 0
+        expand = true
+        ├── Stretch Spacer
+        ├── OK Button
+        └── Cancel Button
+```
+
+Expected behavior:
+
+* Label keeps its preferred size.
+* TextBox fills the available width.
+* TextBox keeps its preferred height.
+* TreeView fills the available width.
+* TreeView receives remaining vertical space.
+* Bottom Horizontal Sizer remains at its calculated minimum height.
+* Stretch Spacer pushes OK and Cancel toward the end of the row.
+* Resizing the root recalculates all child bounds.
+* Save and load preserve the complete hierarchy.
+* Save and load preserve all Sizer-item settings.
+* Project Tree order matches visual order.
+* Undoing a reorder restores the prior order.
+* Undoing a reparent restores the prior parent, index, bounds, and Sizer-item
+  settings.
+* Generated runtime layout matches the Designer layout closely.
+
+Add this scenario as an automated integration test when feasible.
+
+Also document manual verification steps in the Phase 86 plan.
+
+============================================================
+IMPLEMENTATION PROCESS
+======================
+
+Before editing code:
+
+1. Read all Copilot and repository instructions.
+2. Read `README.md`.
+3. Read relevant layout, registry, serialization, validation, generation, and
+   project-format documentation.
+4. Inspect the current Sizer implementation.
+5. Inspect `WidgetRegistry`.
+6. Inspect `WidgetDefinition`.
+7. Inspect model ownership and parent-child relationships.
+8. Inspect preferred/default-size handling.
+9. Inspect Designer layout.
+10. Inspect Designer hit testing.
+11. Inspect drag/drop and reparenting.
+12. Inspect Property Inspector property registration.
+13. Inspect conditional property visibility.
+14. Inspect Project Tree reordering and reparenting.
+15. Inspect Undo/Redo commands.
+16. Inspect `.vfb.json` serialization and deserialization.
+17. Inspect validation.
+18. Inspect code generation.
+19. Inspect generated runtime support.
+20. Inspect existing Catch2 tests.
+21. Create the Phase 86 plan.
+22. Implement incrementally.
+23. Update the Phase 86 checklist as each section progresses.
+24. Update documentation.
+25. Perform only approved validation.
+26. Write the final result summary into the Phase 86 plan.
+
+Do not stop after writing the plan unless a genuine architectural blocker makes
+continuing unsafe.
+
+If blocked:
+
+* document the blocker in the Phase 86 plan
+* document what was completed
+* leave incomplete TODOs unchecked
+* provide a precise final report
+
+============================================================
+VALIDATION RULES
+================
+
+Do not run builds or tests through:
+
+* terminal
+* PowerShell
+* cmd.exe
+* CMake commands
+* Ninja commands
+* repository scripts
+* generated scripts
+
+unless the developer explicitly requested the exact command.
+
+Use only the Visual Studio workspace build pipeline when:
+
+* it is available
+* it clearly targets `VisiForm`
+* it is unambiguous
+
+Never validate against `freetype.vcxproj`.
+
+Do not launch the application after building.
+
+Do not launch generated applications.
+
+When the approved workspace build is unavailable or ambiguous:
+
+* do not substitute another build method
+* record build validation as deferred to the developer
+* provide the developer with the exact target that should be built manually
+* do not falsely claim that the code compiled
+
+============================================================
+DOCUMENTATION
+=============
+
+Update relevant documentation, including as appropriate:
+
+* `README.md`
+* `docs/layout_tools.md`
+* `docs/widget_catalog.md`
+* `docs/widget_registry.md`
+* `docs/project_file_format.md`
+* `docs/code_generation.md`
+* `docs/project_validation.md`
+
+Document:
+
+* what a Sizer is
+* Sizer properties versus Sizer-item properties
+* main axis
+* cross axis
+* proportion
+* Expand
+* alignment
+* padding
+* gap
+* item border
+* border sides
+* minimum-size overrides
+* nested Sizers
+* fixed spacers
+* stretch spacers
+* Dock and Anchor precedence
+* Designer interaction
+* JSON representation
+* migration behavior
+* generated runtime behavior
+* known limitations
+
+============================================================
+WORKING RULES
+=============
+
+* Work incrementally.
+* Preserve current functionality.
+* Avoid unrelated refactoring.
+* Follow existing naming and formatting.
+* Follow existing ownership conventions.
+* Avoid raw owning pointers.
+* Avoid duplicate sources of truth.
+* Keep layout calculation separate from painting.
+* Keep model and generator code free of Visage UI headers.
+* Put Visage-specific UI work in the UI layer.
+* Use `WidgetRegistry`.
+* Update `WidgetDefinition` where required.
+* Preserve CRLF.
+* Preserve static runtime settings.
+* Preserve CMake presets.
+* Preserve the vcpkg triplet.
+* Preserve generated `MainWindow`.
+* Preserve USER CODE regions.
+* Preserve safe export ownership rules.
+* Do not claim cross-platform validation unless it was actually completed.
+* Do not claim successful compilation unless approved validation succeeded.
+
+============================================================
+FINAL RESPONSE
+==============
+
+Before responding, update:
+
+`docs/agent_plans/phase_86_box_sizer_layout_system_plan.md`
+
+The final response must include:
+
+1. Phase 86 implementation summary
+2. Important architectural decisions
+3. Modified files grouped by subsystem
+4. Model changes
+5. Designer changes
+6. Property Inspector changes
+7. Project Tree changes
+8. Undo/Redo changes
+9. JSON compatibility and migration details
+10. Generated runtime changes
+11. Documentation changes
+12. Tests added
+13. Approved validation attempted
+14. Actual validation results
+15. Whether validation was deferred to the developer
+16. Remaining limitations
+17. Remaining TODOs
+18. Manual verification steps
+
+Do not state that Phase 86 is complete unless:
+
+* the phase plan has been fully updated
+* completed TODOs are checked
+* unfinished TODOs remain unchecked
+* validation status is recorded
+* the final summary is present
+* remaining TODOs are listed

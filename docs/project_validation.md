@@ -80,6 +80,13 @@ Current property validation includes:
 - `layoutMode` on non-container widgets is reported as a warning because it is unused
 - `Sizer.orientation` must be `Vertical` or `Horizontal`
 - `Sizer.padding` and `Sizer.gap` should be numeric values in the supported `0..64` range
+- side-specific Sizer padding values must not be negative
+- empty sizers are reported as warnings
+- sizers assigned bounds smaller than their calculated minimum layout size are reported as warnings
+- direct children of a `Sizer` validate nonnegative `sizerItem.proportion`, nonnegative `sizerItem.border`, known `sizerItem.alignment`, known `sizerItem.borderSides`, and minimum overrides of `-1` or nonnegative values
+- direct children of a `Sizer` warn when alignment is ignored by `sizerItem.expand`
+- direct children of a `Sizer` warn when Dock or Anchor metadata is present but ignored by the parent Sizer
+- `Spacer` validates `spacer.kind` and nonnegative `spacer.size`
 - widget `lookAndFeelId` values must be empty or match a known preset
 - `fontSize` range warnings outside `8..72`
 - `borderThickness` range warnings outside `1..25`

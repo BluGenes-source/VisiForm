@@ -93,7 +93,8 @@ Most widgets now expose common style override properties through the registry:
 
 Empty override values inherit from the project-level look and feel.
 
-`Sizer` also stores `orientation`, `padding`, and `gap` to drive its box-sizer layout.
+`Sizer` also stores `orientation`, legacy `padding`, side padding, and `gap` to drive its BoxSizer layout.
+`Spacer` stores `spacer.kind` and `spacer.size` so it can act as either a fixed or stretch layout item inside a `Sizer`.
 
 ## Event signatures and suggestions
 

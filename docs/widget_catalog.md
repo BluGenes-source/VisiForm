@@ -25,10 +25,13 @@ Current `Sizer` editor behavior:
 
 - `Sizer` is an optional container; projects are not required to contain one
 - `orientation` controls whether child widgets are arranged `Vertical` or `Horizontal`
-- `padding` adds inset around the child layout area
+- `paddingLeft`, `paddingTop`, `paddingRight`, and `paddingBottom` add inset around the child layout area
+- legacy uniform `padding` continues to load as a compatibility fallback
 - `gap` adds spacing between child widgets
-- direct children are distributed evenly across the main axis and stretched across the cross axis
-- the designer preview draws an empty `Sizer` with a subtle rounded box and label
+- direct children can set `sizerItem.proportion`, `sizerItem.expand`, `sizerItem.alignment`, `sizerItem.border`, `sizerItem.borderSides`, `sizerItem.minimumWidth`, `sizerItem.minimumHeight`, and `sizerItem.shown`
+- `Fixed` spacers reserve fixed main-axis space; `Stretch` spacers default to proportion `1`
+- nested sizers are supported by the shared model layout pass and generated runtime layout pass
+- the designer preview draws a design-time `Sizer` outline and fixed/stretch spacer labels
 
 ## GroupBox repair-pass behavior
 

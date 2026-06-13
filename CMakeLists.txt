@@ -92,6 +92,7 @@ add_executable(VisiForm
     src/model/ProjectDocument.cpp
     src/model/ProjectResource.cpp
     src/model/FormNode.cpp
+    src/model/BoxSizerLayout.cpp
     src/model/LayoutEngine.cpp
     src/model/WidgetDefinition.cpp
     src/model/WidgetItemUtils.cpp

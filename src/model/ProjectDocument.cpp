@@ -2,6 +2,7 @@
 
 #include "model/ProjectDocument.h"
 
+#include "model/BoxSizerLayout.h"
 #include "model/LayoutEngine.h"
 #include "model/WidgetRegistry.h"
 #include "utils/IdGenerator.h"
@@ -528,12 +529,18 @@ bool ProjectDocument::addChildToParent(const std::string& parentId, WidgetNode w
         if (!WidgetRegistry::instance().canContainChild(root.type, widget.type)) {
             return false;
         }
+        if (root.type == WidgetType::Sizer) {
+            applyDefaultSizerItemLayout(widget);
+        }
         return addChildToRoot(std::move(widget));
     }
 
     if (auto* parent = findWidgetById(parentId)) {
         if (!WidgetRegistry::instance().canContainChild(parent->type, widget.type)) {
             return false;
+        }
+        if (parent->type == WidgetType::Sizer) {
+            applyDefaultSizerItemLayout(widget);
         }
         parent->appendChild(std::move(widget));
         applyDockLayout();

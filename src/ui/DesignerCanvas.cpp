@@ -2,6 +2,7 @@
 
 #include "ui/DesignerCanvas.h"
 
+#include "model/BoxSizerLayout.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
 #include "ui/WidgetMetrics.h"
@@ -1061,9 +1062,11 @@ void drawWidget(visage::Canvas& canvas,
         break;
     case model::WidgetType::Sizer:
         drawRoundedBox(canvas, bounds, style.fillColor, blendColor(style.borderColor, style.fillColor, 0.25f), style.borderThickness, style.cornerRadius);
-        if (drawText && widget.children.empty()) {
+        if (drawText) {
+            const std::string label = std::string(model::toString(model::parseSizerOrientation(widget))) + " Sizer";
             canvas.setColor(blendColor(style.textColor, style.fillColor, 0.35f));
-            canvas.text("Sizer", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+            canvas.text(label, widgetFont, widget.children.empty() ? visage::Font::kCenter : visage::Font::kTopLeft,
+                bounds.x + 6.0f, bounds.y + 4.0f, std::max(0.0f, bounds.width - 12.0f), widget.children.empty() ? bounds.height : 20.0f);
         }
         break;
     case model::WidgetType::TabControl: {
@@ -1552,10 +1555,13 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::Spacer:
-        drawRoundedBox(canvas, bounds, style);
+        canvas.setColor(blendColor(style.fillColor, style.panelColor, 0.45f));
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawBorder(canvas, bounds, blendColor(style.borderColor, style.accentColor, 0.45f), 1.0f);
         if (drawText) {
             canvas.setColor(style.textColor);
-            canvas.text("Spacer", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+            const std::string label = model::parseSpacerKind(widget) == model::SpacerKind::Stretch ? "Stretch Spacer" : "Fixed Spacer";
+            canvas.text(label, widgetFont, visage::Font::kCenter, bounds.x + 4.0f, bounds.y, std::max(0.0f, bounds.width - 8.0f), bounds.height);
         }
         break;
     }
@@ -1732,7 +1738,9 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
         return std::nullopt;
     }
 
-    if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id) {
+    const bool parentControlsSizerLayout = document.findParentOf(selectedWidgetId) != nullptr
+        && document.findParentOf(selectedWidgetId)->type == model::WidgetType::Sizer;
+    if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id && !parentControlsSizerLayout) {
         const HitRegion handle = hitHandle(widgetInfo->bounds, x, y, resizeHandleHitSize_);
         if (handle != HitRegion::None) {
             hit.region = handle;

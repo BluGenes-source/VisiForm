@@ -1,6 +1,7 @@
 #include "generator/VisageCppEmitter.h"
 
 #include "app/Version.h"
+#include "model/BoxSizerLayout.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
 #include "model/WidgetRegistry.h"
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <iomanip>
 #include <map>
 #include <optional>
@@ -1243,6 +1245,8 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.parentId = " << emitStringLiteral(widget.parentId) << ";\n";
     stream << innerIndent << "widget.bounds = RuntimeRect{ " << emitFloat(spec.x) << ", " << emitFloat(spec.y) << ", "
            << emitFloat(widget.bounds.width) << ", " << emitFloat(widget.bounds.height) << " };\n";
+    stream << innerIndent << "widget.preferredWidth = " << emitFloat(widget.bounds.width) << ";\n";
+    stream << innerIndent << "widget.preferredHeight = " << emitFloat(widget.bounds.height) << ";\n";
     stream << innerIndent << "widget.hint = " << emitStringLiteral(widget.getStringProperty("hint", {})) << ";\n";
     stream << innerIndent << "widget.dialogTitle = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
     stream << innerIndent << "widget.text.value = " << emitStringLiteral(displayTextOrFallback(widget, "text", widgetLabel(widget))) << ";\n";
@@ -1261,6 +1265,23 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.range.value = " << emitFloat(widget.getFloatProperty("value", 0.0f)) << ";\n";
     stream << innerIndent << "widget.range.pageSize = " << emitFloat(widget.getFloatProperty("pageSize", 10.0f)) << ";\n";
     stream << innerIndent << "widget.range.orientation = " << runtimeOrientationLiteral(widget.getStringProperty("orientation", "Horizontal")) << ";\n";
+    const auto boxSizerLayout = visiform::model::boxSizerLayoutFor(widget);
+    const auto sizerItemLayout = visiform::model::sizerItemLayoutFor(widget);
+    stream << innerIndent << "widget.sizerPaddingLeft = " << boxSizerLayout.paddingLeft << ";\n";
+    stream << innerIndent << "widget.sizerPaddingTop = " << boxSizerLayout.paddingTop << ";\n";
+    stream << innerIndent << "widget.sizerPaddingRight = " << boxSizerLayout.paddingRight << ";\n";
+    stream << innerIndent << "widget.sizerPaddingBottom = " << boxSizerLayout.paddingBottom << ";\n";
+    stream << innerIndent << "widget.sizerGap = " << boxSizerLayout.gap << ";\n";
+    stream << innerIndent << "widget.sizerItemProportion = " << sizerItemLayout.proportion << ";\n";
+    stream << innerIndent << "widget.sizerItemExpand = " << (sizerItemLayout.expand ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.sizerItemAlignment = RuntimeSizerAlignment::" << visiform::model::toString(sizerItemLayout.alignment) << ";\n";
+    stream << innerIndent << "widget.sizerItemBorder = " << sizerItemLayout.border << ";\n";
+    stream << innerIndent << "widget.sizerItemBorderSides = " << static_cast<int>(static_cast<std::uint8_t>(sizerItemLayout.borderSides)) << ";\n";
+    stream << innerIndent << "widget.sizerItemMinimumWidth = " << sizerItemLayout.minimumWidth << ";\n";
+    stream << innerIndent << "widget.sizerItemMinimumHeight = " << sizerItemLayout.minimumHeight << ";\n";
+    stream << innerIndent << "widget.sizerItemShown = " << (sizerItemLayout.shown ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.spacerStretch = " << (visiform::model::parseSpacerKind(widget) == visiform::model::SpacerKind::Stretch ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.spacerSize = " << widget.getIntProperty(std::string{ visiform::model::sizer_properties::kSpacerSize }, 24) << ";\n";
     stream << innerIndent << "widget.events.onClick = " << emitStringLiteral(widget.getStringProperty("onClick", {})) << ";\n";
     stream << innerIndent << "widget.events.onRelease = " << emitStringLiteral(widget.getStringProperty("onRelease", {})) << ";\n";
     stream << innerIndent << "widget.events.onDoubleClick = " << emitStringLiteral(widget.getStringProperty("onDoubleClick", {})) << ";\n";
@@ -1514,6 +1535,11 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    Horizontal,\n";
     stream << "    Vertical\n";
     stream << "};\n\n";
+    stream << "enum class RuntimeSizerAlignment : std::uint8_t {\n";
+    stream << "    Start,\n";
+    stream << "    Center,\n";
+    stream << "    End\n";
+    stream << "};\n\n";
     stream << "struct RuntimeRect {\n";
     stream << "    float x = 0.0f;\n";
     stream << "    float y = 0.0f;\n";
@@ -1580,6 +1606,8 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    std::string name;\n";
     stream << "    std::string parentId;\n";
     stream << "    RuntimeRect bounds;\n";
+    stream << "    float preferredWidth = 0.0f;\n";
+    stream << "    float preferredHeight = 0.0f;\n";
     stream << "    std::string hint;\n";
     stream << "    std::string dialogTitle;\n";
     stream << "    std::string source;\n";
@@ -1600,6 +1628,21 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    bool visibleAtStartup = false;\n";
     stream << "    float rowHeight = 28.0f;\n";
     stream << "    float headerHeight = 30.0f;\n";
+    stream << "    int sizerPaddingLeft = 0;\n";
+    stream << "    int sizerPaddingTop = 0;\n";
+    stream << "    int sizerPaddingRight = 0;\n";
+    stream << "    int sizerPaddingBottom = 0;\n";
+    stream << "    int sizerGap = 0;\n";
+    stream << "    int sizerItemProportion = 0;\n";
+    stream << "    bool sizerItemExpand = false;\n";
+    stream << "    RuntimeSizerAlignment sizerItemAlignment = RuntimeSizerAlignment::Start;\n";
+    stream << "    int sizerItemBorder = 0;\n";
+    stream << "    int sizerItemBorderSides = 0;\n";
+    stream << "    int sizerItemMinimumWidth = -1;\n";
+    stream << "    int sizerItemMinimumHeight = -1;\n";
+    stream << "    bool sizerItemShown = true;\n";
+    stream << "    bool spacerStretch = false;\n";
+    stream << "    int spacerSize = 0;\n";
     stream << "    RuntimeTextState text;\n";
     stream << "    RuntimeButtonState button;\n";
     stream << "    RuntimeToggleState toggle;\n";
@@ -1671,6 +1714,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "private:\n";
     stream << "    bool canDrawText() const;\n\n";
     stream << "    void initializeRuntimeWidgets();\n";
+    stream << "    void applyRuntimeSizerLayouts();\n";
     stream << "    RuntimeWidget* findWidgetByIdOrName(const std::string& idOrName);\n";
     stream << "    const RuntimeWidget* findWidgetByIdOrName(const std::string& idOrName) const;\n";
     stream << "    RuntimeWidget* activeModalWidget();\n";
@@ -2422,11 +2466,6 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
-    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
-    stream << "        if (drawText) {\n";
-    stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kCenter, x, y, width, height);\n";
-    stream << "        }\n";
     stream << "        break;\n";
     stream << "    }\n";
     stream << "}\n\n";
@@ -2441,6 +2480,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    formBorderColor_ = " << emitRuntimeColorLiteral(rootStyle.borderColor, "makeColor(0x97, 0xA3, 0xB7)") << ";\n";
     stream << "    formBorderThickness_ = " << emitFloat(rootStyle.borderThickness) << ";\n";
     stream << "    initializeRuntimeWidgets();\n";
+    stream << "    applyRuntimeSizerLayouts();\n";
     stream << "    setTitle(" << emitStringLiteral(windowTitle) << ");\n";
     stream << "\n";
     stream << "    static constexpr std::array<const char*, 3> kFontCandidates = {\n";
@@ -2482,6 +2522,151 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     for (const auto& runtimeWidget : runtimeWidgets) {
         emitRuntimeWidgetInitialization(stream, runtimeWidget, 1);
     }
+    stream << "}\n\n";
+    stream << "void " << className << "::applyRuntimeSizerLayouts()\n";
+    stream << "{\n";
+    stream << "    auto childrenOf = [this](const std::string& parentId) {\n";
+    stream << "        std::vector<RuntimeWidget*> children;\n";
+    stream << "        for (auto& widget : runtimeWidgets_) {\n";
+    stream << "            if (widget.parentId == parentId) {\n";
+    stream << "                children.push_back(&widget);\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        return children;\n";
+    stream << "    };\n\n";
+    stream << "    auto minimumSize = [&](const RuntimeWidget& widget, const auto& minimumSizeRef) -> std::pair<float, float> {\n";
+    stream << "        if (widget.type == RuntimeWidgetType::Sizer) {\n";
+    stream << "            const bool horizontal = widget.range.orientation == RuntimeOrientation::Horizontal;\n";
+    stream << "            float mainTotal = 0.0f;\n";
+    stream << "            float crossMax = 0.0f;\n";
+    stream << "            int count = 0;\n";
+    stream << "            for (auto* child : childrenOf(widget.id)) {\n";
+    stream << "                if (!child->sizerItemShown) {\n";
+    stream << "                    continue;\n";
+    stream << "                }\n";
+    stream << "                auto [childWidth, childHeight] = minimumSizeRef(*child, minimumSizeRef);\n";
+    stream << "                childWidth = child->sizerItemMinimumWidth >= 0 ? std::max(childWidth, static_cast<float>(child->sizerItemMinimumWidth)) : childWidth;\n";
+    stream << "                childHeight = child->sizerItemMinimumHeight >= 0 ? std::max(childHeight, static_cast<float>(child->sizerItemMinimumHeight)) : childHeight;\n";
+    stream << "                const float left = (child->sizerItemBorderSides & 1) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "                const float top = (child->sizerItemBorderSides & 2) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "                const float right = (child->sizerItemBorderSides & 4) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "                const float bottom = (child->sizerItemBorderSides & 8) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "                const float main = horizontal ? childWidth + left + right : childHeight + top + bottom;\n";
+    stream << "                const float cross = horizontal ? childHeight + top + bottom : childWidth + left + right;\n";
+    stream << "                mainTotal += main;\n";
+    stream << "                crossMax = std::max(crossMax, cross);\n";
+    stream << "                ++count;\n";
+    stream << "            }\n";
+    stream << "            const float gapTotal = static_cast<float>(std::max(0, count - 1) * widget.sizerGap);\n";
+    stream << "            if (horizontal) {\n";
+    stream << "                return { static_cast<float>(widget.sizerPaddingLeft + widget.sizerPaddingRight) + mainTotal + gapTotal, static_cast<float>(widget.sizerPaddingTop + widget.sizerPaddingBottom) + crossMax };\n";
+    stream << "            }\n";
+    stream << "            return { static_cast<float>(widget.sizerPaddingLeft + widget.sizerPaddingRight) + crossMax, static_cast<float>(widget.sizerPaddingTop + widget.sizerPaddingBottom) + mainTotal + gapTotal };\n";
+    stream << "        }\n";
+    stream << "        if (widget.type == RuntimeWidgetType::Spacer) {\n";
+    stream << "            const float size = widget.spacerStretch ? 0.0f : static_cast<float>(std::max(0, widget.spacerSize));\n";
+    stream << "            return { size, size };\n";
+    stream << "        }\n";
+    stream << "        return { std::max(0.0f, widget.preferredWidth), std::max(0.0f, widget.preferredHeight) };\n";
+    stream << "    };\n\n";
+    stream << "    auto layoutSizer = [&](RuntimeWidget& sizer, const auto& layoutSizerRef) -> void {\n";
+    stream << "        if (sizer.type != RuntimeWidgetType::Sizer) {\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        const bool horizontal = sizer.range.orientation == RuntimeOrientation::Horizontal;\n";
+    stream << "        auto children = childrenOf(sizer.id);\n";
+    stream << "        children.erase(std::remove_if(children.begin(), children.end(), [](const RuntimeWidget* child) { return !child->sizerItemShown; }), children.end());\n";
+    stream << "        if (children.empty()) {\n";
+    stream << "            return;\n";
+    stream << "        }\n";
+    stream << "        const RuntimeRect content{ sizer.bounds.x + static_cast<float>(sizer.sizerPaddingLeft), sizer.bounds.y + static_cast<float>(sizer.sizerPaddingTop), std::max(0.0f, sizer.bounds.width - static_cast<float>(sizer.sizerPaddingLeft + sizer.sizerPaddingRight)), std::max(0.0f, sizer.bounds.height - static_cast<float>(sizer.sizerPaddingTop + sizer.sizerPaddingBottom)) };\n";
+    stream << "        const float availableMain = std::max(0.0f, (horizontal ? content.width : content.height) - static_cast<float>(std::max(0, static_cast<int>(children.size()) - 1) * sizer.sizerGap));\n";
+    stream << "        const float availableCross = std::max(0.0f, horizontal ? content.height : content.width);\n";
+    stream << "        struct RuntimeLayoutSlot { RuntimeWidget* child; float mainMinimum; float crossMinimum; float assignedMain; };\n";
+    stream << "        std::vector<RuntimeLayoutSlot> slots;\n";
+    stream << "        slots.reserve(children.size());\n";
+    stream << "        float minimumMainTotal = 0.0f;\n";
+    stream << "        int totalProportion = 0;\n";
+    stream << "        for (auto* child : children) {\n";
+    stream << "            auto [childWidth, childHeight] = minimumSize(*child, minimumSize);\n";
+    stream << "            childWidth = child->sizerItemMinimumWidth >= 0 ? std::max(childWidth, static_cast<float>(child->sizerItemMinimumWidth)) : childWidth;\n";
+    stream << "            childHeight = child->sizerItemMinimumHeight >= 0 ? std::max(childHeight, static_cast<float>(child->sizerItemMinimumHeight)) : childHeight;\n";
+    stream << "            const float left = (child->sizerItemBorderSides & 1) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "            const float top = (child->sizerItemBorderSides & 2) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "            const float right = (child->sizerItemBorderSides & 4) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "            const float bottom = (child->sizerItemBorderSides & 8) != 0 ? static_cast<float>(child->sizerItemBorder) : 0.0f;\n";
+    stream << "            const float mainMinimum = horizontal ? childWidth + left + right : childHeight + top + bottom;\n";
+    stream << "            const float crossMinimum = horizontal ? childHeight + top + bottom : childWidth + left + right;\n";
+    stream << "            slots.push_back({ child, mainMinimum, crossMinimum, mainMinimum });\n";
+    stream << "            minimumMainTotal += mainMinimum;\n";
+    stream << "            totalProportion += std::max(0, child->sizerItemProportion);\n";
+    stream << "        }\n";
+    stream << "        const int integerExtra = std::max(0, static_cast<int>(std::floor(std::max(0.0f, availableMain - minimumMainTotal))));\n";
+    stream << "        int assignedExtra = 0;\n";
+    stream << "        if (totalProportion > 0) {\n";
+    stream << "            for (auto& slot : slots) {\n";
+    stream << "                if (slot.child->sizerItemProportion <= 0) {\n";
+    stream << "                    continue;\n";
+    stream << "                }\n";
+    stream << "                const int share = integerExtra * slot.child->sizerItemProportion / totalProportion;\n";
+    stream << "                slot.assignedMain += static_cast<float>(share);\n";
+    stream << "                assignedExtra += share;\n";
+    stream << "            }\n";
+    stream << "            int remainder = integerExtra - assignedExtra;\n";
+    stream << "            for (auto& slot : slots) {\n";
+    stream << "                if (remainder <= 0) {\n";
+    stream << "                    break;\n";
+    stream << "                }\n";
+    stream << "                if (slot.child->sizerItemProportion > 0) {\n";
+    stream << "                    slot.assignedMain += 1.0f;\n";
+    stream << "                    --remainder;\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "        }\n";
+    stream << "        float cursor = horizontal ? content.x : content.y;\n";
+    stream << "        for (auto& slot : slots) {\n";
+    stream << "            RuntimeWidget& child = *slot.child;\n";
+    stream << "            const float left = (child.sizerItemBorderSides & 1) != 0 ? static_cast<float>(child.sizerItemBorder) : 0.0f;\n";
+    stream << "            const float top = (child.sizerItemBorderSides & 2) != 0 ? static_cast<float>(child.sizerItemBorder) : 0.0f;\n";
+    stream << "            const float right = (child.sizerItemBorderSides & 4) != 0 ? static_cast<float>(child.sizerItemBorder) : 0.0f;\n";
+    stream << "            const float bottom = (child.sizerItemBorderSides & 8) != 0 ? static_cast<float>(child.sizerItemBorder) : 0.0f;\n";
+    stream << "            const float mainBorder = horizontal ? left + right : top + bottom;\n";
+    stream << "            const float crossBorder = horizontal ? top + bottom : left + right;\n";
+    stream << "            const float mainLength = std::max(0.0f, slot.assignedMain - mainBorder);\n";
+    stream << "            const float crossLength = std::max(0.0f, availableCross - crossBorder);\n";
+    stream << "            auto [minimumWidth, minimumHeight] = minimumSize(child, minimumSize);\n";
+    stream << "            minimumWidth = child.sizerItemMinimumWidth >= 0 ? std::max(minimumWidth, static_cast<float>(child.sizerItemMinimumWidth)) : minimumWidth;\n";
+    stream << "            minimumHeight = child.sizerItemMinimumHeight >= 0 ? std::max(minimumHeight, static_cast<float>(child.sizerItemMinimumHeight)) : minimumHeight;\n";
+    stream << "            const float preferredCross = std::min(horizontal ? minimumHeight : minimumWidth, crossLength);\n";
+    stream << "            float finalCrossStart = (horizontal ? content.y + top : content.x + left);\n";
+    stream << "            float finalCrossLength = crossLength;\n";
+    stream << "            if (!child.sizerItemExpand) {\n";
+    stream << "                finalCrossLength = preferredCross;\n";
+    stream << "                const float remainingCross = std::max(0.0f, crossLength - preferredCross);\n";
+    stream << "                if (child.sizerItemAlignment == RuntimeSizerAlignment::Center) {\n";
+    stream << "                    finalCrossStart += std::floor(remainingCross * 0.5f);\n";
+    stream << "                }\n";
+    stream << "                else if (child.sizerItemAlignment == RuntimeSizerAlignment::End) {\n";
+    stream << "                    finalCrossStart += remainingCross;\n";
+    stream << "                }\n";
+    stream << "            }\n";
+    stream << "            if (horizontal) {\n";
+    stream << "                child.bounds = RuntimeRect{ cursor + left, finalCrossStart, mainLength, finalCrossLength };\n";
+    stream << "            }\n";
+    stream << "            else {\n";
+    stream << "                child.bounds = RuntimeRect{ finalCrossStart, cursor + top, finalCrossLength, mainLength };\n";
+    stream << "            }\n";
+    stream << "            if (child.type == RuntimeWidgetType::Sizer) {\n";
+    stream << "                layoutSizerRef(child, layoutSizerRef);\n";
+    stream << "            }\n";
+    stream << "            cursor += slot.assignedMain + static_cast<float>(sizer.sizerGap);\n";
+    stream << "        }\n";
+    stream << "    };\n\n";
+    stream << "    for (auto& widget : runtimeWidgets_) {\n";
+    stream << "        if (widget.type == RuntimeWidgetType::Sizer && (widget.parentId.empty() || findWidgetById(widget.parentId) == nullptr || findWidgetById(widget.parentId)->type != RuntimeWidgetType::Sizer)) {\n";
+    stream << "            layoutSizer(widget, layoutSizer);\n";
+    stream << "        }\n";
+    stream << "    }\n";
     stream << "}\n\n";
     stream << "RuntimeWidget* " << className << "::findWidgetById(const std::string& id)\n";
     stream << "{\n";
@@ -3234,6 +3419,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        canvas.setColor(canvasColor(formTextColor_));\n";
     stream << "        canvas.text(formTitle_, labelFont_, visage::Font::kTopLeft, kFormOffsetX + 10.0f, kFormOffsetY + 4.0f, std::max(0.0f, formBounds_.width - 20.0f), 22.0f);\n";
     stream << "    }\n";
+    stream << "    applyRuntimeSizerLayouts();\n";
     stream << "    for (const auto& widget : runtimeWidgets_) {\n";
     stream << "        if (!isWidgetVisible(widget)) {\n";
     stream << "            continue;\n";

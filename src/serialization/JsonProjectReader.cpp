@@ -2,6 +2,7 @@
 
 #include "serialization/JsonProjectReader.h"
 
+#include "model/BoxSizerLayout.h"
 #include "model/WidgetItemUtils.h"
 #include "utils/FileUtils.h"
 
@@ -264,6 +265,7 @@ bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::str
     model::normalizeItemListProperties(widget);
     model::normalizeTableGridProperties(widget);
     model::normalizeTreeViewProperties(widget);
+    model::normalizeBoxSizerProperties(widget);
 
     const auto childrenIterator = json.find("children");
     widget.children.clear();

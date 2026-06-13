@@ -1,5 +1,6 @@
 #include "model/LayoutEngine.h"
 
+#include "model/BoxSizerLayout.h"
 #include "model/WidgetRegistry.h"
 
 #include <algorithm>
@@ -19,8 +20,6 @@ constexpr float kGroupBoxBottomPadding = 16.0f;
 constexpr float kMinimumClientSize = 20.0f;
 constexpr float kMinimumWidgetSize = 20.0f;
 constexpr float kFloatEpsilon = 0.01f;
-constexpr float kDefaultSizerPadding = 8.0f;
-constexpr float kDefaultSizerGap = 8.0f;
 
 struct AnchorFlags {
     bool left = false;
@@ -153,42 +152,12 @@ void applyDockToDirectChildren(WidgetNode& parent)
         return;
     }
 
-    Rect remaining = LayoutEngine::clientBoundsForParent(parent);
     if (parent.type == WidgetType::Sizer) {
-        if (parent.children.empty()) {
-            return;
-        }
-
-        const bool horizontal = parent.getStringProperty("orientation", "Vertical") == "Horizontal";
-        const float gap = std::clamp(parent.getFloatProperty("gap", kDefaultSizerGap), 0.0f, 64.0f);
-        const float totalGap = gap * static_cast<float>(parent.children.size() - 1);
-        const float availableMain = std::max(0.0f, (horizontal ? remaining.width : remaining.height) - totalGap);
-        const float slotSize = availableMain / static_cast<float>(parent.children.size());
-        float cursor = horizontal ? remaining.x : remaining.y;
-
-        for (auto& child : parent.children) {
-            if (horizontal) {
-                child.bounds = {
-                    cursor,
-                    remaining.y,
-                    std::max(kMinimumWidgetSize, slotSize),
-                    std::max(kMinimumWidgetSize, remaining.height)
-                };
-                cursor += slotSize + gap;
-            }
-            else {
-                child.bounds = {
-                    remaining.x,
-                    cursor,
-                    std::max(kMinimumWidgetSize, remaining.width),
-                    std::max(kMinimumWidgetSize, slotSize)
-                };
-                cursor += slotSize + gap;
-            }
-        }
+        layoutBoxSizerChildren(parent);
         return;
     }
 
+    Rect remaining = LayoutEngine::clientBoundsForParent(parent);
     for (auto& child : parent.children) {
         if (parent.type == WidgetType::TabControl && child.type == WidgetType::TabPage) {
             continue;
@@ -248,7 +217,7 @@ void applyLayoutRecursive(WidgetNode& current, const WidgetNode* previousRoot)
         : LayoutEngine::clientBoundsForParent(current);
     const Rect currentClientBounds = LayoutEngine::clientBoundsForParent(current);
 
-    if (previousCurrent != nullptr && !rectNearlyEqual(previousClientBounds, currentClientBounds)) {
+    if (current.type != WidgetType::Sizer && previousCurrent != nullptr && !rectNearlyEqual(previousClientBounds, currentClientBounds)) {
         for (auto& child : current.children) {
             applyAnchorResizeToChild(child, findDirectChildById(previousCurrent, child.id), previousClientBounds, currentClientBounds);
         }
@@ -284,12 +253,12 @@ Rect LayoutEngine::clientBoundsForParent(const WidgetNode& parent)
     case WidgetType::TabControl:
         return tabPageBoundsForTabControl(parent);
     case WidgetType::Sizer: {
-        const float padding = std::clamp(parent.getFloatProperty("padding", kDefaultSizerPadding), 0.0f, 64.0f);
+        const BoxSizerLayout layout = boxSizerLayoutFor(parent);
         return {
-            padding,
-            padding,
-            std::max(kMinimumClientSize, parent.bounds.width - padding * 2.0f),
-            std::max(kMinimumClientSize, parent.bounds.height - padding * 2.0f)
+            static_cast<float>(layout.paddingLeft),
+            static_cast<float>(layout.paddingTop),
+            std::max(kMinimumClientSize, parent.bounds.width - static_cast<float>(layout.paddingLeft + layout.paddingRight)),
+            std::max(kMinimumClientSize, parent.bounds.height - static_cast<float>(layout.paddingTop + layout.paddingBottom))
         };
     }
     case WidgetType::FormWindow:

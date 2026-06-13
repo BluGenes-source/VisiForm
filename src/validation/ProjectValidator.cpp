@@ -1,5 +1,6 @@
 #include "validation/ProjectValidator.h"
 
+#include "model/BoxSizerLayout.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/PropertyValue.h"
 #include "model/WidgetItemUtils.h"
@@ -14,6 +15,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -310,6 +312,39 @@ bool isKnownDockValue(std::string_view value)
 bool isKnownLayoutModeValue(std::string_view value)
 {
     return value.empty() || model::layoutModeFromString(std::string{ value }).has_value();
+}
+
+bool isKnownSizerAlignmentValue(std::string_view value)
+{
+    return value.empty() || value == "Start" || value == "Center" || value == "End";
+}
+
+bool isKnownSizerBorderSidesValue(std::string_view value)
+{
+    if (value.empty() || value == "None" || value == "All"
+        || value == "Left" || value == "Top" || value == "Right" || value == "Bottom") {
+        return true;
+    }
+
+    std::istringstream stream(std::string{ value });
+    std::string token;
+    bool sawToken = false;
+    while (std::getline(stream, token, '|')) {
+        token = trim(token);
+        if (token.empty()) {
+            return false;
+        }
+        if (token != "Left" && token != "Top" && token != "Right" && token != "Bottom") {
+            return false;
+        }
+        sawToken = true;
+    }
+    return sawToken;
+}
+
+bool isKnownSpacerKindValue(std::string_view value)
+{
+    return value.empty() || value == "Fixed" || value == "Stretch";
 }
 
 bool hasHierarchyCycle(const std::unordered_map<std::string, const model::WidgetNode*>& widgetsById, const model::WidgetNode& widget)
@@ -887,6 +922,14 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                     "orientation");
             }
 
+            if (widget->children.empty()) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SIZER_EMPTY",
+                    "Sizer has no child layout items.",
+                    widget->id,
+                    "children");
+            }
+
             if (const auto padding = propertyNumber(*widget, "padding"); padding.has_value() && (*padding < 0.0 || *padding > 64.0)) {
                 addMessage(report, ValidationSeverity::Warning,
                     "WIDGET_SIZER_PADDING_RANGE",
@@ -902,6 +945,21 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                         "Sizer padding must be a numeric value from 0 to 64.",
                         widget->id,
                         "padding");
+                }
+            }
+
+            for (const auto key : {
+                     model::sizer_properties::kPaddingLeft,
+                     model::sizer_properties::kPaddingTop,
+                     model::sizer_properties::kPaddingRight,
+                     model::sizer_properties::kPaddingBottom }) {
+                const std::string propertyKey{ key };
+                if (const auto padding = propertyNumber(*widget, propertyKey); padding.has_value() && *padding < 0.0) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "WIDGET_SIZER_PADDING_NEGATIVE",
+                        "Sizer padding values must not be negative.",
+                        widget->id,
+                        propertyKey);
                 }
             }
 
@@ -921,6 +979,113 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
                         widget->id,
                         "gap");
                 }
+            }
+
+            const auto minimumSize = model::calculateBoxSizerMinimumSize(*widget);
+            if (widget->bounds.width < minimumSize.width || widget->bounds.height < minimumSize.height) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SIZER_UNDERSIZED",
+                    "Sizer bounds are smaller than the calculated minimum layout size.",
+                    widget->id,
+                    "bounds");
+            }
+        }
+
+        if (actualParent != nullptr && actualParent->type == model::WidgetType::Sizer) {
+            const std::string proportionKey{ model::sizer_properties::kItemProportion };
+            if (const auto proportion = propertyNumber(*widget, proportionKey); proportion.has_value() && *proportion < 0.0) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_SIZER_ITEM_PROPORTION_NEGATIVE",
+                    "Sizer item proportion must not be negative.",
+                    widget->id,
+                    proportionKey);
+            }
+
+            const std::string alignmentKey{ model::sizer_properties::kItemAlignment };
+            const std::string alignment = trim(propertyString(*widget, alignmentKey));
+            if (!isKnownSizerAlignmentValue(alignment)) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_SIZER_ITEM_ALIGNMENT_INVALID",
+                    "Sizer item alignment must be Start, Center, or End.",
+                    widget->id,
+                    alignmentKey);
+            }
+
+            const std::string borderKey{ model::sizer_properties::kItemBorder };
+            if (const auto border = propertyNumber(*widget, borderKey); border.has_value() && *border < 0.0) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_SIZER_ITEM_BORDER_NEGATIVE",
+                    "Sizer item border must not be negative.",
+                    widget->id,
+                    borderKey);
+            }
+
+            const std::string borderSidesKey{ model::sizer_properties::kItemBorderSides };
+            const std::string borderSides = trim(propertyString(*widget, borderSidesKey));
+            if (!isKnownSizerBorderSidesValue(borderSides)) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_SIZER_ITEM_BORDER_SIDES_INVALID",
+                    "Sizer item border sides must be None, All, or a pipe-separated combination of Left, Top, Right, and Bottom.",
+                    widget->id,
+                    borderSidesKey);
+            }
+
+            for (const auto key : {
+                     model::sizer_properties::kItemMinimumWidth,
+                     model::sizer_properties::kItemMinimumHeight }) {
+                const std::string propertyKey{ key };
+                if (const auto minimum = propertyNumber(*widget, propertyKey); minimum.has_value() && *minimum < -1.0) {
+                    addMessage(report, ValidationSeverity::Warning,
+                        "WIDGET_SIZER_ITEM_MINIMUM_INVALID",
+                        "Sizer item minimum override should be -1 for automatic or a nonnegative value.",
+                        widget->id,
+                        propertyKey);
+                }
+            }
+
+            if (propertyBool(*widget, std::string{ model::sizer_properties::kItemExpand }, false)
+                && (alignment == "Center" || alignment == "End")) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SIZER_ITEM_ALIGNMENT_IGNORED",
+                    "Sizer item alignment is ignored while Expand is enabled.",
+                    widget->id,
+                    alignmentKey);
+            }
+
+            if (!dock.empty() && dock != "None") {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SIZER_CHILD_DOCK_IGNORED",
+                    "Dock is ignored because the parent Sizer controls this widget's bounds.",
+                    widget->id,
+                    "dock");
+            }
+            if (!anchor.empty() && anchor != "Top Left") {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SIZER_CHILD_ANCHOR_IGNORED",
+                    "Anchor is ignored because the parent Sizer controls this widget's bounds.",
+                    widget->id,
+                    "anchor");
+            }
+        }
+
+        if (widget->type == model::WidgetType::Spacer) {
+            const std::string spacerKindKey{ model::sizer_properties::kSpacerKind };
+            const std::string spacerKind = trim(propertyString(*widget, spacerKindKey));
+            if (!isKnownSpacerKindValue(spacerKind)) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_SPACER_KIND_INVALID",
+                    "Spacer kind must be Fixed or Stretch.",
+                    widget->id,
+                    spacerKindKey);
+            }
+
+            const std::string spacerSizeKey{ model::sizer_properties::kSpacerSize };
+            if (const auto spacerSize = propertyNumber(*widget, spacerSizeKey); spacerSize.has_value() && *spacerSize < 0.0) {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_SPACER_SIZE_NEGATIVE",
+                    "Spacer size must not be negative.",
+                    widget->id,
+                    spacerSizeKey);
             }
         }
 

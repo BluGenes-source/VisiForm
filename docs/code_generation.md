@@ -277,7 +277,7 @@ Generated runtime type highlights:
 - `RuntimeOrientation` replaces string-based runtime orientation checks
 - `RuntimeColor` replaces plain integer color fields in the generated runtime model
 - `RuntimeWidget` now groups related text, toggle, range, style, event, and interaction state
-- exported runtime widgets also preserve `parentId`, selected-tab state, tab-page metadata, and sizer-laid-out bounds so generated code can keep hierarchy-aware visibility for container children
+- exported runtime widgets also preserve `parentId`, selected-tab state, tab-page metadata, BoxSizer metadata, and preferred sizes so generated code can keep hierarchy-aware visibility and recalculate sizer-managed bounds
 
 ## Hierarchy-aware export behavior
 
@@ -288,6 +288,8 @@ Current hierarchy export behavior:
 - `TabControl` export preserves `tabs`, `selectedTab`, and child `tabIndex`
 - generated hit testing and drawing skip children on non-selected tab pages
 - `GroupBox`, `Panel`, `Sizer`, and `TabControl` now export as concrete runtime widget types instead of falling back to `Unknown`
+- generated `Sizer` runtime support recalculates direct child bounds for orientation, side padding, gap, proportion, expand, alignment, borders, minimum overrides, nested sizers, fixed spacers, and stretch spacers
+- generated `Spacer` widgets participate in layout but are not drawn as visible runtime controls
 - generated export scripts and Debug / Release preset names remain unchanged in this phase
 
 Current repair-pass note:

@@ -1,7 +1,1 @@
-Group Box needs corner fix.  Make sure that drawing routines for the corner radius is used by all widgets that draw a box.  Scope this to the base classif possible so it is inherited behavoir.
-
-The project tree needs to have thetext formatting fix.
-
-The main app needs to able to use sizer panels like in wxWidgets.  Add a new widget called a sizer for this.  It may result that a project may have to require at list one sizer, I am thinking, but, I could be wrong.
-
-Generate a new plan for this and a copilot prompt, or, if you can make these changes, then make these changes.
+Explain the function as it is coded now how the sizer is supposed to work.  I am seeing behavior, but, not sure if needs to be corrected.  For example, adding a button to the sizer, you are unable to resize it with the mouse.   There needs to be a way to change the size f the widgest within the sizer.

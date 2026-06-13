@@ -4,6 +4,24 @@
 
 `VisiForm` also supports a basic multi-select foundation for layout operations.
 
+## BoxSizer layout
+
+`Sizer` is a nonvisual layout manager. It can arrange direct children vertically or horizontally and can contain normal widgets, nested sizers, fixed spacers, and stretch spacers.
+
+Current BoxSizer behavior:
+
+- `orientation` chooses the main axis: `Vertical` top-to-bottom or `Horizontal` left-to-right
+- `paddingLeft`, `paddingTop`, `paddingRight`, and `paddingBottom` inset the complete child collection
+- legacy uniform `padding` still loads and is migrated to side padding when side values are absent
+- `gap` adds space between participating children
+- direct children use `sizerItem.proportion` for weighted main-axis growth
+- direct children use `sizerItem.expand` and `sizerItem.alignment` for cross-axis placement
+- `sizerItem.border` and `sizerItem.borderSides` add per-child margin
+- `sizerItem.minimumWidth` and `sizerItem.minimumHeight` can override automatic minimum size with `-1` meaning automatic
+- `sizerItem.shown=false` removes a child from layout participation
+
+Sizer-managed children keep their dormant absolute bounds, but position, size, Dock, and Anchor do not control their final bounds while their direct parent is a `Sizer`.
+
 ## Box select
 
 You can drag a marquee rectangle across the designer canvas to select widgets.

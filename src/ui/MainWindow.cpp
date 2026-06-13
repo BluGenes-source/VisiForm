@@ -2728,6 +2728,19 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
                 }
             }
         }
+
+        const auto* originalParent = document_.findWidgetById(canvasInteraction_.originalParentId);
+        if (originalParent != nullptr && originalParent->type == model::WidgetType::Sizer) {
+            const bool reparenting = !canvasInteraction_.dropTargetWidgetId.empty()
+                && canvasInteraction_.dropTargetWidgetId != canvasInteraction_.originalParentId;
+            if (!reparenting) {
+                updatedBounds = canvasInteraction_.originalBounds;
+                setOperationStatus("Position and size are controlled by the parent Sizer.");
+            }
+            else {
+                canvasInteraction_.changed = true;
+            }
+        }
     }
     else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize) {
         canvasInteraction_.smartGuides.clear();

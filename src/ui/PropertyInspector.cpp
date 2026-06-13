@@ -2,6 +2,7 @@
 
 #include "ui/PropertyInspector.h"
 
+#include "model/BoxSizerLayout.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
 #include "model/WidgetRegistry.h"
@@ -593,6 +594,8 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     rows.push_back({ "id", "Id", "Stable widget id used by the editor and generated code.", selectedWidget->id, PropertyEditKind::ReadOnly });
     rows.push_back({ "type", "Type", "Registered widget type used for preview and export.", selectedWidget->typeName(), PropertyEditKind::ReadOnly });
     rows.push_back({ "name", "Name", "Readable widget name used by the editor and generated helpers.", selectedWidget->name, PropertyEditKind::Text });
+    const model::WidgetNode* selectedParent = document.findParentOf(selectedWidget->id);
+    const bool parentControlsSizerLayout = selectedParent != nullptr && selectedParent->type == model::WidgetType::Sizer;
     if (selectedWidget->type == model::WidgetType::FormWindow) {
         rows.push_back({ "projectName", "Project Name", "Project display name used by the editor and export.", document.projectName, PropertyEditKind::Text });
         rows.push_back({ "executableName", "Executable Name", "Executable target name used for generated builds.", document.executableName, PropertyEditKind::Text });
@@ -605,10 +608,41 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         rows.push_back({ "visageGitRepository", "Visage Git Repository", "Fallback Git repository used when no local Visage source is configured.", settings.visageGitRepository, PropertyEditKind::Text });
         rows.push_back({ "visageGitTag", "Visage Git Tag", "Fallback Git tag or branch used when no local Visage source is configured.", settings.visageGitTag, PropertyEditKind::Text });
     }
-    rows.push_back({ "x", "X", "Widget left position relative to the current parent container.", formatFloat(selectedWidget->bounds.x), PropertyEditKind::Float });
-    rows.push_back({ "y", "Y", "Widget top position relative to the current parent container.", formatFloat(selectedWidget->bounds.y), PropertyEditKind::Float });
-    rows.push_back({ "width", "Width", "Widget width in form coordinates.", formatFloat(selectedWidget->bounds.width), PropertyEditKind::Float });
-    rows.push_back({ "height", "Height", "Widget height in form coordinates.", formatFloat(selectedWidget->bounds.height), PropertyEditKind::Float });
+    const PropertyEditKind boundsEditKind = parentControlsSizerLayout ? PropertyEditKind::ReadOnly : PropertyEditKind::Float;
+    const std::string boundsHint = parentControlsSizerLayout
+        ? "Position and size are controlled by the parent Sizer."
+        : "Widget geometry relative to the current parent container.";
+    rows.push_back({ "x", "X", boundsHint, formatFloat(selectedWidget->bounds.x), boundsEditKind });
+    rows.push_back({ "y", "Y", boundsHint, formatFloat(selectedWidget->bounds.y), boundsEditKind });
+    rows.push_back({ "width", "Width", boundsHint, formatFloat(selectedWidget->bounds.width), boundsEditKind });
+    rows.push_back({ "height", "Height", boundsHint, formatFloat(selectedWidget->bounds.height), boundsEditKind });
+
+    if (selectedWidget->type == model::WidgetType::Sizer) {
+        const model::BoxSizerLayout layout = model::boxSizerLayoutFor(*selectedWidget);
+        rows.push_back({ "__section_sizer", "Sizer", {}, {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({ std::string(model::sizer_properties::kOrientation), "Orientation", "Sizer main-axis direction.", model::toString(layout.orientation), PropertyEditKind::Choice, false,
+            { makeChoice("Vertical"), makeChoice("Horizontal") } });
+        rows.push_back({ std::string(model::sizer_properties::kPaddingLeft), "Padding Left", "Left inset around child widgets.", std::to_string(layout.paddingLeft), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kPaddingTop), "Padding Top", "Top inset around child widgets.", std::to_string(layout.paddingTop), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kPaddingRight), "Padding Right", "Right inset around child widgets.", std::to_string(layout.paddingRight), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kPaddingBottom), "Padding Bottom", "Bottom inset around child widgets.", std::to_string(layout.paddingBottom), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kGap), "Gap", "Spacing between participating child widgets.", std::to_string(layout.gap), PropertyEditKind::Integer });
+    }
+
+    if (parentControlsSizerLayout) {
+        const model::SizerItemLayout layout = model::sizerItemLayoutFor(*selectedWidget);
+        rows.push_back({ "__section_sizer_item", "Sizer Item", {}, {}, PropertyEditKind::ReadOnly, true });
+        rows.push_back({ std::string(model::sizer_properties::kItemProportion), "Proportion", "Relative main-axis growth weight inside the parent Sizer.", std::to_string(layout.proportion), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kItemExpand), "Expand", "Fill the cross axis inside the parent Sizer slot.", layout.expand ? "true" : "false", PropertyEditKind::Bool });
+        rows.push_back({ std::string(model::sizer_properties::kItemAlignment), "Alignment", "Cross-axis alignment when Expand is false.", model::toString(layout.alignment), PropertyEditKind::Choice, false,
+            { makeChoice("Start"), makeChoice("Center"), makeChoice("End") } });
+        rows.push_back({ std::string(model::sizer_properties::kItemBorder), "Border", "Margin amount applied to enabled border sides.", std::to_string(layout.border), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kItemBorderSides), "Border Sides", "Enabled border sides: None, All, or Left|Top|Right|Bottom.", model::toString(layout.borderSides), PropertyEditKind::Choice, false,
+            { makeChoice("None"), makeChoice("Left"), makeChoice("Top"), makeChoice("Right"), makeChoice("Bottom"), makeChoice("All") } });
+        rows.push_back({ std::string(model::sizer_properties::kItemMinimumWidth), "Minimum Width", "Minimum width override, or -1 for automatic.", std::to_string(layout.minimumWidth), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kItemMinimumHeight), "Minimum Height", "Minimum height override, or -1 for automatic.", std::to_string(layout.minimumHeight), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kItemShown), "Shown", "Whether this child participates in the parent Sizer layout.", layout.shown ? "true" : "false", PropertyEditKind::Bool });
+    }
 
     if (selectedWidget->type == model::WidgetType::GroupBox) {
         rows.push_back({ "__section_children", "Children", {}, {}, PropertyEditKind::ReadOnly, true });
@@ -812,6 +846,9 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     for (const auto& row : rows) {
         drawnKeys.insert(row.key);
     }
+    if (selectedWidget->type == model::WidgetType::Sizer) {
+        drawnKeys.insert(std::string{ model::sizer_properties::kLegacyPadding });
+    }
     if (selectedWidget->type == model::WidgetType::FormWindow) {
         drawnKeys.insert("title");
     }
@@ -1004,12 +1041,26 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             }
             PropertyEditKind rowEditKind = editKindForDefinition(property);
             std::string rowHint = resolvedPropertyHint(property.hint, property.key);
+            if (parentControlsSizerLayout && property.key == "dock") {
+                rowEditKind = PropertyEditKind::ReadOnly;
+                if (!rowHint.empty()) {
+                    rowHint += " ";
+                }
+                rowHint += "Position and size are controlled by the parent Sizer.";
+            }
             if (property.key == "anchor" && selectedWidget->dockMode() != model::DockMode::None) {
                 rowEditKind = PropertyEditKind::ReadOnly;
                 if (!rowHint.empty()) {
                     rowHint += " ";
                 }
                 rowHint += "Ignored while Dock is not None.";
+            }
+            if (parentControlsSizerLayout && property.key == "anchor") {
+                rowEditKind = PropertyEditKind::ReadOnly;
+                if (!rowHint.empty()) {
+                    rowHint += " ";
+                }
+                rowHint += "Position and size are controlled by the parent Sizer.";
             }
             rows.push_back({
                 property.key,

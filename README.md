@@ -52,7 +52,7 @@ Current major features include:
 - Image resource binding and preview support
 - StatusBar insertion with default bottom docking in the editor
 - Basic dock and anchor layout behavior for root form, `GroupBox`, and `TabPage` parents in the editor
-- Optional `Sizer` container support with `Vertical` and `Horizontal` child layout, `padding`, and `gap` properties
+- Optional BoxSizer-style `Sizer` support with vertical/horizontal child layout, side padding, gap, per-child proportion, expand, alignment, borders, minimum overrides, nested sizers, and fixed/stretch spacers
 - `TreeView` widget support with visual node editing in the editor
 - Shared rounded-corner boxed-widget rendering for `GroupBox`, `Panel`, `TextBox`, `ComboBox`, `ListBox`, `TreeView`, and `ProgressBar` previews
 - `Project Tree` rows render widget name as primary text and widget type as secondary text

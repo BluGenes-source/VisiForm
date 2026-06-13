@@ -1,6 +1,7 @@
 #include "model/WidgetRegistry.h"
 #include "model/WidgetRegistry.h"
 
+#include "model/BoxSizerLayout.h"
 #include "model/WidgetItemUtils.h"
 
 #include <algorithm>
@@ -332,6 +333,10 @@ WidgetDefinition makeSizerDefinition()
     definition.properties = {
         { "orientation", "Orientation", "Vertical", PropertyEditKind::Text, true, "Sizer direction.", { "Vertical", "Horizontal" } },
         { "padding", "Padding", 8.0f, PropertyEditKind::Slider, true, "Inset around child widgets.", {}, 0.0f, 64.0f, 1.0f },
+        { "paddingLeft", "Padding Left", 8, PropertyEditKind::Integer, true, "Left inset around child widgets." },
+        { "paddingTop", "Padding Top", 8, PropertyEditKind::Integer, true, "Top inset around child widgets." },
+        { "paddingRight", "Padding Right", 8, PropertyEditKind::Integer, true, "Right inset around child widgets." },
+        { "paddingBottom", "Padding Bottom", 8, PropertyEditKind::Integer, true, "Bottom inset around child widgets." },
         { "gap", "Gap", 8.0f, PropertyEditKind::Slider, true, "Spacing between child widgets.", {}, 0.0f, 64.0f, 1.0f },
         { "backgroundColor", "Background Color", "", PropertyEditKind::Color, true, "Optional sizer background override." },
         { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
@@ -747,6 +752,8 @@ WidgetDefinition makeSpacerDefinition()
     definition.defaultHint = "Adds spacing between widgets.";
     definition.size = { 180.0f, 50.0f, 40.0f, 30.0f };
     definition.properties = {
+        { "spacer.kind", "Spacer Kind", "Fixed", PropertyEditKind::Text, true, "Spacer behavior inside a Sizer.", { "Fixed", "Stretch" } },
+        { "spacer.size", "Fixed Size", 24, PropertyEditKind::Integer, true, "Fixed spacer size along the parent Sizer main axis." },
         { "hint", "hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
     };
     appendProperties(definition.properties, commonChildLayoutProperties());
@@ -858,6 +865,7 @@ WidgetNode WidgetRegistry::createDefaultWidget(WidgetType type, const std::strin
         normalizeItemListProperties(widget);
         normalizeTableGridProperties(widget);
         normalizeTreeViewProperties(widget);
+        normalizeBoxSizerProperties(widget);
         widget.syncHierarchyMetadata();
         return widget;
     }
