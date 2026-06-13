@@ -1,5 +1,6 @@
 #include "ui/ProjectTree.h"
 
+#include "ui/WidgetMetrics.h"
 #include "utils/FileUtils.h"
 
 #include <algorithm>
@@ -30,6 +31,7 @@ struct TreeEntry {
     Kind kind = Kind::Widget;
     std::string widgetId;
     std::string label;
+    std::string typeLabel;
     std::size_t recentIndex = 0;
     int depth = 0;
     float height = kRowHeight;
@@ -58,7 +60,7 @@ void appendRows(const model::WidgetNode& widget, int depth, std::vector<TreeEntr
     const std::string typeLabel = widget.type == model::WidgetType::TabPage
         ? widget.typeName() + ": " + widget.tabTitle()
         : widget.typeName();
-    rows.push_back({ TreeEntry::Kind::Widget, widget.id, displayName + " [" + typeLabel + "]", 0, depth, kRowHeight });
+    rows.push_back({ TreeEntry::Kind::Widget, widget.id, displayName, typeLabel, 0, depth, kRowHeight });
     for (const auto& child : widget.children) {
         appendRows(child, depth + 1, rows);
     }
@@ -69,9 +71,9 @@ std::vector<TreeEntry> buildEntries(const model::ProjectDocument& document, cons
     std::vector<TreeEntry> entries;
     appendRows(document.root, 0, entries);
     if (!recentFiles.empty()) {
-        entries.push_back({ TreeEntry::Kind::Section, {}, "Recent Files", 0, 0, kSectionSpacing + kSectionHeaderHeight });
+        entries.push_back({ TreeEntry::Kind::Section, {}, "Recent Files", {}, 0, 0, kSectionSpacing + kSectionHeaderHeight });
         for (std::size_t index = 0; index < recentFiles.size(); ++index) {
-            entries.push_back({ TreeEntry::Kind::RecentFile, {}, {}, index, 0, kRowHeight });
+            entries.push_back({ TreeEntry::Kind::RecentFile, {}, {}, {}, index, 0, kRowHeight });
         }
     }
     return entries;
@@ -382,9 +384,17 @@ void ProjectTree::drawPanel(visage::Canvas& canvas, const visage::Font& font, bo
             canvas.fill(bounds.x, rowTop, bounds.width, layout.entry.height - 2.0f);
             if (drawText) {
                 canvas.setColor(isPrimarySelected ? 0xfff8fbff : (isSecondarySelected ? 0xffd9ebff : 0xffdde2ea));
+                const float textX = bounds.x + 8.0f + layout.entry.depth * 16.0f;
+                const float availableWidth = std::max(0.0f, bounds.width - 20.0f - layout.entry.depth * 16.0f);
+                const float nameWidth = std::min(estimateDesignerTextWidth(layout.entry.label, 14.0f), availableWidth * 0.62f);
                 canvas.text(layout.entry.label, font, visage::Font::kTopLeft,
-                    bounds.x + 8.0f + layout.entry.depth * 16.0f, rowTop + 4.0f,
-                    bounds.width - 20.0f - layout.entry.depth * 16.0f, layout.entry.height - 6.0f);
+                    textX, rowTop + 4.0f, nameWidth, layout.entry.height - 6.0f);
+                const float typeX = textX + nameWidth + 8.0f;
+                if (typeX < bounds.x + bounds.width - 8.0f) {
+                    canvas.setColor(isPrimarySelected ? 0xffc6d7ee : (isSecondarySelected ? 0xffa8c4e8 : 0xff96a0af));
+                    canvas.text(layout.entry.typeLabel, font, visage::Font::kTopLeft,
+                        typeX, rowTop + 4.0f, std::max(0.0f, bounds.x + bounds.width - typeX - 8.0f), layout.entry.height - 6.0f);
+                }
             }
             break;
         }

@@ -43,24 +43,25 @@ Current palette-visible widget order:
 1. `Frame`
 2. `GroupBox`
 3. `Panel`
-4. `TabControl`
-5. `Label`
-6. `Button`
-7. `TextBox`
-8. `CheckBox`
-9. `RadioButton`
-10. `ComboBox`
-11. `ListBox`
-12. `TreeView`
-13. `TableGrid`
-14. `Slider`
-15. `ScrollBar`
-16. `ProgressBar`
-17. `StatusBar`
-18. `Image`
-19. `ColorPicker`
-20. `ModalDialog`
-21. `Spacer`
+4. `Sizer`
+5. `TabControl`
+6. `Label`
+7. `Button`
+8. `TextBox`
+9. `CheckBox`
+10. `RadioButton`
+11. `ComboBox`
+12. `ListBox`
+13. `TreeView`
+14. `TableGrid`
+15. `Slider`
+16. `ScrollBar`
+17. `ProgressBar`
+18. `StatusBar`
+19. `Image`
+20. `ColorPicker`
+21. `ModalDialog`
+22. `Spacer`
 
 `FormWindow` and `TabPage` remain registered but are intentionally hidden from the palette.
 
@@ -91,6 +92,8 @@ Most widgets now expose common style override properties through the registry:
 - `fontSize`
 
 Empty override values inherit from the project-level look and feel.
+
+`Sizer` also stores `orientation`, `padding`, and `gap` to drive its box-sizer layout.
 
 ## Event signatures and suggestions
 

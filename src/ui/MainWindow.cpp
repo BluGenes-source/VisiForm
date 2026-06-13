@@ -714,6 +714,8 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
         return "groupBox" + suffix;
     case model::WidgetType::Panel:
         return "panel" + suffix;
+    case model::WidgetType::Sizer:
+        return "sizer" + suffix;
     case model::WidgetType::TabControl:
         return "tabControl" + suffix;
     case model::WidgetType::StatusBar:
@@ -760,6 +762,7 @@ bool isRepairPassParentTarget(const model::WidgetNode& widget)
 {
     return widget.type == model::WidgetType::FormWindow
         || widget.type == model::WidgetType::GroupBox
+        || widget.type == model::WidgetType::Sizer
         || widget.type == model::WidgetType::TabPage;
 }
 
@@ -779,6 +782,12 @@ std::string insertionParentIdForNewWidget(const model::ProjectDocument& document
     if (type != model::WidgetType::GroupBox && type != model::WidgetType::TabPage) {
         if (const auto* groupBox = nearestAncestorOfType(document, selectedWidget, model::WidgetType::GroupBox)) {
             return groupBox->id;
+        }
+        if (selectedWidget->type == model::WidgetType::Sizer) {
+            return selectedWidget->id;
+        }
+        if (const auto* sizer = nearestAncestorOfType(document, selectedWidget, model::WidgetType::Sizer)) {
+            return sizer->id;
         }
     }
 
@@ -3625,6 +3634,7 @@ bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const 
     case model::WidgetType::ScrollBar:
     case model::WidgetType::Image:
     case model::WidgetType::Spacer:
+    case model::WidgetType::Sizer:
     case model::WidgetType::FormWindow:
         return false;
     }
@@ -3665,6 +3675,7 @@ void MainWindow::fitSelectedWidgetToText()
     case model::WidgetType::ScrollBar:
     case model::WidgetType::Image:
     case model::WidgetType::Spacer:
+    case model::WidgetType::Sizer:
     case model::WidgetType::FormWindow:
         setOperationStatus("Fit text not supported for selected widget");
         redraw();
@@ -5390,6 +5401,7 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
 
     Menu insertMenu{ "Insert" };
     addWidgetItem(insertMenu, "insert-frame", "Frame", model::WidgetType::Frame);
+    addWidgetItem(insertMenu, "insert-sizer", "Sizer", model::WidgetType::Sizer);
     addWidgetItem(insertMenu, "insert-label", "Label", model::WidgetType::Label);
     addWidgetItem(insertMenu, "insert-button", "Button", model::WidgetType::Button);
     addWidgetItem(insertMenu, "insert-text-box", "Text Box", model::WidgetType::TextBox);

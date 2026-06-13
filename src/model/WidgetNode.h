@@ -20,6 +20,7 @@ enum class WidgetType {
     Frame,
     GroupBox,
     Panel,
+    Sizer,
     TabControl,
     TabPage,
     MenuBar,

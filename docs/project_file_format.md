@@ -297,7 +297,8 @@ Common hierarchy-related widget properties now include:
 
 Container-specific notes:
 
-- `FormWindow`, `Frame`, `GroupBox`, `Panel`, and `TabControl` can contain `children`
+- `FormWindow`, `Frame`, `GroupBox`, `Panel`, `Sizer`, and `TabControl` can contain `children`
+- `Sizer` stores `orientation`, `padding`, and `gap` in `properties`; it is optional and existing projects do not require one
 - `TabControl` also stores `tabs` and `selectedTab` in `properties`
 - hierarchy is persisted through both the nested `children` arrays and the explicit `parentId` / `zOrder` metadata
 

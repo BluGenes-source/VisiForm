@@ -52,7 +52,10 @@ Current major features include:
 - Image resource binding and preview support
 - StatusBar insertion with default bottom docking in the editor
 - Basic dock and anchor layout behavior for root form, `GroupBox`, and `TabPage` parents in the editor
+- Optional `Sizer` container support with `Vertical` and `Horizontal` child layout, `padding`, and `gap` properties
 - `TreeView` widget support with visual node editing in the editor
+- Shared rounded-corner boxed-widget rendering for `GroupBox`, `Panel`, `TextBox`, `ComboBox`, `ListBox`, `TreeView`, and `ProgressBar` previews
+- `Project Tree` rows render widget name as primary text and widget type as secondary text
 - Save/load `.vfb.json`
 - Export generated C++ projects
 - Interactive generated widgets
@@ -74,7 +77,7 @@ Supported editor layout behavior:
 - `Dock`: `None`, `Top`, `Bottom`, `Left`, `Right`, `Fill`
 - readable `Anchor` presets in the Property Inspector
 - automatic relayout when supported parents resize
-- parent-relative child layout inside the root form, `GroupBox`, and `TabPage`
+- parent-relative child layout inside the root form, `GroupBox`, `TabPage`, and `Sizer`
 - `StatusBar` defaults to `Dock = Bottom` and fills parent width in the editor
 
 Current scope notes:

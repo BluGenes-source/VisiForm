@@ -78,6 +78,8 @@ Current property validation includes:
 - `dock` must be empty, `None`, `Bottom`, `Top`, `Left`, `Right`, or `Fill`
 - `layoutMode` must be empty, `Absolute`, `Horizontal`, `Vertical`, `Grid`, or `TabPage`
 - `layoutMode` on non-container widgets is reported as a warning because it is unused
+- `Sizer.orientation` must be `Vertical` or `Horizontal`
+- `Sizer.padding` and `Sizer.gap` should be numeric values in the supported `0..64` range
 - widget `lookAndFeelId` values must be empty or match a known preset
 - `fontSize` range warnings outside `8..72`
 - `borderThickness` range warnings outside `1..25`

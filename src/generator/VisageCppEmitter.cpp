@@ -336,7 +336,11 @@ ResolvedWidgetStyle resolveWidgetStyle(const visiform::model::ProjectDocument& d
     style.cornerRadius = std::clamp(widget.getFloatProperty("cornerRadius", style.cornerRadius), 0.0f, 50.0f);
     style.fontSize = std::clamp(widget.getFloatProperty("fontSize", style.fontSize), 8.0f, 72.0f);
 
-    if (widget.type == visiform::model::WidgetType::FormWindow || widget.type == visiform::model::WidgetType::Frame) {
+    if (widget.type == visiform::model::WidgetType::FormWindow
+        || widget.type == visiform::model::WidgetType::Frame
+        || widget.type == visiform::model::WidgetType::GroupBox
+        || widget.type == visiform::model::WidgetType::Panel
+        || widget.type == visiform::model::WidgetType::Sizer) {
         const std::string backgroundOverride = widget.getStringProperty("backgroundColor", {});
         if (!backgroundOverride.empty()) {
             style.fillColor = backgroundOverride;
@@ -451,6 +455,9 @@ std::vector<std::string> relevantEventKeys(visiform::model::WidgetType type)
         return { "onAccepted", "onCancelled" };
     case visiform::model::WidgetType::Label:
     case visiform::model::WidgetType::Frame:
+    case visiform::model::WidgetType::GroupBox:
+    case visiform::model::WidgetType::Panel:
+    case visiform::model::WidgetType::Sizer:
     case visiform::model::WidgetType::Image:
     case visiform::model::WidgetType::Spacer:
         return {};
@@ -813,6 +820,15 @@ void emitWidgetDraw(std::ostringstream& stream,
     const std::string widthExpr = emitFloat(widget.bounds.width);
     const std::string heightExpr = emitFloat(widget.bounds.height);
     const ResolvedWidgetStyle style = resolveWidgetStyle(document, widget);
+    const std::string panelRuntimeColor = emitRuntimeColorLiteral(style.panelColor, "makeColor(0x2B, 0x31, 0x3D)");
+    const std::string fillRuntimeColor = emitRuntimeColorLiteral(style.fillColor, "makeColor(0x2B, 0x31, 0x3D)");
+    const std::string formFillRuntimeColor = emitRuntimeColorLiteral(style.fillColor, "makeColor(0x1F, 0x24, 0x2D)");
+    const std::string whiteFillRuntimeColor = emitRuntimeColorLiteral(style.fillColor, "makeColor(0xFF, 0xFF, 0xFF)");
+    const std::string lightFillRuntimeColor = emitRuntimeColorLiteral(style.fillColor, "makeColor(0xEE, 0xF2, 0xF7)");
+    const std::string disabledFillRuntimeColor = emitRuntimeColorLiteral(style.fillColor, "makeColor(0xD3, 0xDA, 0xE6)");
+    const std::string scrollbarFillRuntimeColor = emitRuntimeColorLiteral(style.fillColor, "makeColor(0xD7, 0xDE, 0xE8)");
+    const std::string borderRuntimeColor = emitRuntimeColorLiteral(style.borderColor, "makeColor(0x97, 0xA3, 0xB7)");
+    const std::string subduedBorderRuntimeColor = emitRuntimeColorLiteral(style.borderColor, "makeColor(0x6C, 0x77, 0x88)");
     emitEventComments(stream, indent, widget);
     const std::string widgetHint = widget.getStringProperty("hint", {});
     if (!widgetHint.empty()) {
@@ -821,11 +837,9 @@ void emitWidgetDraw(std::ostringstream& stream,
 
     switch (widget.type) {
     case visiform::model::WidgetType::FormWindow:
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff1F242D") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << formFillRuntimeColor << ", " << subduedBorderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "canvas.setColor(" << emitColorExpression(style.panelColor, "0xff2B313D") << ");\n";
         stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", 28.0f);\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff6C7788") << ", " << emitFloat(style.borderThickness) << ");\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
         stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget)))
@@ -833,14 +847,34 @@ void emitWidgetDraw(std::ostringstream& stream,
         stream << indent << "}\n";
         break;
     case visiform::model::WidgetType::Frame:
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << fillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
         stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget)))
                << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 8.0f, " << yExpr << " + 6.0f, " << widthExpr << " - 16.0f, 20.0f);\n";
         stream << indent << "}\n";
+        break;
+    case visiform::model::WidgetType::GroupBox:
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << " + 10.0f, " << widthExpr << ", std::max(0.0f, " << heightExpr << " - 10.0f), " << fillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
+        stream << indent << "if (drawText) {\n";
+        stream << indent << "    canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
+        stream << indent << "    canvas.fill(" << xExpr << " + 12.0f, " << yExpr << ", 96.0f, 20.0f);\n";
+        stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
+        stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget)))
+               << ", labelFont_, visage::Font::kTopLeft, " << xExpr << " + 18.0f, " << yExpr << " + 1.0f, " << widthExpr << " - 28.0f, 18.0f);\n";
+        stream << indent << "}\n";
+        break;
+    case visiform::model::WidgetType::Panel:
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << fillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
+        break;
+    case visiform::model::WidgetType::Sizer:
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << fillRuntimeColor << ", blendColor(" << borderRuntimeColor << ", " << fillRuntimeColor << ", 0.25f), " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
+        if (widget.children.empty()) {
+            stream << indent << "if (drawText) {\n";
+            stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
+            stream << indent << "    canvas.text(\"Sizer\", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
+            stream << indent << "}\n";
+        }
         break;
     case visiform::model::WidgetType::Label:
         stream << indent << "if (drawText) {\n";
@@ -854,11 +888,9 @@ void emitWidgetDraw(std::ostringstream& stream,
         const bool pressedState = widget.getBoolProperty("toggleMode", false) && widget.getBoolProperty("checked", false);
         const std::string normalText = widget.getStringProperty("normalText", widget.getStringProperty("text", widgetLabel(widget)));
         const std::string pressedText = widget.getStringProperty("pressedText", normalText);
-        const std::string normalFillColor = emitColorExpression(widget.getStringProperty("normalFillColor", {}), emitColorExpression(style.fillColor, "0xff2B313D"));
-        const std::string pressedFillColor = emitColorExpression(widget.getStringProperty("pressedFillColor", {}), emitColorExpression(style.accentColor, normalFillColor));
-        stream << indent << "canvas.setColor(" << (pressedState ? pressedFillColor : normalFillColor) << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        const std::string normalFillColor = emitRuntimeColorLiteral(widget.getStringProperty("normalFillColor", {}), fillRuntimeColor);
+        const std::string pressedFillColor = emitRuntimeColorLiteral(widget.getStringProperty("pressedFillColor", {}), emitRuntimeColorLiteral(style.accentColor, normalFillColor));
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << (pressedState ? pressedFillColor : normalFillColor) << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
         stream << indent << "    canvas.text(" << emitStringLiteral(pressedState ? pressedText : normalText)
@@ -867,9 +899,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         break;
     }
     case visiform::model::WidgetType::TextBox:
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xffFFFFFF") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << whiteFillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
         stream << indent << "    canvas.text(" << emitStringLiteral(widget.getStringProperty("text", ""))
@@ -925,9 +955,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         const float pageSize = std::max(1.0f, widget.getFloatProperty("pageSize", 10.0f));
         const float normalized = std::clamp((currentValue - minValue) / (maxValue - minValue), 0.0f, 1.0f);
         const float thumbFactor = std::clamp(pageSize / (maxValue - minValue + pageSize), 0.18f, 0.55f);
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xffD7DEE8") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << scrollbarFillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         if (vertical) {
             stream << indent << "const float arrowSize = std::min(" << widthExpr << ", 20.0f);\n";
             stream << indent << "const float trackTop = " << yExpr << " + arrowSize;\n";
@@ -969,9 +997,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         const std::string selectedIndexKey = std::string(visiform::model::selectedItemIndexPropertyKey(widget.type));
         const int selectedIndex = visiform::model::sanitizeSelectedIndex(items,
             widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.panelColor, "0xff2B313D") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << panelRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         float itemOffset = 6.0f;
         for (std::size_t index = 0; index < items.size(); ++index) {
             const float itemWidth = std::max(56.0f, static_cast<float>(items[index].size()) * 11.2f + 36.0f);
@@ -1000,9 +1026,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         const std::string selectedIndexKey = std::string(visiform::model::selectedItemIndexPropertyKey(widget.type));
         const int selectedIndex = visiform::model::sanitizeSelectedIndex(items,
             widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.panelColor, "0xff2B313D") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << panelRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         float itemOffset = 6.0f;
         for (std::size_t index = 0; index < items.size(); ++index) {
             const float itemWidth = std::max(64.0f, static_cast<float>(items[index].size()) * 11.2f + 42.0f);
@@ -1027,9 +1051,7 @@ void emitWidgetDraw(std::ostringstream& stream,
     }
     case visiform::model::WidgetType::StatusBar: {
         const int fields = std::clamp(widget.getIntProperty("fields", 1), 1, 4);
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff6C7788") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << fillRuntimeColor << ", " << subduedBorderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    const float fieldWidth = " << widthExpr << " / " << fields << ".0f;\n";
         for (int index = 0; index < fields; ++index) {
@@ -1051,9 +1073,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         const float currentValue = std::clamp(widget.getFloatProperty("value", 25.0f), minValue, maxValue);
         const float normalized = std::clamp((currentValue - minValue) / (maxValue - minValue), 0.0f, 1.0f);
         const std::string displayText = progressBarDisplayText(widget);
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xffEEF2F7") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << lightFillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "canvas.setColor(" << emitColorExpression(style.accentColor, "0xff2D7FF9") << ");\n";
         stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << " * " << emitFloat(normalized) << ", " << heightExpr << ");\n";
         if (!displayText.empty()) {
@@ -1068,9 +1088,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         const std::string label = widget.getBoolProperty("showText", true)
             ? displayTextOrFallback(widget, "text", "Color") + "  " + value
             : value;
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << fillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "canvas.setColor(" << emitColorExpression(value, emitColorExpression(style.accentColor, "0xff2D7FF9")) << ");\n";
         stream << indent << "canvas.fill(" << xExpr << " + 6.0f, " << yExpr << " + 6.0f, 22.0f, " << heightExpr << " - 12.0f);\n";
         stream << indent << "drawBorder(canvas, " << xExpr << " + 6.0f, " << yExpr << " + 6.0f, 22.0f, " << heightExpr << " - 12.0f, " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
@@ -1082,9 +1100,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         break;
     }
     case visiform::model::WidgetType::Image:
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xffD3DAE6") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << disabledFillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "// Image resource: " << escapeCppStringLiteral(imageWidgetDisplaySource(document, widget)) << "\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
@@ -1093,9 +1109,7 @@ void emitWidgetDraw(std::ostringstream& stream,
         stream << indent << "}\n";
         break;
     case visiform::model::WidgetType::Spacer:
-        stream << indent << "canvas.setColor(" << emitColorExpression(style.fillColor, "0xff2B313D") << ");\n";
-        stream << indent << "canvas.fill(" << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
-        stream << indent << "drawBorder(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << emitColorExpression(style.borderColor, "0xff97A3B7") << ", " << emitFloat(style.borderThickness) << ");\n";
+        stream << indent << "drawRoundedBox(canvas, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ", " << fillRuntimeColor << ", " << borderRuntimeColor << ", " << emitFloat(style.borderThickness) << ", " << emitFloat(style.cornerRadius) << ");\n";
         stream << indent << "if (drawText) {\n";
         stream << indent << "    canvas.setColor(" << emitColorExpression(style.textColor, "0xffEEF2F8") << ");\n";
         stream << indent << "    canvas.text(\"Spacer\", labelFont_, visage::Font::kCenter, " << xExpr << ", " << yExpr << ", " << widthExpr << ", " << heightExpr << ");\n";
@@ -1152,6 +1166,8 @@ std::string runtimeWidgetTypeLiteral(visiform::model::WidgetType type)
         return "RuntimeWidgetType::GroupBox";
     case visiform::model::WidgetType::Panel:
         return "RuntimeWidgetType::Panel";
+    case visiform::model::WidgetType::Sizer:
+        return "RuntimeWidgetType::Sizer";
     case visiform::model::WidgetType::TabControl:
         return "RuntimeWidgetType::TabControl";
     case visiform::model::WidgetType::MenuBar:
@@ -1341,6 +1357,9 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     else if (widget.type == visiform::model::WidgetType::Image) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("source", "Image")) << ";\n";
     }
+    else if (widget.type == visiform::model::WidgetType::Sizer) {
+        stream << innerIndent << "widget.text.value = \"Sizer\";\n";
+    }
     else if (widget.type == visiform::model::WidgetType::Spacer) {
         stream << innerIndent << "widget.text.value = \"Spacer\";\n";
     }
@@ -1483,6 +1502,7 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    Frame,\n";
     stream << "    GroupBox,\n";
     stream << "    Panel,\n";
+    stream << "    Sizer,\n";
     stream << "    TabControl,\n";
     stream << "    MenuBar,\n";
     stream << "    ToolBar,\n";
@@ -1814,6 +1834,51 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        canvas.fill(centerX - halfWidth, centerY + dy, halfWidth * 2.0f + 1.0f, 1.0f);\n";
     stream << "    }\n";
     stream << "}\n\n";
+    stream << "void fillRoundedRect(visage::Canvas& canvas, float x, float y, float width, float height, float radius, RuntimeColor color)\n";
+    stream << "{\n";
+    stream << "    if (width <= 0.0f || height <= 0.0f) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    if (radius <= 1.0f) {\n";
+    stream << "        canvas.setColor(canvasColor(color));\n";
+    stream << "        canvas.fill(x, y, width, height);\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    const float r = std::min(radius, std::min(width, height) * 0.5f);\n";
+    stream << "    canvas.setColor(canvasColor(color));\n";
+    stream << "    canvas.fill(x + r, y, std::max(0.0f, width - r * 2.0f), height);\n";
+    stream << "    canvas.fill(x, y + r, r, std::max(0.0f, height - r * 2.0f));\n";
+    stream << "    canvas.fill(x + width - r, y + r, r, std::max(0.0f, height - r * 2.0f));\n";
+    stream << "    fillCircleApprox(canvas, x + r, y + r, r, color);\n";
+    stream << "    fillCircleApprox(canvas, x + width - r, y + r, r, color);\n";
+    stream << "    fillCircleApprox(canvas, x + r, y + height - r, r, color);\n";
+    stream << "    fillCircleApprox(canvas, x + width - r, y + height - r, r, color);\n";
+    stream << "}\n\n";
+    stream << "void drawRoundedBox(visage::Canvas& canvas, float x, float y, float width, float height, RuntimeColor fillColor, RuntimeColor borderColor, float thickness, float radius)\n";
+    stream << "{\n";
+    stream << "    if (width <= 0.0f || height <= 0.0f) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    const float r = std::clamp(radius, 0.0f, std::min(width, height) * 0.5f);\n";
+    stream << "    fillRoundedRect(canvas, x, y, width, height, r, fillColor);\n";
+    stream << "    if (thickness <= 0.0f) {\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    if (r <= 1.0f) {\n";
+    stream << "        drawBorder(canvas, x, y, width, height, borderColor, thickness);\n";
+    stream << "        return;\n";
+    stream << "    }\n";
+    stream << "    canvas.setColor(canvasColor(borderColor));\n";
+    stream << "    canvas.fill(x + r, y, std::max(0.0f, width - r * 2.0f), thickness);\n";
+    stream << "    canvas.fill(x + r, y + height - thickness, std::max(0.0f, width - r * 2.0f), thickness);\n";
+    stream << "    canvas.fill(x, y + r, thickness, std::max(0.0f, height - r * 2.0f));\n";
+    stream << "    canvas.fill(x + width - thickness, y + r, thickness, std::max(0.0f, height - r * 2.0f));\n";
+    stream << "    fillCircleApprox(canvas, x + r, y + r, r, borderColor);\n";
+    stream << "    fillCircleApprox(canvas, x + width - r, y + r, r, borderColor);\n";
+    stream << "    fillCircleApprox(canvas, x + r, y + height - r, r, borderColor);\n";
+    stream << "    fillCircleApprox(canvas, x + width - r, y + height - r, r, borderColor);\n";
+    stream << "    fillRoundedRect(canvas, x + thickness, y + thickness, std::max(0.0f, width - thickness * 2.0f), std::max(0.0f, height - thickness * 2.0f), std::max(0.0f, r - thickness), fillColor);\n";
+    stream << "}\n\n";
     stream << "RuntimeColor parseColorOrDefault(std::string_view value, RuntimeColor fallback)\n";
     stream << "{\n";
     stream << "    if (value.empty() || value.front() != '#') {\n";
@@ -1860,6 +1925,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Frame: return \"Frame\";\n";
     stream << "    case RuntimeWidgetType::GroupBox: return \"GroupBox\";\n";
     stream << "    case RuntimeWidgetType::Panel: return \"Panel\";\n";
+    stream << "    case RuntimeWidgetType::Sizer: return \"Sizer\";\n";
     stream << "    case RuntimeWidgetType::TabControl: return \"TabControl\";\n";
     stream << "    case RuntimeWidgetType::MenuBar: return \"MenuBar\";\n";
     stream << "    case RuntimeWidgetType::ToolBar: return \"ToolBar\";\n";
@@ -1990,32 +2056,31 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Unknown:\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Frame:\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), 20.0f);\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::GroupBox:\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y + 10.0f, width, std::max(0.0f, height - 10.0f));\n";
-    stream << "        drawBorder(canvas, x, y + 10.0f, width, std::max(0.0f, height - 10.0f), widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y + 10.0f, width, std::max(0.0f, height - 10.0f), widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 10.0f, y, std::max(0.0f, width - 20.0f), 20.0f);\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Panel:\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
+    stream << "        break;\n";
+    stream << "    case RuntimeWidgetType::Sizer:\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, blendColor(widget.style.borderColor, widget.style.fillColor, 0.25f), widget.style.borderThickness, widget.style.cornerRadius);\n";
+    stream << "        if (drawText && !widget.text.value.empty()) {\n";
+    stream << "            canvas.setColor(canvasColor(blendColor(widget.style.textColor, widget.style.fillColor, 0.35f)));\n";
+    stream << "            canvas.text(widget.text.value, font, visage::Font::kCenter, x, y, width, height);\n";
+    stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::TabControl: {\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y + kTabHeaderHeight, width, std::max(0.0f, height - kTabHeaderHeight));\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        const std::size_t tabCount = std::max<std::size_t>(1, widget.items.size());\n";
     stream << "        const float tabWidth = width / static_cast<float>(tabCount);\n";
     stream << "        const int selectedTab = std::clamp(widget.selectedTab, 0, static_cast<int>(tabCount) - 1);\n";
@@ -2036,9 +2101,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    }\n";
     stream << "    case RuntimeWidgetType::MenuBar: {\n";
-    stream << "        canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.35f)));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, blendColor(widget.style.panelColor, widget.style.fillColor, 0.35f), widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        const int selectedIndex = sanitizeItemIndex(widget, widget.selectedIndex);\n";
     stream << "        const float itemHeight = std::max(0.0f, height - 8.0f);\n";
     stream << "        float itemLeft = x + 6.0f;\n";
@@ -2063,9 +2126,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    }\n";
     stream << "    case RuntimeWidgetType::ToolBar: {\n";
-    stream << "        canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.22f)));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, blendColor(widget.style.panelColor, widget.style.fillColor, 0.22f), widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        const int selectedIndex = sanitizeItemIndex(widget, widget.selectedIndex);\n";
     stream << "        const float itemHeight = std::max(0.0f, height - 10.0f);\n";
     stream << "        float itemLeft = x + 6.0f;\n";
@@ -2105,9 +2166,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            ? widget.button.normalText\n";
     stream << "            : (!widget.text.value.empty() ? widget.text.value : std::string{ \"Button\" });\n";
     stream << "        const std::string& buttonText = buttonPressed && !widget.button.pressedText.empty() ? widget.button.pressedText : normalText;\n";
-    stream << "        canvas.setColor(canvasColor(fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            canvas.text(buttonText, font, visage::Font::kCenter, x, y, width, height);\n";
@@ -2115,9 +2174,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    }\n";
     stream << "    case RuntimeWidgetType::TextBox:\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.interaction.focused ? widget.style.accentColor : widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.interaction.focused ? widget.style.accentColor : widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), std::max(0.0f, height - 8.0f));\n";
@@ -2125,9 +2182,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::ComboBox: {\n";
     stream << "        const float arrowWidth = std::min(26.0f, std::max(20.0f, width * 0.18f));\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.22f)));\n";
     stream << "        canvas.fill(x + width - arrowWidth, y, arrowWidth, height);\n";
     stream << "        drawBorder(canvas, x + width - arrowWidth, y, arrowWidth, height, widget.style.borderColor, widget.style.borderThickness);\n";
@@ -2145,9 +2200,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        const float listTop = y + 4.0f;\n";
     stream << "        const float visibleHeight = std::max(0.0f, height - 8.0f);\n";
     stream << "        const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        float rowTop = listTop;\n";
     stream << "        for (std::size_t index = 0; index < std::min(visibleCount, widget.items.size()); ++index) {\n";
     stream << "            const bool selected = static_cast<int>(index) == sanitizeItemIndex(widget, widget.selectedIndex);\n";
@@ -2187,9 +2240,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        const float columnWidth = contentWidth / static_cast<float>(columnCount);\n";
     stream << "        const float visibleRowsHeight = std::max(0.0f, contentHeight - headerHeight);\n";
     stream << "        const std::size_t visibleRowCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleRowsHeight / rowHeight)));\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (showHeader) {\n";
     stream << "            canvas.setColor(canvasColor(blendColor(widget.style.panelColor, widget.style.fillColor, 0.18f)));\n";
     stream << "            canvas.fill(contentX, contentY, contentWidth, std::min(headerHeight, contentHeight));\n";
@@ -2294,9 +2345,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        const bool vertical = widget.range.orientation == RuntimeOrientation::Vertical;\n";
     stream << "        const float arrowSize = vertical ? std::min(width, 20.0f) : std::min(height, 20.0f);\n";
     stream << "        const RuntimeRect thumb = scrollBarThumbRectForWidget(widget);\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (vertical) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.fillColor));\n";
     stream << "            canvas.fill(x, y, width, arrowSize);\n";
@@ -2321,9 +2370,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    }\n";
     stream << "    case RuntimeWidgetType::StatusBar: {\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (drawText && !widget.items.empty()) {\n";
     stream << "            const float fieldWidth = width / static_cast<float>(widget.items.size());\n";
     stream << "            const float fontSize = std::max(8.0f, widget.style.fontSize);\n";
@@ -2345,9 +2392,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::ProgressBar: {\n";
     stream << "        const float normalized = normalizedRangeValue(widget);\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        canvas.setColor(canvasColor(widget.style.accentColor));\n";
     stream << "        canvas.fill(x, y, width * normalized, height);\n";
     stream << "        const std::string display = progressText(widget);\n";
@@ -2358,9 +2403,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    }\n";
     stream << "    case RuntimeWidgetType::ColorPicker: {\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        canvas.setColor(canvasColor(parseColorOrDefault(widget.colorValue, widget.style.accentColor)));\n";
     stream << "        canvas.fill(x + 6.0f, y + 6.0f, 22.0f, std::max(16.0f, height - 12.0f));\n";
     stream << "        drawBorder(canvas, x + 6.0f, y + 6.0f, 22.0f, std::max(16.0f, height - 12.0f), widget.style.borderColor, widget.style.borderThickness);\n";
@@ -2372,18 +2415,14 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        break;\n";
     stream << "    }\n";
     stream << "    case RuntimeWidgetType::Image:\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            canvas.text(widget.source, font, visage::Font::kCenter, x, y, width, height);\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
-    stream << "        canvas.setColor(canvasColor(widget.style.fillColor));\n";
-    stream << "        canvas.fill(x, y, width, height);\n";
-    stream << "        drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
+    stream << "        drawRoundedBox(canvas, x, y, width, height, widget.style.fillColor, widget.style.borderColor, widget.style.borderThickness, widget.style.cornerRadius);\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            canvas.text(widget.text.value, font, visage::Font::kCenter, x, y, width, height);\n";
@@ -2550,6 +2589,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Slider:\n";
     stream << "    case RuntimeWidgetType::ScrollBar:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Sizer:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
     stream << "        return false;\n";
     stream << "    case RuntimeWidgetType::TextBox:\n";
@@ -2611,6 +2651,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Slider:\n";
     stream << "    case RuntimeWidgetType::ScrollBar:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Sizer:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
     stream << "        return std::nullopt;\n";
     stream << "    }\n\n";
@@ -2714,6 +2755,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::StatusBar:\n";
     stream << "    case RuntimeWidgetType::Frame:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Sizer:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
     stream << "    case RuntimeWidgetType::ColorPicker:\n";
     stream << "        return false;\n";
@@ -2740,6 +2782,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::StatusBar:\n";
     stream << "    case RuntimeWidgetType::Frame:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Sizer:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
     stream << "    case RuntimeWidgetType::ColorPicker:\n";
     stream << "        return std::nullopt;\n";
@@ -2888,6 +2931,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Frame:\n";
     stream << "    case RuntimeWidgetType::GroupBox:\n";
     stream << "    case RuntimeWidgetType::Panel:\n";
+    stream << "    case RuntimeWidgetType::Sizer:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
     stream << "        return false;\n";
@@ -3399,6 +3443,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Label:\n";
     stream << "    case RuntimeWidgetType::Frame:\n";
     stream << "    case RuntimeWidgetType::Image:\n";
+    stream << "    case RuntimeWidgetType::Sizer:\n";
     stream << "    case RuntimeWidgetType::Spacer:\n";
     stream << "        return;\n";
     stream << "    }\n";
@@ -3512,6 +3557,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        case RuntimeWidgetType::Label:\n";
     stream << "        case RuntimeWidgetType::Frame:\n";
     stream << "        case RuntimeWidgetType::Image:\n";
+    stream << "        case RuntimeWidgetType::Sizer:\n";
     stream << "        case RuntimeWidgetType::Spacer:\n";
     stream << "        case RuntimeWidgetType::ColorPicker:\n";
     stream << "            break;\n";

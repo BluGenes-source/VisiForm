@@ -57,6 +57,8 @@ std::string IdGenerator::prefixForType(model::WidgetType widgetType)
         return "groupbox_";
     case model::WidgetType::Panel:
         return "panel_";
+    case model::WidgetType::Sizer:
+        return "sizer_";
     case model::WidgetType::TabControl:
         return "tabcontrol_";
     case model::WidgetType::TabPage:

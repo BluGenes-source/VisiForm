@@ -240,6 +240,7 @@ Current generated widget rendering support:
 - `Frame`
 - `GroupBox`
 - `Panel`
+- `Sizer`
 - `ComboBox`
 - `ListBox`
 
@@ -276,7 +277,7 @@ Generated runtime type highlights:
 - `RuntimeOrientation` replaces string-based runtime orientation checks
 - `RuntimeColor` replaces plain integer color fields in the generated runtime model
 - `RuntimeWidget` now groups related text, toggle, range, style, event, and interaction state
-- exported runtime widgets also preserve `parentId`, selected-tab state, and tab-page metadata so generated code can keep hierarchy-aware visibility for container children
+- exported runtime widgets also preserve `parentId`, selected-tab state, tab-page metadata, and sizer-laid-out bounds so generated code can keep hierarchy-aware visibility for container children
 
 ## Hierarchy-aware export behavior
 
@@ -286,7 +287,7 @@ Current hierarchy export behavior:
 - each generated runtime widget now preserves its source `parentId`
 - `TabControl` export preserves `tabs`, `selectedTab`, and child `tabIndex`
 - generated hit testing and drawing skip children on non-selected tab pages
-- `GroupBox`, `Panel`, and `TabControl` now export as concrete runtime widget types instead of falling back to `Unknown`
+- `GroupBox`, `Panel`, `Sizer`, and `TabControl` now export as concrete runtime widget types instead of falling back to `Unknown`
 - generated export scripts and Debug / Release preset names remain unchanged in this phase
 
 Current repair-pass note:
@@ -317,6 +318,8 @@ Supported generated preview style fields include:
 
 Generated look and feel is baked into that runtime model for now.
 Runtime theme switching in the generated app is future work.
+
+Rounded boxed widgets use shared rounded-rectangle helpers in both designer preview and generated runtime drawing.
 
 ## Generated interactive widget behavior
 

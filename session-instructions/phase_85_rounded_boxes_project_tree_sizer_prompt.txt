@@ -1,0 +1,28 @@
+Implement Phase 85: shared rounded boxed-widget rendering, Project Tree row text formatting, and an optional wxBoxSizer-style Sizer widget.
+
+Follow AGENTS.md safety rules:
+- Do not run VisiForm.exe or generated apps.
+- Do not run build scripts or build commands unless explicitly requested.
+- Do not change CMake presets, vcpkg triplets, static runtime settings, target name, or generated base class name MainWindow.
+
+Required changes:
+1. Add WidgetType::Sizer and wire it through model string conversion, ID generation, duplicate naming, WidgetRegistry, Insert menu, validation, designer preview, serialization compatibility, and generated runtime type mapping.
+2. Sizer is an optional container. Do not require it for existing or new projects.
+3. Sizer properties: orientation (Vertical default, Horizontal option), padding, gap, backgroundColor, hint, plus common child layout/style/font properties as appropriate.
+4. Sizer layout: direct children are laid out in order using padding and gap. Vertical stacks children top-to-bottom; Horizontal lays them left-to-right. Available main-axis space is divided evenly across children and cross-axis size is stretched.
+5. Refactor boxed-widget drawing so shared rounded rectangle helpers are used by all widgets that draw normal boxes where practical. Fix GroupBox title/content box corners while preserving the title cutout.
+6. Mirror rounded box drawing in generated runtime code.
+7. Update ProjectTree rows to store/draw name as primary text and type as secondary text on the same row when space allows.
+8. Update docs: widget catalog, widget registry, project file format, project validation, and code generation.
+
+Validation:
+- Inspect final diff.
+- Do not claim a build passed unless an approved build was actually run.
+
+Build-error follow-up:
+- The developer has reported a Debug build error from the IDE after the Phase 85 changes.
+- Use the IDE Error List / Build Output first and fix the first real compiler or linker diagnostic, not later cascading errors.
+- Prioritize files touched by Phase 85: `src/generator/VisageCppEmitter.cpp`, `src/ui/DesignerCanvas.cpp`, `src/ui/ProjectTree.cpp`, `src/model/LayoutEngine.cpp`, `src/model/WidgetRegistry.cpp`, `src/validation/ProjectValidator.cpp`, and `src/model/WidgetNode.*`.
+- For generated drawing errors, check that direct generated drawing code passes `RuntimeColor` values to generated `drawRoundedBox(...)`, while existing `canvas.setColor(...)` calls still receive packed integer color expressions.
+- Keep `Sizer` optional; do not add validation requiring a sizer.
+- Do not run `VisiForm.exe` or generated apps while investigating.

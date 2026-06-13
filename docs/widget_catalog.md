@@ -8,6 +8,7 @@ Current widget types:
 - `Frame`
 - `GroupBox`
 - `Panel`
+- `Sizer`
 - `TabControl`
 
 Current editor-active container workflow:
@@ -15,7 +16,19 @@ Current editor-active container workflow:
 - `GroupBox` is the first container with a focused parenting workflow in the editor
 - selecting a `GroupBox` inserts new widgets into that `GroupBox`
 - selecting the root form inserts new widgets at the root
-- other selected widgets currently fall back to root insertion instead of accepting new children directly
+- selecting a `Sizer` inserts new widgets into that `Sizer`
+- other selected widgets currently fall back to root insertion unless they are inside a supported insertion parent
+
+## Sizer behavior
+
+Current `Sizer` editor behavior:
+
+- `Sizer` is an optional container; projects are not required to contain one
+- `orientation` controls whether child widgets are arranged `Vertical` or `Horizontal`
+- `padding` adds inset around the child layout area
+- `gap` adds spacing between child widgets
+- direct children are distributed evenly across the main axis and stretched across the cross axis
+- the designer preview draws an empty `Sizer` with a subtle rounded box and label
 
 ## GroupBox repair-pass behavior
 
@@ -54,6 +67,7 @@ Current `GroupBox` limitations in this repair pass:
 - `ColorPicker`
 - `Image`
 - `Spacer`
+- `Sizer`
 
 ## Widget registry
 
@@ -307,7 +321,7 @@ This allows, for example, `RadioButton.onSelected` and `CheckBox.onToggle` to re
 - Event fields currently show simple existing-callback suggestions instead of a full dropdown editor
 - No separate visual event editor yet
 - Generated runtime interaction is intentionally lightweight and not a full retained-mode widget toolkit
-- Rounded-corner drawing is stored as a style property but still uses normal rectangle drawing for now
+- Rounded-corner drawing is applied by shared boxed-widget drawing helpers in the designer and generated runtime paths
 - No theme editor UI yet
 
 ## Root FormWindow project naming fields

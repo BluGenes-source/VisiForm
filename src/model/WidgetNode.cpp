@@ -14,6 +14,7 @@ const std::string& widgetTypeName(WidgetType type)
     static const std::string frame = "Frame";
     static const std::string groupBox = "GroupBox";
     static const std::string panel = "Panel";
+    static const std::string sizer = "Sizer";
     static const std::string tabControl = "TabControl";
     static const std::string tabPage = "TabPage";
     static const std::string menuBar = "MenuBar";
@@ -45,6 +46,8 @@ const std::string& widgetTypeName(WidgetType type)
         return groupBox;
     case WidgetType::Panel:
         return panel;
+    case WidgetType::Sizer:
+        return sizer;
     case WidgetType::TabControl:
         return tabControl;
     case WidgetType::TabPage:
@@ -211,6 +214,9 @@ std::optional<WidgetType> widgetTypeFromString(const std::string& value)
     }
     if (value == "Panel") {
         return WidgetType::Panel;
+    }
+    if (value == "Sizer") {
+        return WidgetType::Sizer;
     }
     if (value == "TabControl") {
         return WidgetType::TabControl;

@@ -877,6 +877,53 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
             }
         }
 
+        if (widget->type == model::WidgetType::Sizer) {
+            const std::string orientation = trim(propertyString(*widget, "orientation"));
+            if (!orientation.empty() && orientation != "Vertical" && orientation != "Horizontal") {
+                addMessage(report, ValidationSeverity::Error,
+                    "WIDGET_SIZER_ORIENTATION_INVALID",
+                    "Sizer orientation must be Vertical or Horizontal.",
+                    widget->id,
+                    "orientation");
+            }
+
+            if (const auto padding = propertyNumber(*widget, "padding"); padding.has_value() && (*padding < 0.0 || *padding > 64.0)) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SIZER_PADDING_RANGE",
+                    "Sizer padding is outside the supported 0-64 range and layout will clamp it.",
+                    widget->id,
+                    "padding");
+            }
+            if (const auto* paddingProperty = widget->getProperty("padding"); paddingProperty != nullptr && paddingProperty->isString()) {
+                const std::string text = trim(paddingProperty->asString());
+                if (!text.empty() && text != "<unset>" && !propertyNumber(*widget, "padding").has_value()) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "WIDGET_SIZER_PADDING_INVALID",
+                        "Sizer padding must be a numeric value from 0 to 64.",
+                        widget->id,
+                        "padding");
+                }
+            }
+
+            if (const auto gap = propertyNumber(*widget, "gap"); gap.has_value() && (*gap < 0.0 || *gap > 64.0)) {
+                addMessage(report, ValidationSeverity::Warning,
+                    "WIDGET_SIZER_GAP_RANGE",
+                    "Sizer gap is outside the supported 0-64 range and layout will clamp it.",
+                    widget->id,
+                    "gap");
+            }
+            if (const auto* gapProperty = widget->getProperty("gap"); gapProperty != nullptr && gapProperty->isString()) {
+                const std::string text = trim(gapProperty->asString());
+                if (!text.empty() && text != "<unset>" && !propertyNumber(*widget, "gap").has_value()) {
+                    addMessage(report, ValidationSeverity::Error,
+                        "WIDGET_SIZER_GAP_INVALID",
+                        "Sizer gap must be a numeric value from 0 to 64.",
+                        widget->id,
+                        "gap");
+                }
+            }
+        }
+
         if (widget->type == model::WidgetType::Slider
             || widget->type == model::WidgetType::ScrollBar
             || widget->type == model::WidgetType::ProgressBar) {

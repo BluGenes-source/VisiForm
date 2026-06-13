@@ -314,6 +314,34 @@ WidgetDefinition makePanelDefinition()
     return definition;
 }
 
+WidgetDefinition makeSizerDefinition()
+{
+    WidgetDefinition definition;
+    definition.type = WidgetType::Sizer;
+    definition.typeName = "Sizer";
+    definition.displayName = "Sizer";
+    setPaletteMetadata(definition, true, 23, "Containers");
+    definition.defaultNamePrefix = "sizer";
+    definition.defaultHint = "Arranges child widgets horizontally or vertically.";
+    definition.canContainChildren = true;
+    definition.allowsDrop = true;
+    definition.clipsChildren = true;
+    definition.drawsChildrenInside = true;
+    definition.defaultChildLayoutMode = LayoutMode::Vertical;
+    definition.size = { 320.0f, 220.0f, 120.0f, 80.0f };
+    definition.properties = {
+        { "orientation", "Orientation", "Vertical", PropertyEditKind::Text, true, "Sizer direction.", { "Vertical", "Horizontal" } },
+        { "padding", "Padding", 8.0f, PropertyEditKind::Slider, true, "Inset around child widgets.", {}, 0.0f, 64.0f, 1.0f },
+        { "gap", "Gap", 8.0f, PropertyEditKind::Slider, true, "Spacing between child widgets.", {}, 0.0f, 64.0f, 1.0f },
+        { "backgroundColor", "Background Color", "", PropertyEditKind::Color, true, "Optional sizer background override." },
+        { "hint", "Hint", definition.defaultHint, PropertyEditKind::Text, true, "Editor help text shown in VisiForm." }
+    };
+    appendProperties(definition.properties, commonChildLayoutProperties());
+    appendProperties(definition.properties, commonStyleProperties());
+    appendProperties(definition.properties, commonFontProperties());
+    return definition;
+}
+
 WidgetDefinition makeTabControlDefinition()
 {
     WidgetDefinition definition;
@@ -741,6 +769,7 @@ WidgetRegistry::WidgetRegistry()
         makeFrameDefinition(),
         makeGroupBoxDefinition(),
         makePanelDefinition(),
+        makeSizerDefinition(),
         makeTabControlDefinition(),
         makeTabPageDefinition(),
         makeMenuBarDefinition(),

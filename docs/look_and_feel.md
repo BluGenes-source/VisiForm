@@ -61,8 +61,8 @@ The designer and generated preview currently use the resolved style where practi
 - accent color
 - border thickness
 
-`cornerRadius` and `fontSize` are stored and resolved for future richer rendering support.
-Rounded-corner drawing is not yet implemented in the current Visage preview path.
+`cornerRadius` and `fontSize` are stored and resolved for designer and generated runtime rendering.
+Rounded-corner drawing is implemented for boxed widgets through shared rounded-rectangle helpers.
 
 ## Current limitations
 

@@ -190,6 +190,28 @@ void drawBorder(visage::Canvas& canvas, const PanelRect& bounds, int color, floa
     canvas.fill(bounds.x + bounds.width - thickness, bounds.y, thickness, bounds.height);
 }
 
+void drawRoundedBox(visage::Canvas& canvas, const PanelRect& bounds, const ResolvedWidgetStyle& style)
+{
+    if (!bounds.isValid()) {
+        return;
+    }
+
+    const float radius = std::clamp(style.cornerRadius, 0.0f, std::min(bounds.width, bounds.height) * 0.5f);
+    fillRoundedRect(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, style.fillColor);
+    drawRoundedRectBorder(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, style.borderColor, style.borderThickness, style.fillColor);
+}
+
+void drawRoundedBox(visage::Canvas& canvas, const PanelRect& bounds, int fillColor, int borderColor, float borderThickness, float cornerRadius)
+{
+    if (!bounds.isValid()) {
+        return;
+    }
+
+    const float radius = std::clamp(cornerRadius, 0.0f, std::min(bounds.width, bounds.height) * 0.5f);
+    fillRoundedRect(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, fillColor);
+    drawRoundedRectBorder(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, borderColor, borderThickness, fillColor);
+}
+
 int blendColor(int colorA, int colorB, float amount)
 {
     const auto blendChannel = [amount](int first, int second) {
@@ -566,7 +588,8 @@ ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, c
     if (widget.type == model::WidgetType::FormWindow
         || widget.type == model::WidgetType::Frame
         || widget.type == model::WidgetType::GroupBox
-        || widget.type == model::WidgetType::Panel) {
+        || widget.type == model::WidgetType::Panel
+        || widget.type == model::WidgetType::Sizer) {
         style.fillColor = parseColorOrDefault(widget.getStringProperty("backgroundColor", {}),
             widget.type == model::WidgetType::FormWindow ? style.panelColor : style.fillColor);
     }
@@ -830,14 +853,12 @@ void drawWidget(visage::Canvas& canvas,
 
     switch (widget.type) {
     case model::WidgetType::FormWindow: {
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawRoundedBox(canvas, bounds, style);
         if (showGrid) {
             drawGrid(canvas, bounds, scale, showMinorGrid, gridSize, majorGridSize, style.fillColor);
         }
         canvas.setColor(style.panelColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, std::min(kTitleBarHeight, bounds.height));
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
 
         if (drawText) {
             canvas.setColor(style.textColor);
@@ -853,9 +874,7 @@ void drawWidget(visage::Canvas& canvas,
             widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
         const float itemHeight = std::max(0.0f, bounds.height - 8.0f);
         float itemLeft = bounds.x + 6.0f;
-        canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.35f));
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, blendColor(style.panelColor, style.fillColor, 0.35f), style.borderColor, style.borderThickness, style.cornerRadius);
         for (std::size_t index = 0; index < items.size() && itemLeft < bounds.x + bounds.width - 6.0f; ++index) {
             const std::string& item = items[index];
             const float idealWidth = std::max(56.0f, estimateDesignerTextWidth(item, fontSize) + 12.0f);
@@ -885,9 +904,7 @@ void drawWidget(visage::Canvas& canvas,
             widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
         const float itemHeight = std::max(0.0f, bounds.height - 10.0f);
         float itemLeft = bounds.x + 6.0f;
-        canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.22f));
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, blendColor(style.panelColor, style.fillColor, 0.22f), style.borderColor, style.borderThickness, style.cornerRadius);
         for (std::size_t index = 0; index < items.size() && itemLeft < bounds.x + bounds.width - 6.0f; ++index) {
             const std::string& item = items[index];
             const float idealWidth = std::max(64.0f, estimateDesignerTextWidth(item, fontSize) + 18.0f);
@@ -910,9 +927,7 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::StatusBar: {
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
 
         int fields = static_cast<int>(getNumericProperty(widget, "fields", 1.0f));
         fields = std::clamp(fields, 1, 4);
@@ -940,13 +955,11 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::ProgressBar: {
         // Draw a bordered progress bar with fill based on min/max/value
         const float normalized = normalizedRangeValue(widget, "value");
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
 
         const float fillWidth = std::max(0.0f, bounds.width * normalized);
-        canvas.setColor(style.accentColor);
-        canvas.fill(bounds.x, bounds.y, fillWidth, bounds.height);
+        fillRoundedRect(canvas, bounds.x, bounds.y, fillWidth, bounds.height,
+            std::clamp(style.cornerRadius, 0.0f, std::min(fillWidth, bounds.height) * 0.5f), style.accentColor);
 
         const std::string text = progressBarDisplayText(widget);
         if (drawText && !text.empty()) {
@@ -962,9 +975,7 @@ void drawWidget(visage::Canvas& canvas,
         const float swatchX = bounds.x + 6.0f;
         const float swatchY = bounds.y + (bounds.height - swatchSize) * 0.5f;
         const float textX = swatchX + swatchSize + 10.0f;
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
         canvas.setColor(parseColorOrDefault(colorValue, style.accentColor));
         canvas.fill(swatchX, swatchY, swatchSize, swatchSize);
         drawBorder(canvas, { swatchX, swatchY, swatchSize, swatchSize }, style.borderColor, style.borderThickness);
@@ -1024,9 +1035,7 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::Frame:
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
         if (drawText) {
             canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), widgetFont, visage::Font::kTopLeft,
@@ -1034,9 +1043,8 @@ void drawWidget(visage::Canvas& canvas,
         }
         break;
     case model::WidgetType::GroupBox: {
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y + 10.0f, bounds.width, std::max(0.0f, bounds.height - 10.0f));
-        drawBorder(canvas, { bounds.x, bounds.y + 10.0f, bounds.width, std::max(0.0f, bounds.height - 10.0f) }, style.borderColor, style.borderThickness);
+        const PanelRect contentBounds{ bounds.x, bounds.y + 10.0f, bounds.width, std::max(0.0f, bounds.height - 10.0f) };
+        drawRoundedBox(canvas, contentBounds, style);
         if (drawText) {
             const std::string title = getStringProperty(widget, "title", "Group");
             const float titleWidth = std::min(bounds.width - 20.0f, std::max(48.0f, estimateDesignerTextWidth(title, fontSize)));
@@ -1049,19 +1057,22 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::Panel:
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
+        break;
+    case model::WidgetType::Sizer:
+        drawRoundedBox(canvas, bounds, style.fillColor, blendColor(style.borderColor, style.fillColor, 0.25f), style.borderThickness, style.cornerRadius);
+        if (drawText && widget.children.empty()) {
+            canvas.setColor(blendColor(style.textColor, style.fillColor, 0.35f));
+            canvas.text("Sizer", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
+        }
         break;
     case model::WidgetType::TabControl: {
         const std::vector<std::string> labels = tabLabels(widget);
         const int selectedTab = selectedTabIndex(widget);
         const float headerHeight = std::min(32.0f, std::max(24.0f, bounds.height * 0.18f));
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        drawRoundedBox(canvas, bounds, style);
         canvas.setColor(style.panelColor);
         canvas.fill(bounds.x, bounds.y, bounds.width, headerHeight);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
         const float tabWidth = bounds.width / static_cast<float>(std::max<std::size_t>(1, labels.size()));
         for (std::size_t index = 0; index < labels.size(); ++index) {
             const PanelRect tabBounds{
@@ -1084,9 +1095,7 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::TabPage:
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, blendColor(style.borderColor, style.fillColor, 0.35f), 1.0f);
+        drawRoundedBox(canvas, bounds, style.fillColor, blendColor(style.borderColor, style.fillColor, 0.35f), 1.0f, style.cornerRadius);
         break;
     case model::WidgetType::Label:
         if (drawText) {
@@ -1120,9 +1129,7 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::TextBox:
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
         if (drawText) {
             canvas.setColor(style.textColor);
             canvas.text(getStringProperty(widget, "text", ""), widgetFont, visage::Font::kTopLeft,
@@ -1135,9 +1142,7 @@ void drawWidget(visage::Canvas& canvas,
         const int selectedIndex = model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
         const std::string selectedText = model::getSelectedItemText(items, selectedIndex);
         const float arrowWidth = std::min(26.0f, std::max(20.0f, bounds.width * 0.18f));
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
         canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.22f));
         canvas.fill(bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height);
         drawBorder(canvas, { bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height }, style.borderColor, style.borderThickness);
@@ -1158,9 +1163,7 @@ void drawWidget(visage::Canvas& canvas,
         const float listTop = bounds.y + 4.0f;
         const float visibleHeight = std::max(0.0f, bounds.height - 8.0f);
         const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
         float rowTop = listTop;
         for (std::size_t index = 0; index < std::min<std::size_t>(visibleCount, items.size()); ++index) {
             const bool selected = static_cast<int>(index) == selectedIndex;
@@ -1207,9 +1210,7 @@ void drawWidget(visage::Canvas& canvas,
         const float visibleRowsHeight = std::max(0.0f, contentHeight - headerHeight);
         const std::size_t visibleRowCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleRowsHeight / rowHeight)));
 
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
 
         if (showHeader) {
             canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.18f));
@@ -1301,9 +1302,7 @@ void drawWidget(visage::Canvas& canvas,
         const float listTop = bounds.y + 4.0f;
         const float visibleHeight = std::max(0.0f, bounds.height - 8.0f);
         const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
 
         float rowTop = listTop;
         const int lineColor = blendColor(style.borderColor, style.fillColor, 0.35f);
@@ -1429,9 +1428,7 @@ void drawWidget(visage::Canvas& canvas,
         const float normalized = std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
         const float thumbFactor = std::clamp(pageSize / (maximum - minimum + pageSize), 0.18f, 0.55f);
         const float arrowSize = vertical ? std::min(bounds.width, 20.0f) : std::min(bounds.height, 20.0f);
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
         canvas.setColor(style.borderColor);
         if (vertical) {
             const float trackTop = bounds.y + arrowSize;
@@ -1555,9 +1552,7 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::Spacer:
-        canvas.setColor(style.fillColor);
-        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
-        drawBorder(canvas, bounds, style.borderColor, style.borderThickness);
+        drawRoundedBox(canvas, bounds, style);
         if (drawText) {
             canvas.setColor(style.textColor);
             canvas.text("Spacer", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);

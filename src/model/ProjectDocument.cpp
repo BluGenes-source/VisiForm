@@ -203,6 +203,8 @@ std::string duplicateNameFor(const WidgetNode& widget, const std::string& id)
         return "groupBox" + suffix;
     case WidgetType::Panel:
         return "panel" + suffix;
+    case WidgetType::Sizer:
+        return "sizer" + suffix;
     case WidgetType::TabControl:
         return "tabControl" + suffix;
     case WidgetType::TabPage:
