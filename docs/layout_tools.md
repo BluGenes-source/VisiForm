@@ -20,7 +20,13 @@ Current BoxSizer behavior:
 - `sizerItem.minimumWidth` and `sizerItem.minimumHeight` can override automatic minimum size with `-1` meaning automatic
 - `sizerItem.shown=false` removes a child from layout participation
 
-Sizer-managed children keep their dormant absolute bounds, but position, size, Dock, and Anchor do not control their final bounds while their direct parent is a `Sizer`.
+Sizer-managed children keep their dormant absolute bounds, but position, size, Dock, and Anchor do not control their final bounds while their direct parent is a `Sizer`. Dragging a selected sizer child's resize handles edits `sizerItem.minimumWidth` and `sizerItem.minimumHeight` so the mouse can still request a larger minimum size without breaking sizer ownership. Resizing the `Sizer` itself relayouts its managed children from the new sizer bounds, and undo/redo preserves both the sizer bounds and the child layout result.
+
+Designer movement is constrained to the parent canvas. Dragging, nudging, or editing bounds keeps normal widgets and sizers inside their parent client area, including root-level sizers inside the form.
+
+Dragging a widget close to a `Sizer` can snap-connect it into that sizer when the pointer is within the editor's sizer drop threshold. Spacers are the intended widgets for empty space: fixed spacers reserve a fixed amount, and stretch spacers take weighted extra space.
+
+For one selected widget, `Same Width / Fill Width` and `Same Height / Fill Height` fill the available parent width or height. For a direct child of a sizer, these commands set the relevant sizer-item fill behavior instead of editing dormant absolute bounds.
 
 ## Box select
 
@@ -177,24 +183,26 @@ Current behavior:
 - multi-selection aligns each selected widget center to the vertical center of the selected bounding box
 - snap-to-grid is applied when enabled
 
-## Same Width
+## Same Width / Fill Width
 
-Sets the selected widget width using a simple reference strategy.
+Sets selected widget widths, or fills the parent width when exactly one widget is selected.
 
 Current behavior:
 
-- if a previous sibling exists, use that sibling width
-- otherwise use root form width minus `40`
+- for multiple selected widgets, match selected widget widths
+- for one normal widget, fill the available parent client width
+- for one direct child of a sizer, set the relevant sizer-item fill behavior instead of editing dormant absolute bounds
 - widget-specific minimum width is enforced
 
-## Same Height
+## Same Height / Fill Height
 
-Sets the selected widget height using a simple reference strategy.
+Sets selected widget heights, or fills the parent height when exactly one widget is selected.
 
 Current behavior:
 
-- if a previous sibling exists, use that sibling height
-- otherwise use the widget default height from shared widget metrics
+- for multiple selected widgets, match selected widget heights
+- for one normal widget, fill the available parent client height
+- for one direct child of a sizer, set the relevant sizer-item fill behavior instead of editing dormant absolute bounds
 - widget-specific minimum height is enforced
 
 ## Distribute Horizontally

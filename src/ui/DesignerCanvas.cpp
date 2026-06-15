@@ -1716,13 +1716,29 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
     float y,
     const std::string& selectedWidgetId) const
 {
-    const auto hitWidgetId = hitTestWidgetId(document, x, y);
-    if (!hitWidgetId.has_value()) {
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    if (!previewLayout.form.isValid()) {
         return std::nullopt;
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
-    if (!previewLayout.form.isValid()) {
+    if (const auto* selectedWidget = document.findWidgetById(selectedWidgetId);
+        selectedWidget != nullptr && selectedWidget->type == model::WidgetType::TabPage) {
+        return std::nullopt;
+    }
+
+    if (!selectedWidgetId.empty() && selectedWidgetId != document.root.id) {
+        const auto selectedWidgetInfo = findWidgetScreenInfo(document.root, selectedWidgetId, previewLayout.form.x, previewLayout.form.y,
+            -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale);
+        if (selectedWidgetInfo.has_value()) {
+            const HitRegion handle = hitHandle(selectedWidgetInfo->bounds, x, y, resizeHandleHitSize_);
+            if (handle != HitRegion::None) {
+                return InteractionHit{ selectedWidgetId, handle };
+            }
+        }
+    }
+
+    const auto hitWidgetId = hitTestWidgetId(document, x, y);
+    if (!hitWidgetId.has_value()) {
         return std::nullopt;
     }
 
@@ -1733,14 +1749,7 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
     }
 
     InteractionHit hit{ *hitWidgetId, HitRegion::Body };
-    if (const auto* selectedWidget = document.findWidgetById(selectedWidgetId);
-        selectedWidget != nullptr && selectedWidget->type == model::WidgetType::TabPage) {
-        return std::nullopt;
-    }
-
-    const bool parentControlsSizerLayout = document.findParentOf(selectedWidgetId) != nullptr
-        && document.findParentOf(selectedWidgetId)->type == model::WidgetType::Sizer;
-    if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id && !parentControlsSizerLayout) {
+    if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id) {
         const HitRegion handle = hitHandle(widgetInfo->bounds, x, y, resizeHandleHitSize_);
         if (handle != HitRegion::None) {
             hit.region = handle;

@@ -3,10 +3,12 @@ find_package(Catch2 CONFIG REQUIRED)
 add_executable(VisiFormTests
     test_project_serialization.cpp
     test_box_sizer_layout.cpp
+    test_project_validation.cpp
     ${CMAKE_SOURCE_DIR}/src/model/ProjectDocument.cpp
     ${CMAKE_SOURCE_DIR}/src/model/FormNode.cpp
     ${CMAKE_SOURCE_DIR}/src/model/BoxSizerLayout.cpp
     ${CMAKE_SOURCE_DIR}/src/model/LayoutEngine.cpp
+    ${CMAKE_SOURCE_DIR}/src/model/LookAndFeelRegistry.cpp
     ${CMAKE_SOURCE_DIR}/src/model/WidgetRegistry.cpp
     ${CMAKE_SOURCE_DIR}/src/model/WidgetDefinition.cpp
     ${CMAKE_SOURCE_DIR}/src/model/WidgetItemUtils.cpp
@@ -14,6 +16,8 @@ add_executable(VisiFormTests
     ${CMAKE_SOURCE_DIR}/src/model/PropertyValue.cpp
     ${CMAKE_SOURCE_DIR}/src/serialization/JsonProjectReader.cpp
     ${CMAKE_SOURCE_DIR}/src/serialization/JsonProjectWriter.cpp
+    ${CMAKE_SOURCE_DIR}/src/validation/ProjectValidator.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/CppIdentifier.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/FileUtils.cpp
 )
 

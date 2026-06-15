@@ -14,6 +14,18 @@ Primary development environment:
 - Static MSVC runtime
 - Main executable target: `VisiForm`
 
+## Temporary Codex Runtime Constraint
+
+Custom VisiForm subagents currently do not spawn reliably under GPT-5.5
+in the Windows Codex desktop app.
+
+For workflows using `.codex/agents/`, use GPT-5.4 until the known
+child-model/service-tier validation issue is resolved.
+
+Known error:
+
+`spawn_agent could not resolve the child model for service tier validation`
+
 ## Safety Rules
 
 - Do not rename the `VisiForm` target or the produced `VisiForm.exe`.

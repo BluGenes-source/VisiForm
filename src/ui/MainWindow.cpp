@@ -4,6 +4,7 @@
 #include "commands/Command.h"
 #include "commands/CommandIds.h"
 #include "commands/CommandRegistry.h"
+#include "model/BoxSizerLayout.h"
 #include "model/LayoutEngine.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
@@ -29,6 +30,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -60,6 +62,7 @@ constexpr float kNewWidgetStartX = 40.0f;
 constexpr float kNewWidgetStartY = 40.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
 constexpr float kLayoutMargin = 20.0f;
+constexpr float kSizerDropSnapThreshold = 12.0f;
 constexpr float kGroupBoxChildStartX = 20.0f;
 constexpr float kGroupBoxChildStartY = 36.0f;
 constexpr float kGroupBoxChildOffsetStep = 16.0f;
@@ -896,6 +899,144 @@ model::Rect boundsRelativeToParent(const model::ProjectDocument& document, const
         absoluteBounds.width,
         absoluteBounds.height
     };
+}
+
+model::Rect clampBoundsToParentClient(const model::ProjectDocument& document, const std::string& widgetId, model::Rect bounds)
+{
+    const auto* parent = document.findParentOf(widgetId);
+    if (parent == nullptr) {
+        return bounds;
+    }
+
+    const model::Rect clientBounds = model::LayoutEngine::clientBoundsForParent(*parent);
+    const float maxX = clientBounds.x + std::max(0.0f, clientBounds.width - bounds.width);
+    const float maxY = clientBounds.y + std::max(0.0f, clientBounds.height - bounds.height);
+
+    bounds.x = maxX <= clientBounds.x
+        ? clientBounds.x
+        : std::clamp(bounds.x, clientBounds.x, maxX);
+    bounds.y = maxY <= clientBounds.y
+        ? clientBounds.y
+        : std::clamp(bounds.y, clientBounds.y, maxY);
+    return bounds;
+}
+
+bool isDirectSizerChild(const model::ProjectDocument& document, const std::string& widgetId)
+{
+    const auto* parent = document.findParentOf(widgetId);
+    return parent != nullptr && parent->type == model::WidgetType::Sizer;
+}
+
+float widgetMinimumWidth(const model::WidgetNode& widget)
+{
+    if (const auto* definition = model::WidgetRegistry::instance().find(widget.type)) {
+        return std::max(0.0f, definition->size.minWidth);
+    }
+    return 0.0f;
+}
+
+float widgetMinimumHeight(const model::WidgetNode& widget)
+{
+    if (const auto* definition = model::WidgetRegistry::instance().find(widget.type)) {
+        return std::max(0.0f, definition->size.minHeight);
+    }
+    return 0.0f;
+}
+
+bool hitRegionChangesWidth(DesignerCanvas::HitRegion region)
+{
+    return region == DesignerCanvas::HitRegion::TopLeftHandle
+        || region == DesignerCanvas::HitRegion::TopRightHandle
+        || region == DesignerCanvas::HitRegion::BottomLeftHandle
+        || region == DesignerCanvas::HitRegion::BottomRightHandle;
+}
+
+bool hitRegionChangesHeight(DesignerCanvas::HitRegion region)
+{
+    return hitRegionChangesWidth(region);
+}
+
+bool applySizerItemResizePreview(model::ProjectDocument& document,
+    const model::ProjectDocument& beforeDocument,
+    const std::string& widgetId,
+    DesignerCanvas::HitRegion region,
+    const model::Rect& desiredBounds,
+    int originalMinimumWidth,
+    int originalMinimumHeight)
+{
+    auto* widget = document.findWidgetById(widgetId);
+    const auto* parent = document.findParentOf(widgetId);
+    if (widget == nullptr || parent == nullptr || parent->type != model::WidgetType::Sizer) {
+        return false;
+    }
+
+    if (hitRegionChangesWidth(region)) {
+        const int minimumWidth = static_cast<int>(std::ceil(std::max(widgetMinimumWidth(*widget), desiredBounds.width)));
+        widget->setProperty(std::string{ model::sizer_properties::kItemMinimumWidth }, minimumWidth);
+    }
+    if (hitRegionChangesHeight(region)) {
+        const int minimumHeight = static_cast<int>(std::ceil(std::max(widgetMinimumHeight(*widget), desiredBounds.height)));
+        widget->setProperty(std::string{ model::sizer_properties::kItemMinimumHeight }, minimumHeight);
+    }
+
+    document.applyLayoutFromPrevious(beforeDocument);
+    if (const auto* updatedWidget = document.findWidgetById(widgetId)) {
+        const model::SizerItemLayout layout = model::sizerItemLayoutFor(*updatedWidget);
+        return layout.minimumWidth != originalMinimumWidth || layout.minimumHeight != originalMinimumHeight;
+    }
+    return false;
+}
+
+float distanceToRect(const model::Rect& rect, const DesignerCanvas::FormPoint& point)
+{
+    const float dx = point.x < rect.x
+        ? rect.x - point.x
+        : std::max(0.0f, point.x - (rect.x + rect.width));
+    const float dy = point.y < rect.y
+        ? rect.y - point.y
+        : std::max(0.0f, point.y - (rect.y + rect.height));
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+void collectSizerDropCandidates(const model::ProjectDocument& document,
+    const model::WidgetNode& widget,
+    const model::WidgetNode& movingWidget,
+    const DesignerCanvas::FormPoint& point,
+    std::vector<std::pair<float, std::string>>& candidates)
+{
+    if (widget.type == model::WidgetType::Sizer
+        && widget.id != movingWidget.id
+        && movingWidget.findById(widget.id) == nullptr
+        && model::WidgetRegistry::instance().canContainChild(widget.type, movingWidget.type)) {
+        const model::Rect absoluteBounds = absoluteBoundsForWidget(document, widget.id);
+        const float distance = distanceToRect(absoluteBounds, point);
+        if (distance <= kSizerDropSnapThreshold) {
+            candidates.push_back({ distance, widget.id });
+        }
+    }
+
+    for (const auto& child : widget.children) {
+        collectSizerDropCandidates(document, child, movingWidget, point, candidates);
+    }
+}
+
+std::optional<std::string> nearestSizerDropTarget(const model::ProjectDocument& document,
+    const model::WidgetNode& movingWidget,
+    const DesignerCanvas::FormPoint& point)
+{
+    std::vector<std::pair<float, std::string>> candidates;
+    collectSizerDropCandidates(document, document.root, movingWidget, point, candidates);
+    if (candidates.empty()) {
+        return std::nullopt;
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const auto& left, const auto& right) {
+        if (left.first == right.first) {
+            return left.second < right.second;
+        }
+        return left.first < right.first;
+    });
+    return candidates.front().second;
 }
 
 SelectionBoundsInfo calculateSelectionBounds(const std::vector<model::Rect>& widgets)
@@ -2468,6 +2609,43 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         }
     }
 
+    if (!document_.selectedWidgetId.empty() && document_.selectedWidgetId != document_.root.id) {
+        const auto selectedInteractionHit = designerCanvas_.hitTestInteraction(document_, e.position.x, e.position.y, document_.selectedWidgetId);
+        if (selectedInteractionHit.has_value()
+            && selectedInteractionHit->widgetId == document_.selectedWidgetId
+            && selectedInteractionHit->region != DesignerCanvas::HitRegion::Body) {
+            const auto dragStart = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y);
+            auto* widget = document_.findWidgetById(selectedInteractionHit->widgetId);
+            if (dragStart.has_value() && widget != nullptr) {
+                canvasInteraction_.widgetId = selectedInteractionHit->widgetId;
+                canvasInteraction_.originalParentId = document_.findParentOf(selectedInteractionHit->widgetId) != nullptr
+                    ? document_.findParentOf(selectedInteractionHit->widgetId)->id
+                    : document_.root.id;
+                canvasInteraction_.region = selectedInteractionHit->region;
+                canvasInteraction_.originalBounds = widget->bounds;
+                canvasInteraction_.dragStart = *dragStart;
+                canvasInteraction_.currentPoint = *dragStart;
+                canvasInteraction_.dropTargetWidgetId = canvasInteraction_.originalParentId;
+                canvasInteraction_.selectionBounds.clear();
+                canvasInteraction_.changed = false;
+                canvasInteraction_.mode = CanvasInteractionState::Mode::Resize;
+                if (isDirectSizerChild(document_, selectedInteractionHit->widgetId)) {
+                    const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
+                    canvasInteraction_.sizerItemResizeBeforeDocument = document_;
+                    canvasInteraction_.originalSizerItemMinimumWidth = sizerItemLayout.minimumWidth;
+                    canvasInteraction_.originalSizerItemMinimumHeight = sizerItemLayout.minimumHeight;
+                    setOperationStatus("Drag to resize sizer item minimum size.");
+                }
+                else if (widget->type == model::WidgetType::Sizer) {
+                    canvasInteraction_.layoutResizeBeforeDocument = document_;
+                    setOperationStatus("Drag to resize Sizer and relayout its children.");
+                }
+                logCanvasHitDiagnostic(document_, *dragStart, widget, true, "Drag start: selected resize handle");
+                return;
+            }
+        }
+    }
+
     if (const auto widgetId = designerCanvas_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
         const bool additiveSelection = multiSelectMode_ || isAdditiveSelectionModifierDown();
         if (const auto* hitWidget = document_.findWidgetById(*widgetId); hitWidget != nullptr && hitWidget->type == model::WidgetType::TabControl) {
@@ -2557,6 +2735,17 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 canvasInteraction_.mode = interactionHit->region == DesignerCanvas::HitRegion::Body
                     ? CanvasInteractionState::Mode::Move
                     : CanvasInteractionState::Mode::Resize;
+                if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize && isDirectSizerChild(document_, *widgetId)) {
+                    const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
+                    canvasInteraction_.sizerItemResizeBeforeDocument = document_;
+                    canvasInteraction_.originalSizerItemMinimumWidth = sizerItemLayout.minimumWidth;
+                    canvasInteraction_.originalSizerItemMinimumHeight = sizerItemLayout.minimumHeight;
+                    setOperationStatus("Drag to resize sizer item minimum size.");
+                }
+                else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize && widget->type == model::WidgetType::Sizer) {
+                    canvasInteraction_.layoutResizeBeforeDocument = document_;
+                    setOperationStatus("Drag to resize Sizer and relayout its children.");
+                }
 
                 if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move && document_.hasMultiSelection()) {
                     for (const auto& id : document_.selectedWidgetIds()) {
@@ -2703,8 +2892,9 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
                     snapshot.originalBounds.width,
                     snapshot.originalBounds.height
                 };
-                if (selectedWidget->bounds.x != newBounds.x || selectedWidget->bounds.y != newBounds.y) {
-                    selectedWidget->bounds = newBounds;
+                const model::Rect clampedBounds = clampBoundsToParentClient(document_, snapshot.widgetId, newBounds);
+                if (selectedWidget->bounds.x != clampedBounds.x || selectedWidget->bounds.y != clampedBounds.y) {
+                    selectedWidget->bounds = clampedBounds;
                     anyChanged = true;
                 }
             }
@@ -2718,6 +2908,7 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         updatedBounds = canvasInteraction_.originalBounds;
         updatedBounds.x = canvasInteraction_.originalBounds.x + snapResult.dx;
         updatedBounds.y = canvasInteraction_.originalBounds.y + snapResult.dy;
+        updatedBounds = clampBoundsToParentClient(document_, widget->id, updatedBounds);
 
         if (canvasInteraction_.selectionBounds.size() <= 1) {
             canvasInteraction_.dropTargetWidgetId = resolveDropParentId(widget->id, e.position.x, e.position.y);
@@ -2748,6 +2939,38 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         canvasInteraction_.dropTargetWidgetId.clear();
         updatedBounds = designerCanvas_.resizeBounds(canvasInteraction_.originalBounds, canvasInteraction_.region,
             canvasInteraction_.dragStart, *currentPoint);
+        if (canvasInteraction_.sizerItemResizeBeforeDocument.has_value()) {
+            canvasInteraction_.changed = applySizerItemResizePreview(document_,
+                *canvasInteraction_.sizerItemResizeBeforeDocument,
+                widget->id,
+                canvasInteraction_.region,
+                updatedBounds,
+                canvasInteraction_.originalSizerItemMinimumWidth,
+                canvasInteraction_.originalSizerItemMinimumHeight);
+            if (canvasInteraction_.changed) {
+                if (const auto* resizedWidget = document_.findWidgetById(canvasInteraction_.widgetId)) {
+                    const model::SizerItemLayout layout = model::sizerItemLayoutFor(*resizedWidget);
+                    setOperationStatus("Sizer item minimum size: "
+                        + std::to_string(layout.minimumWidth)
+                        + " x "
+                        + std::to_string(layout.minimumHeight));
+                }
+                updatePropertyEditorBounds();
+                redraw();
+            }
+            return;
+        }
+        if (widget->type == model::WidgetType::Sizer && canvasInteraction_.layoutResizeBeforeDocument.has_value()) {
+            if (updatedBounds.x != widget->bounds.x || updatedBounds.y != widget->bounds.y
+                || updatedBounds.width != widget->bounds.width || updatedBounds.height != widget->bounds.height) {
+                widget->bounds = updatedBounds;
+                document_.applyLayoutFromPrevious(*canvasInteraction_.layoutResizeBeforeDocument);
+                canvasInteraction_.changed = true;
+                updatePropertyEditorBounds();
+                redraw();
+            }
+            return;
+        }
     }
 
     if (updatedBounds.x != widget->bounds.x || updatedBounds.y != widget->bounds.y
@@ -2855,6 +3078,46 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
                 ? "Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets with smart guide snap"
                 : "Moved " + std::to_string(canvasInteraction_.selectionBounds.size()) + " widgets");
             clearCanvasInteraction();
+            redraw();
+            return;
+        }
+
+        if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize
+            && canvasInteraction_.sizerItemResizeBeforeDocument.has_value()) {
+            const std::string widgetId = widget->id;
+            const std::string displayName = widgetDisplayName(*widget);
+            model::ProjectDocument afterDocument = document_;
+            model::ProjectDocument beforeDocument = std::move(*canvasInteraction_.sizerItemResizeBeforeDocument);
+            document_ = beforeDocument;
+            undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+                document_,
+                "Resize sizer item",
+                std::move(beforeDocument),
+                std::move(afterDocument)));
+            document_.markDirty();
+            setOperationStatus("Resized sizer item: " + displayName + " (" + widgetId + ")");
+            clearCanvasInteraction();
+            updatePropertyEditorBounds();
+            redraw();
+            return;
+        }
+
+        if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize
+            && canvasInteraction_.layoutResizeBeforeDocument.has_value()) {
+            const std::string widgetId = widget->id;
+            const std::string displayName = widgetDisplayName(*widget);
+            model::ProjectDocument afterDocument = document_;
+            model::ProjectDocument beforeDocument = std::move(*canvasInteraction_.layoutResizeBeforeDocument);
+            document_ = beforeDocument;
+            undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+                document_,
+                "Resize sizer",
+                std::move(beforeDocument),
+                std::move(afterDocument)));
+            document_.markDirty();
+            setOperationStatus("Resized Sizer: " + displayName + " (" + widgetId + ")");
+            clearCanvasInteraction();
+            updatePropertyEditorBounds();
             redraw();
             return;
         }
@@ -3564,6 +3827,10 @@ std::string MainWindow::resolveDropParentId(const std::string& movingWidgetId, f
         return document_.root.id;
     }
 
+    if (const auto sizerDropTarget = nearestSizerDropTarget(document_, *movingWidget, *dropPoint)) {
+        return *sizerDropTarget;
+    }
+
     std::optional<std::string> hitWidgetId = designerCanvas_.hitTestWidgetId(document_, x, y);
     if (!hitWidgetId.has_value()) {
         return document_.root.id;
@@ -4068,17 +4335,44 @@ void MainWindow::makeSelectedSameWidth()
         return;
     }
 
-    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
-    const model::WidgetNode* reference = document_.previousSiblingOf(widget->id);
-    const float fallbackWidth = std::max(metrics.minWidth, document_.root.bounds.width - 40.0f);
-    const float targetWidth = std::max(metrics.minWidth, reference != nullptr ? reference->bounds.width : fallbackWidth);
     const std::string displayName = widgetDisplayName(*widget);
     const std::string widgetId = widget->id;
-    applyUndoableDocumentChange("Match width", [widget, targetWidth]() {
+    const auto* parent = document_.findParentOf(widgetId);
+    if (parent != nullptr && parent->type == model::WidgetType::Sizer) {
+        applyUndoableDocumentChange("Fill width", [this, widgetId]() {
+            auto* currentWidget = document_.findWidgetById(widgetId);
+            const auto* currentParent = document_.findParentOf(widgetId);
+            if (currentWidget == nullptr || currentParent == nullptr || currentParent->type != model::WidgetType::Sizer) {
+                return false;
+            }
+
+            const model::BoxSizerLayout parentLayout = model::boxSizerLayoutFor(*currentParent);
+            const model::SizerItemLayout itemLayout = model::sizerItemLayoutFor(*currentWidget);
+            if (parentLayout.orientation == model::SizerOrientation::Vertical) {
+                currentWidget->setProperty(std::string{ model::sizer_properties::kItemExpand }, true);
+            }
+            else {
+                currentWidget->setProperty(std::string{ model::sizer_properties::kItemProportion }, std::max(1, itemLayout.proportion));
+            }
+            document_.applyDockLayout();
+            return true;
+        });
+        setOperationStatus("Fill width: " + displayName + " (" + widgetId + ")");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
+    const model::WidgetNode* fillParent = parent != nullptr ? parent : &document_.root;
+    const model::Rect parentClientBounds = model::LayoutEngine::clientBoundsForParent(*fillParent);
+    const float targetWidth = std::max(metrics.minWidth, parentClientBounds.width);
+    applyUndoableDocumentChange("Fill width", [widget, parentClientBounds, targetWidth]() {
+        widget->bounds.x = parentClientBounds.x;
         widget->bounds.width = targetWidth;
         return true;
     });
-    setOperationStatus("Same width: " + displayName + " (" + widgetId + ")");
+    setOperationStatus("Fill width: " + displayName + " (" + widgetId + ")");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -4118,16 +4412,44 @@ void MainWindow::makeSelectedSameHeight()
         return;
     }
 
-    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
-    const model::WidgetNode* reference = document_.previousSiblingOf(widget->id);
-    const float targetHeight = std::max(metrics.minHeight, reference != nullptr ? reference->bounds.height : metrics.defaultHeight);
     const std::string displayName = widgetDisplayName(*widget);
     const std::string widgetId = widget->id;
-    applyUndoableDocumentChange("Match height", [widget, targetHeight]() {
+    const auto* parent = document_.findParentOf(widgetId);
+    if (parent != nullptr && parent->type == model::WidgetType::Sizer) {
+        applyUndoableDocumentChange("Fill height", [this, widgetId]() {
+            auto* currentWidget = document_.findWidgetById(widgetId);
+            const auto* currentParent = document_.findParentOf(widgetId);
+            if (currentWidget == nullptr || currentParent == nullptr || currentParent->type != model::WidgetType::Sizer) {
+                return false;
+            }
+
+            const model::BoxSizerLayout parentLayout = model::boxSizerLayoutFor(*currentParent);
+            const model::SizerItemLayout itemLayout = model::sizerItemLayoutFor(*currentWidget);
+            if (parentLayout.orientation == model::SizerOrientation::Horizontal) {
+                currentWidget->setProperty(std::string{ model::sizer_properties::kItemExpand }, true);
+            }
+            else {
+                currentWidget->setProperty(std::string{ model::sizer_properties::kItemProportion }, std::max(1, itemLayout.proportion));
+            }
+            document_.applyDockLayout();
+            return true;
+        });
+        setOperationStatus("Fill height: " + displayName + " (" + widgetId + ")");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
+    const model::WidgetNode* fillParent = parent != nullptr ? parent : &document_.root;
+    const model::Rect parentClientBounds = model::LayoutEngine::clientBoundsForParent(*fillParent);
+    const float targetHeight = std::max(metrics.minHeight, parentClientBounds.height);
+    applyUndoableDocumentChange("Fill height", [widget, parentClientBounds, targetHeight]() {
+        widget->bounds.y = parentClientBounds.y;
         widget->bounds.height = targetHeight;
         return true;
     });
-    setOperationStatus("Same height: " + displayName + " (" + widgetId + ")");
+    setOperationStatus("Fill height: " + displayName + " (" + widgetId + ")");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -4202,13 +4524,24 @@ void MainWindow::nudgeSelectedWidgets(float dx, float dy)
     }
 
     const std::size_t selectedCount = selectedWidgets.size();
-    applyUndoableDocumentChange("Nudge widgets", [&selectedWidgets, dx, dy]() {
+    if (!applyUndoableDocumentChange("Nudge widgets", [this, &selectedWidgets, dx, dy]() {
+        bool anyChanged = false;
         for (auto* selected : selectedWidgets) {
-            selected->bounds.x += dx;
-            selected->bounds.y += dy;
+            model::Rect updatedBounds = selected->bounds;
+            updatedBounds.x += dx;
+            updatedBounds.y += dy;
+            updatedBounds = clampBoundsToParentClient(document_, selected->id, updatedBounds);
+            if (selected->bounds.x != updatedBounds.x || selected->bounds.y != updatedBounds.y) {
+                selected->bounds = updatedBounds;
+                anyChanged = true;
+            }
         }
-        return true;
-    });
+        return anyChanged;
+    })) {
+        setOperationStatus("Nudge constrained by parent canvas");
+        redraw();
+        return;
+    }
 
     setOperationStatus("Nudged " + std::to_string(selectedCount) + " widget(s)");
     updatePropertyEditorBounds();
@@ -4329,18 +4662,16 @@ bool MainWindow::setSelectedWidgetBounds(float x, float y, float width, float he
     const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
     const float clampedWidth = std::max(width, metrics.minWidth);
     const float clampedHeight = std::max(height, metrics.minHeight);
-    if (x < 0.0f || y < 0.0f) {
-        setOperationStatus("Invalid bounds for selected widget");
-        redraw();
-        return false;
-    }
+    const model::Rect requestedBounds{ x, y, clampedWidth, clampedHeight };
+    const model::Rect clampedBounds = clampBoundsToParentClient(document_, widget->id, requestedBounds);
 
-    if (widget->bounds.x == x && widget->bounds.y == y && widget->bounds.width == clampedWidth && widget->bounds.height == clampedHeight) {
+    if (widget->bounds.x == clampedBounds.x && widget->bounds.y == clampedBounds.y
+        && widget->bounds.width == clampedBounds.width && widget->bounds.height == clampedBounds.height) {
         return true;
     }
 
     model::ProjectDocument beforeDocument = document_;
-    widget->bounds = { x, y, clampedWidth, clampedHeight };
+    widget->bounds = clampedBounds;
     document_.applyLayoutFromPrevious(beforeDocument);
     model::ProjectDocument afterDocument = document_;
     document_ = beforeDocument;
@@ -4355,6 +4686,9 @@ bool MainWindow::setSelectedWidgetBounds(float x, float y, float width, float he
     }
     else if (height < metrics.minHeight && widget->type == model::WidgetType::CheckBox) {
         setOperationStatus("Height clamped to minimum for CheckBox");
+    }
+    else if (clampedBounds.x != x || clampedBounds.y != y) {
+        setOperationStatus("Bounds clamped to parent canvas");
     }
     updatePropertyEditorBounds();
     redraw();
@@ -5259,9 +5593,9 @@ std::string MainWindow::commandHintText(CommandId command) const
         case CommandId::CenterVertically:
             return "Center selected widgets vertically" + shortcutSuffix;
         case CommandId::SameWidth:
-            return "Match selected widget widths" + shortcutSuffix;
+            return "Match selected widget widths, or fill parent width for one widget" + shortcutSuffix;
         case CommandId::SameHeight:
-            return "Match selected widget heights" + shortcutSuffix;
+            return "Match selected widget heights, or fill parent height for one widget" + shortcutSuffix;
         case CommandId::DistributeHorizontally:
             return "Distribute selected widgets horizontally" + shortcutSuffix;
         case CommandId::DistributeVertically:
@@ -5316,6 +5650,7 @@ bool MainWindow::isCommandEnabled(CommandId command) const
     case CommandId::CenterVertically:
     case CommandId::SameWidth:
     case CommandId::SameHeight:
+        return hasNonRootSelection;
     case CommandId::DistributeHorizontally:
     case CommandId::DistributeVertically:
         return hasMultiSelection;
@@ -5437,8 +5772,8 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     addCommand(layoutMenu, CommandId::AlignBottom, "Align Bottom");
     addCommand(layoutMenu, CommandId::CenterHorizontally, "Center Horizontally");
     addCommand(layoutMenu, CommandId::CenterVertically, "Center Vertically");
-    addCommand(layoutMenu, CommandId::SameWidth, "Same Width");
-    addCommand(layoutMenu, CommandId::SameHeight, "Same Height");
+    addCommand(layoutMenu, CommandId::SameWidth, "Same Width / Fill Width");
+    addCommand(layoutMenu, CommandId::SameHeight, "Same Height / Fill Height");
     addCommand(layoutMenu, CommandId::DistributeHorizontally, "Distribute Horizontally");
     addCommand(layoutMenu, CommandId::DistributeVertically, "Distribute Vertically");
     addCommand(layoutMenu, CommandId::BringForward, "Bring Forward");

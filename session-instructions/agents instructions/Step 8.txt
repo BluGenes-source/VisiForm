@@ -1,0 +1,65 @@
+Validate the VisiForm Codex multi-agent setup.
+
+Do not implement product changes.
+
+Perform these checks:
+
+1. Confirm the repository root.
+2. Confirm that Codex loaded the repository-root AGENTS.md.
+3. Confirm that docs/VISIFORM_PROJECT_SPEC.md exists and is non-empty.
+4. Confirm that .codex/config.toml is valid TOML.
+5. Confirm that .codex/config.toml contains:
+   - agents.max_threads = 6
+   - agents.max_depth = 1
+6. Confirm that these custom agents are discoverable:
+   - visiform_explorer
+   - visiform_architect
+   - visiform_implementer
+   - visiform_validator
+   - visiform_reviewer
+   - visiform_documenter
+7. Confirm every custom agent file contains:
+   - name
+   - description
+   - developer_instructions
+8. Confirm read-only agents use read-only sandbox mode:
+   - visiform_explorer
+   - visiform_architect
+   - visiform_reviewer
+9. Confirm writable agents use workspace-write:
+   - visiform_implementer
+   - visiform_validator
+   - visiform_documenter
+10. Confirm the AGENTS.md workflow prevents overlapping concurrent edits.
+11. Confirm only the lead agent may close a phase.
+12. Confirm the project specification distinguishes implemented and planned work.
+13. Inspect git status.
+14. Check for TOML syntax errors, duplicate agent names, missing paths, stale
+    references, or contradictory instructions.
+
+Then perform a non-destructive subagent smoke test:
+
+1. Spawn visiform_explorer.
+2. Ask it to identify:
+   - the project model entry point;
+   - the JSON persistence entry point;
+   - the code-generator entry point;
+   - the active Phase 86 plan;
+   - one relevant test area.
+3. Require it to make no changes.
+4. Wait for its result.
+5. Verify its response follows its custom-agent role.
+
+Return:
+
+- setup checks passed;
+- setup checks failed;
+- custom agents discovered;
+- instruction files loaded;
+- smoke-test result;
+- files unexpectedly modified, if any;
+- current git status;
+- recommended corrections.
+
+Do not modify production files.
+Do not commit or push.

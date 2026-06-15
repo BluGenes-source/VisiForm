@@ -1,0 +1,157 @@
+Perform a real coding pass on the VisiForm project.
+
+Use the VisiForm custom subagents under `.codex/agents/`. Do not use GPT-5.5 for this workflow because of the known custom-subagent spawning issue.
+
+## Primary objective
+
+First determine exactly where development was last left off. Then complete one focused coding task:
+
+1. Prefer fixing the known sizer/widget resizing defect described below.
+2. If repository evidence proves that defect is already fixed, select the highest-priority unfinished feature or confirmed bug from the current phase documentation, TODOs, tests, issue notes, or recent Git history.
+
+## Known defect to investigate
+
+When a button or other widget is dropped into a sizer:
+
+* The widget can initially be resized.
+* After the resize drag ends, it cannot be resized again.
+* Its width and height appear to become locked.
+* When the containing sizer is resized, widgets inside it do not resize with the sizer as expected.
+
+Do not assume the cause. Reproduce and trace the actual state, layout, selection, hit-testing, and resize logic.
+
+## Step 1: Establish the current project state
+
+Use `visiform_explorer` to inspect the repository without editing files.
+
+Inspect:
+
+* root `AGENTS.md`;
+* `copilot-instructions.md`;
+* `visiform.instructions.md`;
+* phase specifications and progress documents;
+* recent Git history;
+* current branch;
+* working-tree status;
+* current uncommitted changes;
+* TODO, FIXME, incomplete, pending, and phase references;
+* existing sizer, widget, resize-handle, selection, drag, layout, serialization, and property-panel code;
+* tests related to sizers and widget resizing.
+
+Report:
+
+* the last clearly completed phase;
+* the current active phase;
+* work that appears incomplete;
+* whether the known resizing bug is still present in the current source;
+* files most likely involved;
+* existing changes that must not be overwritten.
+
+Do not discard, reset, revert, or overwrite unrelated work.
+
+## Step 2: Reproduce and diagnose
+
+Use `visiform_reviewer` and `visiform_architect` to analyze the defect.
+
+Trace the complete interaction:
+
+1. Widget is inserted into a sizer.
+2. Widget becomes selected.
+3. Resize handles are created or activated.
+4. Mouse-down begins a resize operation.
+5. Mouse movement updates bounds or layout metadata.
+6. Mouse-up ends the operation.
+7. A second resize attempt is started.
+8. The containing sizer is resized.
+9. Child widget geometry is recalculated.
+
+Check specifically for:
+
+* stale drag or resize state after mouse-up;
+* handles being destroyed, hidden, disabled, or detached;
+* pointer capture not being released;
+* selection state becoming invalid;
+* hit-testing using stale bounds;
+* direct widget dimensions conflicting with sizer-managed dimensions;
+* minimum, preferred, fixed, proportion, expand, border, or alignment flags;
+* layout metadata being incorrectly converted to fixed width or height;
+* a resize operation writing constraints that prevent later resizing;
+* child geometry not being recomputed when the parent sizer changes;
+* model-view synchronization problems;
+* undo/redo commands restoring stale geometry;
+* serialization changing dynamic sizing into fixed sizing.
+
+Before editing, provide a concise root-cause report supported by file and function references.
+
+## Step 3: Select the coding task
+
+If the resizing defect is reproducible or clearly present, fix it.
+
+If it has already been fixed, identify one focused unfinished task from the current phase and explain why it is the best next coding pass before implementing it.
+
+Do not begin an unrelated refactor.
+
+## Step 4: Implement
+
+Use `visiform_implementer`.
+
+Requirements:
+
+* Follow the existing architecture and naming conventions.
+* Make the smallest complete correction.
+* Preserve current behavior outside the affected workflow.
+* Keep sizer-owned layout data separate from transient canvas drag state.
+* Ensure resize state is reset cleanly after mouse-up or cancellation.
+* Ensure repeated resize operations work.
+* Ensure resizing a sizer recalculates affected child widget geometry.
+* Preserve selection and resize handles after layout updates.
+* Add defensive checks only where they address a demonstrated failure.
+* Do not add broad compatibility workarounds without evidence.
+* Do not modify unrelated files.
+* Do not commit or push.
+
+If the project uses numbered phases, determine the correct phase number from repository evidence. Do not guess or automatically create a new phase if the current phase is unfinished.
+
+## Step 5: Test
+
+Use `visiform_validator`.
+
+Add or update tests covering, where supported by the existing test framework:
+
+* initial resize of a widget inside a sizer;
+* second resize after the first mouse-up;
+* resizing in both width and height;
+* resizing the containing sizer;
+* child widgets receiving updated geometry;
+* selection and resize handles remaining usable;
+* fixed-size versus expandable sizer items;
+* minimum-size constraints;
+* undo and redo, if the changed code participates in command history;
+* save and reload, if sizing metadata is serialized.
+
+Run the narrowest relevant tests first, followed by the normal project test/build commands required by the repository instructions.
+
+Do not hide failing tests. Distinguish:
+
+* failures caused by this change;
+* pre-existing failures;
+* tests that cannot run because of environment limitations.
+
+## Step 6: Final review
+
+Use `visiform_reviewer` for a final diff review.
+
+Report:
+
+1. Where the project was last left off.
+2. The phase that was continued.
+3. The selected bug or feature.
+4. The verified root cause.
+5. Files changed.
+6. Behavior before and after.
+7. Tests added or changed.
+8. Commands run and their results.
+9. Remaining risks or unresolved cases.
+10. Current `git status --short`.
+
+Do not commit, push, reset, clean, or discard any existing work.

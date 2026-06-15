@@ -52,6 +52,12 @@ Upgrade the existing starter `Sizer` widget into a wxBoxSizer-inspired layout sy
 - [ ] Keep dashed design-time sizer outline and orientation label.
 - [x] Add or improve fixed/stretch spacer visual representation.
 - [x] Disable misleading free resize behavior for direct sizer children, or map it to minimum-size overrides.
+- [x] Map direct sizer-child mouse resize gestures to `Sizer Item` minimum-size properties.
+- [x] Keep selected sizer-child resize handles repeatable after layout rewrites child bounds.
+- [x] Start selected-widget resize handles before general widget hit testing so visible handles can restart resizing.
+- [x] Relayout children while resizing a Sizer and commit the result as one undoable document state.
+- [x] Clamp moved widgets and root-level sizers to their parent client canvas during drag, nudge, and bounds edits.
+- [x] Snap-connect dragged widgets into nearby sizers within the editor drop threshold.
 - [ ] Add insertion/reorder feedback where compatible with current interaction architecture.
 
 ## Property Inspector Changes
@@ -84,6 +90,8 @@ Upgrade the existing starter `Sizer` widget into a wxBoxSizer-inspired layout sy
 
 - [x] Use existing undoable document changes for property edits.
 - [x] Preserve previous and new document state for reparent/reorder operations.
+- [x] Commit sizer-child resize gestures as a single `DocumentStateCommand`.
+- [x] Commit sizer resize plus child relayout as a single `DocumentStateCommand`.
 - [x] Add focused command support only if needed by the current architecture.
 
 ## Generated Runtime Changes
@@ -101,10 +109,41 @@ Upgrade the existing starter `Sizer` widget into a wxBoxSizer-inspired layout sy
 ## Automated Tests
 
 - [x] Add pure BoxSizer layout tests.
+- [x] Add focused sizer-item minimum-size layout tests.
+- [x] Add focused resized-sizer child relayout test.
+- [x] Add focused nested-sizer relayout propagation test.
+- [x] Add focused JSON round-trip test for resized sizer-item minimum sizes.
 - [x] Add JSON compatibility and round-trip tests.
-- [ ] Add validation tests.
+- [x] Add validation tests.
 - [ ] Add generator source-inspection tests where feasible.
 - [ ] Add undo/redo tests where feasible.
+
+## Sizer Resize Bug Investigation
+
+- Issue 1, repeated child resize: current follow-up code maps direct sizer-child resize gestures to `sizerItem.minimumWidth` and `sizerItem.minimumHeight`, starts selected-widget handle hit testing before general widget hit testing, relayouts from the pre-drag document, and clears drag state after committing a `DocumentStateCommand`.
+- Issue 2, child relayout after resizing a Sizer: current follow-up code relayouts while the Sizer is resized and commits the Sizer bounds plus relaid-out child bounds as one `DocumentStateCommand`.
+- The apparent width or height lock is intentional where BoxSizer rules own that dimension. `expand` controls cross-axis fill, `proportion` controls main-axis growth, and default Button items use `proportion=0` and `expand=false`.
+- No new production-code fix was made for this investigation because the reports appear addressed by the current Phase 86 follow-up worktree and remaining uncertainty is manual UI verification.
+
+## Verification Matrix
+
+| Case | Expected behavior | Observed evidence | Defect? | Coverage |
+| --- | --- | --- | --- | --- |
+| Button outside a sizer | Corner resize edits widget bounds directly with normal resize command behavior. | Existing `MainWindow` resize path remains available when selected widget is not a direct sizer child. | No current evidence. | Manual UI check required. |
+| Button in horizontal BoxSizer | Width is main-axis and grows only with positive proportion; height fills only with expand. | BoxSizer contract in `BoxSizerLayout` and architect review. | No, unless configured expand/proportion fails. | Model tests cover proportion and expand behavior; manual UI check required. |
+| Button in vertical BoxSizer | Height is main-axis and grows only with positive proportion; width fills only with expand. | BoxSizer contract in `BoxSizerLayout` and architect review. | No, unless configured expand/proportion fails. | Model tests cover minimum height and resized-sizer relayout; manual UI check required. |
+| Expand disabled | Cross-axis size stays at minimum or preferred size with alignment. | Existing alignment/border test and sizer contract. | No. | `BoxSizer supports item borders, alignment, and fixed spacers`. |
+| Expand enabled | Cross-axis size tracks available sizer content size. | Existing and added model tests. | No current evidence. | `Resized Sizer recomputes child layout from new bounds`; nested propagation test. |
+| Proportion 0 | Main-axis size stays at minimum or preferred size. | Existing proportion test. | No. | `BoxSizer distributes extra main-axis space by proportion deterministically`. |
+| Nonzero proportion | Main-axis receives weighted extra space. | Existing proportion test. | No current evidence. | `BoxSizer distributes extra main-axis space by proportion deterministically`. |
+| Button inside nested BoxSizer | Parent resize assigns nested sizer slot, then nested children relayout recursively. | Added focused model test. | No current evidence. | `Nested BoxSizer relayout propagates from parent resize`. |
+| First resize drag | Direct sizer child resize edits sizer-item minimum size. | Current `MainWindow` code path and minimum-size layout tests. | No current evidence. | Model tests cover resulting minimum behavior; manual UI check required. |
+| Second resize drag after release | Selected handle can restart resizing after layout rewrites child bounds. | Current `DesignerCanvas` selected-handle-first hit testing and `clearCanvasInteraction` path. | Original report appears fixed in current worktree. | Manual UI check required. |
+| Resize from each applicable handle | Corner handles should restart and update minimum size request. | Current handle detection covers all four corner handles. | No current evidence. | Manual UI check required. |
+| Resize containing sizer larger | Children relayout according to expand/proportion/minimum rules. | Current `MainWindow` Sizer resize path and model tests. | No current evidence. | `Resized Sizer recomputes child layout from new bounds`; nested propagation test. |
+| Resize containing sizer smaller | Children relayout and clamp to effective minimums without negative bounds. | BoxSizer layout clamps available sizes. | No current evidence. | Manual UI check required; model undersize coverage remains indirect. |
+| Save and reload before another resize | Sizer-item minimum overrides persist and reproduce layout. | Added JSON round-trip test for minimum width/height. | No current evidence. | `Sizer item minimum sizes round-trip through JSON`; manual follow-up resize check required. |
+| Undo and redo | Each completed sizer-child or Sizer resize is one document-state command. | Current `MainWindow` uses `DocumentStateCommand` for both paths. | No current evidence. | Manual UI check required; automated undo/redo test still TODO. |
 
 ## Risks
 
@@ -129,20 +168,24 @@ Upgrade the existing starter `Sizer` widget into a wxBoxSizer-inspired layout sy
 ## Work Continuity
 
 - Current branch: `main`.
-- Most recent relevant commit before this work: `a46317d added a sizer widget`.
+- Most recent relevant commit before this follow-up: `6f95b09 Add BoxSizer layout system with enhanced features`.
 - Files changed: model BoxSizer helpers/layout integration, JSON loading defaults, registry defaults, property inspector, designer canvas, main window drag behavior, validation, generator runtime output, CMake test wiring, docs, and focused Catch2 test source.
+- Follow-up files changed: `src/ui/DesignerCanvas.cpp`, `src/ui/MainWindow.cpp`, `src/ui/MainWindow.h`, `tests/test_box_sizer_layout.cpp`, `docs/layout_tools.md`, and this plan.
+- Adjustment files changed: `src/ui/MainWindow.cpp`, `docs/layout_tools.md`, and this plan.
+- Validation follow-up files changed: `tests/CMakeLists.txt`, `tests/test_project_validation.cpp`, and this plan.
 - Intentionally left untouched: active `session-instructions/phase 86 BoxSizer Layout.txt`; no archiving until Phase 86 is complete.
-- Static validation run: `git diff --check` passed.
+- Static validation run: `git diff --check` passed after the repeatable sizer resizing and clamp follow-ups.
 - Build/test validation: deferred to the developer because command-line build/test execution is prohibited and no unambiguous Visual Studio workspace pipeline was available to the agent.
 
 ## Remaining TODOs
 
 - Add explicit designer insertion indicators between sizer children.
 - Convert the current sizer outline into a true dashed design-time outline.
-- Add validation, generator-inspection, undo/redo, and full Phase 86 acceptance-scenario tests.
+- Add generator-inspection, undo/redo, and full Phase 86 acceptance-scenario tests.
+- Developer should manually verify repeat sizer-child mouse resizing, root-level Sizer drag clamping at the form edges, nudge/bounds-edit clamping, resizing a Sizer with children inside it, undo/redo after Sizer resize, snap-connect reparenting into sizers, and single-selection Fill Width/Fill Height menu behavior.
 - Developer should build the main `VisiForm` target in Visual Studio and manually verify editor behavior without launching generated apps from an agent.
 
 ## Final Result Summary
 
-- Implemented model-level BoxSizer types, property helpers, defaults, recursive editor layout, inspector editing, designer visuals, validation, JSON compatibility, generated runtime metadata/layout, focused tests, and documentation.
+- Implemented model-level BoxSizer types, property helpers, defaults, recursive editor layout, inspector editing, designer visuals, repeatable sizer-child resize-to-minimum behavior, selected-handle-first resize restart, parent-canvas movement clamping, live Sizer resize relayout with undoable document-state commits, sizer snap-connect drop targeting, validation, JSON compatibility, focused validation tests, generated runtime metadata/layout, and documentation.
 - Build and test validation were deferred because the approved Visual Studio workspace build pipeline is not available to the agent and command-line build/test validation is prohibited by repository instructions.

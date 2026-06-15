@@ -1,1 +1,2 @@
-Explain the function as it is coded now how the sizer is supposed to work.  I am seeing behavior, but, not sure if needs to be corrected.  For example, adding a button to the sizer, you are unable to resize it with the mouse.   There needs to be a way to change the size f the widgest within the sizer.
+When a button is dropped into a sizer, you can chage the height, but, if you stop dragging, you are unable to drag and resize again. It appears the width and height become locked.
+When resizing a resizer with widgets inside, the widgets do not resize.

@@ -1,0 +1,35 @@
+Review the VisiForm Codex multi-agent setup as one cohesive change.
+
+Review:
+
+- .codex/config.toml
+- .codex/agents/visiform_explorer.toml
+- .codex/agents/visiform_architect.toml
+- .codex/agents/visiform_implementer.toml
+- .codex/agents/visiform_validator.toml
+- .codex/agents/visiform_reviewer.toml
+- .codex/agents/visiform_documenter.toml
+- AGENTS.md
+- docs/VISIFORM_PROJECT_SPEC.md
+
+Tasks:
+
+1. Validate all TOML files.
+2. Check for conflicting or duplicated instructions.
+3. Check that agent responsibilities are clearly separated.
+4. Check that read-only roles cannot normally edit files.
+5. Check that implementation agents cannot declare phase completion.
+6. Check that only the lead agent owns integration.
+7. Check that parallel file editing is prohibited.
+8. Check that the project specification reflects actual repository behavior.
+9. Correct setup defects only.
+10. Do not change VisiForm production behavior.
+11. Show the final diff.
+12. Show final git status.
+
+If and only if all setup checks pass, create one commit with this message:
+
+chore(codex): add VisiForm multi-agent workflow and project specification
+
+Do not push.
+Do not create a pull request.

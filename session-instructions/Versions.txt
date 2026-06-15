@@ -1,0 +1,3 @@
+Adjust the agents rules so that after a build is completed for a phase, increment the build version number for the next phase.   Example of what I mean is, if a bug fix build was fixed, and the next phase would be Phase x, if the Visiform build version was 1.0.0, increment the build number.
+
+Define the version as Major.Minor.Build

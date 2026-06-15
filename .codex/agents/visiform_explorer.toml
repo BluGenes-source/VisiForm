@@ -9,7 +9,7 @@ or code-generation changes.
 nickname_candidates = ["Scout", "Pathfinder", "Tracer"]
 
 sandbox_mode = "read-only"
-model_reasoning_effort = "high"
+
 
 developer_instructions = """
 You are the VisiForm repository exploration specialist.

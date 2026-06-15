@@ -1,5 +1,6 @@
 #include "model/BoxSizerLayout.h"
 #include "model/LayoutEngine.h"
+#include "model/ProjectDocument.h"
 #include "model/WidgetRegistry.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
@@ -129,6 +130,153 @@ TEST_CASE("BoxSizer supports item borders, alignment, and fixed spacers")
     REQUIRE(sizer.children[1].bounds.x == Catch::Approx(24.0f));
     REQUIRE(sizer.children[1].bounds.y == Catch::Approx(30.0f));
     REQUIRE(sizer.children[1].bounds.height == Catch::Approx(20.0f));
+}
+
+TEST_CASE("Sizer item minimum width controls vertical sizer cross-axis size")
+{
+    auto sizer = makeWidget(WidgetType::Sizer, "sizer_main", 260.0f, 80.0f);
+    sizer.setProperty("orientation", "Vertical");
+    sizer.setProperty("paddingLeft", 0);
+    sizer.setProperty("paddingTop", 0);
+    sizer.setProperty("paddingRight", 0);
+    sizer.setProperty("paddingBottom", 0);
+    sizer.setProperty("gap", 0);
+
+    auto button = makeWidget(WidgetType::Button, "button_1", 40.0f, 20.0f);
+    button.setProperty("sizerItem.expand", false);
+    button.setProperty("sizerItem.minimumWidth", 180);
+
+    appendSizerChild(sizer, std::move(button));
+    visiform::model::layoutBoxSizerChildren(sizer);
+
+    REQUIRE(sizer.children[0].bounds.width == Catch::Approx(180.0f));
+}
+
+TEST_CASE("Sizer item minimum height controls vertical sizer main-axis size")
+{
+    auto sizer = makeWidget(WidgetType::Sizer, "sizer_main", 120.0f, 160.0f);
+    sizer.setProperty("orientation", "Vertical");
+    sizer.setProperty("paddingLeft", 0);
+    sizer.setProperty("paddingTop", 0);
+    sizer.setProperty("paddingRight", 0);
+    sizer.setProperty("paddingBottom", 0);
+    sizer.setProperty("gap", 0);
+
+    auto button = makeWidget(WidgetType::Button, "button_1", 40.0f, 20.0f);
+    button.setProperty("sizerItem.minimumHeight", 72);
+
+    appendSizerChild(sizer, std::move(button));
+    visiform::model::layoutBoxSizerChildren(sizer);
+
+    REQUIRE(sizer.children[0].bounds.height == Catch::Approx(72.0f));
+}
+
+TEST_CASE("Resized Sizer recomputes child layout from new bounds")
+{
+    auto sizer = makeWidget(WidgetType::Sizer, "sizer_main", 120.0f, 80.0f);
+    sizer.setProperty("orientation", "Vertical");
+    sizer.setProperty("paddingLeft", 0);
+    sizer.setProperty("paddingTop", 0);
+    sizer.setProperty("paddingRight", 0);
+    sizer.setProperty("paddingBottom", 0);
+    sizer.setProperty("gap", 0);
+
+    auto button = makeWidget(WidgetType::Button, "button_1", 40.0f, 20.0f);
+    button.setProperty("sizerItem.expand", true);
+    button.setProperty("sizerItem.proportion", 1);
+
+    appendSizerChild(sizer, std::move(button));
+    visiform::model::layoutBoxSizerChildren(sizer);
+
+    REQUIRE(sizer.children[0].bounds.width == Catch::Approx(120.0f));
+    REQUIRE(sizer.children[0].bounds.height == Catch::Approx(80.0f));
+
+    sizer.bounds.width = 220.0f;
+    sizer.bounds.height = 140.0f;
+    visiform::model::layoutBoxSizerChildren(sizer);
+
+    REQUIRE(sizer.children[0].bounds.width == Catch::Approx(220.0f));
+    REQUIRE(sizer.children[0].bounds.height == Catch::Approx(140.0f));
+}
+
+TEST_CASE("Nested BoxSizer relayout propagates from parent resize")
+{
+    auto outer = makeWidget(WidgetType::Sizer, "sizer_outer", 300.0f, 200.0f);
+    outer.setProperty("orientation", "Vertical");
+    outer.setProperty("paddingLeft", 0);
+    outer.setProperty("paddingTop", 0);
+    outer.setProperty("paddingRight", 0);
+    outer.setProperty("paddingBottom", 0);
+    outer.setProperty("gap", 0);
+
+    auto inner = makeWidget(WidgetType::Sizer, "sizer_inner", 10.0f, 10.0f);
+    inner.setProperty("orientation", "Horizontal");
+    inner.setProperty("paddingLeft", 0);
+    inner.setProperty("paddingTop", 0);
+    inner.setProperty("paddingRight", 0);
+    inner.setProperty("paddingBottom", 0);
+    inner.setProperty("gap", 0);
+    inner.setProperty("sizerItem.expand", true);
+    inner.setProperty("sizerItem.proportion", 1);
+
+    auto button = makeWidget(WidgetType::Button, "button_1", 40.0f, 20.0f);
+    button.setProperty("sizerItem.expand", true);
+    button.setProperty("sizerItem.proportion", 1);
+
+    appendSizerChild(inner, std::move(button));
+    appendSizerChild(outer, std::move(inner));
+
+    visiform::model::layoutBoxSizerChildren(outer);
+
+    REQUIRE(outer.children[0].bounds.width == Catch::Approx(300.0f));
+    REQUIRE(outer.children[0].bounds.height == Catch::Approx(200.0f));
+    REQUIRE(outer.children[0].children[0].bounds.width == Catch::Approx(300.0f));
+    REQUIRE(outer.children[0].children[0].bounds.height == Catch::Approx(200.0f));
+
+    outer.bounds.width = 180.0f;
+    outer.bounds.height = 90.0f;
+    visiform::model::layoutBoxSizerChildren(outer);
+
+    REQUIRE(outer.children[0].bounds.width == Catch::Approx(180.0f));
+    REQUIRE(outer.children[0].bounds.height == Catch::Approx(90.0f));
+    REQUIRE(outer.children[0].children[0].bounds.width == Catch::Approx(180.0f));
+    REQUIRE(outer.children[0].children[0].bounds.height == Catch::Approx(90.0f));
+}
+
+TEST_CASE("Sizer item minimum sizes round-trip through JSON")
+{
+    visiform::model::ProjectDocument document = visiform::model::ProjectDocument::createDefault();
+    document.root.children.clear();
+
+    auto sizer = makeWidget(WidgetType::Sizer, "sizer_main", 240.0f, 160.0f);
+    sizer.setProperty("orientation", "Vertical");
+    sizer.setProperty("paddingLeft", 0);
+    sizer.setProperty("paddingTop", 0);
+    sizer.setProperty("paddingRight", 0);
+    sizer.setProperty("paddingBottom", 0);
+    sizer.setProperty("gap", 0);
+
+    auto button = makeWidget(WidgetType::Button, "button_1", 40.0f, 20.0f);
+    button.setProperty("sizerItem.expand", false);
+    button.setProperty("sizerItem.minimumWidth", 180);
+    button.setProperty("sizerItem.minimumHeight", 72);
+
+    appendSizerChild(sizer, std::move(button));
+    document.root.appendChild(std::move(sizer));
+    document.refreshHierarchyMetadata();
+
+    visiform::serialization::JsonProjectWriter writer;
+    visiform::serialization::JsonProjectReader reader;
+    std::string error;
+    const auto loaded = reader.readFromString(writer.writeToString(document), error);
+
+    REQUIRE(error.empty());
+    REQUIRE(loaded.has_value());
+
+    const auto* loadedButton = loaded->findWidgetById("button_1");
+    REQUIRE(loadedButton != nullptr);
+    REQUIRE(loadedButton->getIntProperty("sizerItem.minimumWidth", -1) == 180);
+    REQUIRE(loadedButton->getIntProperty("sizerItem.minimumHeight", -1) == 72);
 }
 
 TEST_CASE("Legacy Sizer padding migrates to side padding on JSON load")

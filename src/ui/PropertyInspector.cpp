@@ -610,7 +610,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     }
     const PropertyEditKind boundsEditKind = parentControlsSizerLayout ? PropertyEditKind::ReadOnly : PropertyEditKind::Float;
     const std::string boundsHint = parentControlsSizerLayout
-        ? "Position and size are controlled by the parent Sizer."
+        ? "Position and size are controlled by the parent Sizer; mouse resize edits Sizer Item minimum size."
         : "Widget geometry relative to the current parent container.";
     rows.push_back({ "x", "X", boundsHint, formatFloat(selectedWidget->bounds.x), boundsEditKind });
     rows.push_back({ "y", "Y", boundsHint, formatFloat(selectedWidget->bounds.y), boundsEditKind });
@@ -1046,7 +1046,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 if (!rowHint.empty()) {
                     rowHint += " ";
                 }
-                rowHint += "Position and size are controlled by the parent Sizer.";
+                rowHint += "Position and size are controlled by the parent Sizer; mouse resize edits Sizer Item minimum size.";
             }
             if (property.key == "anchor" && selectedWidget->dockMode() != model::DockMode::None) {
                 rowEditKind = PropertyEditKind::ReadOnly;
@@ -1060,7 +1060,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 if (!rowHint.empty()) {
                     rowHint += " ";
                 }
-                rowHint += "Position and size are controlled by the parent Sizer.";
+                rowHint += "Position and size are controlled by the parent Sizer; mouse resize edits Sizer Item minimum size.";
             }
             rows.push_back({
                 property.key,

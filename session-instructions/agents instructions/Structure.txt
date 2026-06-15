@@ -1,0 +1,17 @@
+VisForm Folder Structure for Sub Agents
+
+VisiForm/
+├── .codex/
+│   ├── config.toml
+│   └── agents/
+│       ├── visiform_explorer.toml
+│       ├── visiform_architect.toml
+│       ├── visiform_implementer.toml
+│       ├── visiform_validator.toml
+│       ├── visiform_reviewer.toml
+│       └── visiform_documenter.toml
+├── docs/
+│   ├── VISIFORM_PROJECT_SPEC.md
+│   └── agent_plans/
+├── AGENTS.md
+└── ...

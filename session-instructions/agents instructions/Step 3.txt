@@ -1,0 +1,34 @@
+Create or update:
+
+.codex/config.toml
+
+Preserve any valid existing project-specific Codex configuration.
+
+Ensure it contains the following VisiForm subagent settings:
+
+[agents]
+max_threads = 6
+max_depth = 1
+
+Requirements:
+
+1. Do not add machine-specific paths.
+2. Do not add authentication, API keys, provider settings, or secrets.
+3. Do not add a fixed model unless the repository already has an intentional
+   model policy.
+4. Preserve comments and unrelated valid settings when updating an existing file.
+5. Validate that the final file is valid TOML.
+6. Confirm that project-scoped custom agents will be loaded from:
+   .codex/agents/
+7. Show the final file and Git diff summary.
+8. Do not commit or push.
+
+Expected File:
+# Project-scoped Codex configuration for VisiForm.
+
+[agents]
+# Maximum number of open agent threads, including the lead session.
+max_threads = 6
+
+# Allow direct subagents while preventing recursive agent fan-out.
+max_depth = 1

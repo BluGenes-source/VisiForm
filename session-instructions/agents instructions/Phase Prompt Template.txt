@@ -1,0 +1,152 @@
+Act as the lead agent for the VisiForm repository.
+
+Task:
+
+[DESCRIBE THE FEATURE, BUG, OR REFACTOR HERE]
+
+Follow AGENTS.md and docs/VISIFORM_PROJECT_SPEC.md.
+
+Use the VisiForm subagent workflow.
+
+1. Inspect current git status and preserve unrelated changes.
+
+2. Spawn visiform_explorer.
+
+   Have it:
+   - trace current behavior;
+   - identify files, symbols, tests, and architectural layers;
+   - identify related existing phase plans;
+   - identify compatibility and regression risks;
+   - make no changes.
+
+3. Wait for the explorer report.
+
+4. Spawn visiform_architect.
+
+   Give it:
+   - this task;
+   - the explorer report;
+   - relevant specification sections;
+   - relevant existing phase-plan information.
+
+   Have it:
+   - propose the smallest coherent design;
+   - define requirements and non-requirements;
+   - identify compatibility impact;
+   - divide work into bounded assignments;
+   - identify safe and unsafe parallel work;
+   - produce acceptance criteria and a proposed TODO checklist;
+   - make no changes.
+
+5. Wait for the architect report.
+
+6. As lead agent:
+
+   - determine whether this belongs to an existing phase;
+   - otherwise inspect docs/agent_plans and select the next unused phase number;
+   - create or update the official phase plan;
+   - record scope, requirements, design, TODOs, validation, risks, final-summary
+     section, and remaining-TODO section.
+
+7. Assign implementation.
+
+   Spawn visiform_implementer agents only for genuinely independent assignments.
+
+   Every assignment must explicitly state:
+   - permitted files or subsystems;
+   - prohibited files or subsystems;
+   - required behavior;
+   - required tests;
+   - expected report.
+
+   Do not permit concurrent edits to overlapping files, central headers, the
+   official phase plan, or docs/VISIFORM_PROJECT_SPEC.md.
+
+8. Wait for all implementers.
+
+9. As lead agent:
+
+   - inspect and integrate every diff;
+   - resolve cross-layer inconsistencies;
+   - update the phase checklist using evidence only;
+   - run focused checks where practical.
+
+10. Spawn visiform_validator.
+
+    Have it run applicable:
+    - Visual Studio 2022/CMake configuration;
+    - VisiForm build;
+    - automated tests;
+    - focused regression tests;
+    - .vfb.json save/load tests;
+    - malformed and compatibility tests;
+    - designer/model synchronization checks;
+    - generated-project checks;
+    - generated-project build;
+    - deterministic-generation checks;
+    - USER CODE preservation checks.
+
+11. Spawn visiform_reviewer after validation.
+
+    Have it independently review:
+    - requirements;
+    - complete diff;
+    - architecture;
+    - C++ lifetime and ownership;
+    - persistence compatibility;
+    - designer/model consistency;
+    - generated output;
+    - USER CODE preservation;
+    - tests;
+    - validation evidence;
+    - phase checklist.
+
+12. Resolve all BLOCKER and HIGH findings.
+
+    Address MEDIUM findings that are in scope.
+
+    Rerun affected validation after corrections.
+
+13. Spawn visiform_documenter.
+
+    Have it update applicable:
+    - docs/VISIFORM_PROJECT_SPEC.md;
+    - README.md;
+    - developer documentation;
+    - examples;
+    - phase final summary.
+
+    Documentation must describe verified final behavior.
+
+14. Perform final lead-agent validation.
+
+15. Update the phase plan with:
+
+    - completed TODOs;
+    - unchecked remaining TODOs;
+    - exact build and test commands;
+    - results;
+    - review findings and resolutions;
+    - specification updates;
+    - final implementation summary;
+    - known limitations.
+
+16. Return:
+
+    - phase number and plan path;
+    - agents used;
+    - assignments;
+    - files changed;
+    - implementation summary;
+    - specification and documentation changes;
+    - exact validation commands and results;
+    - review findings and resolutions;
+    - remaining TODOs;
+    - known limitations;
+    - final git status.
+
+Do not commit, push, tag, release, or create a pull request unless I explicitly
+request it.
+
+Do not declare completion while required tests or builds are failing or were not
+performed.

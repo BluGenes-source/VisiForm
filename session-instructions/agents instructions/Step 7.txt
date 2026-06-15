@@ -1,0 +1,176 @@
+Update the repository-root AGENTS.md to incorporate the VisiForm multi-agent
+workflow.
+
+Important:
+
+- Read the existing AGENTS.md first.
+- Preserve all existing VisiForm-specific rules.
+- Preserve current numbered-phase requirements.
+- Merge duplicate guidance instead of repeating it.
+- Do not replace the entire file unless it is empty.
+- Keep critical instructions near the beginning.
+- Keep the total document focused enough to remain useful as agent context.
+
+Ensure AGENTS.md contains the following concepts.
+
+## Authoritative project references
+
+Require agents to read, as applicable:
+
+- docs/VISIFORM_PROJECT_SPEC.md
+- the active docs/agent_plans/phase_N_<name>_plan.md
+- relevant source, tests, and build documentation
+
+Clarify that source and tests take precedence when documentation is stale, but
+documentation must then be corrected.
+
+## Lead-agent ownership
+
+State that the primary Codex session is the lead agent.
+
+Only the lead agent may:
+
+- define the final task scope;
+- create or select the official numbered phase;
+- divide implementation assignments;
+- authorize overlapping work;
+- integrate results;
+- update final checklist status;
+- decide whether review findings are resolved;
+- declare a phase complete;
+- commit, push, or open a pull request when explicitly requested by the user.
+
+## Required phase workflow
+
+Preserve or establish:
+
+1. Every multi-step VisiForm change requires a persistent phase plan under:
+   docs/agent_plans/phase_N_<name>_plan.md
+2. Determine the next phase number by inspecting existing plans.
+3. Do not reuse or renumber phases.
+4. The phase must contain:
+   - scope;
+   - requirements;
+   - architectural decisions;
+   - Markdown TODO checklist;
+   - validation plan;
+   - compatibility considerations;
+   - build/test status;
+   - final result summary;
+   - remaining TODOs.
+5. Update the plan throughout the work.
+6. Check off items only with evidence.
+7. Do not claim completion while required validation is failing or unperformed.
+
+## Subagent workflow
+
+Establish the preferred sequence:
+
+1. visiform_explorer
+2. visiform_architect
+3. lead creates or updates the phase plan
+4. one or more visiform_implementer agents
+5. lead integrates changes
+6. visiform_validator
+7. visiform_reviewer
+8. lead resolves findings
+9. visiform_documenter
+10. lead performs final validation and reporting
+
+Clarify that not every trivial task needs every agent.
+
+## Parallel-work rules
+
+Require:
+
+- explicit bounded assignments;
+- explicit file or subsystem ownership;
+- no concurrent edits to the same files;
+- no concurrent edits to the official phase plan;
+- no concurrent edits to docs/VISIFORM_PROJECT_SPEC.md;
+- no implementation before exploration and planning for cross-layer changes;
+- parallel work only when assignments are genuinely independent;
+- sequential work when shared headers, model types, schemas, or central generator
+  files overlap.
+
+## Agent-specific responsibilities
+
+Summarize:
+
+- visiform_explorer: read-only repository investigation;
+- visiform_architect: read-only design and implementation planning;
+- visiform_implementer: bounded code and focused tests;
+- visiform_validator: independent build, test, and behavior validation;
+- visiform_reviewer: read-only independent review;
+- visiform_documenter: verified specification and documentation updates.
+
+## VisiForm architectural consistency
+
+Require agents to consider all affected layers:
+
+- in-memory model;
+- ownership and parent-child relationships;
+- .vfb.json persistence;
+- schema compatibility;
+- validation;
+- designer canvas;
+- hierarchy and selection;
+- property editing;
+- undo/redo;
+- generated C++;
+- USER CODE preservation;
+- CMake, presets, and scripts;
+- generated-project build;
+- platform behavior.
+
+## Core technical constraints
+
+Preserve or establish:
+
+- C++20;
+- Visage UI/graphics library;
+- Windows 10/11 and Visual Studio 2022 as primary;
+- macOS and Linux experimental unless verified otherwise;
+- no unnecessary dependencies;
+- focused changes over broad rewrites;
+- backward compatibility unless explicitly changed;
+- deterministic generation;
+- preservation of USER CODE blocks;
+- no unrelated refactoring;
+- honest reporting of skipped or failed validation.
+
+## Completion report
+
+Require the lead to report:
+
+- phase number and plan path;
+- agents used;
+- assignments;
+- files changed;
+- implementation summary;
+- specification/documentation updates;
+- exact validation commands;
+- test and build results;
+- review findings and resolutions;
+- remaining TODOs;
+- known limitations;
+- final git status.
+
+## Git safety
+
+Require:
+
+- inspect git status before work;
+- do not discard unrelated user changes;
+- do not use destructive Git commands without explicit approval;
+- do not commit, push, tag, create releases, or open pull requests unless
+  explicitly requested;
+- do not rewrite history unless explicitly requested.
+
+After updating AGENTS.md:
+
+1. Show the headings added or modified.
+2. Explain how existing rules were preserved.
+3. Report any conflicting instructions found.
+4. Show the Git diff summary.
+5. Do not commit or push.

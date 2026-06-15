@@ -1,0 +1,516 @@
+Act as the lead agent for the VisiForm repository.
+
+Investigate and, only if reproduced, fix the following possible sizer resizing
+bugs.
+
+## Reported behavior
+
+### Issue 1: Child widget resize becomes locked
+
+When a Button is dropped into a sizer:
+
+1. The Button can initially be resized by changing its height.
+2. After the user releases the resize drag, the Button cannot be resized again.
+3. Its width and height appear to become locked.
+
+The exact behavior may depend on sizer flags, layout constraints, selection
+state, or designer resize-handle state.
+
+### Issue 2: Sizer children do not resize with the sizer
+
+When a sizer containing widgets is resized, the widgets inside the sizer do not
+resize or relayout as expected.
+
+The phrase “resizing a resizer” in the original report should be interpreted as
+“resizing a sizer” unless repository terminology shows that a separate Resizer
+component exists.
+
+## Important uncertainty
+
+These bugs may already have been fixed.
+
+Do not assume either bug still exists.
+
+First determine:
+
+* whether each issue is currently reproducible;
+* whether the reported behavior is intentional sizer behavior;
+* whether the issue is already covered by Phase 86;
+* whether tests already exist;
+* whether a previous implementation or phase plan claims it was fixed.
+
+Follow AGENTS.md, docs/VISIFORM_PROJECT_SPEC.md, and the VisiForm numbered-phase
+workflow.
+
+Do not commit, push, or create a pull request.
+
+---
+
+## Step 1: Establish the repository state
+
+As lead agent:
+
+1. Read all applicable AGENTS.md files.
+2. Read docs/VISIFORM_PROJECT_SPEC.md.
+3. Read the Phase 86 BoxSizer plan and any other related phase plans.
+4. Inspect current git status and preserve unrelated user changes.
+5. Search the repository history, plans, tests, and current implementation for
+   previous work involving:
+
+   * BoxSizer;
+   * resize handles;
+   * child sizing;
+   * layout propagation;
+   * selection state;
+   * width and height properties;
+   * minimum, preferred, and explicit sizes;
+   * proportion, expand, alignment, and border flags;
+   * nested sizers;
+   * designer relayout;
+   * stale drag or resize state.
+
+Do not modify files during this step.
+
+---
+
+## Step 2: Spawn visiform_explorer
+
+Spawn the project-defined `visiform_explorer` agent.
+
+Give it both reported issues and require a read-only investigation.
+
+The explorer must:
+
+1. Determine the relevant terminology in the repository:
+
+   * sizer;
+   * resizer;
+   * resize handle;
+   * child item;
+   * layout item;
+   * designer component.
+
+2. Trace the complete resize path, including:
+
+   * mouse-down or drag-start handling;
+   * resize-handle activation;
+   * drag movement;
+   * width and height calculation;
+   * mouse-up or drag-end handling;
+   * selection state;
+   * property updates;
+   * model mutation;
+   * sizer layout recalculation;
+   * designer component bounds;
+   * repaint or relayout requests;
+   * serialization if size values are persisted.
+
+3. Inspect how a Button behaves:
+
+   * outside a sizer;
+   * directly inside a horizontal BoxSizer;
+   * directly inside a vertical BoxSizer;
+   * inside a nested sizer;
+   * with and without proportion;
+   * with and without expand;
+   * with different alignment settings;
+   * with explicit width or height values;
+   * after save and reload.
+
+4. Determine whether width and height are expected to be directly draggable for
+   a child controlled by a sizer, or whether the sizer should control one or both
+   dimensions.
+
+5. Investigate whether drag completion incorrectly leaves behind state such as:
+
+   * a fixed size;
+   * a minimum size;
+   * a locked flag;
+   * a stale active-resizer reference;
+   * disabled handles;
+   * a cached original bounds value;
+   * a stale selection overlay;
+   * an incorrect layout-item constraint.
+
+6. Investigate whether resizing the sizer triggers:
+
+   * model bounds updates;
+   * layout invalidation;
+   * child layout calculation;
+   * propagation through nested sizers;
+   * designer-component bounds updates;
+   * repaint.
+
+7. Search existing tests and phase plans for these exact behaviors.
+
+8. Report separately for Issue 1 and Issue 2:
+
+   * current implementation path;
+   * likely expected behavior;
+   * whether the issue appears already fixed;
+   * likely root cause if still present;
+   * affected files and symbols;
+   * relevant tests;
+   * reproduction scenarios;
+   * regression risks.
+
+The explorer must not edit any files.
+
+Wait for the explorer report before continuing.
+
+---
+
+## Step 3: Spawn visiform_architect
+
+After receiving the explorer report, spawn `visiform_architect`.
+
+Give it:
+
+* the original bug report;
+* the explorer report;
+* the relevant Phase 86 checklist;
+* applicable sections of docs/VISIFORM_PROJECT_SPEC.md.
+
+The architect must:
+
+1. Decide whether the two reports represent:
+
+   * one underlying defect;
+   * two separate defects;
+   * expected sizer behavior;
+   * stale reports for already-fixed behavior;
+   * incomplete Phase 86 behavior.
+
+2. Define the expected resize contract for:
+
+   * a standalone widget;
+   * a widget controlled by a horizontal sizer;
+   * a widget controlled by a vertical sizer;
+   * a widget using expand;
+   * a widget using proportion;
+   * a nested sizer;
+   * a sizer whose own bounds change.
+
+3. Clarify which dimensions may be manually resized and which dimensions should
+   be controlled by layout.
+
+4. Propose deterministic reproduction cases and acceptance criteria.
+
+5. Identify the smallest coherent fix if either issue is real.
+
+6. Divide any required work into bounded assignments.
+
+7. Identify unsafe overlaps, especially around:
+
+   * central designer input handling;
+   * resize overlays;
+   * BoxSizer layout code;
+   * component model headers;
+   * shared property definitions;
+   * Phase 86 plan;
+   * project specification.
+
+8. Recommend whether:
+
+   * Phase 86 should be updated;
+   * a new phase is required;
+   * only regression tests are needed;
+   * no code change is needed.
+
+The architect must not edit files.
+
+Wait for the architect report.
+
+---
+
+## Step 4: Create an explicit verification matrix
+
+As lead agent, use the two reports to create a verification matrix covering at
+least these cases:
+
+1. Button outside a sizer.
+2. Button in a horizontal BoxSizer.
+3. Button in a vertical BoxSizer.
+4. Button in a BoxSizer with expand disabled.
+5. Button in a BoxSizer with expand enabled.
+6. Button with proportion 0.
+7. Button with nonzero proportion.
+8. Button inside a nested BoxSizer.
+9. First resize drag.
+10. Second resize drag after releasing the first.
+11. Resize from each applicable handle.
+12. Resize the containing sizer larger.
+13. Resize the containing sizer smaller.
+14. Save and reload before attempting another resize.
+15. Undo and redo, if resize operations support them.
+
+For each case record:
+
+* expected behavior;
+* observed behavior;
+* whether it is a defect;
+* evidence;
+* relevant test coverage.
+
+Use existing automated tests or a repository-supported UI test mechanism where
+available.
+
+If no automated UI mechanism exists, perform the strongest practical
+code-path verification and clearly identify any manual checks that remain.
+
+---
+
+## Step 5: Decide whether implementation is necessary
+
+Use these decision rules.
+
+### If both issues are already fixed
+
+Do not alter production code merely to create activity.
+
+Instead:
+
+1. Confirm the fixing implementation.
+2. Confirm whether regression tests cover the behavior.
+3. Add focused regression tests only if they can be added without duplicating
+   existing coverage.
+4. Update Phase 86 only if its status is inaccurate or missing evidence.
+5. Report that the original bug is no longer reproducible.
+
+### If the behavior is intentional
+
+Do not “fix” correct sizer behavior.
+
+Instead:
+
+1. Explain which dimensions are controlled by the sizer.
+2. Identify whether the designer gives misleading resize handles or feedback.
+3. Treat misleading handles or UI feedback as a separate usability defect if
+   appropriate.
+4. Add or update tests and documentation where useful.
+
+### If one or both issues are reproduced
+
+Update the existing Phase 86 plan if the work belongs there.
+
+Create a new numbered phase only if AGENTS.md and the architect’s findings show
+that this is separate from Phase 86.
+
+Record:
+
+* reproduction steps;
+* root cause;
+* expected behavior;
+* implementation tasks;
+* acceptance criteria;
+* validation plan;
+* compatibility considerations;
+* TODO checklist.
+
+Do not let subagents edit the official phase plan concurrently.
+
+---
+
+## Step 6: Assign implementation only if needed
+
+Use one `visiform_implementer` unless the architect identifies genuinely
+non-overlapping work.
+
+A likely primary assignment is:
+
+### Implementer: designer and sizer resize behavior
+
+Permitted scope must be based on the explorer report, but may include:
+
+* resize-handle state management;
+* drag-start, drag-update, and drag-end handling;
+* layout-item size constraints;
+* BoxSizer relayout propagation;
+* designer child-bound synchronization;
+* focused tests for repeated resizing and parent resize propagation.
+
+The implementer must:
+
+1. Fix only reproduced behavior.
+2. Avoid broad layout rewrites.
+3. Preserve expected sizer control over child dimensions.
+4. Ensure drag-end state does not prevent a later drag.
+5. Ensure parent sizer bound changes trigger child relayout where required.
+6. Preserve nested-sizer behavior.
+7. Preserve model, designer, property, and generated-output consistency.
+8. Add regression tests for:
+
+   * a second resize after releasing the first;
+   * resizing the containing sizer;
+   * expand and proportion behavior;
+   * nested sizers where relevant.
+9. Run focused tests.
+10. Report exact files and commands.
+11. Not edit the official phase plan unless explicitly assigned.
+12. Not declare the phase complete.
+
+If separate test work can run without overlapping production or test files, a
+second implementer may be used. Otherwise keep the work sequential.
+
+Wait for all implementers and inspect their diffs.
+
+---
+
+## Step 7: Integrate as lead agent
+
+As lead agent:
+
+1. Review every changed line.
+2. Confirm the fix addresses the actual root cause.
+3. Confirm that manually resizing a sizer-controlled child does not violate
+   layout semantics.
+4. Confirm width and height properties remain synchronized with actual model
+   and designer state.
+5. Confirm repeated drag operations initialize and clear state correctly.
+6. Confirm resizing a sizer invalidates and recalculates child layout.
+7. Confirm nested sizers propagate layout changes.
+8. Check for unintended changes to:
+
+   * selection;
+   * move behavior;
+   * undo/redo;
+   * serialization;
+   * generated code;
+   * property editing.
+9. Update the active phase plan using evidence only.
+
+---
+
+## Step 8: Spawn visiform_validator
+
+Spawn `visiform_validator`.
+
+Require it to validate the following, where supported:
+
+### Build and automated checks
+
+* configure VisiForm using the supported Visual Studio 2022/CMake workflow;
+* build the relevant VisiForm targets;
+* run all relevant layout, designer, model, and regression tests;
+* run the newly added tests;
+* record exact commands and results.
+
+### Issue 1 checks
+
+* create or load a form with a BoxSizer;
+* add a Button;
+* perform a first valid resize;
+* release the drag;
+* perform a second valid resize;
+* repeat with applicable resize handles;
+* verify no stale lock or disabled resize state remains;
+* verify property values and actual bounds agree.
+
+### Issue 2 checks
+
+* create a sizer containing one or more widgets;
+* enlarge the sizer;
+* reduce the sizer;
+* verify children relayout according to orientation, proportion, expand,
+  alignment, border, and minimum-size rules;
+* repeat with a nested sizer;
+* verify no stale child bounds remain.
+
+### Persistence and regression checks
+
+* save and reload the project;
+* repeat the resize checks;
+* verify existing .vfb.json behavior remains compatible;
+* verify unrelated standalone widget resizing;
+* verify undo/redo if supported;
+* verify generated output only if this change affects persisted size or layout
+  semantics.
+
+The validator must report:
+
+* checks passed;
+* checks failed;
+* checks skipped;
+* environment limitations;
+* remaining manual verification;
+* whether each original issue is reproduced, fixed, intentional, or already
+  resolved.
+
+The validator must not broadly edit production code.
+
+---
+
+## Step 9: Spawn visiform_reviewer
+
+After validation, spawn `visiform_reviewer`.
+
+Require an independent review of:
+
+* the original reports;
+* expected sizer semantics;
+* root-cause analysis;
+* complete diff;
+* repeated drag-state handling;
+* model and designer synchronization;
+* layout invalidation and propagation;
+* nested sizer behavior;
+* width and height property consistency;
+* expand, proportion, alignment, and minimum-size semantics;
+* tests;
+* validation evidence;
+* Phase 86 checklist accuracy.
+
+The reviewer must classify findings as BLOCKER, HIGH, MEDIUM, LOW, or NOTE.
+
+Resolve all BLOCKER and HIGH findings.
+
+Address in-scope MEDIUM findings.
+
+Rerun affected validation after corrections.
+
+---
+
+## Step 10: Update documentation only where needed
+
+Spawn `visiform_documenter` only if the investigation establishes or changes an
+important documented layout or resize contract.
+
+Possible updates include:
+
+* docs/VISIFORM_PROJECT_SPEC.md;
+* the active Phase 86 final summary;
+* designer behavior documentation;
+* layout and sizer behavior documentation;
+* known limitations.
+
+Do not document the original report as a confirmed bug unless it was actually
+reproduced.
+
+---
+
+## Final response
+
+Return a consolidated report with separate sections for Issue 1 and Issue 2.
+
+Include:
+
+* whether each issue was reproduced;
+* whether each issue was already fixed;
+* whether any behavior was intentional;
+* exact reproduction or verification steps;
+* root cause;
+* phase number and plan path;
+* agents used and their assignments;
+* files changed;
+* regression tests added or found;
+* exact build and test commands;
+* validation results;
+* review findings and resolutions;
+* documentation changes;
+* manual checks still required;
+* remaining TODOs;
+* known limitations;
+* final git status.
+
+Do not commit or push.
+Do not claim either issue is fixed without supporting validation evidence.

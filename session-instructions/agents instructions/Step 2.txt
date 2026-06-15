@@ -1,0 +1,377 @@
+Create or substantially update:
+
+docs/VISIFORM_PROJECT_SPEC.md
+
+This document will be the authoritative technical and product specification for
+VisiForm.
+
+Before writing it:
+
+1. Read AGENTS.md and all applicable nested AGENTS.md files.
+2. Read README.md and all relevant documentation.
+3. Inspect the current source tree and CMake configuration.
+4. Inspect existing project model, JSON serialization, validation, designer,
+   property editor, code generator, generated project structure, tests, scripts,
+   and phase plans.
+5. Distinguish verified existing behavior from planned behavior.
+6. Do not describe unimplemented functionality as complete.
+7. Preserve useful information from an existing project specification instead of
+   blindly replacing it.
+
+The specification must include the following sections.
+
+# VisiForm Project Specification
+
+## 1. Document status
+
+Include:
+
+- document purpose;
+- authority and intended audience;
+- last-updated date;
+- repository version or branch when determinable;
+- distinction between implemented, partially implemented, and planned behavior.
+
+## 2. Product definition
+
+Describe VisiForm as a C++20 desktop visual form builder based on the Visage UI
+and graphics library.
+
+Include:
+
+- the problem it solves;
+- intended users;
+- relationship to tools such as wxFormBuilder and Projucer;
+- project design philosophy;
+- primary supported platform;
+- experimental platforms.
+
+## 3. Product goals
+
+Cover goals such as:
+
+- visual construction of Visage interfaces;
+- persistent project files;
+- validated in-memory project models;
+- deterministic C++ project generation;
+- separation of generated and user-authored code;
+- safe regeneration;
+- maintainable and testable architecture.
+
+## 4. Non-goals
+
+Identify functionality currently outside the project scope or not yet promised.
+
+Do not invent non-goals without marking them as proposed.
+
+## 5. Supported platforms and toolchain
+
+Document verified requirements for:
+
+- Windows 10 and Windows 11;
+- Visual Studio 2022;
+- C++20;
+- CMake;
+- Visage;
+- macOS and Linux experimental status;
+- any required tools, dependencies, or environment variables.
+
+Use exact repository evidence where available.
+
+## 6. System architecture
+
+Describe the major layers and their dependencies, including:
+
+- application shell;
+- project/document controller;
+- in-memory project model;
+- component and container model;
+- designer canvas;
+- component hierarchy;
+- selection system;
+- property editing;
+- command and undo/redo system, if present;
+- JSON serialization and deserialization;
+- validation;
+- generated-code system;
+- generated project templates;
+- build and test infrastructure.
+
+Include actual files, directories, classes, and important symbols.
+
+Use Mermaid diagrams when they add clarity, but ensure the surrounding prose still
+explains the architecture.
+
+## 7. Project model specification
+
+Document:
+
+- root project structure;
+- forms, windows, components, containers, and layout objects;
+- identity and naming rules;
+- ownership and parent-child relationships;
+- property storage;
+- default values;
+- supported component categories;
+- validation invariants;
+- model mutation rules.
+
+Clearly mark incomplete areas.
+
+## 8. Layout and sizer specification
+
+Document the current layout architecture, including:
+
+- BoxSizer support;
+- horizontal and vertical orientation;
+- nested sizers;
+- child-item metadata;
+- proportion;
+- border;
+- expand and alignment behavior;
+- model/designer/generator consistency;
+- current Phase 86 status where relevant.
+
+Do not claim unsupported behavior exists.
+
+## 9. VisiForm project file format
+
+Document the `.vfb.json` format.
+
+Include:
+
+- purpose;
+- file extension;
+- top-level schema;
+- required and optional fields;
+- identifiers;
+- component serialization;
+- property serialization;
+- layout serialization;
+- versioning strategy;
+- backward compatibility;
+- unknown field handling;
+- malformed input behavior;
+- save/load round-trip expectations.
+
+Include representative JSON examples based on the actual implementation.
+
+Do not expose private user data or machine-specific absolute paths in examples.
+
+## 10. Validation specification
+
+Document:
+
+- structural validation;
+- naming validation;
+- duplicate identifier handling;
+- parent-child constraints;
+- invalid layout relationships;
+- serialization validation;
+- generator preconditions;
+- error and warning reporting;
+- when validation runs.
+
+## 11. Designer behavior
+
+Document:
+
+- component creation;
+- insertion;
+- deletion;
+- selection;
+- hierarchy navigation;
+- movement or reparenting;
+- property updates;
+- layout preview;
+- synchronization with the model;
+- error handling;
+- undo/redo where supported.
+
+## 12. Property system
+
+Document:
+
+- property definitions;
+- types;
+- defaults;
+- editor controls;
+- validation;
+- conversion;
+- change notification;
+- persistence;
+- generated output mapping.
+
+## 13. Code-generation specification
+
+Document:
+
+- generated directory structure;
+- generated base classes;
+- user subclass files;
+- headers and implementation files;
+- CMake files;
+- presets;
+- scripts;
+- optional local Visage source support;
+- regeneration behavior;
+- deterministic output;
+- error behavior;
+- generated project build expectations.
+
+## 14. USER CODE preservation contract
+
+Specify:
+
+- supported markers;
+- how blocks are detected;
+- how content is preserved;
+- behavior for missing or duplicate markers;
+- behavior when templates change;
+- expected tests;
+- guarantees and limitations.
+
+Use exact marker text from the source when available.
+
+## 15. Build specification
+
+Document verified build workflows for:
+
+- configuring VisiForm;
+- building VisiForm;
+- running tests;
+- generated project builds;
+- Visual Studio 2022;
+- CMake presets;
+- scripts.
+
+Do not invent commands. Derive them from the repository.
+
+## 16. Testing strategy
+
+Document existing and required test categories:
+
+- unit tests;
+- model tests;
+- JSON round-trip tests;
+- validation tests;
+- generator golden or fixture tests;
+- USER CODE preservation tests;
+- designer tests;
+- integration tests;
+- generated-project build tests;
+- regression tests.
+
+Identify verified gaps separately.
+
+## 17. Error handling and diagnostics
+
+Document:
+
+- validation messages;
+- generator errors;
+- file I/O errors;
+- malformed project handling;
+- build errors;
+- debug logging;
+- user-facing messages.
+
+## 18. Compatibility policy
+
+Document:
+
+- `.vfb.json` compatibility;
+- generated source compatibility;
+- source API compatibility;
+- template migration;
+- supported compiler versions;
+- experimental-platform expectations.
+
+If the repository does not yet establish a policy, propose one and label it
+“Proposed policy.”
+
+## 19. Security and data integrity
+
+Cover:
+
+- safe handling of project paths;
+- output path validation;
+- avoidance of destructive overwrites;
+- JSON input trust boundaries;
+- preservation of user-written code;
+- command execution risks;
+- generated file ownership.
+
+## 20. Development workflow
+
+Document:
+
+- numbered phases;
+- phase files under docs/agent_plans/;
+- TODO checklist requirements;
+- build-validation recording;
+- final summaries;
+- remaining TODO reporting;
+- subagent workflow;
+- lead-agent responsibilities.
+
+## 21. Release readiness criteria
+
+Define the checks required before a release, including:
+
+- clean supported build;
+- automated test status;
+- generated-project validation;
+- documentation;
+- version updates;
+- compatibility review;
+- known issues;
+- clean Git status or intentional changes.
+
+## 22. Current implementation status
+
+Create a table with:
+
+- subsystem;
+- status: Implemented, Partial, Planned, or Unknown;
+- evidence;
+- active phase;
+- known gaps.
+
+## 23. Open design decisions
+
+List unresolved architectural or product questions.
+
+Do not silently decide unresolved product behavior.
+
+## 24. Glossary
+
+Define VisiForm-specific terms, Visage terms, project model terms, sizer terms,
+and generator terms.
+
+Writing requirements:
+
+- Base factual statements on repository evidence.
+- Cite source files and symbols using repository-relative paths.
+- Clearly label proposals.
+- Avoid marketing language.
+- Keep the document maintainable.
+- Do not copy large source-code sections.
+- Prefer representative examples.
+- Do not edit production source files in this task.
+- Do not create a new numbered implementation phase solely for writing the
+  specification unless AGENTS.md explicitly requires it.
+
+After writing the specification:
+
+1. Review it against the source tree.
+2. Search for unsupported claims.
+3. Correct inconsistencies.
+4. Report:
+   - file changed;
+   - primary architectural findings;
+   - undocumented or ambiguous areas;
+   - proposed decisions requiring human approval;
+   - current Git diff summary.
+
+Do not commit or push.

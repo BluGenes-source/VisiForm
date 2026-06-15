@@ -158,6 +158,10 @@ private:
         model::Rect originalBounds{};
         DesignerCanvas::FormPoint dragStart{};
         DesignerCanvas::FormPoint currentPoint{};
+        std::optional<model::ProjectDocument> sizerItemResizeBeforeDocument{};
+        std::optional<model::ProjectDocument> layoutResizeBeforeDocument{};
+        int originalSizerItemMinimumWidth = -1;
+        int originalSizerItemMinimumHeight = -1;
         std::vector<SelectionBoundsSnapshot> selectionBounds{};
         std::vector<DesignerCanvas::SmartGuide> smartGuides{};
         bool smartGuideSnapUsed = false;

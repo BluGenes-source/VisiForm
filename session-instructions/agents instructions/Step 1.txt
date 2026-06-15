@@ -1,0 +1,49 @@
+You are setting up the VisiForm repository for a structured multi-agent Codex
+development workflow.
+
+Do not implement product features during this task.
+
+First:
+
+1. Confirm that the current working directory is the VisiForm Git repository.
+2. Read:
+   - AGENTS.md
+   - README.md
+   - CMakeLists.txt
+   - all relevant documentation under docs/
+   - existing phase plans under docs/agent_plans/
+   - current git status
+3. Inspect the repository structure sufficiently to understand:
+   - source directories;
+   - test directories;
+   - project model;
+   - JSON persistence;
+   - designer implementation;
+   - property editor;
+   - generated-code system;
+   - build scripts;
+   - generated-project fixtures;
+   - Visage integration.
+4. Determine whether these paths already exist:
+   - .codex/
+   - .codex/agents/
+   - docs/agent_plans/
+   - docs/VISIFORM_PROJECT_SPEC.md
+5. Create missing directories only:
+   - .codex/
+   - .codex/agents/
+   - docs/agent_plans/
+
+Do not overwrite existing files.
+
+Return:
+
+- repository root;
+- relevant repository structure;
+- existing Codex-related files;
+- existing project-specification files;
+- current highest numbered phase;
+- current git status;
+- any conflicts that later setup tasks must preserve.
+
+Do not commit or push.
