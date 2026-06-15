@@ -28,6 +28,40 @@ Primary development environment:
   `CMAKE_MSVC_RUNTIME_LIBRARY` unless explicitly requested.
 - Never build or validate against `freetype.vcxproj`; the intended application
   target is `VisiForm`.
+- Inspect `git status --short --branch` before making changes.
+- Do not discard unrelated user changes.
+- Do not use destructive Git commands without explicit approval.
+- Do not commit, push, tag, create releases, open pull requests, or rewrite
+  history unless explicitly requested by the developer.
+
+## Authoritative Project References
+
+Before planning or implementing non-trivial work, read the applicable
+project-level references:
+
+- `docs/VISIFORM_PROJECT_SPEC.md`
+- the active `docs/agent_plans/phase_N_<name>_plan.md`, when one exists
+- relevant source files, tests, build docs, and feature docs
+
+Source code and tests take precedence when documentation is stale or
+contradictory. When documentation is stale, correct the documentation as part
+of the same work when the task scope allows it.
+
+## Lead-Agent Ownership
+
+The primary Codex session is the lead agent. Only the lead agent may:
+
+- define the final task scope;
+- create or select the official numbered phase;
+- divide implementation assignments;
+- authorize overlapping-scope work only after assigning non-conflicting file
+  or subsystem ownership;
+- integrate results;
+- update final checklist status;
+- decide whether review findings are resolved;
+- declare a phase complete;
+- commit, push, or open a pull request when explicitly requested by the
+  developer.
 
 ## Validation
 
@@ -57,6 +91,24 @@ Keep these layers separated:
 Model, serialization, validation, and generator code should not depend on
 Visage UI headers.
 
+When changing behavior, consider every affected layer:
+
+- in-memory model;
+- ownership and parent-child relationships;
+- `.vfb.json` persistence;
+- schema compatibility;
+- validation;
+- designer canvas;
+- hierarchy and selection;
+- property editing;
+- undo/redo;
+- generated C++;
+- `USER CODE` preservation;
+- CMake, presets, and scripts;
+- generated-project build behavior;
+- Windows behavior, and macOS/Linux behavior only when actually relevant or
+  verified.
+
 ## Generated Code Rules
 
 - Preserve the generated base class name rule: `MainWindow`.
@@ -79,18 +131,63 @@ When adding or changing widgets:
 
 ## Documentation And Plans
 
-For multi-step agent work:
+Every multi-step VisiForm change requires a persistent phase plan in
+`docs/agent_plans/`.
 
-- Create or update a persistent phase plan in `docs/agent_plans/`.
+Phase-plan rules:
+
+- Determine the next phase number by inspecting existing plans.
 - Use the file name pattern `phase_N_<name>_plan.md`.
-- Include a markdown checklist.
+- Do not reuse or renumber phases.
+- Include scope, requirements, architectural decisions, a Markdown TODO
+  checklist, validation plan, compatibility considerations, build/test status,
+  final result summary, and remaining TODOs.
 - Update the checklist as work progresses.
+- Check off items only when there is supporting evidence.
 - Record validation status before finishing.
 - Add a final result summary before claiming completion.
 - Summarize remaining TODOs in the plan file.
+- Do not claim completion while required validation is failing or unperformed.
 
 For small one-off fixes, a phase plan is not necessary unless the change grows
 into multi-step work.
+
+## Multi-Agent Workflow
+
+Not every trivial task needs every agent. For cross-layer, compatibility-
+sensitive, or multi-file work, prefer this sequence:
+
+1. `visiform_explorer`
+2. `visiform_architect`
+3. lead creates or updates the official phase plan
+4. one or more `visiform_implementer` agents
+5. lead integrates changes
+6. `visiform_validator`
+7. `visiform_reviewer`
+8. lead resolves findings
+9. `visiform_documenter`
+10. lead performs final validation and reporting
+
+Agent responsibilities:
+
+- `visiform_explorer`: read-only repository investigation.
+- `visiform_architect`: read-only design and implementation planning.
+- `visiform_implementer`: bounded code changes and focused tests.
+- `visiform_validator`: independent build, test, and behavior validation.
+- `visiform_reviewer`: read-only independent final review.
+- `visiform_documenter`: verified specification and documentation updates.
+
+Parallel-work rules:
+
+- Use explicit bounded assignments.
+- Define explicit file or subsystem ownership.
+- Do not allow concurrent edits to the same files.
+- Do not allow concurrent edits to the official phase plan.
+- Do not allow concurrent edits to `docs/VISIFORM_PROJECT_SPEC.md`.
+- Do not implement cross-layer changes before exploration and planning.
+- Run work in parallel only when assignments are genuinely independent.
+- Use sequential work when shared headers, model types, schemas, central
+  generator files, or other shared symbols overlap.
 
 ## Work Continuity
 
@@ -184,3 +281,18 @@ Before reporting completion:
   deferred to the developer.
 - Do not claim a build passed unless it was actually run through the approved
   workflow.
+
+For lead-agent completion reports on multi-step work, include:
+
+- phase number and plan path;
+- agents used;
+- assignments;
+- files changed;
+- implementation summary;
+- specification/documentation updates;
+- exact validation commands;
+- test and build results;
+- review findings and resolutions;
+- remaining TODOs;
+- known limitations;
+- final git status.
