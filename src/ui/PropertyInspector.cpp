@@ -4,6 +4,7 @@
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
 #include "model/WidgetRegistry.h"
+#include "utils/CppIdentifier.h"
 #include "utils/FileUtils.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace visiform::ui {
@@ -24,12 +26,14 @@ namespace {
 constexpr float kHeaderHeight = 34.0f;
 constexpr float kTabStripHeight = 34.0f;
 constexpr float kRowHeight = 32.0f;
+constexpr float kEventErrorHeight = 30.0f;
 constexpr float kSuggestionRowHeight = 24.0f;
 constexpr float kSuggestionSpacing = 2.0f;
 constexpr float kPadding = 12.0f;
 constexpr float kMinLabelColumnWidth = 128.0f;
 constexpr float kPreferredLabelColumnWidth = 152.0f;
 constexpr float kMaxLabelColumnWidth = 168.0f;
+constexpr float kEventLabelColumnWidth = 132.0f;
 constexpr float kMinimumValueCellWidth = 112.0f;
 constexpr float kScrollBarWidth = 18.0f;
 constexpr float kScrollBarGap = 6.0f;
@@ -41,14 +45,22 @@ constexpr float kSliderThumbHeight = 16.0f;
 constexpr float kSliderValueWidth = 56.0f;
 constexpr float kActionButtonWidth = 72.0f;
 constexpr float kTabGap = 8.0f;
+constexpr float kEventActionGap = 6.0f;
+constexpr float kEventCreateWidth = 54.0f;
+constexpr float kEventExistingWidth = 66.0f;
+constexpr float kEventClearWidth = 48.0f;
+constexpr float kEventValueInset = 6.0f;
+constexpr float kEventMinimumValueCellWidth = kEventCreateWidth + kEventExistingWidth + kEventClearWidth + kEventActionGap * 2.0f + kEventValueInset;
+constexpr std::string_view kEventSuggestionPrefix = "__event_suggestion:";
 
 struct RowLayout {
     PropertyInspector::PropertyRow row;
     float top = 0.0f;
+    float height = kRowHeight;
 
     [[nodiscard]] float bottom() const
     {
-        return top + kRowHeight;
+        return top + height;
     }
 };
 
@@ -192,6 +204,9 @@ PropertyInspector::PropertyChoice makeChoice(std::string value, std::string labe
 void collectMatchingHandlers(const model::WidgetNode& widget,
     const std::string& signatureKind,
     std::set<std::string>& handlerNames);
+std::optional<std::string> incompatibleHandlerSignatureKind(const model::WidgetNode& widget,
+    const std::string& handlerName,
+    const std::string& signatureKind);
 
 std::string choiceLabelForValue(const std::vector<PropertyInspector::PropertyChoice>& choices, const std::string& value)
 {
@@ -243,9 +258,32 @@ std::vector<PropertyInspector::PropertyChoice> callbackChoices(const model::Proj
     std::vector<PropertyInspector::PropertyChoice> choices;
     choices.reserve(handlerNames.size());
     for (const auto& handlerName : handlerNames) {
+        if (!utils::isValidCppIdentifier(handlerName)) {
+            continue;
+        }
         choices.push_back(makeChoice(handlerName, handlerName, "Compatible callback with signature kind " + eventDefinition.handlerSignatureKind + "."));
     }
     return choices;
+}
+
+std::string joinedChoiceValues(const std::vector<PropertyInspector::PropertyChoice>& choices)
+{
+    std::ostringstream stream;
+    for (std::size_t index = 0; index < choices.size(); ++index) {
+        if (index > 0) {
+            stream << ", ";
+        }
+        stream << choices[index].value;
+    }
+
+    return stream.str();
+}
+
+bool isEventSupportRow(const PropertyInspector::PropertyRow& row)
+{
+    return row.key == "__section_events"
+        || row.key == "__section_compatible_suggestions"
+        || row.key.starts_with(kEventSuggestionPrefix);
 }
 
 bool isColorPropertyKey(const std::string& key);
@@ -366,9 +404,70 @@ void collectMatchingHandlers(const model::WidgetNode& widget,
         }
     }
 
+    if (signatureKind == "void_event" && model::supportsItemActions(widget.type)) {
+        for (const auto& actionName : model::getWidgetItemActions(widget)) {
+            if (!actionName.empty()) {
+                handlerNames.insert(actionName);
+            }
+        }
+    }
+
     for (const auto& child : widget.children) {
         collectMatchingHandlers(child, signatureKind, handlerNames);
     }
+}
+
+std::optional<std::string> incompatibleHandlerSignatureKind(const model::WidgetNode& widget,
+    const std::string& handlerName,
+    const std::string& signatureKind)
+{
+    if (handlerName.empty()) {
+        return std::nullopt;
+    }
+
+    if (const auto* definition = model::WidgetRegistry::instance().find(widget.type)) {
+        for (const auto& event : definition->events) {
+            if (widget.getStringProperty(event.key, {}) == handlerName
+                && event.handlerSignatureKind != signatureKind) {
+                return event.handlerSignatureKind;
+            }
+        }
+    }
+
+    if (model::supportsItemActions(widget.type)) {
+        for (const auto& actionName : model::getWidgetItemActions(widget)) {
+            if (actionName == handlerName && signatureKind != "void_event") {
+                return std::string{ "void_event" };
+            }
+        }
+    }
+
+    for (const auto& child : widget.children) {
+        if (auto incompatibleSignature = incompatibleHandlerSignatureKind(child, handlerName, signatureKind)) {
+            return incompatibleSignature;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::string eventRowErrorText(const model::ProjectDocument& document,
+    const std::string& handlerName,
+    const model::WidgetEventDefinition& eventDefinition)
+{
+    if (handlerName.empty()) {
+        return {};
+    }
+
+    if (!utils::isValidCppIdentifier(handlerName)) {
+        return handlerName + " is not a valid C++ identifier. Use letters, digits, or underscores, and start with a letter or underscore.";
+    }
+
+    if (auto incompatibleSignature = incompatibleHandlerSignatureKind(document.root, handlerName, eventDefinition.handlerSignatureKind)) {
+        return handlerName + " already exists with " + *incompatibleSignature + ". This event needs " + eventDefinition.handlerSignatureKind + ", so reuse would conflict during validation/export.";
+    }
+
+    return {};
 }
 
 PropertyInspector::PropertyEditKind editKindForDefinition(const model::WidgetPropertyDefinition& property)
@@ -402,14 +501,20 @@ PropertyInspector::PropertyEditKind editKindForDefinition(const model::WidgetPro
     return PropertyInspector::PropertyEditKind::ReadOnly;
 }
 
+float rowHeightForRow(const PropertyInspector::PropertyRow& row)
+{
+    return kRowHeight + (row.errorText.empty() ? 0.0f : kEventErrorHeight);
+}
+
 std::vector<RowLayout> buildRowLayouts(float top, const std::vector<PropertyInspector::PropertyRow>& rows)
 {
     std::vector<RowLayout> layouts;
     layouts.reserve(rows.size());
     float rowTop = top;
     for (const auto& row : rows) {
-        layouts.push_back({ row, rowTop });
-        rowTop += kRowHeight;
+        const float height = rowHeightForRow(row);
+        layouts.push_back({ row, rowTop, height });
+        rowTop += height;
     }
 
     return layouts;
@@ -439,7 +544,10 @@ bool PropertyInspector::contains(float x, float y) const
 void PropertyInspector::updateScrollMetrics(const std::vector<PropertyRow>& rows)
 {
     visibleHeight_ = std::max(0.0f, height_ - kHeaderHeight - kTabStripHeight - 18.0f);
-    contentHeight_ = static_cast<float>(rows.size()) * kRowHeight;
+    contentHeight_ = 0.0f;
+    for (const auto& row : rows) {
+        contentHeight_ += rowHeightForRow(row);
+    }
     needsVerticalScrollBar_ = contentHeight_ > visibleHeight_ + 0.5f;
     clampScrollOffset();
 }
@@ -561,6 +669,12 @@ float PropertyInspector::valueCellWidth() const
 float PropertyInspector::labelColumnWidth() const
 {
     const ValueCellBounds bounds = contentBounds();
+    if (activeTab_ == InspectorTab::Events) {
+        const float maxAllowedWidth = std::max(72.0f,
+            bounds.width - kEventMinimumValueCellWidth - 12.0f - (bounds.x - x_));
+        return std::min(kEventLabelColumnWidth, maxAllowedWidth);
+    }
+
     const float maxAllowedWidth = std::max(kMinLabelColumnWidth,
         bounds.width - kMinimumValueCellWidth - 12.0f - (bounds.x - x_));
     return std::clamp(kPreferredLabelColumnWidth, kMinLabelColumnWidth, std::min(kMaxLabelColumnWidth, maxAllowedWidth));
@@ -575,6 +689,57 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::colorSwatch
     const float swatchSize = std::max(0.0f, kRowHeight - 12.0f);
     const float swatchX = x_ + labelColumnWidth() + valueCellWidth() - swatchSize - 8.0f;
     return ValueCellBounds{ swatchX, rowTop + 6.0f, swatchSize, swatchSize };
+}
+
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::eventSelectorBoundsForRow(const PropertyRow& row, float rowTop) const
+{
+    if (!row.isEvent || row.isSection) {
+        return std::nullopt;
+    }
+
+    const auto createBounds = eventActionBoundsForRow(row, rowTop, EventAction::Create);
+    if (!createBounds.has_value()) {
+        return std::nullopt;
+    }
+
+    const float valueLeft = x_ + labelColumnWidth();
+    const float selectorLeft = valueLeft + kEventValueInset;
+    const float selectorRight = createBounds->x - kEventActionGap;
+    const float selectorWidth = std::max(0.0f, selectorRight - selectorLeft);
+    if (selectorWidth < 36.0f) {
+        return std::nullopt;
+    }
+
+    return ValueCellBounds{
+        selectorLeft,
+        rowTop + 4.0f,
+        selectorWidth,
+        kRowHeight - 10.0f
+    };
+}
+
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::eventActionBoundsForRow(const PropertyRow& row, float rowTop, EventAction action) const
+{
+    if (!row.isEvent || row.isSection) {
+        return std::nullopt;
+    }
+
+    const float valueLeft = x_ + labelColumnWidth();
+    const float valueWidth = valueCellWidth();
+    const float clearLeft = valueLeft + valueWidth - kEventClearWidth - kEventValueInset;
+    const float existingLeft = clearLeft - kEventActionGap - kEventExistingWidth;
+    const float createLeft = existingLeft - kEventActionGap - kEventCreateWidth;
+    const float top = rowTop + 5.0f;
+    switch (action) {
+    case EventAction::Create:
+        return ValueCellBounds{ createLeft, top, kEventCreateWidth, kRowHeight - 12.0f };
+    case EventAction::Existing:
+        return ValueCellBounds{ existingLeft, top, kEventExistingWidth, kRowHeight - 12.0f };
+    case EventAction::Clear:
+        return ValueCellBounds{ clearLeft, top, kEventClearWidth, kRowHeight - 12.0f };
+    }
+
+    return std::nullopt;
 }
 
 std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::sliderTrackBoundsForRow(const PropertyRow& row, float rowTop) const
@@ -1109,23 +1274,51 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         }
 
         const std::size_t propertyCountBeforeEvents = rows.size();
+        std::map<std::string, std::vector<PropertyChoice>> compatibleSuggestionsBySignature;
         for (const auto& event : definition->events) {
             const std::string displayValue = displayTextOrFallback(selectedWidget, event.key, {});
+            const auto choices = callbackChoices(document, event);
+            auto& signatureChoices = compatibleSuggestionsBySignature[event.handlerSignatureKind];
+            for (const auto& choice : choices) {
+                const auto existing = std::find_if(signatureChoices.begin(), signatureChoices.end(), [&choice](const PropertyChoice& existingChoice) {
+                    return existingChoice.value == choice.value;
+                });
+                if (existing == signatureChoices.end()) {
+                    signatureChoices.push_back(choice);
+                }
+            }
             rows.push_back({
                 event.key,
                 event.label,
                 event.hint,
                 displayValue,
-                PropertyEditKind::Text,
+                PropertyEditKind::ReadOnly,
                 false,
-                callbackChoices(document, event)
+                choices,
+                0.0f,
+                0.0f,
+                1.0f,
+                {},
+                true,
+                event.handlerSignatureKind,
+                eventRowErrorText(document, displayValue, event)
             });
             drawnKeys.insert(event.key);
         }
 
         if (rows.size() > propertyCountBeforeEvents) {
             rows.insert(rows.begin() + static_cast<std::ptrdiff_t>(propertyCountBeforeEvents),
-                PropertyRow{ "__section_events", "Events", {}, {}, PropertyEditKind::ReadOnly, true });
+                PropertyRow{ "__section_events", selectedWidget->typeName() + " Events", {}, {}, PropertyEditKind::ReadOnly, true });
+            rows.push_back(PropertyRow{ "__section_compatible_suggestions", "Compatible Suggestions", {}, {}, PropertyEditKind::ReadOnly, true });
+            for (const auto& [signatureKind, choices] : compatibleSuggestionsBySignature) {
+                rows.push_back({
+                    std::string{ kEventSuggestionPrefix } + signatureKind,
+                    signatureKind,
+                    "Handlers already used with this signature kind.",
+                    joinedChoiceValues(choices),
+                    PropertyEditKind::ReadOnly
+                });
+            }
         }
     }
 
@@ -1146,6 +1339,10 @@ bool PropertyInspector::isEventRow(const model::ProjectDocument& document, const
         return false;
     }
 
+    if (row.isEvent) {
+        return true;
+    }
+
     const model::WidgetNode* selectedWidget = document.selectedWidget();
     if (selectedWidget == nullptr) {
         return false;
@@ -1163,13 +1360,13 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::rowsForActiveTab(
     for (const auto& row : allRows) {
         const bool eventRow = isEventRow(document, row);
         if (activeTab_ == InspectorTab::Events) {
-            if (eventRow) {
+            if (eventRow || isEventSupportRow(row)) {
                 filteredRows.push_back(row);
             }
             continue;
         }
 
-        if (row.key == "__section_events" || eventRow) {
+        if (isEventSupportRow(row) || eventRow) {
             continue;
         }
 
@@ -1190,12 +1387,57 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(cons
     const auto layouts = buildRowLayouts(contentBounds().y, rows);
     for (const auto& layout : layouts) {
         const float rowTop = rowYWithScroll(layout.top);
-        if (rowTop + kRowHeight < contentBounds().y || rowTop > contentBounds().y + contentBounds().height) {
+        if (rowTop + layout.height < contentBounds().y || rowTop > contentBounds().y + contentBounds().height) {
             continue;
         }
 
         if (y >= rowTop && y <= rowTop + kRowHeight) {
             return layout.row;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<PropertyInspector::PendingEventAction> PropertyInspector::hitTestEventAction(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
+{
+    const auto rows = rowsForActiveTab(document, settings);
+    updateScrollMetrics(rows);
+    if (!isWithinVisibleContent(x, y)) {
+        return std::nullopt;
+    }
+
+    const auto layouts = buildRowLayouts(contentBounds().y, rows);
+    const auto bounds = contentBounds();
+    for (const auto& layout : layouts) {
+        const float rowTop = rowYWithScroll(layout.top);
+        if (rowTop + layout.height < bounds.y || rowTop > bounds.y + bounds.height) {
+            continue;
+        }
+
+        if (!layout.row.isEvent) {
+            continue;
+        }
+
+        const auto selectorBounds = eventSelectorBoundsForRow(layout.row, rowTop);
+        if (selectorBounds.has_value() && containsPoint(*selectorBounds, x, y)) {
+            return PendingEventAction{ layout.row.key, EventAction::Existing, *selectorBounds, layout.row.choices, layout.row.displayValue, layout.row.handlerSignatureKind };
+        }
+
+        const auto createBounds = eventActionBoundsForRow(layout.row, rowTop, EventAction::Create);
+        if (createBounds.has_value() && containsPoint(*createBounds, x, y)) {
+            return PendingEventAction{ layout.row.key, EventAction::Create, *createBounds, layout.row.choices, layout.row.displayValue, layout.row.handlerSignatureKind };
+        }
+
+        const auto existingBounds = eventActionBoundsForRow(layout.row, rowTop, EventAction::Existing);
+        if (existingBounds.has_value() && containsPoint(*existingBounds, x, y)) {
+            const auto anchorBounds = selectorBounds.value_or(*existingBounds);
+            return PendingEventAction{ layout.row.key, EventAction::Existing, anchorBounds, layout.row.choices, layout.row.displayValue, layout.row.handlerSignatureKind };
+        }
+
+        const auto clearBounds = eventActionBoundsForRow(layout.row, rowTop, EventAction::Clear);
+        if (clearBounds.has_value() && containsPoint(*clearBounds, x, y)) {
+            return PendingEventAction{ layout.row.key, EventAction::Clear, *clearBounds, layout.row.choices, layout.row.displayValue, layout.row.handlerSignatureKind };
         }
     }
 
@@ -1214,7 +1456,7 @@ std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::Pr
     const auto bounds = contentBounds();
     for (const auto& layout : layouts) {
         const float rowTop = rowYWithScroll(layout.top);
-        if (rowTop + kRowHeight < bounds.y || rowTop > bounds.y + bounds.height) {
+        if (rowTop + layout.height < bounds.y || rowTop > bounds.y + bounds.height) {
             continue;
         }
 
@@ -1278,7 +1520,7 @@ bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const 
     const auto layouts = buildRowLayouts(contentBounds().y, rows);
     for (const auto& layout : layouts) {
         const float rowTop = rowYWithScroll(layout.top);
-        if (rowTop + kRowHeight < contentBounds().y || rowTop > contentBounds().y + contentBounds().height) {
+        if (rowTop + layout.height < contentBounds().y || rowTop > contentBounds().y + contentBounds().height) {
             continue;
         }
         if (layout.row.editKind != PropertyEditKind::Slider) {
@@ -1405,11 +1647,24 @@ void PropertyInspector::clearEditing()
 {
     activeKey_.clear();
     activeEditKind_ = PropertyEditKind::ReadOnly;
+    clearActiveEventControl();
 }
 
 void PropertyInspector::cancelEditing()
 {
     clearEditing();
+}
+
+void PropertyInspector::setActiveEventControl(const std::string& key, EventAction action)
+{
+    activeEventKey_ = key;
+    activeEventAction_ = action;
+}
+
+void PropertyInspector::clearActiveEventControl()
+{
+    activeEventKey_.clear();
+    activeEventAction_.reset();
 }
 
 std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::ProjectDocument& document, const utils::AppSettings& settings)
@@ -1426,7 +1681,7 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEdito
     for (const auto& layout : layouts) {
         if (layout.row.key == active->key) {
             const float rowTop = rowYWithScroll(layout.top);
-            if (rowTop + kRowHeight < bounds.y || rowTop > bounds.y + bounds.height) {
+            if (rowTop + layout.height < bounds.y || rowTop > bounds.y + bounds.height) {
                 return std::nullopt;
             }
 
@@ -1560,9 +1815,20 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
     if (selectedWidget == nullptr) {
         if (drawText) {
             canvas.setColor(0xffdde2ea);
-            canvas.text(activeTab_ == InspectorTab::Events ? "No selection for Events" : "No selection",
-                font, visage::Font::kTopLeft,
-                bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+            if (activeTab_ == InspectorTab::Events) {
+                canvas.text("No widget selected.",
+                    font, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+                canvas.setColor(0xffc7cfda);
+                canvas.text("Select one widget to view supported events and assign handlers.",
+                    font, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, bounds.y + 32.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+            }
+            else {
+                canvas.text("No selection",
+                    font, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+            }
         }
         return;
     }
@@ -1570,9 +1836,20 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
     if (rows.empty()) {
         if (drawText) {
             canvas.setColor(0xffdde2ea);
-            canvas.text(activeTab_ == InspectorTab::Events ? "No events for the selected widget" : "No properties available",
-                font, visage::Font::kTopLeft,
-                bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+            if (activeTab_ == InspectorTab::Events) {
+                canvas.text("No supported events.",
+                    font, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+                canvas.setColor(0xffc7cfda);
+                canvas.text("Use the Properties tab for this widget's editable attributes.",
+                    font, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, bounds.y + 32.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+            }
+            else {
+                canvas.text("No properties available",
+                    font, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+            }
         }
         return;
     }
@@ -1584,7 +1861,7 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
     for (std::size_t index = 0; index < layouts.size(); ++index) {
         const auto& row = layouts[index].row;
         const float rowTop = rowYWithScroll(layouts[index].top);
-        if (rowTop + kRowHeight < bounds.y || rowTop > bounds.y + bounds.height) {
+        if (rowTop + layouts[index].height < bounds.y || rowTop > bounds.y + bounds.height) {
             continue;
         }
 
@@ -1630,7 +1907,69 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                 labelLeft, rowTop + 5.0f, std::max(40.0f, labelWidth - 32.0f), kRowHeight - 8.0f);
 
             canvas.setColor(isReadOnly ? 0xffb3bcc9 : 0xffeef2f8);
-            if (isSlider) {
+            if (row.isEvent) {
+                const auto eventControlIsActive = [&](EventAction action) {
+                    return activeEventAction_.has_value()
+                        && activeEventKey_ == row.key
+                        && *activeEventAction_ == action;
+                };
+                const auto selectorBounds = eventSelectorBoundsForRow(row, rowTop);
+                const auto createBounds = eventActionBoundsForRow(row, rowTop, EventAction::Create);
+                const auto existingBounds = eventActionBoundsForRow(row, rowTop, EventAction::Existing);
+                const auto clearBounds = eventActionBoundsForRow(row, rowTop, EventAction::Clear);
+                const std::string assignmentText = row.displayValue.empty() ? "<unset>" : row.displayValue;
+                if (selectorBounds.has_value()) {
+                    const bool selectorActive = eventControlIsActive(EventAction::Existing);
+                    canvas.setColor(selectorActive ? 0xff2f476d : (row.displayValue.empty() ? 0xff39414f : 0xff3f4a5c));
+                    canvas.fill(selectorBounds->x, selectorBounds->y, selectorBounds->width, selectorBounds->height);
+                    canvas.setColor(selectorActive ? 0xff92b9ff : 0xff1a2029);
+                    canvas.fill(selectorBounds->x, selectorBounds->y, selectorBounds->width, 1.0f);
+                    canvas.fill(selectorBounds->x, selectorBounds->y + selectorBounds->height - 1.0f, selectorBounds->width, 1.0f);
+                    canvas.setColor(0xffaeb8c6);
+                    canvas.text(row.choices.empty() ? "" : "v", font, visage::Font::kCenter,
+                        selectorBounds->x + selectorBounds->width - 16.0f, selectorBounds->y, 14.0f, selectorBounds->height);
+                }
+
+                const float assignmentLeft = selectorBounds.has_value() ? selectorBounds->x + 8.0f : valueLeft + 8.0f;
+                const float assignmentRight = selectorBounds.has_value()
+                    ? selectorBounds->x + selectorBounds->width - (row.choices.empty() ? 8.0f : 20.0f)
+                    : (createBounds.has_value() ? createBounds->x - 8.0f : valueLeft + valueWidth - 8.0f);
+                canvas.setColor(row.displayValue.empty() ? 0xffaeb8c6 : 0xffeef2f8);
+                canvas.text(assignmentText, font, visage::Font::kTopLeft,
+                    assignmentLeft, rowTop + 5.0f, std::max(24.0f, assignmentRight - assignmentLeft), kRowHeight - 8.0f);
+
+                const auto drawEventButton = [&](const std::optional<ValueCellBounds>& buttonBounds, const char* label, EventAction action, bool enabled, bool danger = false) {
+                    if (!buttonBounds.has_value()) {
+                        return;
+                    }
+
+                    const bool buttonActive = eventControlIsActive(action);
+                    canvas.setColor(enabled ? (buttonActive ? 0xff4b79bc : (danger ? 0xff6c3038 : 0xff355382)) : 0xff303541);
+                    canvas.fill(buttonBounds->x, buttonBounds->y, buttonBounds->width, buttonBounds->height);
+                    if (buttonActive) {
+                        canvas.setColor(0xff92b9ff);
+                        canvas.fill(buttonBounds->x, buttonBounds->y + buttonBounds->height - 2.0f, buttonBounds->width, 2.0f);
+                    }
+                    canvas.setColor(enabled ? (danger ? 0xffffd6dc : 0xffd8e8ff) : 0xff8d98a8);
+                    canvas.text(label, font, visage::Font::kCenter,
+                        buttonBounds->x, buttonBounds->y, buttonBounds->width, buttonBounds->height);
+                };
+
+                drawEventButton(createBounds, "Create", EventAction::Create, true);
+                drawEventButton(existingBounds, "Existing", EventAction::Existing, !row.choices.empty());
+                drawEventButton(clearBounds, "Clear", EventAction::Clear, true, true);
+
+                if (!row.errorText.empty()) {
+                    const float errorTop = rowTop + kRowHeight;
+                    canvas.setColor(0xff352229);
+                    canvas.fill(valueLeft, errorTop, valueWidth, kEventErrorHeight - 4.0f);
+                    canvas.setColor(0xffff8a8a);
+                    canvas.fill(valueLeft, errorTop, 2.0f, kEventErrorHeight - 4.0f);
+                    canvas.text(row.errorText, font, visage::Font::kTopLeft,
+                        valueLeft + 8.0f, errorTop + 4.0f, valueWidth - 14.0f, kEventErrorHeight - 8.0f);
+                }
+            }
+            else if (isSlider) {
                 const auto track = sliderTrackBoundsForRow(row, rowTop);
                 const float sliderValue = tryParseFloatText(row.displayValue).value_or(row.minimumValue);
                 const auto thumb = sliderThumbBoundsForRow(row, rowTop, sliderValue);

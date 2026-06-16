@@ -104,7 +104,7 @@ This is used for:
 
 - export handler signature generation
 - handler conflict detection
-- simple same-signature callback suggestions in the property inspector
+- signature-compatible handler reuse in the Property Inspector `Events` tab
 
 Current signature kinds map to the generated listener API payloads:
 
@@ -116,6 +116,7 @@ Current signature kinds map to the generated listener API payloads:
 When adding a new widget event, choose the signature kind that matches the value payload the future generated emit helper should forward.
 Widgets may share the same handler name when the signature kind is compatible.
 If the same handler name is reused with incompatible signature kinds, export fails with a conflict error.
+The inspector's `Existing` event assignment dropdown must list only handlers with the same signature kind, while `Create` may reuse an exact compatible handler name or suffix around incompatible collisions.
 
 ## Generated interactive widget responsibilities
 

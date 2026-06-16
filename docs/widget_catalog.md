@@ -281,6 +281,12 @@ Supported event properties:
 - `ListBox`
   - `onChanged`
   - `onDoubleClick`
+- `TableGrid`
+  - `onSelectionChanged`
+  - `onCellDoubleClick`
+- `TreeView`
+  - `onChanged`
+  - `onDoubleClick`
 - `ModalDialog`
   - `onAccepted`
   - `onCancelled`
@@ -305,9 +311,14 @@ All widgets can also use a common string property:
 This help text is used by the editor for status-bar hints and property inspector editing.
 Property rows also show property-definition hints in the main status pane when hovered.
 
-## Callback suggestions
+## Event assignment controls
 
-When editing an event property in the Property Inspector, matching existing callbacks are shown as separate clickable suggestion items.
+The Property Inspector `Events` tab presents each event as a compact assignment row with explicit controls:
+
+- `Create` assigns a proposed handler name based on the selected widget name and event name
+- `Existing` opens a dropdown containing only signature-compatible handlers already used in the project
+- `Clear` immediately removes the assignment without confirmation
+- invalid identifiers or incompatible reused handler names render row-local error text beneath the affected event row
 
 Compatibility now groups handlers by sender-aware signature kind:
 
@@ -321,7 +332,6 @@ This allows, for example, `RadioButton.onSelected` and `CheckBox.onToggle` to re
 ## Current limitations
 
 - Event metadata is edited through the property inspector only
-- Event fields currently show simple existing-callback suggestions instead of a full dropdown editor
 - No separate visual event editor yet
 - Generated runtime interaction is intentionally lightweight and not a full retained-mode widget toolkit
 - Rounded-corner drawing is applied by shared boxed-widget drawing helpers in the designer and generated runtime paths

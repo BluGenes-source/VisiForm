@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VisiForm Property Inspector Events Prototype</title>
+  <style>
+    :root {
+      --app-bg: #1b2029;
+      --panel: #232833;
+      --panel-2: #2c3240;
+      --panel-3: #2b313d;
+      --panel-4: #262c37;
+      --field: #39414f;
+      --field-readonly: #303541;
+      --field-active: #2f476d;
+      --border: #11141a;
+      --accent: #4b79bc;
+      --accent-2: #92b9ff;
+      --button: #355382;
+      --text: #f3f5f8;
+      --muted: #c7cfda;
+      --subtle: #8d98a8;
+      --warning: #f4c56b;
+      --danger: #ff8a8a;
+      --ok: #86d7a3;
+      --row-h: 32px;
+      --font: "Segoe UI", "Trebuchet MS", sans-serif;
+      --mono: "Cascadia Mono", "Consolas", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, #2b3545 0, var(--app-bg) 420px);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .prototype {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 30px 42px 1fr 28px;
+      background: #202632;
+    }
+
+    .menu {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 0 14px;
+      background: #1c222c;
+      border-bottom: 1px solid var(--border);
+      color: #dce4ef;
+    }
+
+    .menu strong {
+      color: #ffffff;
+      margin-right: 12px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      background: #242b36;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tool {
+      min-width: 42px;
+      height: 26px;
+      border: 1px solid #17202d;
+      background: #39414e;
+      color: #dce7f7;
+      cursor: default;
+    }
+
+    .tool.primary {
+      background: var(--button);
+      color: #d8e8ff;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 214px 1fr 386px;
+      min-height: 650px;
+    }
+
+    .palette,
+    .inspector {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+    }
+
+    .inspector {
+      border-right: 0;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-title {
+      height: 34px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-weight: 650;
+      letter-spacing: .1px;
+    }
+
+    .palette-list {
+      padding: 10px 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .palette-item {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      background: #2a303b;
+      border: 1px solid #151b24;
+      color: var(--muted);
+    }
+
+    .palette-item.active {
+      background: #31496e;
+      color: #eef5ff;
+      border-color: #22334e;
+    }
+
+    .canvas-wrap {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        #1e2430;
+      background-size: 24px 24px;
+    }
+
+    .scenario-bar {
+      padding: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      background: rgba(28,34,44,.9);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .scenario-label {
+      color: var(--subtle);
+      margin-right: 4px;
+    }
+
+    .scenario {
+      height: 28px;
+      border: 1px solid #151b24;
+      background: #303744;
+      color: var(--muted);
+      padding: 0 10px;
+      cursor: pointer;
+    }
+
+    .scenario[aria-pressed="true"] {
+      background: var(--accent);
+      color: #eef5ff;
+      border-color: #223e64;
+      box-shadow: inset 0 -2px 0 var(--accent-2);
+    }
+
+    .canvas {
+      position: relative;
+      margin: 24px;
+      border: 1px solid #11141a;
+      background: #202026;
+      box-shadow: 0 16px 50px rgba(0,0,0,.28);
+      overflow: hidden;
+    }
+
+    .form-title {
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      height: 34px;
+      background: #2b303b;
+      border-bottom: 1px solid #11141a;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      color: #dfe7f3;
+    }
+
+    .designer-button {
+      position: absolute;
+      left: 58px;
+      top: 92px;
+      width: 180px;
+      height: 46px;
+      border: 1px solid #151b24;
+      background: #39414e;
+      color: #eef2f8;
+      display: grid;
+      place-items: center;
+      user-select: none;
+    }
+
+    .designer-button.selected {
+      outline: 2px solid var(--accent-2);
+      outline-offset: 3px;
+    }
+
+    .designer-button.assigned::after {
+      content: "onClick";
+      position: absolute;
+      top: -24px;
+      right: -10px;
+      padding: 2px 7px;
+      background: #253246;
+      color: var(--accent-2);
+      border: 1px solid #1a2638;
+      font-size: 11px;
+    }
+
+    .flow-card {
+      position: absolute;
+      left: 58px;
+      top: 174px;
+      width: 430px;
+      padding: 14px;
+      background: rgba(35,40,51,.94);
+      border: 1px solid #11141a;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .flow-card h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      color: #eef5ff;
+    }
+
+    .tabs {
+      height: 34px;
+      padding: 4px 8px 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background: var(--panel);
+    }
+
+    .tab {
+      border: 0;
+      background: #303744;
+      color: var(--muted);
+      border-bottom: 2px solid #1a2029;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: #eef5ff;
+      border-bottom-color: var(--accent-2);
+    }
+
+    .inspector-body {
+      flex: 1;
+      padding: 10px 8px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .rows {
+      border: 0;
+    }
+
+    .row {
+      min-height: var(--row-h);
+      display: grid;
+      grid-template-columns: minmax(120px, 152px) 1fr;
+      align-items: stretch;
+      margin-bottom: 2px;
+      background: var(--panel-3);
+    }
+
+    .row:nth-child(even) {
+      background: var(--panel-4);
+    }
+
+    .row.section {
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      background: #253246;
+      color: #a9c7f6;
+      font-weight: 650;
+    }
+
+    .label {
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      color: var(--muted);
+      min-width: 0;
+    }
+
+    .value {
+      margin: 2px 0;
+      background: var(--field);
+      color: #eef2f8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      min-width: 0;
+    }
+
+    .value.readonly {
+      background: var(--field-readonly);
+      color: #b3bcc9;
+    }
+
+    .value.active {
+      background: var(--field-active);
+      box-shadow: inset 0 -2px 0 var(--accent-2);
+    }
+
+    .value select {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: #303744;
+      color: #eef2f8;
+    }
+
+    .value select option {
+      color: #11141a;
+    }
+
+    .assignment {
+      flex: 1 1 auto;
+      min-width: 66px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #eef2f8;
+    }
+
+    .assignment.unset {
+      color: #aeb8c6;
+      font-style: italic;
+    }
+
+    .event-select {
+      flex: 0 1 92px;
+      height: 22px;
+      border: 1px solid #17202d;
+      padding: 0 4px;
+    }
+
+    .event-select[hidden] {
+      display: none;
+    }
+
+    .mini-action {
+      flex: 0 0 auto;
+      height: 22px;
+      border: 0;
+      background: var(--button);
+      color: #d8e8ff;
+      padding: 0 7px;
+      cursor: pointer;
+    }
+
+    .mini-action.danger {
+      background: #743a3f;
+      color: #ffe0e0;
+    }
+
+    .event-error {
+      grid-column: 2;
+      margin: -1px 0 5px;
+      padding: 6px 8px;
+      background: #352229;
+      border-left: 2px solid #b94f5d;
+      color: var(--danger);
+      font-size: 12px;
+      line-height: 1.32;
+    }
+
+    .empty {
+      color: #dde2ea;
+      padding: 10px;
+    }
+
+    .hint-stack {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .message {
+      padding: 9px 10px;
+      border: 1px solid #151b24;
+      background: #252b36;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .message.ok {
+      color: var(--ok);
+      border-color: #24452f;
+      background: #202f29;
+    }
+
+    .message.warning {
+      color: var(--warning);
+      border-color: #5c4521;
+      background: #302b20;
+    }
+
+    .message.error {
+      color: var(--danger);
+      border-color: #6c3038;
+      background: #352229;
+    }
+
+    .code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #d9e8ff;
+    }
+
+    .recommendations {
+      background: #202632;
+      border-top: 1px solid var(--border);
+      padding: 16px 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+    }
+
+    .recommendation {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 12px;
+      min-height: 94px;
+    }
+
+    .recommendation h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      color: #eef5ff;
+    }
+
+    .recommendation p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.42;
+    }
+
+    .status {
+      background: #171c24;
+      border-top: 1px solid var(--border);
+      color: #aeb8c6;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 20px;
+    }
+
+    .status strong {
+      color: var(--accent-2);
+      font-weight: 600;
+    }
+
+    @media (max-width: 980px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .palette {
+        display: none;
+      }
+
+      .canvas-wrap {
+        min-height: 420px;
+      }
+
+      .inspector {
+        min-height: 520px;
+        border-left: 0;
+        border-top: 1px solid var(--border);
+      }
+
+      .recommendations {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="prototype">
+    <nav class="menu" aria-label="Application menu">
+      <strong>VisiForm</strong>
+      <span>File</span>
+      <span>Edit</span>
+      <span>Insert</span>
+      <span>Project</span>
+      <span>Help</span>
+    </nav>
+
+    <section class="toolbar" aria-label="Toolbar">
+      <button class="tool primary">New</button>
+      <button class="tool">Open</button>
+      <button class="tool">Save</button>
+      <button class="tool">Export</button>
+      <button class="tool">Chk</button>
+      <button class="tool">Undo</button>
+      <button class="tool">Redo</button>
+      <button class="tool">Grid</button>
+      <button class="tool">Snap</button>
+      <button class="tool">Guides</button>
+    </section>
+
+    <section class="workspace">
+      <aside class="palette" aria-label="Widget Palette">
+        <div class="panel-title">Widget Palette</div>
+        <div class="palette-list">
+          <div class="palette-item">Frame</div>
+          <div class="palette-item">GroupBox</div>
+          <div class="palette-item">Panel</div>
+          <div class="palette-item">Sizer</div>
+          <div class="palette-item">TabControl</div>
+          <div class="palette-item">Label</div>
+          <div class="palette-item active">Button</div>
+          <div class="palette-item">TextBox</div>
+          <div class="palette-item">CheckBox</div>
+          <div class="palette-item">RadioButton</div>
+          <div class="palette-item">ComboBox</div>
+          <div class="palette-item">ListBox</div>
+        </div>
+      </aside>
+
+      <section class="canvas-wrap">
+        <div class="scenario-bar" aria-label="Prototype states">
+          <span class="scenario-label">Review state:</span>
+          <button class="scenario" data-state="none" aria-pressed="false">No widget selected</button>
+          <button class="scenario" data-state="button-empty" aria-pressed="true">Button, no events</button>
+          <button class="scenario" data-state="button-assigned" aria-pressed="false">Button, click assigned</button>
+          <button class="scenario" data-state="invalid" aria-pressed="false">Validation error</button>
+          <button class="scenario" data-state="conflict" aria-pressed="false">Duplicate conflict</button>
+        </div>
+        <div class="canvas" aria-label="Designer canvas">
+          <div class="form-title">MainWindow - ExampleProject.vfb.json</div>
+          <div id="designerButton" class="designer-button selected">Click Me</div>
+          <article class="flow-card">
+            <h2 id="flowTitle">Button selected with no assigned events</h2>
+            <div id="flowText">Open the Events tab, create a proposed handler, choose an existing compatible handler from the dropdown, or clear an assignment. The row stays compact enough for the current inspector width.</div>
+          </article>
+        </div>
+      </section>
+
+      <aside class="inspector" aria-label="Property Inspector">
+        <div class="panel-title" id="inspectorTitle">Property Inspector</div>
+        <div class="tabs" role="tablist" aria-label="Inspector tabs">
+          <button class="tab active" data-tab="properties" role="tab" aria-selected="true">Properties</button>
+          <button class="tab" data-tab="events" role="tab" aria-selected="false">Events</button>
+        </div>
+        <div class="inspector-body">
+          <div id="rows" class="rows"></div>
+          <div id="messages" class="hint-stack" aria-live="polite"></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="recommendations" aria-label="Implementation recommendations">
+      <article class="recommendation">
+        <h3>User-flow summary</h3>
+        <p>Select a widget, switch to Events, create a proposed handler, select a compatible existing handler, or clear the assignment without leaving the inspector.</p>
+      </article>
+      <article class="recommendation">
+        <h3>Recommendation</h3>
+        <p>Replace direct text entry with compact Create, Existing, and Clear controls; expose only signature-compatible existing handlers.</p>
+      </article>
+      <article class="recommendation">
+        <h3>Validation copy</h3>
+        <p>Differentiate invalid identifiers from incompatible signature conflicts; compatible duplicate reuse should be presented as normal reuse, not failure.</p>
+      </article>
+    </section>
+
+    <footer class="status">
+      <span><strong>Status:</strong> Phase 91 prototype artifact only</span>
+      <span id="statusText">Ready. No C++ source modified.</span>
+    </footer>
+  </main>
+
+  <script>
+    const eventRows = [
+      {
+        key: "onClick",
+        label: "On Click",
+        hint: "Called when the button click is completed.",
+        signature: "void_event"
+      },
+      {
+        key: "onRelease",
+        label: "On Release",
+        hint: "Called when the pointer releases over the button.",
+        signature: "void_event"
+      },
+      {
+        key: "onDoubleClick",
+        label: "On Double Click",
+        hint: "Called when the button receives a double-click.",
+        signature: "void_event"
+      }
+    ];
+
+    const properties = [
+      ["Identity", "", "section"],
+      ["Type", "Button", "readonly"],
+      ["Id", "button_hello", "readonly"],
+      ["Name", "helloButton", "editable"],
+      ["Geometry", "", "section"],
+      ["X", "40", "editable"],
+      ["Y", "40", "editable"],
+      ["Width", "180", "editable"],
+      ["Height", "46", "editable"],
+      ["Button", "", "section"],
+      ["Text", "Click Me", "editable"],
+      ["Normal Text", "<unset>", "editable"],
+      ["Pressed Text", "<unset>", "editable"],
+      ["Style", "", "section"],
+      ["Fill Color", "#39414e", "editable"],
+      ["Corner Radius", "4 / 25", "readonly"]
+    ];
+
+    const widgetName = "helloButton";
+
+    const existingHandlers = [
+      { name: "handleSubmit", signature: "void_event" },
+      { name: "handleShowDialog", signature: "void_event" },
+      { name: "handleCloseDialog", signature: "void_event" },
+      { name: "handleValueChanged", signature: "float_event" },
+      { name: "handleTextChanged", signature: "string_event" }
+    ];
+
+    const state = {
+      selectedState: "button-empty",
+      tab: "properties",
+      events: {
+        onClick: "",
+        onRelease: "",
+        onDoubleClick: ""
+      },
+      activeEventKey: "",
+      rowErrors: {}
+    };
+
+    const rows = document.querySelector("#rows");
+    const messages = document.querySelector("#messages");
+    const statusText = document.querySelector("#statusText");
+    const flowTitle = document.querySelector("#flowTitle");
+    const flowText = document.querySelector("#flowText");
+    const inspectorTitle = document.querySelector("#inspectorTitle");
+    const designerButton = document.querySelector("#designerButton");
+
+    function compatibleHandlers(signature) {
+      return existingHandlers.filter(handler => handler.signature === signature);
+    }
+
+    function toPascalCase(text) {
+      return text
+        .replace(/^on/, "")
+        .replace(/[^A-Za-z0-9]+/g, " ")
+        .split(/(?=[A-Z])|\s+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join("");
+    }
+
+    function defaultHandlerName(eventKey) {
+      const cleanWidgetName = widgetName
+        .replace(/[^A-Za-z0-9_]/g, "")
+        .replace(/^[^A-Za-z_]+/, "");
+      const pascalWidget = cleanWidgetName.charAt(0).toUpperCase() + cleanWidgetName.slice(1);
+      return `handle${pascalWidget}${toPascalCase(eventKey)}`;
+    }
+
+    function setMessage(kind, html) {
+      messages.innerHTML = `<div class="message ${kind}">${html}</div>`;
+    }
+
+    function clearMessage() {
+      messages.innerHTML = "";
+    }
+
+    function renderProperties() {
+      if (state.selectedState === "none") {
+        rows.innerHTML = `<div class="empty">No selection</div>`;
+        setMessage("warning", "Select a widget on the canvas or Project Tree to edit its properties.");
+        return;
+      }
+
+      rows.innerHTML = properties.map(([label, value, kind]) => {
+        if (kind === "section") {
+          return `<div class="row section">${label}</div>`;
+        }
+        const readonly = kind === "readonly" ? " readonly" : "";
+        return `
+          <div class="row">
+            <div class="label">${label}</div>
+            <div class="value${readonly}">${value}</div>
+          </div>`;
+      }).join("");
+
+      setMessage("ok", "Properties tab stays focused on widget attributes. Event rows are not duplicated here.");
+    }
+
+    function renderEvents() {
+      if (state.selectedState === "none") {
+        rows.innerHTML = `
+          <div class="empty">
+            <strong>No widget selected.</strong><br>
+            Select one widget to view supported events and assign handlers.
+          </div>`;
+        setMessage("warning", "The Events tab stays visible so users do not lose orientation when selection changes.");
+        return;
+      }
+
+      rows.innerHTML = `
+        <div class="row section">Button Events</div>
+        ${eventRows.map(event => {
+          const value = state.events[event.key] || "";
+          const compatible = compatibleHandlers(event.signature);
+          const selectId = `${event.key}-existing`;
+          const error = state.rowErrors[event.key] || "";
+          return `
+            <div class="row">
+              <div class="label" title="${event.hint}">${event.label}</div>
+              <div class="value ${state.activeEventKey === event.key ? "active" : ""}">
+                <span class="assignment ${value ? "" : "unset"}">${value || "<unset>"}</span>
+                <button class="mini-action" data-create="${event.key}">Create</button>
+                <button class="mini-action" data-existing-toggle="${event.key}">Existing</button>
+                <select id="${selectId}" class="event-select" data-existing="${event.key}" ${state.activeEventKey === event.key ? "" : "hidden"}>
+                  <option value="">Select...</option>
+                  ${compatible.map(handler => `<option value="${handler.name}">${handler.name}</option>`).join("")}
+                </select>
+                <button class="mini-action danger" data-clear="${event.key}">Clear</button>
+              </div>
+            </div>
+            ${error ? `<div class="event-error">${error}</div>` : ""}`;
+        }).join("")}
+        <div class="row section">Compatible Suggestions</div>
+        <div class="row">
+          <div class="label">void_event</div>
+          <div class="value readonly">${compatibleHandlers("void_event").map(handler => handler.name).join(", ")}</div>
+        </div>`;
+
+      attachEventHandlers();
+      renderEventMessage();
+    }
+
+    function renderEventMessage() {
+      if (state.selectedState === "invalid") {
+        setMessage("error", "Validation errors appear directly beneath the affected event row.");
+        return;
+      }
+      if (state.selectedState === "conflict") {
+        setMessage("error", "Signature conflicts are shown in row context; incompatible handlers are intentionally excluded from the Existing dropdown.");
+        return;
+      }
+      if (state.events.onClick) {
+        setMessage("ok", `<span class="code">onClick</span> is assigned to <span class="code">${state.events.onClick}</span>. Generated user code will preserve matching USER CODE blocks by handler name.`);
+        return;
+      }
+      setMessage("warning", "Blank event properties are allowed. No generated handler stub is emitted until a handler name is assigned.");
+    }
+
+    function attachEventHandlers() {
+      document.querySelectorAll("[data-create]").forEach(button => {
+        button.addEventListener("click", () => {
+          const key = button.dataset.create;
+          const created = defaultHandlerName(key);
+          state.events[key] = created;
+          state.selectedState = "button-assigned";
+          state.activeEventKey = key;
+          state.rowErrors = {};
+          syncScenarioButtons();
+          render();
+          statusText.textContent = `Proposed and assigned ${created} for ${key}.`;
+        });
+      });
+
+      document.querySelectorAll("[data-existing-toggle]").forEach(button => {
+        button.addEventListener("click", () => {
+          const key = button.dataset.existingToggle;
+          state.activeEventKey = state.activeEventKey === key ? "" : key;
+          render();
+          statusText.textContent = state.activeEventKey ? `Choose a compatible existing handler for ${key}.` : "Existing handler dropdown closed.";
+        });
+      });
+
+      document.querySelectorAll("[data-existing]").forEach(select => {
+        select.addEventListener("change", () => {
+          const key = select.dataset.existing;
+          if (!select.value) {
+            return;
+          }
+          state.events[key] = select.value;
+          state.selectedState = "button-assigned";
+          state.activeEventKey = key;
+          state.rowErrors = {};
+          syncScenarioButtons();
+          render();
+          statusText.textContent = `Selected existing compatible handler for ${key}.`;
+        });
+      });
+
+      document.querySelectorAll("[data-clear]").forEach(button => {
+        button.addEventListener("click", () => {
+          const key = button.dataset.clear;
+          state.events[key] = "";
+          state.selectedState = Object.values(state.events).some(Boolean) ? "button-assigned" : "button-empty";
+          state.activeEventKey = key;
+          delete state.rowErrors[key];
+          syncScenarioButtons();
+          render();
+          statusText.textContent = `Removed assignment for ${key}.`;
+        });
+      });
+    }
+
+    function syncScenarioButtons() {
+      document.querySelectorAll(".scenario").forEach(button => {
+        button.setAttribute("aria-pressed", String(button.dataset.state === state.selectedState));
+      });
+    }
+
+    function updateScenarioText() {
+      const selected = state.selectedState !== "none";
+      designerButton.classList.toggle("selected", selected);
+      designerButton.classList.toggle("assigned", Boolean(state.events.onClick));
+      inspectorTitle.textContent = selected ? "Property Inspector" : "Property Inspector";
+
+      const copy = {
+        none: [
+          "No widget selected",
+          "The inspector preserves the tab strip, but both tabs show safe empty states instead of stale widget rows."
+        ],
+        "button-empty": [
+          "Button selected with no assigned events",
+          "Events are visible as compact rows. Blank values are legal and mean no handler stub will be generated."
+        ],
+        "button-assigned": [
+          "Button selected with click handler assigned",
+          "The onClick assignment is readable in the Events tab, with Create, Existing, and Clear controls kept on the same compact row."
+        ],
+        invalid: [
+          "Validation error while editing handler",
+          "Invalid handler names should fail beneath the affected row, not in a distant global message."
+        ],
+        conflict: [
+          "Duplicate handler conflict",
+          "Compatible reuse is good. Incompatible signature reuse is the actual duplicate-handler problem to explain."
+        ]
+      }[state.selectedState];
+
+      flowTitle.textContent = copy[0];
+      flowText.textContent = copy[1];
+    }
+
+    function render() {
+      updateScenarioText();
+      if (state.tab === "properties") {
+        renderProperties();
+      } else {
+        renderEvents();
+      }
+    }
+
+    document.querySelectorAll(".tab").forEach(button => {
+      button.addEventListener("click", () => {
+        state.tab = button.dataset.tab;
+        document.querySelectorAll(".tab").forEach(tab => {
+          const active = tab.dataset.tab === state.tab;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+        });
+        clearMessage();
+        render();
+      });
+    });
+
+    document.querySelectorAll(".scenario").forEach(button => {
+      button.addEventListener("click", () => {
+        state.selectedState = button.dataset.state;
+        if (state.selectedState === "button-empty" || state.selectedState === "none") {
+          state.events = { onClick: "", onRelease: "", onDoubleClick: "" };
+          state.rowErrors = {};
+        }
+        if (state.selectedState === "button-assigned") {
+          state.events.onClick = "handleHelloClick";
+          state.rowErrors = {};
+        }
+        if (state.selectedState === "invalid") {
+          state.tab = "events";
+          state.events.onClick = "";
+          state.activeEventKey = "onClick";
+          state.rowErrors = {
+            onClick: `<span class="code">handle click</span> is not a valid C++ identifier. Use letters, digits, or underscores, and start with a letter or underscore.`
+          };
+        }
+        if (state.selectedState === "conflict") {
+          state.tab = "events";
+          state.events.onClick = "handleValueChanged";
+          state.activeEventKey = "onClick";
+          state.rowErrors = {
+            onClick: `<span class="code">handleValueChanged</span> already exists with <span class="code">float_event</span>. Button events need <span class="code">void_event</span>, so reuse would conflict during validation/export.`
+          };
+        }
+        document.querySelectorAll(".tab").forEach(tab => {
+          const active = tab.dataset.tab === state.tab;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+        });
+        syncScenarioButtons();
+        render();
+      });
+    });
+
+    designerButton.addEventListener("click", () => {
+      state.selectedState = state.events.onClick ? "button-assigned" : "button-empty";
+      syncScenarioButtons();
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

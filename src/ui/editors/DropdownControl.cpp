@@ -7,6 +7,7 @@ namespace {
 
 constexpr float kItemHeight = 24.0f;
 constexpr float kItemSpacing = 2.0f;
+constexpr float kMinimumPopupWidth = 180.0f;
 constexpr std::size_t kMaxVisibleItems = 8;
 
 float totalPopupHeight(std::size_t itemCount)
@@ -217,6 +218,10 @@ DropdownControl::Bounds DropdownControl::popupBounds() const
 {
     const std::size_t count = visibleItemCount();
     const float popupHeight = totalPopupHeight(count);
+    const float popupWidth = std::min(std::max(anchorBounds_.width, kMinimumPopupWidth), viewportBounds_.width);
+    const float popupX = std::clamp(anchorBounds_.x,
+        viewportBounds_.x,
+        std::max(viewportBounds_.x, viewportBounds_.x + viewportBounds_.width - popupWidth));
     const float spaceBelow = std::max(0.0f, viewportBounds_.y + viewportBounds_.height - (anchorBounds_.y + anchorBounds_.height));
     const float spaceAbove = std::max(0.0f, anchorBounds_.y - viewportBounds_.y);
     const bool drawAbove = popupHeight > spaceBelow && spaceAbove > spaceBelow;
@@ -224,9 +229,9 @@ DropdownControl::Bounds DropdownControl::popupBounds() const
         ? std::max(viewportBounds_.y, anchorBounds_.y - popupHeight - 2.0f)
         : std::min(viewportBounds_.y + viewportBounds_.height - popupHeight, anchorBounds_.y + anchorBounds_.height);
     return {
-        anchorBounds_.x,
+        popupX,
         popupY,
-        anchorBounds_.width,
+        popupWidth,
         popupHeight
     };
 }

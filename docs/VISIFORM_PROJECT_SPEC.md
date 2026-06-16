@@ -444,6 +444,7 @@ Editor controls in `PropertyInspector` include:
 - choice/dropdown
 - bool
 - read-only rows
+- compact event rows with `Create`, `Existing`, and `Clear` assignment controls
 
 Property behavior:
 
@@ -456,7 +457,7 @@ Property behavior:
 Special property groups:
 
 - Style overrides: `lookAndFeelId`, `fillColor`, `textColor`, `borderColor`, `accentColor`, `borderThickness`, `cornerRadius`, `fontSize`.
-- Events: widget event keys such as `onClick`, `onChanged`, `onTextChanged`, `onAccepted`, `onCancelled`. Supported event rows are shown on the dedicated `Events` inspector tab, while non-event properties remain on the `Properties` tab.
+- Events: widget event keys such as `onClick`, `onChanged`, `onTextChanged`, `onAccepted`, `onCancelled`. Supported event rows are shown on the dedicated `Events` inspector tab, while non-event properties remain on the `Properties` tab. Event rows assign handlers through explicit `Create`, `Existing`, and `Clear` controls; `Existing` is limited to signature-compatible handlers and row-local validation is shown beneath affected rows.
 - Item lists: `items`, selected index keys, and optional `itemActions`.
 - Tree nodes: `nodes`, `selectedNodePath`, `expandedNodePaths`.
 - Layout: `dock`, `anchor`, `layoutMode`, `tabIndex`, sizer metadata.
@@ -464,7 +465,7 @@ Special property groups:
 Incomplete areas:
 
 - No external property schema file.
-- No full visual event editor.
+- No full event-flow designer beyond compact event assignment rows.
 - No theme editor UI.
 
 ## 13. Code-generation specification

@@ -30,6 +30,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #ifdef _WIN32
@@ -47,7 +48,8 @@ constexpr float kMenuBarHeight = 30.0f;
 constexpr float kToolbarHeight = 42.0f;
 constexpr float kStatusBarHeight = 28.0f;
 constexpr float kLeftPanelWidth = 220.0f;
-constexpr float kRightPanelWidth = 300.0f;
+constexpr float kRightPanelWidth = 430.0f;
+constexpr float kRightPanelMinimumWidth = 386.0f;
 constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
@@ -141,6 +143,7 @@ constexpr float kTreeNodeEditorListMinHeight = 190.0f;
 constexpr float kTreeNodeEditorSectionGap = 10.0f;
 constexpr float kTreeNodeEditorActionLabelHeight = 22.0f;
 constexpr float kTreeNodeEditorActionButtonHeight = 32.0f;
+constexpr std::string_view kInspectorEventDropdownPrefix = "__event_existing:";
 
 bool pointInBounds(float x, float y, float left, float top, float width, float height)
 {
@@ -755,6 +758,85 @@ std::string defaultWidgetName(model::WidgetType type, const std::string& id)
 std::string widgetDisplayName(const model::WidgetNode& widget)
 {
     return widget.name.empty() ? widget.id : widget.name;
+}
+
+std::string pascalCaseIdentifierPart(std::string_view text)
+{
+    std::string result;
+    bool uppercaseNext = true;
+    for (const unsigned char character : text) {
+        if (std::isalnum(character) == 0) {
+            uppercaseNext = true;
+            continue;
+        }
+
+        if (result.empty() && std::isdigit(character) != 0) {
+            result.push_back('_');
+        }
+
+        result.push_back(uppercaseNext
+                ? static_cast<char>(std::toupper(character))
+                : static_cast<char>(character));
+        uppercaseNext = false;
+    }
+
+    return result;
+}
+
+std::string eventNameStem(std::string eventKey)
+{
+    if (eventKey.size() > 2
+        && eventKey[0] == 'o'
+        && eventKey[1] == 'n'
+        && std::isupper(static_cast<unsigned char>(eventKey[2])) != 0) {
+        eventKey.erase(eventKey.begin(), eventKey.begin() + 2);
+    }
+    return eventKey;
+}
+
+std::string eventDropdownKey(const std::string& eventKey)
+{
+    return std::string{ kInspectorEventDropdownPrefix } + eventKey;
+}
+
+std::optional<std::string> eventKeyFromDropdownKey(const std::string& key)
+{
+    if (!key.starts_with(kInspectorEventDropdownPrefix)) {
+        return std::nullopt;
+    }
+
+    return key.substr(kInspectorEventDropdownPrefix.size());
+}
+
+std::optional<std::string> handlerSignatureKindInWidget(const model::WidgetNode& widget, const std::string& handlerName)
+{
+    if (handlerName.empty()) {
+        return std::nullopt;
+    }
+
+    if (const auto* definition = model::WidgetRegistry::instance().find(widget.type)) {
+        for (const auto& eventDefinition : definition->events) {
+            if (widget.getStringProperty(eventDefinition.key, {}) == handlerName) {
+                return eventDefinition.handlerSignatureKind;
+            }
+        }
+    }
+
+    if (model::supportsItemActions(widget.type)) {
+        for (const auto& actionName : model::getWidgetItemActions(widget)) {
+            if (actionName == handlerName) {
+                return std::string{ "void_event" };
+            }
+        }
+    }
+
+    for (const auto& child : widget.children) {
+        if (auto signatureKind = handlerSignatureKindInWidget(child, handlerName)) {
+            return signatureKind;
+        }
+    }
+
+    return std::nullopt;
 }
 
 const model::WidgetNode* nearestAncestorOfType(const model::ProjectDocument& document,
@@ -2563,6 +2645,9 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     if (dropdownControl_.isOpen()) {
         const bool handledDropdownClick = dropdownControl_.mouseDown(e.position.x, e.position.y);
         handleDropdownSelection();
+        if (!dropdownControl_.isOpen()) {
+            propertyInspector_.clearActiveEventControl();
+        }
         if (handledDropdownClick) {
             redraw();
             return;
@@ -2609,6 +2694,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
             dropdownControl_.close();
         }
         updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
+    if (const auto eventAction = propertyInspector_.hitTestEventAction(document_, settings_, e.position.x, e.position.y)) {
+        handleInspectorEventAction(*eventAction);
         redraw();
         return;
     }
@@ -3345,6 +3436,9 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     using KeyCode = visage::KeyCode;
     if (dropdownControl_.isOpen() && dropdownControl_.keyPress(e)) {
         handleDropdownSelection();
+        if (!dropdownControl_.isOpen()) {
+            propertyInspector_.clearActiveEventControl();
+        }
         redraw();
         return true;
     }
@@ -3522,6 +3616,9 @@ void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveS
     }
 
     clearCanvasInteraction();
+    propertyInspector_.clearEditing();
+    textEditControl_.clear();
+    dropdownControl_.close();
     if (!additiveSelection) {
         document_.setSelection(widgetId);
         updatePropertyEditorBounds();
@@ -5293,7 +5390,8 @@ MainWindow::WindowLayout MainWindow::calculateLayout(float windowWidth, float wi
     const float contentHeight = std::max(0.0f, contentBottom - contentTop);
 
     const float leftWidth = std::min(kLeftPanelWidth, std::max(140.0f, windowWidth * 0.2f));
-    const float rightWidth = std::min(kRightPanelWidth, std::max(220.0f, windowWidth * 0.24f));
+    const float availableRightWidth = std::max(kRightPanelMinimumWidth, windowWidth - leftWidth - kGap * 4.0f);
+    const float rightWidth = std::min(kRightPanelWidth, availableRightWidth);
     const float leftX = kGap;
     const float rightX = std::max(leftX + leftWidth + kGap, windowWidth - rightWidth - kGap);
 
@@ -6748,6 +6846,7 @@ void MainWindow::cancelInspectorEdit()
 void MainWindow::cancelPopupEditors()
 {
     dropdownControl_.close();
+    propertyInspector_.clearActiveEventControl();
 
     if (isEditorModalVisible() || !propertyInspector_.isEditing()) {
         return;
@@ -6816,8 +6915,130 @@ void MainWindow::openInspectorDropdown(const PropertyInspector::PropertyRow& row
         document_.selectedWidget() != nullptr ? document_.selectedWidget()->getStringProperty(row.key, row.displayValue) : row.displayValue);
 }
 
+bool MainWindow::handleInspectorEventAction(const PropertyInspector::PendingEventAction& action)
+{
+    auto* widget = document_.selectedWidget();
+    if (widget == nullptr) {
+        setOperationStatus("No widget selected");
+        return false;
+    }
+
+    if (action.action == PropertyInspector::EventAction::Create) {
+        propertyInspector_.clearActiveEventControl();
+        const std::string handlerName = proposedEventHandlerName(*widget, action.key, action.handlerSignatureKind);
+        if (!applySelectedWidgetCallbackProperty(action.key, handlerName)) {
+            return false;
+        }
+
+        setOperationStatus("Proposed and assigned " + handlerName + " for " + action.key + ".");
+        return true;
+    }
+
+    if (action.action == PropertyInspector::EventAction::Existing) {
+        if (action.choices.empty()) {
+            setOperationStatus("No compatible handlers available");
+            propertyInspector_.clearEditing();
+            propertyInspector_.clearActiveEventControl();
+            textEditControl_.clear();
+            dropdownControl_.close();
+            requestKeyboardFocus();
+            return false;
+        }
+
+        openInspectorEventDropdown(action);
+        return true;
+    }
+
+    if (action.currentValue.empty()) {
+        setOperationStatus("Removed assignment for " + action.key + ".");
+        propertyInspector_.clearEditing();
+        propertyInspector_.clearActiveEventControl();
+        textEditControl_.clear();
+        dropdownControl_.close();
+        requestKeyboardFocus();
+        return true;
+    }
+
+    if (!applySelectedWidgetCallbackProperty(action.key, {})) {
+        return false;
+    }
+
+    setOperationStatus("Removed assignment for " + action.key + ".");
+    return true;
+}
+
+void MainWindow::openInspectorEventDropdown(const PropertyInspector::PendingEventAction& action)
+{
+    const auto viewport = activeDropdownViewportBounds();
+    if (!viewport.has_value() || action.choices.empty()) {
+        dropdownControl_.close();
+        return;
+    }
+
+    propertyInspector_.clearEditing();
+    textEditControl_.clear();
+    propertyInspector_.setActiveEventControl(action.key, PropertyInspector::EventAction::Existing);
+    dropdownControl_.open(eventDropdownKey(action.key),
+        { action.anchorBounds.x, action.anchorBounds.y, action.anchorBounds.width, action.anchorBounds.height },
+        *viewport,
+        dropdownItemsFromChoices(action.choices),
+        action.currentValue);
+    requestKeyboardFocus();
+}
+
+std::string MainWindow::proposedEventHandlerName(const model::WidgetNode& widget,
+    const std::string& eventKey,
+    const std::string& signatureKind) const
+{
+    std::string widgetPart = pascalCaseIdentifierPart(widget.name.empty() ? widget.id : widget.name);
+    if (widgetPart.empty()) {
+        widgetPart = pascalCaseIdentifierPart(widget.id);
+    }
+    if (widgetPart.empty()) {
+        widgetPart = "Widget";
+    }
+
+    std::string eventPart = pascalCaseIdentifierPart(eventNameStem(eventKey));
+    if (eventPart.empty()) {
+        eventPart = "Event";
+    }
+
+    const std::string baseName = utils::sanitizeCppIdentifier("handle" + widgetPart + eventPart);
+    std::string candidate = utils::isValidCppIdentifier(baseName) ? baseName : "handle" + eventPart;
+    if (!utils::isValidCppIdentifier(candidate)) {
+        candidate = "handleEvent";
+    }
+    const std::string suffixBase = candidate;
+
+    int suffix = 2;
+    while (const auto existingSignature = assignedHandlerSignatureKind(candidate)) {
+        if (*existingSignature == signatureKind) {
+            return candidate;
+        }
+        candidate = suffixBase + std::to_string(suffix++);
+    }
+
+    return candidate;
+}
+
+std::optional<std::string> MainWindow::assignedHandlerSignatureKind(const std::string& handlerName) const
+{
+    return handlerSignatureKindInWidget(document_.root, handlerName);
+}
+
 bool MainWindow::applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label)
 {
+    if (const auto eventKey = eventKeyFromDropdownKey(key)) {
+        if (!applySelectedWidgetCallbackProperty(*eventKey, value)) {
+            redraw();
+            return false;
+        }
+
+        propertyInspector_.clearActiveEventControl();
+        setOperationStatus(value.empty() ? "Removed assignment for " + *eventKey + "." : "Selected existing compatible handler for " + *eventKey + ".");
+        return true;
+    }
+
     if ((key == "items" && value == "__edit_items") || (key == "__edit_items" && value == "edit")) {
         const bool opened = openSelectedWidgetItemEditor();
         if (!opened) {

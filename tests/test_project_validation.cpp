@@ -171,3 +171,63 @@ TEST_CASE("ProjectValidator reports invalid spacer metadata")
     CHECK(size->widgetId == "spacer_1");
     CHECK(size->propertyKey == "spacer.size");
 }
+
+TEST_CASE("ProjectValidator reports invalid event callback identifiers")
+{
+    ProjectDocument document = makeValidationDocument();
+
+    auto button = makeWidget(WidgetType::Button, "button_1", 120.0f, 32.0f);
+    button.setProperty("onClick", "handle click");
+
+    document.root.appendChild(std::move(button));
+    document.refreshHierarchyMetadata();
+
+    const ValidationReport report = ProjectValidator{}.validate(document, AppSettings{});
+
+    const ValidationMessage* invalidCallback = findMessage(report, "CALLBACK_NAME_INVALID");
+    REQUIRE(invalidCallback != nullptr);
+    CHECK(invalidCallback->severity == ValidationSeverity::Error);
+    CHECK(invalidCallback->widgetId == "button_1");
+    CHECK(invalidCallback->propertyKey == "onClick");
+}
+
+TEST_CASE("ProjectValidator reports incompatible event callback signature reuse")
+{
+    ProjectDocument document = makeValidationDocument();
+
+    auto button = makeWidget(WidgetType::Button, "button_1", 120.0f, 32.0f);
+    button.setProperty("onClick", "handleShared");
+    auto slider = makeWidget(WidgetType::Slider, "slider_1", 180.0f, 28.0f);
+    slider.setProperty("onChanged", "handleShared");
+
+    document.root.appendChild(std::move(button));
+    document.root.appendChild(std::move(slider));
+    document.refreshHierarchyMetadata();
+
+    const ValidationReport report = ProjectValidator{}.validate(document, AppSettings{});
+
+    const ValidationMessage* signatureConflict = findMessage(report, "CALLBACK_SIGNATURE_CONFLICT");
+    REQUIRE(signatureConflict != nullptr);
+    CHECK(signatureConflict->severity == ValidationSeverity::Error);
+    CHECK(signatureConflict->widgetId == "slider_1");
+    CHECK(signatureConflict->propertyKey == "onChanged");
+}
+
+TEST_CASE("ProjectValidator allows compatible event callback reuse")
+{
+    ProjectDocument document = makeValidationDocument();
+
+    auto firstButton = makeWidget(WidgetType::Button, "button_1", 120.0f, 32.0f);
+    firstButton.setProperty("onClick", "handleShared");
+    auto secondButton = makeWidget(WidgetType::Button, "button_2", 120.0f, 32.0f);
+    secondButton.setProperty("onRelease", "handleShared");
+
+    document.root.appendChild(std::move(firstButton));
+    document.root.appendChild(std::move(secondButton));
+    document.refreshHierarchyMetadata();
+
+    const ValidationReport report = ProjectValidator{}.validate(document, AppSettings{});
+
+    CHECK(findMessage(report, "CALLBACK_NAME_INVALID") == nullptr);
+    CHECK(findMessage(report, "CALLBACK_SIGNATURE_CONFLICT") == nullptr);
+}

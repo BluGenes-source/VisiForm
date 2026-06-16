@@ -494,6 +494,12 @@ private:
     void cancelPopupEditors();
     void updatePropertyEditorBounds();
     void openInspectorDropdown(const PropertyInspector::PropertyRow& row);
+    bool handleInspectorEventAction(const PropertyInspector::PendingEventAction& action);
+    void openInspectorEventDropdown(const PropertyInspector::PendingEventAction& action);
+    [[nodiscard]] std::string proposedEventHandlerName(const model::WidgetNode& widget,
+        const std::string& eventKey,
+        const std::string& signatureKind) const;
+    [[nodiscard]] std::optional<std::string> assignedHandlerSignatureKind(const std::string& handlerName) const;
     bool applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
     bool applyPendingInspectorInteractionEdit();
     void handleTextEditPendingAction();

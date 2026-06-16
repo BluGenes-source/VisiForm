@@ -29,6 +29,12 @@ public:
         ReadOnly
     };
 
+    enum class EventAction {
+        Create,
+        Existing,
+        Clear
+    };
+
     struct PropertyChoice {
         std::string value;
         std::string label;
@@ -47,6 +53,9 @@ public:
         float maximumValue = 0.0f;
         float stepValue = 1.0f;
         std::string actionText{};
+        bool isEvent = false;
+        std::string handlerSignatureKind{};
+        std::string errorText{};
     };
 
     struct PendingEdit {
@@ -62,9 +71,19 @@ public:
         float height = 0.0f;
     };
 
+    struct PendingEventAction {
+        std::string key;
+        EventAction action = EventAction::Create;
+        ValueCellBounds anchorBounds{};
+        std::vector<PropertyChoice> choices{};
+        std::string currentValue{};
+        std::string handlerSignatureKind{};
+    };
+
     void setBounds(float x, float y, float width, float height);
     [[nodiscard]] bool contains(float x, float y) const;
     [[nodiscard]] std::optional<PropertyRow> hitTestRow(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
+    [[nodiscard]] std::optional<PendingEventAction> hitTestEventAction(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
     [[nodiscard]] std::optional<std::string> hitTestColorSwatch(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
     [[nodiscard]] bool mouseDown(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
     [[nodiscard]] bool mouseDrag(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y);
@@ -76,6 +95,8 @@ public:
     [[nodiscard]] std::optional<PendingEdit> buildPendingEdit(const std::string& valueText) const;
     [[nodiscard]] std::optional<PendingEdit> consumeInteractionEdit();
     [[nodiscard]] bool consumeScrollInteraction();
+    void setActiveEventControl(const std::string& key, EventAction action);
+    void clearActiveEventControl();
     void clearEditing();
     void cancelEditing();
     [[nodiscard]] bool isEditing() const;
@@ -94,6 +115,8 @@ private:
     [[nodiscard]] std::optional<ValueCellBounds> scrollBarBounds() const;
     [[nodiscard]] std::optional<ValueCellBounds> scrollBarThumbBounds() const;
     [[nodiscard]] std::optional<ValueCellBounds> colorSwatchBoundsForRow(const PropertyRow& row, float rowTop) const;
+    [[nodiscard]] std::optional<ValueCellBounds> eventSelectorBoundsForRow(const PropertyRow& row, float rowTop) const;
+    [[nodiscard]] std::optional<ValueCellBounds> eventActionBoundsForRow(const PropertyRow& row, float rowTop, EventAction action) const;
     [[nodiscard]] std::optional<ValueCellBounds> sliderTrackBoundsForRow(const PropertyRow& row, float rowTop) const;
     [[nodiscard]] std::optional<ValueCellBounds> sliderThumbBoundsForRow(const PropertyRow& row, float rowTop, float value) const;
     [[nodiscard]] bool isWithinVisibleContent(float x, float y) const;
@@ -117,6 +140,8 @@ private:
     std::string activeKey_{};
     std::string editBuffer_{};
     PropertyEditKind activeEditKind_ = PropertyEditKind::ReadOnly;
+    std::string activeEventKey_{};
+    std::optional<EventAction> activeEventAction_{};
     std::optional<PendingEdit> pendingInteractionEdit_{};
     bool pendingScrollInteraction_ = false;
     InspectorTab activeTab_ = InspectorTab::Properties;
