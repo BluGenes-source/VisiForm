@@ -1,0 +1,3 @@
+#include "resource.h"
+
+IDI_VISIFORM_APP ICON "../../assets/icons/windows/VisiForm.ico"

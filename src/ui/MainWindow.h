@@ -1,7 +1,5 @@
 #pragma once
 
-#pragma once
-
 #include "commands/UndoRedoStack.h"
 #include "generator/CodeGenerator.h"
 #include "model/ProjectDocument.h"
@@ -573,6 +571,7 @@ private:
     [[nodiscard]] std::vector<PanelBounds> editorModalButtonBounds() const;
     void drawEditorModalDialog(visage::Canvas& canvas) const;
     bool handleEditorModalMouseDown(const visage::MouseEvent& e);
+    void applyNativeWindowIcon();
 
     WindowLayout layout_{};
     model::ProjectDocument document_ = model::ProjectDocument::createDefault();

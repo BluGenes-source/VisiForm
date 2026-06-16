@@ -36,6 +36,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include "resources/windows/resource.h"
 #include <windows.h>
 #endif
 
@@ -1346,6 +1347,40 @@ void writeCanvasInteractionDebug(std::string message)
 #endif
 }
 
+#ifdef _WIN32
+void applyWindowIcons(HWND hwnd)
+{
+    if (hwnd == nullptr) {
+        return;
+    }
+
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    if (instance == nullptr) {
+        return;
+    }
+
+    const HICON largeIcon = static_cast<HICON>(LoadImageW(instance,
+        MAKEINTRESOURCEW(IDI_VISIFORM_APP),
+        IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON),
+        GetSystemMetrics(SM_CYICON),
+        LR_DEFAULTCOLOR));
+    const HICON smallIcon = static_cast<HICON>(LoadImageW(instance,
+        MAKEINTRESOURCEW(IDI_VISIFORM_APP),
+        IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON),
+        GetSystemMetrics(SM_CYSMICON),
+        LR_DEFAULTCOLOR));
+
+    if (largeIcon != nullptr) {
+        SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(largeIcon));
+    }
+    if (smallIcon != nullptr) {
+        SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
+    }
+}
+#endif
+
 void logCanvasHitDiagnostic(const model::ProjectDocument& document,
     const DesignerCanvas::FormPoint& point,
     const model::WidgetNode* hitWidget,
@@ -2449,6 +2484,21 @@ const std::string& MainWindow::statusMessage() const
 void MainWindow::showWindow()
 {
     show(visage::Dimension::logicalPixels(1200), visage::Dimension::logicalPixels(800));
+    applyNativeWindowIcon();
+}
+
+void MainWindow::applyNativeWindowIcon()
+{
+#ifdef _WIN32
+    auto* nativeWindow = window();
+    if (nativeWindow == nullptr) {
+        return;
+    }
+
+    void* nativeHandle = nativeWindow->nativeHandle();
+    utils::setNativeDialogOwnerHandle(nativeHandle);
+    applyWindowIcons(static_cast<HWND>(nativeHandle));
+#endif
 }
 
 void MainWindow::resized()

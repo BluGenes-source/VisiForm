@@ -79,6 +79,7 @@ find_package(spdlog CONFIG REQUIRED)
 
 add_executable(VisiForm
     src/app/App.cpp
+    src/app/Startup.cpp
     src/app/main.cpp
     src/ui/MainWindow.cpp
     src/ui/DesignerCanvas.cpp
@@ -120,6 +121,7 @@ add_executable(VisiForm
 target_include_directories(VisiForm
     PRIVATE
         src
+        .
 )
 
 target_link_libraries(VisiForm
@@ -135,6 +137,14 @@ if (MSVC)
 endif()
 
 if (WIN32)
+    target_sources(VisiForm PRIVATE
+        resources/windows/VisiForm.rc
+    )
+
+    set_target_properties(VisiForm PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+
     target_link_libraries(VisiForm PRIVATE comdlg32)
 endif()
 

@@ -1,22 +1,18 @@
-﻿#include "app/App.h"
+#include "app/Startup.h"
 
-#include "app/App.h"
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
-#include <exception>
-#include <iostream>
-
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
+{
+    return visiform::startup::runApplication();
+}
+#else
 int main()
 {
-    try {
-        visiform::App app;
-        return app.run();
-    }
-    catch (const std::exception& exception) {
-        std::cerr << "VisiForm failed to start: " << exception.what() << '\n';
-    }
-    catch (...) {
-        std::cerr << "VisiForm failed to start with an unknown error.\n";
-    }
-
-    return 1;
+    return visiform::startup::runApplication();
 }
+#endif

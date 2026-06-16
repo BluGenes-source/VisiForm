@@ -1,7 +1,5 @@
 #include "utils/NativeFileDialogs.h"
 
-#include "utils/NativeFileDialogs.h"
-
 #include "utils/FileUtils.h"
 
 #include <algorithm>
@@ -39,6 +37,8 @@ constexpr wchar_t kFontResourceFilter[] =
     L"Font Assets (*.ttf;*.otf)\0*.ttf;*.otf\0"
     L"All Files (*.*)\0*.*\0\0";
 
+HWND g_dialogOwnerHandle = nullptr;
+
 std::filesystem::path normalizeProjectSavePath(std::filesystem::path path)
 {
     if (FileUtils::hasProjectExtension(path)) {
@@ -67,7 +67,7 @@ std::optional<std::filesystem::path> showProjectDialog(bool saveDialog,
 
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = nullptr;
+    dialog.hwndOwner = g_dialogOwnerHandle;
     dialog.lpstrFilter = kProjectFilter;
     dialog.nFilterIndex = 1;
     dialog.lpstrFile = buffer.data();
@@ -100,7 +100,7 @@ std::optional<std::filesystem::path> showOpenFilteredFileDialog(const wchar_t* f
 
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = nullptr;
+    dialog.hwndOwner = g_dialogOwnerHandle;
     dialog.lpstrFilter = filter;
     dialog.nFilterIndex = 1;
     dialog.lpstrFile = buffer.data();
@@ -140,6 +140,15 @@ COLORREF parseInitialColor(const std::string& initialColor)
 #endif
 
 } // namespace
+
+void setNativeDialogOwnerHandle(void* nativeHandle)
+{
+#ifdef _WIN32
+    g_dialogOwnerHandle = static_cast<HWND>(nativeHandle);
+#else
+    static_cast<void>(nativeHandle);
+#endif
+}
 
 std::optional<std::filesystem::path> showOpenProjectDialog(const std::filesystem::path& initialDirectory)
 {
@@ -186,7 +195,7 @@ std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::fil
             }
         }
 
-        if (SUCCEEDED(pfd->Show(nullptr))) {
+        if (SUCCEEDED(pfd->Show(g_dialogOwnerHandle))) {
             IShellItem* psiResult = nullptr;
             if (SUCCEEDED(pfd->GetResult(&psiResult)) && psiResult != nullptr) {
                 PWSTR pszPath = nullptr;
@@ -239,7 +248,7 @@ std::optional<std::string> showColorPickerDialog(const std::string& initialColor
 
     CHOOSECOLORW dialog{};
     dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = nullptr;
+    dialog.hwndOwner = g_dialogOwnerHandle;
     dialog.rgbResult = parseInitialColor(initialColor);
     dialog.lpCustColors = customColors;
     dialog.Flags = CC_FULLOPEN | CC_RGBINIT;

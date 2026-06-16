@@ -1,10 +1,9 @@
 #include "app/App.h"
 
-#include "app/App.h"
-
 #include "app/Version.h"
 
 #include "ui/MainWindow.h"
+#include "utils/NativeFileDialogs.h"
 
 #include <stdexcept>
 
@@ -49,6 +48,7 @@ void App::startup()
 void App::shutdown() noexcept
 {
     if (mainWindow_) {
+        utils::setNativeDialogOwnerHandle(nullptr);
         mainWindow_->close();
         mainWindow_.reset();
     }

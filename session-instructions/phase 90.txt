@@ -1,0 +1,364 @@
+Implement VisiForm Phase 90: Convert to the Windows Subsystem and Add the Application Icon.
+
+Follow all repository instructions, including:
+
+* AGENTS.md
+* copilot-instructions.md
+* visiform.instructions.md
+* Existing phase documentation and naming conventions
+
+Before making changes:
+
+1. Inspect the repository and confirm that Phase 90 is the correct next phase.
+
+2. If Phase 90 already exists, do not overwrite it. Use the next available phase number and document the reason.
+
+3. Inspect the current application startup flow, main.cpp, CMake configuration, Visual Studio configuration, logging, window creation, and shutdown handling.
+
+4. Confirm that the selected source icon exists at:
+
+   assets/source/VisiFormIcon.png
+
+5. Do not overwrite or alter the original PNG source artwork.
+
+# Phase 90 Goals
+
+1. Convert the Windows build from a console application into a native Windows subsystem application.
+2. Prevent a console window from appearing during normal startup.
+3. Preserve all current VisiForm behavior.
+4. Convert VisiFormIcon.png into a proper multi-resolution Windows ICO file.
+5. Embed the icon into the executable.
+6. Apply the icon consistently to the executable, taskbar, Alt+Tab view, main window, and applicable top-level windows.
+
+# Windows Subsystem Conversion
+
+* Configure the Windows executable to use the Windows subsystem.
+* For CMake, use the appropriate WIN32 executable target configuration.
+* Introduce the correct Windows entry point, normally wWinMain, if required by the framework and current build setup.
+* Do not simply rename main.cpp without tracing and preserving the existing startup behavior.
+* Refactor startup code so application initialization is not duplicated.
+* Preserve:
+
+  * command-line argument handling
+  * initialization order
+  * main-window creation
+  * editor setup
+  * project loading
+  * error handling
+  * shutdown behavior
+  * cleanup behavior
+* Do not leave both main and wWinMain active in the same Windows target.
+* Preserve non-Windows entry points if the project currently supports other operating systems.
+* Keep Windows-specific code isolated behind WIN32 checks or the existing platform abstraction.
+
+Prefer separating platform entry points from shared startup logic.
+
+For example:
+
+* A shared application runner such as RunVisiFormApplication(...)
+* A Windows-specific wWinMain entry point that gathers Windows command-line arguments and calls the shared runner
+* A normal main entry point retained only for non-Windows builds, tests, or an explicitly supported console target
+
+Use repository conventions instead of forcing these exact names.
+
+# Console and Diagnostics
+
+The normal Windows build must not display a console window.
+
+Before removing console behavior:
+
+1. Locate all uses of:
+
+   * std::cout
+   * std::cerr
+   * printf
+   * fprintf
+   * console-only logging
+   * assumptions that stdin, stdout, or stderr are available
+
+2. Route diagnostics through the project’s existing logging system where possible.
+
+3. If no suitable logger exists, add a minimal Windows-safe debug logging strategy using OutputDebugStringW or an equivalent approach.
+
+4. Fatal startup errors must remain visible to the user. If the main window has not yet been created, display an appropriate Windows error dialog with a useful message.
+
+5. Do not silently discard errors.
+
+6. A developer-only console may remain only if it is explicitly enabled through a documented build option or debug setting and is disabled during normal startup.
+
+# Icon Assets
+
+Use this source artwork:
+
+assets/source/VisiFormIcon.png
+
+Keep the original PNG as the authoritative source image.
+
+Create this resource structure if it does not already exist:
+
+assets/
+├─ source/
+│  └─ VisiFormIcon.png
+└─ icons/
+└─ windows/
+└─ VisiForm.ico
+
+resources/
+└─ windows/
+├─ resource.h
+└─ VisiForm.rc
+
+Adapt capitalization or folder names only when existing repository conventions require it.
+
+# ICO Generation
+
+Generate a multi-resolution Windows ICO file from:
+
+assets/source/VisiFormIcon.png
+
+The ICO must include at least:
+
+* 16x16
+* 20x20
+* 24x24
+* 32x32
+* 40x40
+* 48x48
+* 64x64
+* 128x128
+* 256x256
+
+Requirements:
+
+* Preserve the original aspect ratio.
+* Do not stretch or distort the artwork.
+* Use high-quality downsampling.
+* Keep enough padding so important artwork is not clipped.
+* Confirm the icon remains recognizable at 16x16 and 32x32.
+* Store the generated icon at:
+
+  assets/icons/windows/VisiForm.ico
+
+Add a repeatable icon-generation script if practical.
+
+Suggested location:
+
+tools/generate_windows_icon.py
+
+The script should:
+
+* read assets/source/VisiFormIcon.png
+* validate that the source file exists and is readable
+* generate all required icon sizes
+* write assets/icons/windows/VisiForm.ico
+* create output directories when needed
+* fail with a clear error message
+* avoid absolute local paths
+* document any required Python dependency
+
+Do not require this script to run on every application build unless the repository already uses generated build resources. Commit the generated ICO file.
+
+# Windows Resource Integration
+
+Add or update the Windows resource header and resource script.
+
+The resource header should define a stable application icon resource identifier, for example:
+
+```
+#pragma once
+
+#define IDI_VISIFORM_APP 101
+```
+
+The resource script should embed the generated icon, for example:
+
+```
+#include "resource.h"
+
+IDI_VISIFORM_APP ICON "../../assets/icons/windows/VisiForm.ico"
+```
+
+Adjust relative paths according to the actual repository layout.
+
+Embed the icon as the executable’s primary application icon.
+
+# Build-System Integration
+
+Update the existing build configuration instead of creating an unrelated parallel application target.
+
+For CMake:
+
+* Configure the VisiForm application target as a Windows GUI executable on Windows.
+* Prefer the existing target and modify it conditionally rather than creating a second Windows-only application target.
+* Use the proper CMake WIN32 executable behavior so the linker selects the Windows subsystem.
+* Add resources/windows/VisiForm.rc to the application target only on Windows.
+* Preserve normal executable behavior on non-Windows platforms.
+* Do not hard-code absolute paths.
+* Do not change unrelated library or test targets.
+* Ensure the resource compiler can resolve the icon path from the RC file.
+* Preserve all existing include directories, linked libraries, compile definitions, and target properties.
+* Avoid forcing a manual linker entry-point override unless required by the framework.
+* Confirm that generated Visual Studio projects use the Windows subsystem for VisiForm while test or command-line targets remain console applications where appropriate.
+
+A typical CMake approach may resemble the following, but adapt it to the existing target structure rather than copying it blindly:
+
+```
+if(WIN32)
+    target_sources(VisiForm PRIVATE
+        resources/windows/VisiForm.rc
+    )
+
+    set_target_properties(VisiForm PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+endif()
+```
+
+Alternatively, if the executable target is created conditionally, an existing add_executable declaration may use WIN32 for Windows builds. Do not duplicate the target to accomplish this.
+
+For checked-in Visual Studio project files:
+
+* Set SubSystem to Windows for the VisiForm application in every supported Windows configuration.
+* Ensure VisiForm.rc is included as a ResourceCompile item.
+* Ensure VisiForm.ico and the RC dependencies appear correctly in the project.
+* Update Debug and Release configurations consistently.
+* Update x64 and any other currently supported platforms consistently.
+* Preserve console subsystem settings for tests, utilities, or developer tools that require a console.
+* Do not manually specify /ENTRY unless the current framework explicitly requires it.
+* Do not add machine-specific paths.
+* Keep project filters organized if .vcxproj.filters files are checked in.
+
+If CMake generates the Visual Studio solution, treat CMake as the source of truth and do not make fragile edits only to generated project files.
+
+# Main-Window Icon
+
+Determine whether embedding the icon resource automatically supplies the correct icon to the framework’s native window.
+
+If it does not, load the embedded resource and apply:
+
+* the large window icon
+* the small window icon
+
+Use the framework’s existing native-window abstraction where possible.
+
+If direct Win32 code is necessary:
+
+* centralize it in a Windows-specific helper
+* do not scatter HWND, HINSTANCE, LoadImage, LoadIcon, SendMessage, or WM_SETICON code through unrelated classes
+* load icon resources only once where practical
+* manage icon ownership correctly
+* do not destroy shared icon handles incorrectly
+
+Apply the VisiForm icon to:
+
+* VisiForm.exe in Windows Explorer
+* the running taskbar item
+* Alt+Tab
+* the main VisiForm window
+* the title bar where Windows displays an icon
+* applicable owned top-level dialogs
+* installer or shortcut configuration if those systems already exist
+
+Do not apply the application icon to child controls or embedded form-design surfaces.
+
+# Validation
+
+Build and test the project.
+
+Verify all of the following:
+
+1. VisiForm launches without opening a console window.
+2. The main window opens normally.
+3. Existing menus, toolbars, designer canvas, Property Inspector, widget palette, project loading, saving, and shutdown behavior still work.
+4. Command-line arguments still work if they were previously supported.
+5. Startup failures display a useful user-visible error.
+6. Diagnostic output remains available through the debugger or logging system.
+7. VisiForm.exe displays the new icon in Windows Explorer.
+8. The new icon appears in the Windows taskbar.
+9. The new icon appears in Alt+Tab.
+10. The main window uses the correct title-bar icon.
+11. The icon remains legible at small Windows icon sizes.
+12. Debug x64 builds successfully.
+13. Release x64 builds successfully.
+14. Existing automated tests continue to pass.
+15. Non-Windows configuration remains valid if currently supported.
+16. No duplicate main or wWinMain symbols exist.
+17. No resource compiler path errors exist.
+18. No machine-specific absolute paths were introduced.
+
+Windows may temporarily display a cached older icon after rebuilding. Document this as a Windows icon-cache issue rather than repeatedly changing correct resource code.
+
+# Subagent Responsibilities
+
+Use the configured VisiForm subagents where appropriate.
+
+Explorer:
+
+* inspect main.cpp
+* inspect the startup lifecycle
+* inspect CMake and Visual Studio configuration
+* inspect logging and diagnostic output
+* inspect existing resources and platform abstractions
+
+Architect:
+
+* define the shared startup architecture
+* define the Windows entry-point boundary
+* define the diagnostic strategy
+* define the icon and resource organization
+
+Implementer:
+
+* perform the subsystem conversion
+* create the icon-generation script
+* generate the ICO file
+* add the Windows resources
+* integrate the icon with the executable and main window
+
+Reviewer:
+
+* inspect application lifecycle changes
+* verify command-line handling
+* verify logging and error visibility
+* verify Windows resource ownership
+* verify platform isolation
+* check for regressions
+
+Documenter:
+
+* create the Phase 90 documentation
+* update the phase index
+* update the roadmap or changelog according to repository conventions
+
+# Phase 90 Documentation
+
+Create the Phase 90 document using the project’s established format.
+
+Suggested title:
+
+Phase 90 — Windows Subsystem and Application Icon
+
+Document:
+
+* the previous console-based startup architecture
+* the new Windows subsystem architecture
+* the application entry-point flow
+* shared startup logic
+* command-line argument handling
+* console removal
+* diagnostic logging behavior
+* fatal startup error behavior
+* source icon location
+* generated ICO location
+* icon-generation command
+* included icon resolutions
+* Windows resource files
+* build-system changes
+* files added and modified
+* validation results
+* Windows icon-cache behavior
+* any remaining installer, shortcut, or packaging work
+
+Do not stop after investigation or planning.
+
+Complete Phase 90 by implementing the changes, generating the ICO, building the project, testing it, reviewing it, and updating all required documentation.

@@ -105,7 +105,7 @@ Agents must not run build scripts, generated build scripts, terminal build comma
 
 Major repository layers:
 
-- Application shell: `src/app/App.cpp`, `src/app/main.cpp`, `src/app/Version.h`.
+- Application shell: `src/app/App.cpp`, `src/app/Startup.cpp`, `src/app/main.cpp`, `src/app/Version.h`.
 - UI/editor layer: `src/ui/MainWindow.*`, `src/ui/DesignerCanvas.*`, `src/ui/PropertyInspector.*`, `src/ui/WidgetPalette.*`, `src/ui/ProjectTree.*`, `src/ui/editors/*`, `src/ui/resources/*`.
 - Model layer: `src/model/ProjectDocument.*`, `src/model/WidgetNode.*`, `src/model/WidgetRegistry.*`, `src/model/WidgetDefinition.*`, `src/model/LayoutEngine.*`, `src/model/BoxSizerLayout.*`, `src/model/ProjectResource.*`, `src/model/LookAndFeelRegistry.*`, `src/model/WidgetItemUtils.*`, `src/model/PropertyValue.*`.
 - Serialization: `src/serialization/JsonProjectReader.*`, `src/serialization/JsonProjectWriter.*`.
@@ -559,6 +559,7 @@ Expected tests:
 Repository build evidence:
 
 - Root `CMakeLists.txt` creates target `VisiForm`.
+- On Windows, `CMakeLists.txt` sets `WIN32_EXECUTABLE TRUE` for `VisiForm` and adds `resources/windows/VisiForm.rc`.
 - Tests are optional behind `VISIFORM_BUILD_TESTS`.
 - `tests/CMakeLists.txt` creates `VisiFormTests`.
 - `CMakePresets.json` defines `vs2022-x64-static-debug`, `vs2022-x64-static-release`, `ninja-debug`, and `ninja-release`.
@@ -571,6 +572,7 @@ Documented Windows workflows:
 - Open repository folder in Visual Studio 2022 and build the `VisiForm` target.
 - Use x64 Native Tools Command Prompt for command-line preset workflows.
 - Normal PowerShell may fail if the MSVC compiler environment is not loaded.
+- The normal Windows `VisiForm` build is intended to launch without a console window.
 
 Generated project workflows:
 
@@ -625,6 +627,7 @@ Current error surfaces:
 - `CodeGenerator` returns `false` and an error string on generation failure.
 - `MainWindow` reports status messages and modal summaries for validation and editor workflows.
 - `FileUtils` is used for text file I/O, directory creation, copy, path checks, and path normalization.
+- `src/app/Startup.cpp` owns fatal application-startup reporting and routes diagnostics to `OutputDebugStringW` plus a native Windows error dialog on Windows, and `std::cerr` on non-Windows builds.
 
 Build errors:
 
@@ -633,7 +636,7 @@ Build errors:
 
 Debug logging:
 
-- `spdlog` is a dependency, but this specification does not establish a comprehensive logging policy from current evidence.
+- `spdlog` is a dependency, but the primary app shell currently relies on lightweight startup/debug output rather than a repository-wide structured logging policy.
 
 ## 18. Compatibility policy
 
@@ -723,15 +726,15 @@ Before a release, the repository should have:
 
 | Subsystem | Status | Evidence | Active phase | Known gaps |
 | --- | --- | --- | --- | --- |
-| Application shell | Implemented | `src/app/App.*`, `src/app/main.cpp`, `src/app/Version.h` | None | Logging policy unclear |
-| Main target build wiring | Implemented | `CMakeLists.txt`, `CMakePresets.json` | None | Visage tag still defaults to `main` |
+| Application shell | Implemented | `src/app/App.*`, `src/app/Startup.cpp`, `src/app/main.cpp`, `src/app/Version.h` | None | Command-line handling remains minimal |
+| Main target build wiring | Implemented | `CMakeLists.txt`, `CMakePresets.json`, `resources/windows/VisiForm.rc` | None | Visage tag still defaults to `main` |
 | Project model | Implemented | `ProjectDocument`, `WidgetNode`, `WidgetRegistry` | Phase 86 touches layout | More tests needed |
 | JSON persistence | Implemented | `JsonProjectReader`, `JsonProjectWriter`, serialization tests | None | Unknown top-level fields not preserved |
 | Validation | Partial | `ProjectValidator`, docs | Phase 86 gaps | Validation tests needed |
 | Designer canvas | Partial | `DesignerCanvas`, `MainWindow`, docs | Phase 86 | Some sizer feedback TODOs |
 | Property inspector | Implemented/Partial | `PropertyInspector`, docs | Phase 86 touched | No full event editor/theme editor |
 | Command/undo | Partial | `Command`, `UndoRedoStack`, `DocumentStateCommand` | Phase 86 | More undo tests needed |
-| Resources | Implemented/Partial | `ProjectResource`, resource docs | None | Runtime asset loading partial |
+| Resources | Implemented/Partial | `ProjectResource`, resource docs, Windows app icon resources | None | Runtime asset loading partial |
 | Code generation | Partial | `CodeGenerator`, `VisageCppEmitter`, `CMakeEmitter` | Phase 86 | Generator tests and full runtime parity gaps |
 | USER CODE preservation | Partial | `VisageCppEmitter` marker extraction | None | Dedicated tests needed |
 | BoxSizer | Partial/Implemented core | `BoxSizerLayout`, tests, Phase 86 plan | Phase 86 | Designer outline/reorder/tests TODOs |
