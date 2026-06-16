@@ -686,6 +686,17 @@ bool isStyleFloatProperty(const std::string& key)
     return key == "borderThickness" || key == "cornerRadius" || key == "fontSize";
 }
 
+bool isWidgetEventProperty(const model::WidgetNode& widget, const std::string& key)
+{
+    if (const auto* definition = model::WidgetRegistry::instance().find(widget.type)) {
+        return std::any_of(definition->events.begin(), definition->events.end(), [&key](const model::WidgetEventDefinition& event) {
+            return event.key == key;
+        });
+    }
+
+    return false;
+}
+
 
 std::string defaultWidgetName(model::WidgetType type, const std::string& id)
 {
@@ -2543,6 +2554,10 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (e.isLeftButton() && propertyInspector_.mouseDown(document_, settings_, e.position.x, e.position.y)) {
         applyPendingInspectorInteractionEdit();
+        if (!propertyInspector_.isEditing()) {
+            textEditControl_.clear();
+            dropdownControl_.close();
+        }
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -5104,11 +5119,7 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return setSelectedWidgetProperty(key, *parsedValue);
     }
 
-    if (key == "onClick" || key == "onToggle" || key == "onChanged"
-        || key == "onTextChanged" || key == "onLoad" || key == "onClose" || key == "onSelected"
-        || key == "onRelease" || key == "onDoubleClick"
-        || key == "onAccepted" || key == "onCancelled"
-        || key == "onSelectionChanged" || key == "onCellDoubleClick") {
+    if (isWidgetEventProperty(*widget, key)) {
         if (!trimmedValue.empty() && !utils::isValidCppIdentifier(trimmedValue)) {
             setOperationStatus("Invalid event handler name");
             redraw();

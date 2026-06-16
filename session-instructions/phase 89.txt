@@ -1,0 +1,346 @@
+Work on VisiForm Phase 89: Add Property Inspector Tabs and Move Widget Events to an Events Tab.
+
+Use the configured VisiForm subagents and follow all repository instructions, including the shared agent rules, `copilot-instructions.md`, `visiform.instructions.md`, phase documentation requirements, and the existing VisiForm architecture.
+
+Phase 89 is already assigned. Do not select or substitute another phase number for this task.
+
+## Objective
+
+Update the Property Inspector so that it uses tabs and separates widget properties from widget events.
+
+The inspector currently displays event properties in an `Events` section near the bottom of the same scrolling property list as normal properties. This makes event editing difficult to find and requires unnecessary scrolling.
+
+Change the Property Inspector to contain two tabs:
+
+1. `Properties`
+2. `Events`
+
+The normal widget properties must remain on the `Properties` tab.
+
+The widget’s supported events must appear on the `Events` tab.
+
+Use the supplied screenshot as a visual reference for the current layout and the event rows that need to be moved.
+
+## Required behavior
+
+### Properties tab
+
+The `Properties` tab must contain the current property inspector content, including categories such as:
+
+* Hint
+* Dock
+* Anchor
+* Tab Index
+* Style
+* Look and Feel
+* Fill Color
+* Text Color
+* Border Color
+* Accent Color
+* Border Thickness
+* Corner Radius
+* Font Size
+* Font Family
+* Bold
+* Italic
+* other widget-specific properties
+
+Do not display the current `Events` category or event rows on the `Properties` tab after this change.
+
+### Events tab
+
+The `Events` tab must display the events supported by the currently selected widget.
+
+Examples currently visible in the inspector include:
+
+* On Click
+* On Release
+* On Double Click
+
+The exact event list must come from the selected widget’s existing event metadata, property model, or supported-event definitions. Do not hard-code only these three events if the architecture already supports additional widget-specific events.
+
+Each event row must preserve its existing editing behavior, including:
+
+* displaying the current event-handler name or value
+* allowing the value to be edited
+* committing changes to the selected widget
+* participating in undo/redo where currently supported
+* updating when the selection changes
+* clearing or disabling correctly when no widget is selected
+* preserving serialization and project reload behavior
+
+## Tab layout requirements
+
+Add a tab control within the Property Inspector beneath the `Property Inspector` title area.
+
+Preferred tab labels:
+
+* `Properties`
+* `Events`
+
+The selected tab must visually match the existing VisiForm theme.
+
+The tabs must:
+
+* fit within the current Property Inspector width
+* remain visible while the tab content scrolls
+* have independent content panels
+* use the available inspector area below the tab strip
+* preserve the existing vertical scrollbar behavior
+* not create nested or duplicate scrollbars unless required by the current UI architecture
+* resize correctly when the Property Inspector panel changes size
+
+The `Properties` tab should be selected by default unless the project already has a consistent mechanism for remembering the previously selected inspector tab.
+
+Do not allow the tab strip itself to scroll out of view with the property rows.
+
+## Selection behavior
+
+When the selected widget changes:
+
+* refresh the Properties tab with the selected widget’s properties
+* refresh the Events tab with the selected widget’s supported events
+* preserve the currently selected tab where practical
+* avoid stale values from the previously selected widget
+* avoid rebuilding unrelated UI more often than necessary
+
+When no widget is selected:
+
+* show an empty or disabled Properties tab
+* show an empty or disabled Events tab
+* do not retain editable event values from the previous widget
+
+When multiple selection is supported:
+
+* preserve current multi-selection behavior for normal properties
+* only show event values that can be safely represented for the selection
+* if event editing for multiple selection is unsupported, disable or clearly omit the event editor rather than applying an unsafe partial update
+
+## Architecture requirements
+
+Reuse the existing property-inspector row-generation and editor infrastructure.
+
+Do not create a second unrelated event editor implementation if the existing event rows already use the generic property-row system.
+
+Prefer one of these approaches, depending on the current architecture:
+
+* filter the existing inspector property model into Properties and Events collections
+* route event-category rows to the Events tab
+* create two inspector content containers that share the existing row factory
+* use the existing property category/type metadata to determine which tab owns each row
+
+Avoid identifying events only by visible label text.
+
+Use an explicit category, metadata flag, property type, event descriptor, or existing event-definition model where available.
+
+Preserve:
+
+* property binding
+* change notification
+* selection synchronization
+* editor creation
+* undo/redo integration
+* serialization
+* theme styling
+* keyboard navigation
+* focus behavior
+
+Do not duplicate property ownership between the two tabs.
+
+## Agent assignments
+
+### Explorer
+
+Inspect and report on:
+
+* the Property Inspector panel implementation
+* current property category rendering
+* current event row generation
+* property metadata and event metadata
+* scrolling container ownership
+* selection-change handling
+* editor creation and binding
+* theme and tab-control components already available in VisiForm
+* any existing tabbed panels that can serve as an implementation reference
+* undo/redo and serialization paths for event values
+
+Identify the exact files, classes, and functions involved.
+
+### Architect
+
+Design the smallest architecture-consistent solution.
+
+Determine:
+
+* which existing tab component should be used
+* whether the inspector should use one row model with filtering or two generated models
+* how event properties are identified without relying on label text
+* how scrolling should be owned
+* how tab state should behave across widget selection changes
+* how empty selection and multi-selection should behave
+* how to prevent stale editors and stale widget references
+
+Provide the design before implementation.
+
+### Implementer
+
+Implement the approved design.
+
+Do not perform unrelated refactoring.
+
+Pay particular attention to:
+
+* tab content bounds
+* scrollbar sizing
+* tab strip height
+* inspector resize handling
+* editor focus when switching tabs
+* stale row/editor references
+* correct event filtering
+* duplicate event rows
+* category headings that become empty after filtering
+* selection changes while the Events tab is active
+* event values remaining editable and persistent
+
+### Reviewer
+
+Review for:
+
+* events completely removed from the Properties tab
+* all supported events appearing on the Events tab
+* no hard-coded widget-specific event list where metadata exists
+* no duplicate property or event rows
+* correct selection synchronization
+* correct resizing and scrolling
+* proper theme integration
+* keyboard and focus regressions
+* undo/redo regressions
+* serialization regressions
+* stale selection pointers
+* unnecessary code duplication
+* unrelated refactoring
+
+### Documenter
+
+Update the Phase 89 documentation with:
+
+* objective
+* prior inspector behavior
+* new tabbed inspector design
+* architecture decision
+* files changed
+* supported behavior
+* testing performed
+* screenshots or manual verification notes where appropriate
+* known limitations
+* build and test results
+* completion status
+
+Update the changelog or equivalent project history.
+
+## Required investigation report
+
+Before implementation, provide:
+
+1. Current Property Inspector implementation files.
+2. Current event-row implementation files.
+3. How events are currently identified in the inspector model.
+4. Existing tab control or tabbed-panel implementation to reuse.
+5. Proposed UI hierarchy.
+6. Proposed property/event filtering method.
+7. Scrollbar ownership.
+8. Selection-refresh behavior.
+9. Undo/redo and serialization impact.
+10. Planned tests.
+
+Then continue with implementation unless repository instructions explicitly require approval.
+
+## Suggested UI hierarchy
+
+Use the current architecture where possible, but the resulting hierarchy should conceptually resemble:
+
+* Property Inspector panel
+
+  * title/header
+  * tab strip
+
+    * Properties
+    * Events
+  * active tab content
+
+    * scrollable property rows or event rows
+
+The tab strip must remain fixed while the active tab content scrolls.
+
+## Testing requirements
+
+Add automated tests where practical for:
+
+* event descriptors routed to the Events tab
+* normal properties routed to the Properties tab
+* no duplicated rows
+* selection changes refreshing both models
+* no-selection state
+* event editing updating the selected widget
+* event editing participating in undo/redo
+* serialized event values surviving save and reload
+* tab selection surviving inspector refresh where intended
+
+Perform manual UI testing:
+
+1. Launch VisiForm.
+2. Select a button.
+3. Confirm the Properties tab is visible.
+4. Confirm the Events tab is visible.
+5. Confirm normal properties remain on the Properties tab.
+6. Confirm no Events category remains at the bottom of the Properties tab.
+7. Open the Events tab.
+8. Confirm the button’s supported events are listed.
+9. Edit an event value.
+10. Switch to the Properties tab and back.
+11. Confirm the event value remains correct.
+12. Select another widget with different supported events.
+13. Confirm the Events tab refreshes correctly.
+14. Select a widget with no events, if supported.
+15. Confirm the Events tab becomes empty or appropriately disabled.
+16. Deselect all widgets.
+17. Confirm no stale values remain.
+18. Resize the Property Inspector vertically and horizontally.
+19. Confirm the tab strip remains visible.
+20. Confirm scrolling works independently of the tab strip.
+21. Save and reopen the project.
+22. Confirm assigned event values persist.
+23. Test undo and redo after editing an event.
+24. Test keyboard focus and tab navigation between event editors.
+
+Build the relevant project configurations and run all applicable tests.
+
+## Final report
+
+Provide:
+
+1. Phase number.
+2. Files changed.
+3. Property Inspector architecture changes.
+4. How properties and events are separated.
+5. How event rows are generated.
+6. Selection and refresh behavior.
+7. Scroll and resize behavior.
+8. Automated test results.
+9. Build results.
+10. Manual verification results.
+11. Reviewer findings.
+12. Remaining limitations.
+13. Phase 89 completion status.
+
+Do not mark Phase 89 complete unless:
+
+* the two tabs are implemented
+* event rows are removed from the Properties tab
+* supported widget events appear on the Events tab
+* event editing still works
+* save/reload behavior remains correct
+* the inspector resizes and scrolls correctly
+* the implementation has been built and verified
+
+Do not commit, push, merge, or create a pull request unless repository instructions explicitly authorize it.

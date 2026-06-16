@@ -13,6 +13,11 @@ namespace visiform::ui {
 
 class PropertyInspector {
 public:
+    enum class InspectorTab {
+        Properties,
+        Events
+    };
+
     enum class PropertyEditKind {
         Text,
         Integer,
@@ -78,10 +83,14 @@ public:
 
 private:
     [[nodiscard]] std::vector<PropertyRow> buildRows(const model::ProjectDocument& document, const utils::AppSettings& settings) const;
+    [[nodiscard]] std::vector<PropertyRow> rowsForActiveTab(const model::ProjectDocument& document, const utils::AppSettings& settings) const;
+    [[nodiscard]] bool isEventRow(const model::ProjectDocument& document, const PropertyRow& row) const;
+    [[nodiscard]] std::optional<InspectorTab> hitTestTab(float x, float y) const;
     void updateScrollMetrics(const std::vector<PropertyRow>& rows);
     void clampScrollOffset();
     [[nodiscard]] float rowYWithScroll(float originalY) const;
     [[nodiscard]] ValueCellBounds contentBounds() const;
+    [[nodiscard]] ValueCellBounds tabStripBounds() const;
     [[nodiscard]] std::optional<ValueCellBounds> scrollBarBounds() const;
     [[nodiscard]] std::optional<ValueCellBounds> scrollBarThumbBounds() const;
     [[nodiscard]] std::optional<ValueCellBounds> colorSwatchBoundsForRow(const PropertyRow& row, float rowTop) const;
@@ -110,6 +119,7 @@ private:
     PropertyEditKind activeEditKind_ = PropertyEditKind::ReadOnly;
     std::optional<PendingEdit> pendingInteractionEdit_{};
     bool pendingScrollInteraction_ = false;
+    InspectorTab activeTab_ = InspectorTab::Properties;
 };
 
 } // namespace visiform::ui

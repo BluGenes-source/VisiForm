@@ -1,7 +1,5 @@
 #include "ui/PropertyInspector.h"
 
-#include "ui/PropertyInspector.h"
-
 #include "model/BoxSizerLayout.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
@@ -24,6 +22,7 @@ namespace visiform::ui {
 namespace {
 
 constexpr float kHeaderHeight = 34.0f;
+constexpr float kTabStripHeight = 34.0f;
 constexpr float kRowHeight = 32.0f;
 constexpr float kSuggestionRowHeight = 24.0f;
 constexpr float kSuggestionSpacing = 2.0f;
@@ -41,6 +40,7 @@ constexpr float kSliderThumbWidth = 10.0f;
 constexpr float kSliderThumbHeight = 16.0f;
 constexpr float kSliderValueWidth = 56.0f;
 constexpr float kActionButtonWidth = 72.0f;
+constexpr float kTabGap = 8.0f;
 
 struct RowLayout {
     PropertyInspector::PropertyRow row;
@@ -438,7 +438,7 @@ bool PropertyInspector::contains(float x, float y) const
 
 void PropertyInspector::updateScrollMetrics(const std::vector<PropertyRow>& rows)
 {
-    visibleHeight_ = std::max(0.0f, height_ - kHeaderHeight - 16.0f);
+    visibleHeight_ = std::max(0.0f, height_ - kHeaderHeight - kTabStripHeight - 18.0f);
     contentHeight_ = static_cast<float>(rows.size()) * kRowHeight;
     needsVerticalScrollBar_ = contentHeight_ > visibleHeight_ + 0.5f;
     clampScrollOffset();
@@ -474,9 +474,19 @@ PropertyInspector::ValueCellBounds PropertyInspector::contentBounds() const
 {
     return {
         x_ + 8.0f,
-        y_ + kHeaderHeight + 8.0f,
+        y_ + kHeaderHeight + kTabStripHeight + 10.0f,
         std::max(0.0f, width_ - 16.0f - (needsVerticalScrollBar_ ? (kScrollBarWidth + kScrollBarGap) : 0.0f)),
         visibleHeight_
+    };
+}
+
+PropertyInspector::ValueCellBounds PropertyInspector::tabStripBounds() const
+{
+    return {
+        x_ + 8.0f,
+        y_ + kHeaderHeight + 4.0f,
+        std::max(0.0f, width_ - 16.0f),
+        kTabStripHeight - 6.0f
     };
 }
 
@@ -488,7 +498,7 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::scrollBarBo
 
     return ValueCellBounds{
         x_ + width_ - 8.0f - kScrollBarWidth,
-        y_ + kHeaderHeight + 8.0f,
+        y_ + kHeaderHeight + kTabStripHeight + 10.0f,
         kScrollBarWidth,
         visibleHeight_
     };
@@ -519,6 +529,26 @@ bool PropertyInspector::isWithinVisibleContent(float x, float y) const
 {
     const ValueCellBounds bounds = contentBounds();
     return containsPoint(bounds, x, y);
+}
+
+std::optional<PropertyInspector::InspectorTab> PropertyInspector::hitTestTab(float x, float y) const
+{
+    const ValueCellBounds strip = tabStripBounds();
+    if (!containsPoint(strip, x, y)) {
+        return std::nullopt;
+    }
+
+    const float tabWidth = std::max(48.0f, (strip.width - kTabGap) * 0.5f);
+    const ValueCellBounds propertiesTab{ strip.x, strip.y, tabWidth, strip.height };
+    const ValueCellBounds eventsTab{ strip.x + tabWidth + kTabGap, strip.y, tabWidth, strip.height };
+    if (containsPoint(propertiesTab, x, y)) {
+        return InspectorTab::Properties;
+    }
+    if (containsPoint(eventsTab, x, y)) {
+        return InspectorTab::Events;
+    }
+
+    return std::nullopt;
 }
 
 float PropertyInspector::valueCellWidth() const
@@ -1110,9 +1140,48 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     return rows;
 }
 
+bool PropertyInspector::isEventRow(const model::ProjectDocument& document, const PropertyRow& row) const
+{
+    if (row.isSection || row.key.empty()) {
+        return false;
+    }
+
+    const model::WidgetNode* selectedWidget = document.selectedWidget();
+    if (selectedWidget == nullptr) {
+        return false;
+    }
+
+    return findEventDefinition(selectedWidget->type, row.key) != nullptr;
+}
+
+std::vector<PropertyInspector::PropertyRow> PropertyInspector::rowsForActiveTab(const model::ProjectDocument& document, const utils::AppSettings& settings) const
+{
+    const auto allRows = buildRows(document, settings);
+    std::vector<PropertyRow> filteredRows;
+    filteredRows.reserve(allRows.size());
+
+    for (const auto& row : allRows) {
+        const bool eventRow = isEventRow(document, row);
+        if (activeTab_ == InspectorTab::Events) {
+            if (eventRow) {
+                filteredRows.push_back(row);
+            }
+            continue;
+        }
+
+        if (row.key == "__section_events" || eventRow) {
+            continue;
+        }
+
+        filteredRows.push_back(row);
+    }
+
+    return filteredRows;
+}
+
 std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
-    const auto rows = buildRows(document, settings);
+    const auto rows = rowsForActiveTab(document, settings);
     updateScrollMetrics(rows);
     if (!isWithinVisibleContent(x, y)) {
         return std::nullopt;
@@ -1135,7 +1204,7 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::hitTestRow(cons
 
 std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
-    const auto rows = buildRows(document, settings);
+    const auto rows = rowsForActiveTab(document, settings);
     updateScrollMetrics(rows);
     if (!isWithinVisibleContent(x, y)) {
         return std::nullopt;
@@ -1160,7 +1229,20 @@ std::optional<std::string> PropertyInspector::hitTestColorSwatch(const model::Pr
 
 bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const utils::AppSettings& settings, float x, float y)
 {
-    const auto rows = buildRows(document, settings);
+    if (const auto tab = hitTestTab(x, y)) {
+        if (activeTab_ != *tab) {
+            activeTab_ = *tab;
+            clearEditing();
+            pendingInteractionEdit_.reset();
+            draggingScrollBarThumb_ = false;
+            draggingSlider_ = false;
+            draggingSliderKey_.clear();
+            clampScrollOffset();
+        }
+        return true;
+    }
+
+    const auto rows = rowsForActiveTab(document, settings);
     updateScrollMetrics(rows);
     const auto scrollBar = scrollBarBounds();
     if (scrollBar.has_value() && containsPoint(*scrollBar, x, y)) {
@@ -1234,7 +1316,7 @@ bool PropertyInspector::mouseDrag(const model::ProjectDocument& document, const 
             return false;
         }
 
-        const auto rows = buildRows(document, settings);
+        const auto rows = rowsForActiveTab(document, settings);
         updateScrollMetrics(rows);
         pendingInteractionEdit_ = sliderEditAtPoint(rows, x, y);
         return pendingInteractionEdit_.has_value();
@@ -1274,11 +1356,11 @@ bool PropertyInspector::mouseUp()
 
 bool PropertyInspector::mouseWheel(const model::ProjectDocument& document, const utils::AppSettings& settings, float deltaY, float x, float y)
 {
-    if (!contains(x, y)) {
+    if (!isWithinVisibleContent(x, y)) {
         return false;
     }
 
-    const auto rows = buildRows(document, settings);
+    const auto rows = rowsForActiveTab(document, settings);
     updateScrollMetrics(rows);
     if (!needsVerticalScrollBar_) {
         return false;
@@ -1290,7 +1372,7 @@ bool PropertyInspector::mouseWheel(const model::ProjectDocument& document, const
 
 bool PropertyInspector::beginEditing(const model::ProjectDocument& document, const utils::AppSettings& settings, const std::string& key)
 {
-    const auto rows = buildRows(document, settings);
+    const auto rows = rowsForActiveTab(document, settings);
     for (const auto& row : rows) {
         if (row.key == key && row.editKind != PropertyEditKind::ReadOnly && row.editKind != PropertyEditKind::Bool && row.editKind != PropertyEditKind::Slider) {
             activeKey_ = key;
@@ -1309,7 +1391,7 @@ std::optional<PropertyInspector::PropertyRow> PropertyInspector::activeRow(const
         return std::nullopt;
     }
 
-    const auto rows = buildRows(document, settings);
+    const auto rows = rowsForActiveTab(document, settings);
     for (const auto& row : rows) {
         if (row.key == activeKey_) {
             return row;
@@ -1337,7 +1419,7 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEdito
         return std::nullopt;
     }
 
-    const auto rows = buildRows(document, settings);
+    const auto rows = rowsForActiveTab(document, settings);
     updateScrollMetrics(rows);
     const auto bounds = contentBounds();
     const auto layouts = buildRowLayouts(bounds.y, rows);
@@ -1449,18 +1531,52 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
+    const ValueCellBounds strip = tabStripBounds();
+    const float tabWidth = std::max(48.0f, (strip.width - kTabGap) * 0.5f);
+    const ValueCellBounds propertiesTab{ strip.x, strip.y, tabWidth, strip.height };
+    const ValueCellBounds eventsTab{ strip.x + tabWidth + kTabGap, strip.y, tabWidth, strip.height };
+    const auto drawTab = [&](const ValueCellBounds& bounds, InspectorTab tab, const char* label) {
+        const bool selected = activeTab_ == tab;
+        canvas.setColor(selected ? 0xff4b79bc : 0xff303744);
+        canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+        canvas.setColor(selected ? 0xff92b9ff : 0xff1a2029);
+        canvas.fill(bounds.x, bounds.y + bounds.height - 2.0f, bounds.width, 2.0f);
+        if (drawText) {
+            canvas.setColor(selected ? 0xffeef5ff : 0xffc7cfda);
+            canvas.text(label, font, visage::Font::kCenter,
+                bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+    };
+
+    canvas.setColor(0xff252b36);
+    canvas.fill(strip.x, strip.y, strip.width, strip.height);
+    drawTab(propertiesTab, InspectorTab::Properties, "Properties");
+    drawTab(eventsTab, InspectorTab::Events, "Events");
+
+    const auto rows = rowsForActiveTab(document, settings);
+    updateScrollMetrics(rows);
+    const ValueCellBounds bounds = contentBounds();
+
     if (selectedWidget == nullptr) {
         if (drawText) {
             canvas.setColor(0xffdde2ea);
-            canvas.text("No selection", font, visage::Font::kTopLeft,
-                x_ + 18.0f, y_ + kHeaderHeight + 12.0f, width_ - 30.0f, kRowHeight - 8.0f);
+            canvas.text(activeTab_ == InspectorTab::Events ? "No selection for Events" : "No selection",
+                font, visage::Font::kTopLeft,
+                bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
         }
         return;
     }
 
-    const auto rows = buildRows(document, settings);
-    updateScrollMetrics(rows);
-    const ValueCellBounds bounds = contentBounds();
+    if (rows.empty()) {
+        if (drawText) {
+            canvas.setColor(0xffdde2ea);
+            canvas.text(activeTab_ == InspectorTab::Events ? "No events for the selected widget" : "No properties available",
+                font, visage::Font::kTopLeft,
+                bounds.x + 10.0f, bounds.y + 10.0f, bounds.width - 20.0f, kRowHeight - 8.0f);
+        }
+        return;
+    }
+
     const auto layouts = buildRowLayouts(bounds.y, rows);
 
     canvas.saveState();

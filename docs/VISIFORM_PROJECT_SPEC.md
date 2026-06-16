@@ -396,7 +396,7 @@ Implemented editor features include:
 - Move, resize, nudge, align, center, distribute, bring forward, send backward, copy, paste, duplicate, and delete workflows.
 - Grid, snap, and smart guide behavior.
 - Project tree hierarchy navigation.
-- Property inspector updates for selected widgets.
+- Property inspector updates for selected widgets, including a fixed tab strip with separate `Properties` and `Events` views.
 - Modal editor dialogs for project settings, resources, keyboard shortcuts, item lists, table grids, and tree nodes.
 - Resource preview for images through `ImageResourceCache`.
 - Validation modal summary display.
@@ -435,6 +435,7 @@ Property definitions live in `WidgetDefinition` and `WidgetRegistry`.
 
 Editor controls in `PropertyInspector` include:
 
+- fixed `Properties` and `Events` tabs
 - text
 - integer
 - float
@@ -455,7 +456,7 @@ Property behavior:
 Special property groups:
 
 - Style overrides: `lookAndFeelId`, `fillColor`, `textColor`, `borderColor`, `accentColor`, `borderThickness`, `cornerRadius`, `fontSize`.
-- Events: widget event keys such as `onClick`, `onChanged`, `onTextChanged`, `onAccepted`, `onCancelled`.
+- Events: widget event keys such as `onClick`, `onChanged`, `onTextChanged`, `onAccepted`, `onCancelled`. Supported event rows are shown on the dedicated `Events` inspector tab, while non-event properties remain on the `Properties` tab.
 - Item lists: `items`, selected index keys, and optional `itemActions`.
 - Tree nodes: `nodes`, `selectedNodePath`, `expandedNodePaths`.
 - Layout: `dock`, `anchor`, `layoutMode`, `tabIndex`, sizer metadata.
