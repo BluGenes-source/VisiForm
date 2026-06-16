@@ -148,9 +148,16 @@ Every multi-step VisiForm change requires a persistent phase plan in
 
 Phase-plan rules:
 
-- Determine the next phase number by inspecting existing plans.
+- Before starting any new VisiForm phase, inspect the existing phase
+  documentation, specifications, changelog or equivalent project history,
+  repository history, and related files to determine the highest phase number
+  already used.
+- Select the next unused phase number.
+- Never assume a phase number from the prompt.
 - Use the file name pattern `phase_N_<name>_plan.md`.
-- Do not reuse or renumber phases.
+- Do not reuse, renumber, or overwrite an existing phase document.
+- If a requested phase number already exists, automatically advance to the next
+  unused phase number and report the selected number before implementation.
 - Include scope, requirements, architectural decisions, a Markdown TODO
   checklist, validation plan, compatibility considerations, build/test status,
   final result summary, and remaining TODOs.

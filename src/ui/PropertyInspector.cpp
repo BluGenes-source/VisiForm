@@ -610,7 +610,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     }
     const PropertyEditKind boundsEditKind = parentControlsSizerLayout ? PropertyEditKind::ReadOnly : PropertyEditKind::Float;
     const std::string boundsHint = parentControlsSizerLayout
-        ? "Position and size are controlled by the parent Sizer; mouse resize edits Sizer Item minimum size."
+        ? "Position and size are controlled by the parent Sizer; mouse resize edits the sizer item's preferred size."
         : "Widget geometry relative to the current parent container.";
     rows.push_back({ "x", "X", boundsHint, formatFloat(selectedWidget->bounds.x), boundsEditKind });
     rows.push_back({ "y", "Y", boundsHint, formatFloat(selectedWidget->bounds.y), boundsEditKind });
@@ -639,6 +639,8 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         rows.push_back({ std::string(model::sizer_properties::kItemBorder), "Border", "Margin amount applied to enabled border sides.", std::to_string(layout.border), PropertyEditKind::Integer });
         rows.push_back({ std::string(model::sizer_properties::kItemBorderSides), "Border Sides", "Enabled border sides: None, All, or Left|Top|Right|Bottom.", model::toString(layout.borderSides), PropertyEditKind::Choice, false,
             { makeChoice("None"), makeChoice("Left"), makeChoice("Top"), makeChoice("Right"), makeChoice("Bottom"), makeChoice("All") } });
+        rows.push_back({ std::string(model::sizer_properties::kItemPreferredWidth), "Preferred Width", "Preferred width request used by designer resizing, or -1 for automatic.", std::to_string(layout.preferredWidth), PropertyEditKind::Integer });
+        rows.push_back({ std::string(model::sizer_properties::kItemPreferredHeight), "Preferred Height", "Preferred height request used by designer resizing, or -1 for automatic.", std::to_string(layout.preferredHeight), PropertyEditKind::Integer });
         rows.push_back({ std::string(model::sizer_properties::kItemMinimumWidth), "Minimum Width", "Minimum width override, or -1 for automatic.", std::to_string(layout.minimumWidth), PropertyEditKind::Integer });
         rows.push_back({ std::string(model::sizer_properties::kItemMinimumHeight), "Minimum Height", "Minimum height override, or -1 for automatic.", std::to_string(layout.minimumHeight), PropertyEditKind::Integer });
         rows.push_back({ std::string(model::sizer_properties::kItemShown), "Shown", "Whether this child participates in the parent Sizer layout.", layout.shown ? "true" : "false", PropertyEditKind::Bool });
@@ -1046,7 +1048,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 if (!rowHint.empty()) {
                     rowHint += " ";
                 }
-                rowHint += "Position and size are controlled by the parent Sizer; mouse resize edits Sizer Item minimum size.";
+                rowHint += "Position and size are controlled by the parent Sizer; mouse resize edits the sizer item's preferred size.";
             }
             if (property.key == "anchor" && selectedWidget->dockMode() != model::DockMode::None) {
                 rowEditKind = PropertyEditKind::ReadOnly;
@@ -1060,7 +1062,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 if (!rowHint.empty()) {
                     rowHint += " ";
                 }
-                rowHint += "Position and size are controlled by the parent Sizer; mouse resize edits Sizer Item minimum size.";
+                rowHint += "Position and size are controlled by the parent Sizer; mouse resize edits the sizer item's preferred size.";
             }
             rows.push_back({
                 property.key,

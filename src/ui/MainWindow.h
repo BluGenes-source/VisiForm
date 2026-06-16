@@ -160,8 +160,8 @@ private:
         DesignerCanvas::FormPoint currentPoint{};
         std::optional<model::ProjectDocument> sizerItemResizeBeforeDocument{};
         std::optional<model::ProjectDocument> layoutResizeBeforeDocument{};
-        int originalSizerItemMinimumWidth = -1;
-        int originalSizerItemMinimumHeight = -1;
+        int originalSizerItemPreferredWidth = -1;
+        int originalSizerItemPreferredHeight = -1;
         std::vector<SelectionBoundsSnapshot> selectionBounds{};
         std::vector<DesignerCanvas::SmartGuide> smartGuides{};
         bool smartGuideSnapUsed = false;

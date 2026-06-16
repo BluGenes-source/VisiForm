@@ -1245,8 +1245,15 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.parentId = " << emitStringLiteral(widget.parentId) << ";\n";
     stream << innerIndent << "widget.bounds = RuntimeRect{ " << emitFloat(spec.x) << ", " << emitFloat(spec.y) << ", "
            << emitFloat(widget.bounds.width) << ", " << emitFloat(widget.bounds.height) << " };\n";
-    stream << innerIndent << "widget.preferredWidth = " << emitFloat(widget.bounds.width) << ";\n";
-    stream << innerIndent << "widget.preferredHeight = " << emitFloat(widget.bounds.height) << ";\n";
+    const auto sizerItemLayout = visiform::model::sizerItemLayoutFor(widget);
+    const float preferredWidth = sizerItemLayout.preferredWidth >= 0
+        ? static_cast<float>(sizerItemLayout.preferredWidth)
+        : widget.bounds.width;
+    const float preferredHeight = sizerItemLayout.preferredHeight >= 0
+        ? static_cast<float>(sizerItemLayout.preferredHeight)
+        : widget.bounds.height;
+    stream << innerIndent << "widget.preferredWidth = " << emitFloat(preferredWidth) << ";\n";
+    stream << innerIndent << "widget.preferredHeight = " << emitFloat(preferredHeight) << ";\n";
     stream << innerIndent << "widget.hint = " << emitStringLiteral(widget.getStringProperty("hint", {})) << ";\n";
     stream << innerIndent << "widget.dialogTitle = " << emitStringLiteral(widget.getStringProperty("title", widgetLabel(widget))) << ";\n";
     stream << innerIndent << "widget.text.value = " << emitStringLiteral(displayTextOrFallback(widget, "text", widgetLabel(widget))) << ";\n";
@@ -1266,7 +1273,6 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.range.pageSize = " << emitFloat(widget.getFloatProperty("pageSize", 10.0f)) << ";\n";
     stream << innerIndent << "widget.range.orientation = " << runtimeOrientationLiteral(widget.getStringProperty("orientation", "Horizontal")) << ";\n";
     const auto boxSizerLayout = visiform::model::boxSizerLayoutFor(widget);
-    const auto sizerItemLayout = visiform::model::sizerItemLayoutFor(widget);
     stream << innerIndent << "widget.sizerPaddingLeft = " << boxSizerLayout.paddingLeft << ";\n";
     stream << innerIndent << "widget.sizerPaddingTop = " << boxSizerLayout.paddingTop << ";\n";
     stream << innerIndent << "widget.sizerPaddingRight = " << boxSizerLayout.paddingRight << ";\n";

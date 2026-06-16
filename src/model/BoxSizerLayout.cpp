@@ -160,7 +160,7 @@ float crossBorder(const SizerItemLayout& layout, SizerOrientation orientation)
         : borderLeft(layout) + borderRight(layout);
 }
 
-Size intrinsicMinimumSize(const WidgetNode& widget)
+Size naturalMinimumSize(const WidgetNode& widget)
 {
     if (widget.type == WidgetType::Sizer) {
         return calculateBoxSizerMinimumSize(widget);
@@ -173,17 +173,29 @@ Size intrinsicMinimumSize(const WidgetNode& widget)
             : Size{ 0.0f, 0.0f };
     }
 
-    Size size{ positiveOrZero(widget.bounds.width), positiveOrZero(widget.bounds.height) };
+    Size size{ 0.0f, 0.0f };
     if (const auto* definition = WidgetRegistry::instance().find(widget.type)) {
-        size.width = std::max({ size.width, definition->size.minWidth, kMinimumWidgetSize });
-        size.height = std::max({ size.height, definition->size.minHeight, kMinimumWidgetSize });
+        size.width = std::max(definition->size.minWidth, kMinimumWidgetSize);
+        size.height = std::max(definition->size.minHeight, kMinimumWidgetSize);
+    }
+    else {
+        size.width = kMinimumWidgetSize;
+        size.height = kMinimumWidgetSize;
     }
     return size;
 }
 
 Size effectiveMinimumSize(const WidgetNode& widget, const SizerItemLayout& layout)
 {
-    Size size = intrinsicMinimumSize(widget);
+    Size size = naturalMinimumSize(widget);
+    const float preferredWidth = layout.preferredWidth >= 0
+        ? static_cast<float>(layout.preferredWidth)
+        : positiveOrZero(widget.bounds.width);
+    const float preferredHeight = layout.preferredHeight >= 0
+        ? static_cast<float>(layout.preferredHeight)
+        : positiveOrZero(widget.bounds.height);
+    size.width = std::max(size.width, preferredWidth);
+    size.height = std::max(size.height, preferredHeight);
     if (layout.minimumWidth >= 0) {
         size.width = std::max(size.width, static_cast<float>(layout.minimumWidth));
     }
@@ -479,6 +491,8 @@ SizerItemLayout sizerItemLayoutFor(const WidgetNode& child)
     layout.alignment = parseSizerAlignment(child, sizer_properties::kItemAlignment, layout.alignment);
     layout.border = std::max(0, intProperty(child, sizer_properties::kItemBorder, layout.border));
     layout.borderSides = parseSizerBorderSides(child, sizer_properties::kItemBorderSides, layout.borderSides);
+    layout.preferredWidth = intProperty(child, sizer_properties::kItemPreferredWidth, layout.preferredWidth);
+    layout.preferredHeight = intProperty(child, sizer_properties::kItemPreferredHeight, layout.preferredHeight);
     layout.minimumWidth = intProperty(child, sizer_properties::kItemMinimumWidth, layout.minimumWidth);
     layout.minimumHeight = intProperty(child, sizer_properties::kItemMinimumHeight, layout.minimumHeight);
     layout.shown = boolProperty(child, sizer_properties::kItemShown, layout.shown);
@@ -500,6 +514,8 @@ void applyDefaultSizerItemLayout(WidgetNode& child)
     setMissing(sizer_properties::kItemAlignment, toString(layout.alignment));
     setMissing(sizer_properties::kItemBorder, layout.border);
     setMissing(sizer_properties::kItemBorderSides, toString(layout.borderSides));
+    setMissing(sizer_properties::kItemPreferredWidth, layout.preferredWidth);
+    setMissing(sizer_properties::kItemPreferredHeight, layout.preferredHeight);
     setMissing(sizer_properties::kItemMinimumWidth, layout.minimumWidth);
     setMissing(sizer_properties::kItemMinimumHeight, layout.minimumHeight);
     setMissing(sizer_properties::kItemShown, layout.shown);

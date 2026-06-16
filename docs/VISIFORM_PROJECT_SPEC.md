@@ -215,7 +215,7 @@ BoxSizer evidence:
 Sizer metadata:
 
 - Sizer properties: `orientation`, legacy `padding`, `paddingLeft`, `paddingTop`, `paddingRight`, `paddingBottom`, `gap`.
-- Direct child properties: `sizerItem.proportion`, `sizerItem.expand`, `sizerItem.alignment`, `sizerItem.border`, `sizerItem.borderSides`, `sizerItem.minimumWidth`, `sizerItem.minimumHeight`, `sizerItem.shown`.
+- Direct child properties: `sizerItem.proportion`, `sizerItem.expand`, `sizerItem.alignment`, `sizerItem.border`, `sizerItem.borderSides`, `sizerItem.preferredWidth`, `sizerItem.preferredHeight`, `sizerItem.minimumWidth`, `sizerItem.minimumHeight`, `sizerItem.shown`.
 - Spacer properties: `spacer.kind` and `spacer.size`.
 
 Implemented behavior indicated by docs and tests:

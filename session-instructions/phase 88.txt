@@ -1,0 +1,256 @@
+Work on the VisiForm project using the configured subagents and all repository instructions.
+
+This task has two goals:
+
+1. Add a permanent project/agent rule for determining phase numbers.
+2. Diagnose and fix the confirmed sizer and resizer bugs described below.
+
+## Permanent phase-number rule
+
+Inspect the repository to find the appropriate shared agent instructions or project instruction file used by all VisiForm agents. This may include files such as:
+
+* `AGENTS.md`
+* `copilot-instructions.md`
+* `visiform.instructions.md`
+* shared agent configuration or documentation files
+* the individual VisiForm agent instruction files, if no shared rule file exists
+
+Add the following permanent rule in the most appropriate shared location:
+
+> Before starting any new VisiForm phase, inspect the existing phase documentation, specifications, changelog, repository history, and related files to determine the highest phase number already used. Select the next unused phase number. Never assume a phase number from the prompt, never reuse an existing phase number, and never overwrite an existing phase document. If the requested phase number already exists, automatically advance to the next unused phase and report the selected number before implementation.
+
+Ensure this rule applies to the architect, explorer, implementer, reviewer, and documenter workflows.
+
+Do not create conflicting or duplicated instructions if an equivalent rule already exists. Improve or consolidate the existing rule instead.
+
+## Determine this task’s phase
+
+Before making implementation changes:
+
+1. Inspect all existing VisiForm phase records.
+2. Determine the highest phase number already used.
+3. Select the next unused phase number.
+4. Report the selected phase number.
+5. Use that phase number consistently in:
+
+   * documentation
+   * specifications
+   * changelog entries
+   * test notes
+   * implementation summaries
+   * any phase completion report
+
+Do not reuse Phase 87 or any other existing phase.
+
+## Confirmed bugs
+
+### Bug 1: Widget resizing becomes locked after the first drag
+
+Reproduction:
+
+1. Drop a button into a sizer.
+2. Resize the button vertically.
+3. Release the mouse.
+4. Attempt to resize the button again.
+
+Current behavior:
+
+* The button cannot be resized again.
+* Its width and height appear to become locked after the first completed resize operation.
+
+Expected behavior:
+
+* The widget must remain interactively resizable across repeated, separate drag operations.
+* Releasing the mouse must end only the current drag operation.
+* Temporary drag state must not become a permanent width or height lock unless the user explicitly enables fixed sizing.
+
+### Bug 2: Child widgets do not resize when their parent resizer or sizer is resized
+
+Reproduction:
+
+1. Place one or more widgets inside a resizer or sizer.
+2. Resize the parent container.
+
+Current behavior:
+
+* The parent changes size.
+* The contained widgets do not recalculate their layout or resize with the parent.
+
+Expected behavior:
+
+* Resizing the parent must trigger layout invalidation and a new layout pass.
+* Sizer-managed child bounds must be recalculated according to orientation, proportions, borders, flags, minimum sizes, and other supported constraints.
+* Nested sizers must propagate layout changes correctly.
+
+## Agent assignments
+
+Use the configured VisiForm subagents.
+
+### Explorer
+
+Inspect and report on:
+
+* widget selection
+* resize handles
+* mouse-down, mouse-drag, and mouse-up handling
+* active drag state
+* original drag bounds
+* minimum, maximum, preferred, explicit, and fixed sizes
+* layout-item metadata
+* sizer-managed versus absolute bounds
+* parent and child layout invalidation
+* resize callbacks
+* cached layout results
+* nested sizer propagation
+* serialization of width, height, and layout constraints
+
+Identify the exact source files, classes, and functions involved in each bug.
+
+### Architect
+
+Based on the Explorer report:
+
+* identify the root cause of each bug
+* determine whether the bugs share a common state-management or layout-invalidation issue
+* design the smallest architecture-consistent fix
+* preserve intentional fixed-size and minimum-size behavior
+* avoid introducing duplicate layout ownership
+* define clear ownership between interactive design-time resizing and sizer-managed layout
+* specify regression tests and manual verification steps
+
+### Implementer
+
+Implement only the approved fix.
+
+Pay particular attention to:
+
+* drag state not being reset after mouse release
+* resize handles retaining stale starting bounds
+* temporary drag values being written into permanent size constraints
+* width and height values being incorrectly marked fixed
+* cached bounds not being refreshed before a new drag
+* parent resize events not invalidating the sizer layout
+* child widgets retaining stale absolute bounds
+* layout not being rerun after parent bounds change
+* recursive or repeated layout calls
+* repainting being used as a substitute for layout recalculation
+
+Do not hide the issue with a forced repaint or by blindly clearing all size constraints.
+
+### Reviewer
+
+Review the implementation for:
+
+* correctness across repeated resize operations
+* accidental removal of intentional fixed sizing
+* stale state after mouse release
+* invalid or recursive layout propagation
+* ownership conflicts between widgets and sizers
+* nested sizer regressions
+* serialization regressions
+* undo/redo regressions, if applicable
+* selection-handle regressions
+* unnecessary refactoring
+* incomplete tests
+
+Reject the implementation if it only masks the symptoms.
+
+### Documenter
+
+Update the selected phase documentation with:
+
+* problem statement
+* reproduction steps
+* root cause
+* design decision
+* files changed
+* tests added
+* manual test checklist
+* known limitations
+* build results
+* completion status
+
+Also update the changelog or equivalent project history.
+
+## Required investigation report
+
+Before implementation, provide:
+
+1. The selected unused phase number.
+2. The instruction file updated with the permanent phase-number rule.
+3. Reproduction results for both bugs.
+4. Relevant source files, classes, and functions.
+5. Root cause of Bug 1.
+6. Root cause of Bug 2.
+7. Whether the bugs share a common cause.
+8. Proposed fix.
+9. Regression risks.
+10. Planned automated and manual tests.
+
+Then continue with implementation unless a repository rule explicitly requires approval before code changes.
+
+## Implementation requirements
+
+The completed fix must ensure:
+
+* A button or other widget can be resized repeatedly across separate drag operations.
+* Releasing the mouse clears all temporary drag state.
+* Starting another resize uses the widget’s current bounds.
+* Intentional fixed-width and fixed-height behavior still works.
+* Resizing a parent sizer or resizer triggers child layout recalculation.
+* Child widgets resize or reposition according to their layout rules.
+* Nested sizers update correctly where supported.
+* Layout changes repaint correctly after bounds are recalculated.
+* Existing saved projects remain compatible where practical.
+* No unrelated refactoring is performed.
+
+## Testing requirements
+
+Add automated regression tests where practical for:
+
+* beginning, completing, and beginning another resize operation
+* drag state reset after mouse release
+* temporary dimensions not becoming permanent fixed constraints
+* parent resize triggering child layout
+* horizontal sizer behavior
+* vertical sizer behavior
+* nested sizer behavior
+* minimum-size preservation
+* intentionally fixed-size children
+
+Also perform a focused manual UI test:
+
+1. Add a button to a sizer.
+2. Resize its height.
+3. Release the mouse.
+4. Resize it again.
+5. Repeat several times using different handles.
+6. Resize the parent sizer or resizer.
+7. Confirm the child widget recalculates its size.
+8. Repeat with multiple children.
+9. Repeat with horizontal and vertical sizers.
+10. Repeat with nested sizers where supported.
+11. Save and reopen the project.
+12. Confirm resizing and layout still work.
+
+Build the full relevant project configuration and run all applicable tests.
+
+## Final report
+
+Provide:
+
+1. Selected phase number.
+2. Permanent agent-rule file changed.
+3. Files changed.
+4. Root cause of each bug.
+5. Explanation of the implemented fix.
+6. Automated test results.
+7. Build results.
+8. Manual verification results.
+9. Reviewer findings.
+10. Remaining limitations.
+11. Phase completion status.
+
+Do not mark the phase complete unless both confirmed bugs are fixed and verified.
+
+Do not commit, push, merge, or create a pull request unless the repository instructions explicitly authorize it.

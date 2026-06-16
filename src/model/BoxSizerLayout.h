@@ -43,6 +43,8 @@ struct SizerItemLayout {
     SizerAlignment alignment = SizerAlignment::Start;
     int border = 0;
     SizerBorderSide borderSides = SizerBorderSide::None;
+    int preferredWidth = -1;
+    int preferredHeight = -1;
     int minimumWidth = -1;
     int minimumHeight = -1;
     bool shown = true;
@@ -85,6 +87,8 @@ inline constexpr std::string_view kItemExpand = "sizerItem.expand";
 inline constexpr std::string_view kItemAlignment = "sizerItem.alignment";
 inline constexpr std::string_view kItemBorder = "sizerItem.border";
 inline constexpr std::string_view kItemBorderSides = "sizerItem.borderSides";
+inline constexpr std::string_view kItemPreferredWidth = "sizerItem.preferredWidth";
+inline constexpr std::string_view kItemPreferredHeight = "sizerItem.preferredHeight";
 inline constexpr std::string_view kItemMinimumWidth = "sizerItem.minimumWidth";
 inline constexpr std::string_view kItemMinimumHeight = "sizerItem.minimumHeight";
 inline constexpr std::string_view kItemShown = "sizerItem.shown";

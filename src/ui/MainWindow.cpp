@@ -960,9 +960,10 @@ bool applySizerItemResizePreview(model::ProjectDocument& document,
     const model::ProjectDocument& beforeDocument,
     const std::string& widgetId,
     DesignerCanvas::HitRegion region,
+    const model::Rect& originalBounds,
     const model::Rect& desiredBounds,
-    int originalMinimumWidth,
-    int originalMinimumHeight)
+    int originalPreferredWidth,
+    int originalPreferredHeight)
 {
     auto* widget = document.findWidgetById(widgetId);
     const auto* parent = document.findParentOf(widgetId);
@@ -970,19 +971,24 @@ bool applySizerItemResizePreview(model::ProjectDocument& document,
         return false;
     }
 
-    if (hitRegionChangesWidth(region)) {
-        const int minimumWidth = static_cast<int>(std::ceil(std::max(widgetMinimumWidth(*widget), desiredBounds.width)));
-        widget->setProperty(std::string{ model::sizer_properties::kItemMinimumWidth }, minimumWidth);
+    const model::SizerItemLayout currentLayout = model::sizerItemLayoutFor(*widget);
+    if (hitRegionChangesWidth(region) && desiredBounds.width != originalBounds.width) {
+        const float widthFloor = std::max(widgetMinimumWidth(*widget),
+            currentLayout.minimumWidth >= 0 ? static_cast<float>(currentLayout.minimumWidth) : 0.0f);
+        const int preferredWidth = static_cast<int>(std::ceil(std::max(widthFloor, desiredBounds.width)));
+        widget->setProperty(std::string{ model::sizer_properties::kItemPreferredWidth }, preferredWidth);
     }
-    if (hitRegionChangesHeight(region)) {
-        const int minimumHeight = static_cast<int>(std::ceil(std::max(widgetMinimumHeight(*widget), desiredBounds.height)));
-        widget->setProperty(std::string{ model::sizer_properties::kItemMinimumHeight }, minimumHeight);
+    if (hitRegionChangesHeight(region) && desiredBounds.height != originalBounds.height) {
+        const float heightFloor = std::max(widgetMinimumHeight(*widget),
+            currentLayout.minimumHeight >= 0 ? static_cast<float>(currentLayout.minimumHeight) : 0.0f);
+        const int preferredHeight = static_cast<int>(std::ceil(std::max(heightFloor, desiredBounds.height)));
+        widget->setProperty(std::string{ model::sizer_properties::kItemPreferredHeight }, preferredHeight);
     }
 
     document.applyLayoutFromPrevious(beforeDocument);
     if (const auto* updatedWidget = document.findWidgetById(widgetId)) {
         const model::SizerItemLayout layout = model::sizerItemLayoutFor(*updatedWidget);
-        return layout.minimumWidth != originalMinimumWidth || layout.minimumHeight != originalMinimumHeight;
+        return layout.preferredWidth != originalPreferredWidth || layout.preferredHeight != originalPreferredHeight;
     }
     return false;
 }
@@ -2632,13 +2638,15 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 if (isDirectSizerChild(document_, selectedInteractionHit->widgetId)) {
                     const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
                     canvasInteraction_.sizerItemResizeBeforeDocument = document_;
-                    canvasInteraction_.originalSizerItemMinimumWidth = sizerItemLayout.minimumWidth;
-                    canvasInteraction_.originalSizerItemMinimumHeight = sizerItemLayout.minimumHeight;
-                    setOperationStatus("Drag to resize sizer item minimum size.");
+                    canvasInteraction_.originalSizerItemPreferredWidth = sizerItemLayout.preferredWidth;
+                    canvasInteraction_.originalSizerItemPreferredHeight = sizerItemLayout.preferredHeight;
+                    setOperationStatus("Drag to resize sizer item preferred size.");
                 }
-                else if (widget->type == model::WidgetType::Sizer) {
+                else {
                     canvasInteraction_.layoutResizeBeforeDocument = document_;
-                    setOperationStatus("Drag to resize Sizer and relayout its children.");
+                    if (widget->type == model::WidgetType::Sizer) {
+                        setOperationStatus("Drag to resize Sizer and relayout its children.");
+                    }
                 }
                 logCanvasHitDiagnostic(document_, *dragStart, widget, true, "Drag start: selected resize handle");
                 return;
@@ -2738,13 +2746,15 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize && isDirectSizerChild(document_, *widgetId)) {
                     const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
                     canvasInteraction_.sizerItemResizeBeforeDocument = document_;
-                    canvasInteraction_.originalSizerItemMinimumWidth = sizerItemLayout.minimumWidth;
-                    canvasInteraction_.originalSizerItemMinimumHeight = sizerItemLayout.minimumHeight;
-                    setOperationStatus("Drag to resize sizer item minimum size.");
+                    canvasInteraction_.originalSizerItemPreferredWidth = sizerItemLayout.preferredWidth;
+                    canvasInteraction_.originalSizerItemPreferredHeight = sizerItemLayout.preferredHeight;
+                    setOperationStatus("Drag to resize sizer item preferred size.");
                 }
-                else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize && widget->type == model::WidgetType::Sizer) {
+                else if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize) {
                     canvasInteraction_.layoutResizeBeforeDocument = document_;
-                    setOperationStatus("Drag to resize Sizer and relayout its children.");
+                    if (widget->type == model::WidgetType::Sizer) {
+                        setOperationStatus("Drag to resize Sizer and relayout its children.");
+                    }
                 }
 
                 if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move && document_.hasMultiSelection()) {
@@ -2944,23 +2954,24 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
                 *canvasInteraction_.sizerItemResizeBeforeDocument,
                 widget->id,
                 canvasInteraction_.region,
+                canvasInteraction_.originalBounds,
                 updatedBounds,
-                canvasInteraction_.originalSizerItemMinimumWidth,
-                canvasInteraction_.originalSizerItemMinimumHeight);
+                canvasInteraction_.originalSizerItemPreferredWidth,
+                canvasInteraction_.originalSizerItemPreferredHeight);
             if (canvasInteraction_.changed) {
                 if (const auto* resizedWidget = document_.findWidgetById(canvasInteraction_.widgetId)) {
                     const model::SizerItemLayout layout = model::sizerItemLayoutFor(*resizedWidget);
-                    setOperationStatus("Sizer item minimum size: "
-                        + std::to_string(layout.minimumWidth)
+                    setOperationStatus("Sizer item preferred size: "
+                        + std::to_string(layout.preferredWidth)
                         + " x "
-                        + std::to_string(layout.minimumHeight));
+                        + std::to_string(layout.preferredHeight));
                 }
                 updatePropertyEditorBounds();
                 redraw();
             }
             return;
         }
-        if (widget->type == model::WidgetType::Sizer && canvasInteraction_.layoutResizeBeforeDocument.has_value()) {
+        if (canvasInteraction_.layoutResizeBeforeDocument.has_value()) {
             if (updatedBounds.x != widget->bounds.x || updatedBounds.y != widget->bounds.y
                 || updatedBounds.width != widget->bounds.width || updatedBounds.height != widget->bounds.height) {
                 widget->bounds = updatedBounds;
@@ -3106,16 +3117,18 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
             && canvasInteraction_.layoutResizeBeforeDocument.has_value()) {
             const std::string widgetId = widget->id;
             const std::string displayName = widgetDisplayName(*widget);
+            const bool resizedSizer = widget->type == model::WidgetType::Sizer;
             model::ProjectDocument afterDocument = document_;
             model::ProjectDocument beforeDocument = std::move(*canvasInteraction_.layoutResizeBeforeDocument);
             document_ = beforeDocument;
             undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
                 document_,
-                "Resize sizer",
+                resizedSizer ? "Resize sizer" : "Resize widget",
                 std::move(beforeDocument),
                 std::move(afterDocument)));
             document_.markDirty();
-            setOperationStatus("Resized Sizer: " + displayName + " (" + widgetId + ")");
+            setOperationStatus(std::string(resizedSizer ? "Resized Sizer: " : "Resized widget: ")
+                + displayName + " (" + widgetId + ")");
             clearCanvasInteraction();
             updatePropertyEditorBounds();
             redraw();

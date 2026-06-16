@@ -299,7 +299,7 @@ Container-specific notes:
 
 - `FormWindow`, `Frame`, `GroupBox`, `Panel`, `Sizer`, and `TabControl` can contain `children`
 - `Sizer` stores `orientation`, side padding (`paddingLeft`, `paddingTop`, `paddingRight`, `paddingBottom`), legacy `padding`, and `gap` in `properties`; it is optional and existing projects do not require one
-- direct children of a `Sizer` may store `sizerItem.proportion`, `sizerItem.expand`, `sizerItem.alignment`, `sizerItem.border`, `sizerItem.borderSides`, `sizerItem.minimumWidth`, `sizerItem.minimumHeight`, and `sizerItem.shown`
+- direct children of a `Sizer` may store `sizerItem.proportion`, `sizerItem.expand`, `sizerItem.alignment`, `sizerItem.border`, `sizerItem.borderSides`, `sizerItem.preferredWidth`, `sizerItem.preferredHeight`, `sizerItem.minimumWidth`, `sizerItem.minimumHeight`, and `sizerItem.shown`
 - `Spacer` widgets may store `spacer.kind` (`Fixed` or `Stretch`) and `spacer.size`
 - `TabControl` also stores `tabs` and `selectedTab` in `properties`
 - hierarchy is persisted through both the nested `children` arrays and the explicit `parentId` / `zOrder` metadata

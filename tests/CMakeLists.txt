@@ -3,6 +3,7 @@ find_package(Catch2 CONFIG REQUIRED)
 add_executable(VisiFormTests
     test_project_serialization.cpp
     test_box_sizer_layout.cpp
+    test_layout_engine.cpp
     test_project_validation.cpp
     ${CMAKE_SOURCE_DIR}/src/model/ProjectDocument.cpp
     ${CMAKE_SOURCE_DIR}/src/model/FormNode.cpp

@@ -1,2 +1,3 @@
 When a button is dropped into a sizer, you can chage the height, but, if you stop dragging, you are unable to drag and resize again. It appears the width and height become locked.
 When resizing a resizer with widgets inside, the widgets do not resize.
+This is a bug that is still present.

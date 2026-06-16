@@ -17,10 +17,11 @@ Current BoxSizer behavior:
 - direct children use `sizerItem.proportion` for weighted main-axis growth
 - direct children use `sizerItem.expand` and `sizerItem.alignment` for cross-axis placement
 - `sizerItem.border` and `sizerItem.borderSides` add per-child margin
+- `sizerItem.preferredWidth` and `sizerItem.preferredHeight` store designer resize requests with `-1` meaning automatic
 - `sizerItem.minimumWidth` and `sizerItem.minimumHeight` can override automatic minimum size with `-1` meaning automatic
 - `sizerItem.shown=false` removes a child from layout participation
 
-Sizer-managed children keep their dormant absolute bounds, but position, size, Dock, and Anchor do not control their final bounds while their direct parent is a `Sizer`. Dragging a selected sizer child's resize handles edits `sizerItem.minimumWidth` and `sizerItem.minimumHeight` so the mouse can still request a larger minimum size without breaking sizer ownership. Resizing the `Sizer` itself relayouts its managed children from the new sizer bounds, and undo/redo preserves both the sizer bounds and the child layout result.
+Sizer-managed children keep sizer-controlled final bounds, so position, size, Dock, and Anchor do not directly control the rendered result while their direct parent is a `Sizer`. Dragging a selected sizer child's resize handles edits `sizerItem.preferredWidth` and `sizerItem.preferredHeight`, which keeps repeated grow/shrink resize gestures reversible while leaving explicit minimum-size overrides intact. Resizing a parent container reruns layout for anchored, docked, and nested sizer children, and undo/redo preserves the parent resize plus the resulting child layout.
 
 Designer movement is constrained to the parent canvas. Dragging, nudging, or editing bounds keeps normal widgets and sizers inside their parent client area, including root-level sizers inside the form.
 

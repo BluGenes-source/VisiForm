@@ -102,6 +102,7 @@ TEST_CASE("ProjectValidator reports direct sizer-child layout conflicts")
     button.setProperty("sizerItem.expand", true);
     button.setProperty("sizerItem.alignment", "End");
     button.setProperty("sizerItem.borderSides", "Left|Middle");
+    button.setProperty("sizerItem.preferredHeight", -3);
     button.setProperty("sizerItem.minimumWidth", -2);
 
     sizer.appendChild(std::move(button));
@@ -114,6 +115,11 @@ TEST_CASE("ProjectValidator reports direct sizer-child layout conflicts")
     REQUIRE(borderSides != nullptr);
     CHECK(borderSides->severity == ValidationSeverity::Error);
     CHECK(borderSides->widgetId == "button_1");
+
+    const ValidationMessage* preferredHeight = findMessage(report, "WIDGET_SIZER_ITEM_PREFERRED_INVALID");
+    REQUIRE(preferredHeight != nullptr);
+    CHECK(preferredHeight->severity == ValidationSeverity::Warning);
+    CHECK(preferredHeight->propertyKey == "sizerItem.preferredHeight");
 
     const ValidationMessage* minimumWidth = findMessage(report, "WIDGET_SIZER_ITEM_MINIMUM_INVALID");
     REQUIRE(minimumWidth != nullptr);

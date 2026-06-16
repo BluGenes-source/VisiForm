@@ -1031,6 +1031,19 @@ ValidationReport ProjectValidator::validate(const model::ProjectDocument& docume
             }
 
             for (const auto key : {
+                     model::sizer_properties::kItemPreferredWidth,
+                     model::sizer_properties::kItemPreferredHeight }) {
+                const std::string propertyKey{ key };
+                if (const auto preferred = propertyNumber(*widget, propertyKey); preferred.has_value() && *preferred < -1.0) {
+                    addMessage(report, ValidationSeverity::Warning,
+                        "WIDGET_SIZER_ITEM_PREFERRED_INVALID",
+                        "Sizer item preferred size override should be -1 for automatic or a nonnegative value.",
+                        widget->id,
+                        propertyKey);
+                }
+            }
+
+            for (const auto key : {
                      model::sizer_properties::kItemMinimumWidth,
                      model::sizer_properties::kItemMinimumHeight }) {
                 const std::string propertyKey{ key };
