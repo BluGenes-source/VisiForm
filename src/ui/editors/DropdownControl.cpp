@@ -7,7 +7,7 @@ namespace {
 
 constexpr float kItemHeight = 24.0f;
 constexpr float kItemSpacing = 2.0f;
-constexpr float kMinimumPopupWidth = 180.0f;
+constexpr float kMinimumPopupWidth = 220.0f;
 constexpr std::size_t kMaxVisibleItems = 8;
 
 float totalPopupHeight(std::size_t itemCount)
@@ -207,7 +207,7 @@ void DropdownControl::draw(visage::Canvas& canvas, const visage::Font& font, boo
         if (drawText) {
             canvas.setColor(0xffeef2f8);
             canvas.text(items_[itemIndex].label, font, visage::Font::kTopLeft,
-                popup.x + 8.0f, top + 4.0f, popup.width - 14.0f, kItemHeight - 6.0f);
+                popup.x + 10.0f, top + 4.0f, std::max(0.0f, popup.width - 22.0f), kItemHeight - 6.0f);
         }
         top += kItemHeight + kItemSpacing;
     }

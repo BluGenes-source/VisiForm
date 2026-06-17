@@ -51,6 +51,9 @@ constexpr float kEventExistingWidth = 66.0f;
 constexpr float kEventClearWidth = 48.0f;
 constexpr float kEventValueInset = 6.0f;
 constexpr float kEventMinimumValueCellWidth = kEventCreateWidth + kEventExistingWidth + kEventClearWidth + kEventActionGap * 2.0f + kEventValueInset;
+constexpr float kEventSelectorTextPadding = 10.0f;
+constexpr float kEventSelectorArrowWidth = 20.0f;
+constexpr float kEventSelectorArrowGap = 6.0f;
 constexpr std::string_view kEventSuggestionPrefix = "__event_suggestion:";
 
 struct RowLayout {
@@ -715,6 +718,46 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::eventSelect
         rowTop + 4.0f,
         selectorWidth,
         kRowHeight - 10.0f
+    };
+}
+
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::eventSelectorTextBoundsForRow(const PropertyRow& row, float rowTop) const
+{
+    const auto selectorBounds = eventSelectorBoundsForRow(row, rowTop);
+    if (!selectorBounds.has_value()) {
+        return std::nullopt;
+    }
+
+    const bool showArrow = !row.choices.empty();
+    const float textRightInset = showArrow
+        ? kEventSelectorTextPadding + kEventSelectorArrowGap + kEventSelectorArrowWidth
+        : kEventSelectorTextPadding;
+    const float textLeft = selectorBounds->x + kEventSelectorTextPadding;
+    const float textWidth = std::max(0.0f, selectorBounds->width - kEventSelectorTextPadding - textRightInset);
+    return ValueCellBounds{
+        textLeft,
+        selectorBounds->y,
+        textWidth,
+        selectorBounds->height
+    };
+}
+
+std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::eventSelectorArrowBoundsForRow(const PropertyRow& row, float rowTop) const
+{
+    if (row.choices.empty()) {
+        return std::nullopt;
+    }
+
+    const auto selectorBounds = eventSelectorBoundsForRow(row, rowTop);
+    if (!selectorBounds.has_value()) {
+        return std::nullopt;
+    }
+
+    return ValueCellBounds{
+        selectorBounds->x + selectorBounds->width - kEventSelectorArrowWidth - kEventSelectorTextPadding,
+        selectorBounds->y,
+        kEventSelectorArrowWidth,
+        selectorBounds->height
     };
 }
 
@@ -1914,6 +1957,8 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                         && *activeEventAction_ == action;
                 };
                 const auto selectorBounds = eventSelectorBoundsForRow(row, rowTop);
+                const auto selectorTextBounds = eventSelectorTextBoundsForRow(row, rowTop);
+                const auto selectorArrowBounds = eventSelectorArrowBoundsForRow(row, rowTop);
                 const auto createBounds = eventActionBoundsForRow(row, rowTop, EventAction::Create);
                 const auto existingBounds = eventActionBoundsForRow(row, rowTop, EventAction::Existing);
                 const auto clearBounds = eventActionBoundsForRow(row, rowTop, EventAction::Clear);
@@ -1925,14 +1970,21 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                     canvas.setColor(selectorActive ? 0xff92b9ff : 0xff1a2029);
                     canvas.fill(selectorBounds->x, selectorBounds->y, selectorBounds->width, 1.0f);
                     canvas.fill(selectorBounds->x, selectorBounds->y + selectorBounds->height - 1.0f, selectorBounds->width, 1.0f);
-                    canvas.setColor(0xffaeb8c6);
-                    canvas.text(row.choices.empty() ? "" : "v", font, visage::Font::kCenter,
-                        selectorBounds->x + selectorBounds->width - 16.0f, selectorBounds->y, 14.0f, selectorBounds->height);
+                    if (selectorArrowBounds.has_value()) {
+                        canvas.setColor(selectorActive ? 0xff4e617d : 0xff465366);
+                        canvas.fill(selectorArrowBounds->x - kEventSelectorArrowGap,
+                            selectorArrowBounds->y + 3.0f,
+                            1.0f,
+                            std::max(0.0f, selectorArrowBounds->height - 6.0f));
+                        canvas.setColor(0xffaeb8c6);
+                        canvas.text("v", font, visage::Font::kCenter,
+                            selectorArrowBounds->x, selectorArrowBounds->y, selectorArrowBounds->width, selectorArrowBounds->height);
+                    }
                 }
 
-                const float assignmentLeft = selectorBounds.has_value() ? selectorBounds->x + 8.0f : valueLeft + 8.0f;
-                const float assignmentRight = selectorBounds.has_value()
-                    ? selectorBounds->x + selectorBounds->width - (row.choices.empty() ? 8.0f : 20.0f)
+                const float assignmentLeft = selectorTextBounds.has_value() ? selectorTextBounds->x : (selectorBounds.has_value() ? selectorBounds->x + kEventSelectorTextPadding : valueLeft + 8.0f);
+                const float assignmentRight = selectorTextBounds.has_value()
+                    ? selectorTextBounds->x + selectorTextBounds->width
                     : (createBounds.has_value() ? createBounds->x - 8.0f : valueLeft + valueWidth - 8.0f);
                 canvas.setColor(row.displayValue.empty() ? 0xffaeb8c6 : 0xffeef2f8);
                 canvas.text(assignmentText, font, visage::Font::kTopLeft,

@@ -48,32 +48,105 @@ Known error:
 
 ## Authoritative Project References
 
-Before planning or implementing non-trivial work, read the applicable
-project-level references:
+For non-trivial work, read references in this order:
 
-- `docs/VISIFORM_PROJECT_SPEC.md`
-- the active `docs/agent_plans/phase_N_<name>_plan.md`, when one exists
-- relevant source files, tests, build docs, and feature docs
+1. `docs/project_status.md`
+2. the active `docs/agent_plans/phase_N_<name>_plan.md`, when one exists
+3. only the sections of `docs/VISIFORM_PROJECT_SPEC.md` relevant to the task
+4. directly relevant source files, tests, build docs, and feature docs
+
+Do not perform a general repository survey unless these references are
+insufficient, inconsistent, or clearly stale.
 
 Source code and tests take precedence when documentation is stale or
-contradictory. When documentation is stale, correct the documentation as part
-of the same work when the task scope allows it.
+contradictory. Correct stale documentation within the task scope when practical.
+
+## Scope And Stopping Rules
+
+Stay within the requirements stated in the active prompt and phase plan.
+
+- Do not fix unrelated defects.
+- Do not refactor neighboring systems unless required for correctness.
+- Do not update unrelated documentation.
+- Record unrelated findings as follow-up items only.
+- Prefer targeted file searches over repository-wide exploration.
+- Inspect only the layers and files reasonably affected by the requested change.
+- Prefer focused validation during implementation.
+- Run complete required validation once after the focused changes are ready.
+- Stop when the requested requirements, required documentation, and approved
+  validation are complete.
+- Do not continue polishing after the definition of done has been met.
+- Ask the developer only when a required decision cannot be safely inferred.
 
 ## Lead-Agent Ownership
 
 The primary Codex session is the lead agent. Only the lead agent may:
 
-- define the final task scope;
+- define final task scope;
 - create or select the official numbered phase;
 - divide implementation assignments;
-- authorize overlapping-scope work only after assigning non-conflicting file
-  or subsystem ownership;
+- authorize overlapping-scope work after assigning non-conflicting ownership;
 - integrate results;
 - update final checklist status;
 - decide whether review findings are resolved;
 - declare a phase complete;
-- commit, push, or open a pull request when explicitly requested by the
-  developer.
+- commit, push, or open a pull request when explicitly requested.
+
+## Agent Usage Policy
+
+Use the fewest agents needed to complete the task safely.
+
+Default behavior:
+
+- Use the lead agent only for focused bug fixes, UI adjustments, documentation
+  changes, and changes confined to one subsystem.
+- Do not spawn agents merely because a task has multiple requirements.
+- Do not use a mandatory explorer, architect, validator, reviewer, and
+  documenter sequence.
+
+Use one specialist agent when:
+
+- repository exploration is substantial;
+- implementation ownership can be isolated;
+- independent review is justified by risk;
+- a focused task can be delegated without duplicate repository reading.
+
+Use multiple agents only when:
+
+- assignments are genuinely independent;
+- file or subsystem ownership does not overlap;
+- the task crosses major architectural layers;
+- parallel work provides a clear benefit over sequential implementation.
+
+Recommended maximum for normal phases:
+
+1. lead agent;
+2. one explorer or implementer;
+3. optionally one reviewer for risky changes.
+
+Use more agents only for unusually large, cross-layer, release-sensitive, or
+high-risk work. Record why the additional agents are justified.
+
+### Agent Responsibilities
+
+- `visiform_explorer`: read-only, bounded repository investigation.
+- `visiform_architect`: read-only design for substantial cross-layer work.
+- `visiform_implementer`: bounded code changes and focused tests.
+- `visiform_validator`: independent validation when risk justifies it.
+- `visiform_reviewer`: read-only independent review for risky changes.
+- `visiform_documenter`: documentation-only work when substantial documentation
+  updates are needed.
+
+### Parallel Work Rules
+
+- Use explicit bounded assignments.
+- Define explicit file or subsystem ownership.
+- Do not allow concurrent edits to the same files.
+- Do not allow concurrent edits to the official phase plan.
+- Do not allow concurrent edits to `docs/VISIFORM_PROJECT_SPEC.md`.
+- Run work in parallel only when assignments are genuinely independent.
+- Use sequential work when shared headers, model types, schemas, central
+  generator files, or other shared symbols overlap.
 
 ## Validation
 
@@ -85,6 +158,14 @@ instead of `VisiForm`, stop and ask the developer to build manually.
 
 When tests are relevant, prefer the existing CMake/Catch2 test target. Do not
 invent a new test framework.
+
+During implementation:
+
+- use targeted checks when possible;
+- avoid repeatedly running the complete build or full test suite;
+- run final required validation once after the focused changes are ready;
+- do not regenerate the CMake cache unless build configuration or source
+  registration changed, or the developer explicitly requests it.
 
 ## Architecture Boundaries
 
@@ -103,7 +184,9 @@ Keep these layers separated:
 Model, serialization, validation, and generator code should not depend on
 Visage UI headers.
 
-When changing behavior, consider every affected layer:
+When changing behavior, first identify which layers are actually affected.
+Use this list as an impact checklist, not as a requirement to inspect every
+layer for every task:
 
 - in-memory model;
 - ownership and parent-child relationships;
@@ -118,8 +201,8 @@ When changing behavior, consider every affected layer:
 - `USER CODE` preservation;
 - CMake, presets, and scripts;
 - generated-project build behavior;
-- Windows behavior, and macOS/Linux behavior only when actually relevant or
-  verified.
+- Windows behavior;
+- macOS/Linux behavior only when relevant or verified.
 
 ## Generated Code Rules
 
@@ -132,153 +215,115 @@ When changing behavior, consider every affected layer:
 
 ## Widget Changes
 
-When adding or changing widgets:
+When adding or changing widgets, inspect only the affected portions of:
 
-- Register widget types through `WidgetRegistry`.
-- Update `WidgetDefinition` data as needed.
-- Keep save/load, validation, editor preview, property editing, and code
-  generation in sync.
-- Update docs such as `docs/widget_catalog.md`, `docs/widget_registry.md`, or
-  feature-specific docs when behavior changes.
+- `WidgetRegistry`;
+- `WidgetDefinition`;
+- save/load behavior;
+- validation;
+- editor preview;
+- property editing;
+- code generation;
+- relevant widget documentation.
+
+Keep affected layers in sync. Do not inspect or modify unaffected layers merely
+to satisfy the checklist.
 
 ## Documentation And Plans
 
 Every multi-step VisiForm change requires a persistent phase plan in
 `docs/agent_plans/`.
 
-Phase-plan rules:
-
-- Before starting any new VisiForm phase, inspect the existing phase
-  documentation, specifications, changelog or equivalent project history,
-  repository history, and related files to determine the highest phase number
-  already used.
-- Select the next unused phase number.
-- Never assume a phase number from the prompt.
-- Use the file name pattern `phase_N_<name>_plan.md`.
-- Do not reuse, renumber, or overwrite an existing phase document.
-- If a requested phase number already exists, automatically advance to the next
-  unused phase number and report the selected number before implementation.
-- Include scope, requirements, architectural decisions, a Markdown TODO
-  checklist, validation plan, compatibility considerations, build/test status,
-  final result summary, and remaining TODOs.
-- Update the checklist as work progresses.
-- Check off items only when there is supporting evidence.
-- Record validation status before finishing.
-- Add a final result summary before claiming completion.
-- Summarize remaining TODOs in the plan file.
-- Do not claim completion while required validation is failing or unperformed.
-
 For small one-off fixes, a phase plan is not necessary unless the change grows
 into multi-step work.
 
-## Multi-Agent Workflow
+### Phase Number Selection
 
-Not every trivial task needs every agent. For cross-layer, compatibility-
-sensitive, or multi-file work, prefer this sequence:
+To determine the next phase number:
 
-1. `visiform_explorer`
-2. `visiform_architect`
-3. lead creates or updates the official phase plan
-4. one or more `visiform_implementer` agents
-5. lead integrates changes
-6. `visiform_validator`
-7. `visiform_reviewer`
-8. lead resolves findings
-9. `visiform_documenter`
-10. lead performs final validation and reporting
+1. inspect filenames in `docs/agent_plans/`;
+2. confirm the highest apparent number against `docs/project_status.md`;
+3. use repository history only when those sources conflict or appear incomplete.
 
-Agent responsibilities:
+Do not search the full specification, changelog, and Git history solely to
+determine a phase number.
 
-- `visiform_explorer`: read-only repository investigation.
-- `visiform_architect`: read-only design and implementation planning.
-- `visiform_implementer`: bounded code changes and focused tests.
-- `visiform_validator`: independent build, test, and behavior validation.
-- `visiform_reviewer`: read-only independent final review.
-- `visiform_documenter`: verified specification and documentation updates.
+Never reuse, renumber, or overwrite an existing phase document. If a requested
+phase number already exists, automatically advance to the next unused number
+and report the selected number before implementation.
 
-Parallel-work rules:
+Use the file name pattern:
 
-- Use explicit bounded assignments.
-- Define explicit file or subsystem ownership.
-- Do not allow concurrent edits to the same files.
-- Do not allow concurrent edits to the official phase plan.
-- Do not allow concurrent edits to `docs/VISIFORM_PROJECT_SPEC.md`.
-- Do not implement cross-layer changes before exploration and planning.
-- Run work in parallel only when assignments are genuinely independent.
-- Use sequential work when shared headers, model types, schemas, central
-  generator files, or other shared symbols overlap.
+`phase_N_<name>_plan.md`
+
+### Phase Plan Contents
+
+Include:
+
+- scope;
+- requirements;
+- important architectural decisions;
+- Markdown TODO checklist;
+- validation plan;
+- compatibility considerations when relevant;
+- build/test status;
+- final result summary;
+- remaining TODOs.
+
+Update the checklist as work progresses. Check off items only when there is
+supporting evidence. Record validation status before finishing. Do not claim
+completion while required validation is failing or unperformed.
+
+Avoid duplicating large amounts of information already present in
+`docs/project_status.md` or the project specification. Link or reference those
+documents instead.
 
 ## Work Continuity
 
-Help the developer resume work after time away.
+Keep the active phase plan usable as a handoff note. Before finishing
+multi-step work, record:
 
-When doing multi-step work, keep the active phase plan in
-`docs/agent_plans/` usable as a handoff note. Before finishing, make sure it
-records:
+- current branch and most recent relevant commit, if known;
+- files changed or intentionally left untouched;
+- completed work in plain language;
+- remaining work;
+- validation run or deferred;
+- important manual testing notes.
 
-- Current branch and most recent relevant commit, if known.
-- Files changed or intentionally left untouched.
-- What was completed in plain language.
-- What still needs to be done next.
-- Validation that was run, or validation that was deferred to the developer.
-- Any important manual testing notes, especially UI behavior that agents must
-  not validate by launching `VisiForm.exe`.
+When asked where development left off:
 
-When asked where the developer left off, inspect the repository before
-answering:
+1. check `git status --short --branch`;
+2. check `git log --oneline -n 8`;
+3. inspect the newest applicable phase plan;
+4. inspect `docs/project_status.md`;
+5. distinguish confirmed repository state from inferred next steps.
 
-- Check `git status --short --branch`.
-- Check the most recent commits with `git log --oneline -n 8`.
-- Review the newest files in `docs/agent_plans/`, especially unchecked
-  checklist items, "Remaining TODOs", "Validation Status", and "Final Result
-  Summary" sections.
-- Mention any untracked or modified files separately from committed work.
-- Clearly distinguish confirmed repository state from inferred next steps.
-
-For small one-off fixes that do not need a phase plan, leave enough context in
-the final response for the developer to resume from the git status and commit
-history alone.
+Do not perform a broader repository survey unless these sources conflict or do
+not answer the question.
 
 ## Session Instructions Accounting
 
 Keep `session-instructions/` focused on active work.
 
-- Move dated and completed session instruction files into
+- Move clearly dated and completed instruction files into
   `session-instructions/old/`.
-- A session instruction file counts as dated when its name or contents clearly
-  identify a dated phase, prompt, or completed work period.
-- A session instruction file counts as completed when the matching phase plan
-  or repository history shows the work has a final result summary, completed
-  implementation notes, or an explicit developer/agent decision that no further
-  active work remains for that prompt.
-- Do not move active, pending, or ambiguous instruction files. Leave them in
-  `session-instructions/` until completion is clear.
-- Never move `session-instructions/notes.txt`; it is the reusable debugging
-  notes file.
-- Keep `session-instructions/README.txt` in place unless the developer
-  explicitly asks to archive or rewrite it.
-- When archiving instructions, mention which files moved and which dated files
-  were intentionally left active.
+- Do not move active, pending, or ambiguous files.
+- Never move `session-instructions/notes.txt`.
+- Keep `session-instructions/README.txt` in place unless explicitly asked to
+  archive or rewrite it.
 - Prefer the reusable `session-instruction-archiver` skill when available.
+- Report moved files and any dated files intentionally left active.
+
+Do not inspect the full session-instructions history unless the task concerns
+archiving, prior instructions, or work continuity.
 
 ## Useful Agent Skills
 
-When an agent environment supports reusable skills, prefer skills that match
-the work being done instead of relying only on general code editing.
+Use relevant reusable skills when they reduce work or improve accuracy.
+Skill usage must still follow this file's safety rules.
 
-Useful skill categories for this repository:
-
-- C++ / CMake project navigation and build-system reasoning.
-- CMake preset and vcpkg dependency troubleshooting.
-- Visual Studio workspace diagnostics for the `VisiForm` target.
-- GitHub pull request review, issue triage, and CI log analysis.
-- Documentation maintenance for feature docs and phase plans.
-- JSON schema or structured-data editing for `.vfb.json` project files.
-- UI implementation review for Visage editor behavior.
-
-Skill usage must still follow this file's safety rules. In particular, skills
-must not launch `VisiForm.exe`, run generated apps, run build scripts, or change
-CMake/vcpkg/static-runtime settings unless the developer explicitly requests it.
+Do not scan for or load unrelated skills. Prefer only the skill directly
+applicable to the current task.
 
 ## Local Files
 
@@ -290,28 +335,40 @@ CMake/vcpkg/static-runtime settings unless the developer explicitly requests it.
   - `.vs/`
   - `Generated/`
 
+## Completion Reports
+
+For normal phases, report:
+
+- phase number and plan path;
+- implementation summary;
+- validation result;
+- remaining TODOs;
+- final Git status.
+
+For major cross-layer, release-related, or high-risk phases, also report:
+
+- agents used and assignments;
+- files changed;
+- exact validation commands;
+- review findings and resolutions;
+- specification/documentation updates;
+- known limitations.
+
+For small one-off fixes, give a concise summary of:
+
+- what changed;
+- validation status;
+- any remaining issue;
+- final Git status when repository changes were made.
+
 ## Before Finishing
 
 Before reporting completion:
 
-- Confirm the intended files were changed.
-- Confirm docs were updated when behavior changed.
-- Confirm validation was run through an approved path, or clearly say it was
-  deferred to the developer.
-- Do not claim a build passed unless it was actually run through the approved
-  workflow.
-
-For lead-agent completion reports on multi-step work, include:
-
-- phase number and plan path;
-- agents used;
-- assignments;
-- files changed;
-- implementation summary;
-- specification/documentation updates;
-- exact validation commands;
-- test and build results;
-- review findings and resolutions;
-- remaining TODOs;
-- known limitations;
-- final git status.
+- confirm the intended files were changed;
+- confirm required docs were updated;
+- confirm validation was run through an approved path, or clearly state that it
+  was deferred to the developer;
+- do not claim a build passed unless it actually ran through the approved
+  workflow;
+- stop after the task definition of done has been met.

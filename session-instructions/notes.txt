@@ -1,0 +1,1 @@
+Phase 92 has been pushed to the repo. The slider is working, but, it is not in the widget pallete. Text formatting for the dropdown needs improving. Width of the app can be wider on app startup.  In full screen, the splitter splits is to big.

@@ -47,8 +47,12 @@ namespace {
 constexpr float kMenuBarHeight = 30.0f;
 constexpr float kToolbarHeight = 42.0f;
 constexpr float kStatusBarHeight = 28.0f;
+constexpr float kDefaultStartupWindowWidth = 1400.0f;
+constexpr float kDefaultStartupWindowHeight = 820.0f;
 constexpr float kLeftPanelWidth = 220.0f;
 constexpr float kMinimumPropertyInspectorWidth = 386.0f;
+constexpr float kMaximumBalancedPropertyInspectorWidth = 520.0f;
+constexpr float kMaximumPropertyInspectorRegionFraction = 0.45f;
 constexpr float kMinimumDesignerCanvasWidth = 320.0f;
 constexpr float kSplitterDividerThickness = 6.0f;
 constexpr float kSplitterHitThickness = 14.0f;
@@ -138,6 +142,23 @@ constexpr float kTreeNodeEditorModalWidth = 760.0f;
 constexpr float kTreeNodeEditorModalHeight = 620.0f;
 constexpr float kTreeNodeEditorLineHeight = 20.0f;
 constexpr float kTreeNodeEditorRowHeight = 26.0f;
+
+float balancedPropertyInspectorWidth(float regionWidth, float requestedWidth)
+{
+    const float availableWidth = std::max(0.0f, regionWidth - kSplitterDividerThickness);
+    if (availableWidth <= 0.0f) {
+        return 0.0f;
+    }
+
+    const float minimumWidth = std::min(kMinimumPropertyInspectorWidth, availableWidth);
+    const float maximumWidthFromCanvas = std::max(0.0f, availableWidth - kMinimumDesignerCanvasWidth);
+    const float softMaximumWidth = std::max(minimumWidth,
+        std::min(kMaximumBalancedPropertyInspectorWidth, regionWidth * kMaximumPropertyInspectorRegionFraction));
+    const float maximumWidth = maximumWidthFromCanvas < minimumWidth
+        ? maximumWidthFromCanvas
+        : std::clamp(std::min(softMaximumWidth, maximumWidthFromCanvas), minimumWidth, availableWidth);
+    return std::clamp(requestedWidth, minimumWidth, maximumWidth);
+}
 constexpr float kTreeNodeEditorRowIndent = 20.0f;
 constexpr float kTreeNodeEditorInstructionHeight = 24.0f;
 constexpr float kTreeNodeEditorListPreferredHeight = 220.0f;
@@ -2567,7 +2588,7 @@ const std::string& MainWindow::statusMessage() const
 
 void MainWindow::showWindow()
 {
-    show(visage::Dimension::logicalPixels(1200), visage::Dimension::logicalPixels(800));
+    show(visage::Dimension::logicalPixels(kDefaultStartupWindowWidth), visage::Dimension::logicalPixels(kDefaultStartupWindowHeight));
     applyNativeWindowIcon();
 }
 
@@ -5462,7 +5483,8 @@ void MainWindow::applyLayout(const WindowLayout& layout)
     canvasInspectorSplitter_.setBounds(layout_.canvasInspectorRegion.x, layout_.canvasInspectorRegion.y,
         layout_.canvasInspectorRegion.width, layout_.canvasInspectorRegion.height);
 
-    const float desiredInspectorWidth = std::max(1.0f, static_cast<float>(settings_.propertyInspectorWidth));
+    const float desiredInspectorWidth = balancedPropertyInspectorWidth(layout_.canvasInspectorRegion.width,
+        std::max(1.0f, static_cast<float>(settings_.propertyInspectorWidth)));
     const float desiredSplitPosition = std::max(0.0f, layout_.canvasInspectorRegion.width - kSplitterDividerThickness - desiredInspectorWidth);
     canvasInspectorSplitter_.setSplitPosition(desiredSplitPosition);
 

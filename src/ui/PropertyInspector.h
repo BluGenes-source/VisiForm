@@ -116,6 +116,8 @@ private:
     [[nodiscard]] std::optional<ValueCellBounds> scrollBarThumbBounds() const;
     [[nodiscard]] std::optional<ValueCellBounds> colorSwatchBoundsForRow(const PropertyRow& row, float rowTop) const;
     [[nodiscard]] std::optional<ValueCellBounds> eventSelectorBoundsForRow(const PropertyRow& row, float rowTop) const;
+    [[nodiscard]] std::optional<ValueCellBounds> eventSelectorTextBoundsForRow(const PropertyRow& row, float rowTop) const;
+    [[nodiscard]] std::optional<ValueCellBounds> eventSelectorArrowBoundsForRow(const PropertyRow& row, float rowTop) const;
     [[nodiscard]] std::optional<ValueCellBounds> eventActionBoundsForRow(const PropertyRow& row, float rowTop, EventAction action) const;
     [[nodiscard]] std::optional<ValueCellBounds> sliderTrackBoundsForRow(const PropertyRow& row, float rowTop) const;
     [[nodiscard]] std::optional<ValueCellBounds> sliderThumbBoundsForRow(const PropertyRow& row, float rowTop, float value) const;

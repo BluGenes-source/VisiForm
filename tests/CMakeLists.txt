@@ -3,6 +3,7 @@ find_package(Catch2 CONFIG REQUIRED)
 add_executable(VisiFormTests
     test_project_serialization.cpp
     test_widget_registry_events.cpp
+    test_widget_palette_registry.cpp
     test_box_sizer_layout.cpp
     test_layout_engine.cpp
     test_project_validation.cpp

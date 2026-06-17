@@ -1,0 +1,231 @@
+Implement VisiForm Phase 93: Property Inspector and Layout Polish.
+
+Phase 92 has already been completed and pushed to the repository. Use Phase 93 for this work.
+
+Before modifying code:
+
+1. Read the repository instructions and existing agent rules.
+2. Read docs/project_status.md.
+3. Inspect the Phase 92 plan and implementation.
+4. Confirm the current branch and working-tree state.
+5. Create:
+
+   docs/agent_plans/phase_93_property_inspector_layout_polish_plan.md
+
+The Phase 93 plan must contain:
+
+- scope
+- affected files and systems
+- implementation approach
+- risks
+- Markdown TODO checklist
+- validation plan
+- build-validation status
+- final result summary
+- remaining TODOs
+
+Use the configured VisiForm subagents where appropriate:
+
+- Explorer: locate the slider registration, property inspector event editor, application startup sizing, and splitter layout code.
+- Implementer: make the approved changes.
+- Reviewer: inspect the implementation for regressions, hard-coded layout assumptions, clipping, and generated-code side effects.
+- Documenter: update the phase plan and project status after validation.
+
+Do not begin implementation until the explorer findings have been summarized.
+
+Phase 93 goals
+==============
+
+1. Add Slider to the Widget Palette
+-----------------------------------
+
+The Slider widget is implemented and working, but it is not currently available in the Widget Palette.
+
+Find the existing slider widget registration and ensure Slider appears in the Widget Palette with the other supported widgets.
+
+Verify that a Slider can be:
+
+- created from the palette
+- placed on the designer canvas
+- selected
+- displayed in the Project Tree
+- edited in the Property Inspector
+- saved and reloaded
+- exported without regression
+
+Do not duplicate the slider implementation or create a second widget type.
+
+2. Improve Event Dropdown Text Formatting
+-----------------------------------------
+
+The event-handler dropdown text is visually cramped and can overlap or become difficult to read.
+
+The screenshots show handler names such as:
+
+    handleHelloButtonClick
+
+being clipped or crowded near the dropdown arrow and adjacent buttons.
+
+Improve the event dropdown presentation so that:
+
+- handler text has proper left and right padding
+- text does not overlap the dropdown arrow
+- text remains vertically centered
+- the dropdown arrow has a reserved area
+- long handler names are clipped or elided cleanly
+- opening the dropdown displays readable entries
+- selected text remains readable in both focused and unfocused states
+- the control behaves correctly at narrow and wide inspector sizes
+
+Prefer reusable widget styling or layout behavior rather than one-off drawing coordinates.
+
+Do not change the stored handler names.
+
+3. Increase the Default Application Startup Width
+-------------------------------------------------
+
+The normal startup window is too narrow for the current three-panel layout.
+
+Increase the default application window width so that the initial layout provides reasonable space for:
+
+- Widget Palette and Project Tree
+- Designer Canvas
+- Property Inspector
+
+Choose a practical default based on the current UI and existing minimum-size constraints.
+
+Requirements:
+
+- do not force the window to start maximized
+- preserve restored-window behavior if VisiForm already saves window bounds
+- do not break smaller displays
+- keep the application height reasonable
+- ensure the startup window remains visible within the available desktop work area
+
+Document the previous and new startup dimensions in the Phase 93 plan.
+
+4. Correct Oversized Splitter Behavior in Maximized or Full-Screen Layout
+-------------------------------------------------------------------------
+
+When the application is maximized or displayed at a large width, the Property Inspector receives too much space and the Designer Canvas becomes disproportionately narrow.
+
+Review the top-level splitter and panel sizing behavior.
+
+The layout should:
+
+- remain balanced as the main window grows
+- avoid giving nearly all additional width to the Property Inspector
+- preserve a useful Designer Canvas width
+- preserve usable widths for the palette and project tree
+- keep splitter handles draggable
+- avoid sudden jumps when maximizing or restoring the window
+- avoid hard-coded pixel layouts that only work at one resolution
+
+Determine whether the correct solution uses:
+
+- proportional splitter sizing
+- preferred panel sizes
+- minimum and maximum panel widths
+- stretch weights
+- saved splitter positions
+- or a combination of these
+
+Use the existing VisiForm or Visage layout widgets wherever possible.
+
+Recommended target behavior:
+
+- left panel remains relatively compact
+- center Designer Canvas receives a meaningful portion of additional space
+- Property Inspector grows when useful but does not dominate the window
+- resizing back to a normal window keeps all three regions usable
+
+Do not merely reduce one hard-coded splitter value without understanding the resize policy.
+
+5. Preserve Existing Phase 92 Functionality
+-------------------------------------------
+
+Confirm that the Phase 92 inspector splitter and Events tab still work.
+
+Regression checks must include:
+
+- Properties tab
+- Events tab
+- event-handler dropdown
+- Create button
+- Existing button
+- Clear button
+- compatible event suggestions
+- inspector scrolling
+- splitter dragging
+- selected-widget synchronization
+- canvas interaction
+- project loading and saving
+
+Implementation constraints
+==========================
+
+- Follow the existing VisiForm architecture.
+- Reuse actual VisiForm/Visage widgets for application UI where practical.
+- Avoid introducing a separate ad hoc UI framework.
+- Do not redesign unrelated parts of the application.
+- Do not change project file formats unless absolutely necessary.
+- Do not modify generated user-code preservation behavior.
+- Avoid unrelated formatting or cleanup.
+- Keep commits and changes focused on Phase 93.
+- If the repository already persists window or splitter state, extend that mechanism rather than creating a conflicting one.
+
+Validation
+==========
+
+Perform the strongest validation available in the repository.
+
+At minimum:
+
+1. Regenerate or refresh CMake only if required by changed source/resource registration.
+2. Build the normal Windows debug configuration.
+3. Run relevant automated tests.
+4. Launch VisiForm.
+5. Verify Slider appears in the Widget Palette.
+6. Add a Slider to a test form and confirm selection, properties, save, reload, and export.
+7. Test the event-handler dropdown with:
+   - unset values
+   - short handler names
+   - long handler names
+   - existing handler names
+8. Test the window:
+   - at startup
+   - at minimum practical size
+   - at several intermediate widths
+   - maximized
+   - restored after maximization
+9. Drag the main splitters repeatedly.
+10. Confirm the Designer Canvas retains useful width in a maximized window.
+11. Confirm the Property Inspector tabs and Phase 92 controls remain functional.
+
+Record exact build commands, test commands, manual checks, failures, warnings, and results in the Phase 93 plan.
+
+Documentation
+=============
+
+After implementation and validation:
+
+- update docs/project_status.md
+- complete the Phase 93 checklist
+- record all important files changed
+- document the final splitter-sizing policy
+- document the final startup dimensions
+- record build and runtime validation status
+- include any remaining limitations or follow-up work
+
+Before claiming completion, summarize:
+
+- root cause of the missing Slider palette entry
+- dropdown formatting changes
+- startup sizing changes
+- splitter resize-policy changes
+- files changed
+- tests and builds performed
+- manual UI checks performed
+- remaining TODOs
+
+Do not claim completion if the build or required validation has not been performed. Clearly distinguish verified results from items that require manual user testing.
