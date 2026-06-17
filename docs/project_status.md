@@ -1,3 +1,5 @@
+> Phase 95 note (2026-06-17): Phase 95 implementation is ready for developer validation. The Widget Palette is now a top tabbed, registry-backed control with `Common`, `Containers`, `Layout`, `Forms`, `Data`, `Menu/Toolbar`, and `Additional` categories. The phase version is `1.0.1`, updated from `1.0.0` in `CMakeLists.txt`, `src/app/Version.h`, and `docs/versioning.md`. Static diff validation passed; the main `VisiForm` build and manual runtime checklist remain pending. This file still contains stale project-status creation prompt text below and should be rewritten into the authoritative status snapshot in a dedicated documentation pass.
+
 Create an authoritative VisiForm project status document at:
 
 `docs/PROJECT_STATUS.md`

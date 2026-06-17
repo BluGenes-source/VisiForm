@@ -88,37 +88,23 @@ The registry stores:
 The editor exposes these widget types through both the `Widget Palette` and the `Insert` menu.
 Both entry points use the same add-widget flow in `MainWindow`.
 
-Current `Widget Palette` order for user-placeable widgets:
+Current `Widget Palette` categories:
 
-- `MenuBar`
-- `ToolBar`
-- `Frame`
-- `GroupBox`
-- `Panel`
-- `TabControl`
-- `Label`
-- `Button`
-- `TextBox`
-- `CheckBox`
-- `RadioButton`
-- `ComboBox`
-- `ListBox`
-- `TreeView`
-- `TableGrid`
-- `Slider`
-- `ScrollBar`
-- `ProgressBar`
-- `StatusBar`
-- `Image`
-- `ColorPicker`
-- `ModalDialog`
-- `Spacer`
+- `Common`: Label, Button, TextBox, CheckBox, RadioButton
+- `Containers`: Frame, GroupBox, Panel, TabControl
+- `Layout`: Spacer, Sizer
+- `Forms`: Slider, ScrollBar, ProgressBar, ColorPicker
+- `Data`: ComboBox, ListBox, TreeView, TableGrid
+- `Menu/Toolbar`: MenuBar, ToolBar, StatusBar
+- `Additional`: Image, ModalDialog
 
 Current palette behavior:
 
 - the palette list is derived from `WidgetRegistry` palette metadata instead of a separate hard-coded UI list
 - `FormWindow` and `TabPage` stay hidden from the palette because they are not direct user-placeable entries
-- the palette now supports mouse-wheel scrolling and a draggable scrollbar thumb so lower entries remain reachable on smaller window heights
+- category tabs and widget controls are displayed in compact horizontal rows below the main toolbar
+- mouse-wheel scrolling and arrow controls keep tabs and widgets reachable at narrow window widths
+- clicking a widget still uses the same `MainWindow::addWidgetFromPalette` creation path as the previous palette
 
 ## Item-list and action-binding widgets
 

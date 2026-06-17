@@ -46,12 +46,13 @@ namespace {
 
 constexpr float kMenuBarHeight = 30.0f;
 constexpr float kToolbarHeight = 42.0f;
+constexpr float kWidgetPaletteHeight = 82.0f;
 constexpr float kStatusBarHeight = 28.0f;
 constexpr float kDefaultStartupWindowWidth = 1400.0f;
 constexpr float kDefaultStartupWindowHeight = 820.0f;
 constexpr unsigned int kTextEditCaretBlinkMilliseconds = 530;
 constexpr float kDefaultDpiScale = 1.0f;
-constexpr float kLeftPanelWidth = 220.0f;
+constexpr float kProjectTreeWidth = 190.0f;
 constexpr float kMinimumPropertyInspectorWidth = 386.0f;
 constexpr float kMaximumBalancedPropertyInspectorWidth = 520.0f;
 constexpr float kMaximumPropertyInspectorRegionFraction = 0.45f;
@@ -60,7 +61,6 @@ constexpr float kSplitterDividerThickness = 6.0f;
 constexpr float kSplitterHitThickness = 14.0f;
 constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
-constexpr float kProjectTreePreferredHeight = 180.0f;
 constexpr float kPadding = 12.0f;
 constexpr float kToolbarButtonMinWidth = 42.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
@@ -3014,6 +3014,9 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
         return;
     }
 
+    if (widgetPalette_.mouseMove(e.position.x, e.position.y)) {
+        redraw();
+    }
     updateEditorCursor(e.position.x, e.position.y);
     updateHoverHint(e.position.x, e.position.y);
 }
@@ -5462,29 +5465,27 @@ MainWindow::WindowLayout MainWindow::calculateLayout(float windowWidth, float wi
     layout.toolbar = { 0.0f, layout.menuBar.height, windowWidth, kToolbarHeight };
     layout.statusBar = { 0.0f, std::max(0.0f, windowHeight - kStatusBarHeight), windowWidth, kStatusBarHeight };
 
-    const float contentTop = layout.toolbar.y + layout.toolbar.height + kGap;
+    layout.widgetPalette = {
+        kGap,
+        layout.toolbar.y + layout.toolbar.height + kGap,
+        std::max(0.0f, windowWidth - kGap * 2.0f),
+        kWidgetPaletteHeight
+    };
+
+    const float contentTop = layout.widgetPalette.y + layout.widgetPalette.height + kGap;
     const float contentBottom = std::max(contentTop, layout.statusBar.y - kGap);
     const float contentHeight = std::max(0.0f, contentBottom - contentTop);
 
-    const float leftWidth = std::min(kLeftPanelWidth, std::max(140.0f, windowWidth * 0.2f));
+    const float leftWidth = std::min(kProjectTreeWidth, std::max(150.0f, windowWidth * 0.18f));
     const float leftX = kGap;
+    layout.showProjectTree = contentHeight >= kProjectTreeMinHeight && windowWidth >= 760.0f;
+    layout.projectTree = layout.showProjectTree
+        ? PanelBounds{ leftX, contentTop, leftWidth, contentHeight }
+        : PanelBounds{};
 
-    float projectTreeHeight = 0.0f;
-    if (contentHeight >= 420.0f) {
-        projectTreeHeight = std::min(kProjectTreePreferredHeight, contentHeight * 0.28f);
-        projectTreeHeight = std::max(projectTreeHeight, kProjectTreeMinHeight);
-    }
-
-    const bool showProjectTree = projectTreeHeight > 0.0f && contentHeight > projectTreeHeight + 120.0f;
-    const float paletteHeight = showProjectTree ? contentHeight - projectTreeHeight - kGap : contentHeight;
-
-    layout.widgetPalette = { leftX, contentTop, leftWidth, std::max(0.0f, paletteHeight) };
-    layout.showProjectTree = showProjectTree;
-    if (showProjectTree) {
-        layout.projectTree = { leftX, contentTop + paletteHeight + kGap, leftWidth, projectTreeHeight };
-    }
-
-    const float canvasX = layout.widgetPalette.x + layout.widgetPalette.width + kGap;
+    const float canvasX = layout.showProjectTree
+        ? layout.projectTree.x + layout.projectTree.width + kGap
+        : kGap;
     const float regionRight = std::max(canvasX, windowWidth - kGap);
     layout.canvasInspectorRegion = {
         canvasX,

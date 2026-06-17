@@ -38,30 +38,19 @@ It does not support runtime plugin loading yet.
 The `Widget Palette` now uses `WidgetRegistry` as its source of truth.
 Palette-visible widgets are controlled by `WidgetDefinition::paletteVisible`, ordered by `WidgetDefinition::paletteOrder`, and grouped by `WidgetDefinition::paletteGroup`.
 
-Current palette-visible widget order:
+Current palette categories:
 
-1. `Frame`
-2. `GroupBox`
-3. `Panel`
-4. `Sizer`
-5. `TabControl`
-6. `Label`
-7. `Button`
-8. `TextBox`
-9. `CheckBox`
-10. `RadioButton`
-11. `ComboBox`
-12. `ListBox`
-13. `TreeView`
-14. `TableGrid`
-15. `Slider`
-16. `ScrollBar`
-17. `ProgressBar`
-18. `StatusBar`
-19. `Image`
-20. `ColorPicker`
-21. `ModalDialog`
-22. `Spacer`
+| Category | Widgets |
+| --- | --- |
+| Common | Label, Button, TextBox, CheckBox, RadioButton |
+| Containers | Frame, GroupBox, Panel, TabControl |
+| Layout | Spacer, Sizer |
+| Forms | Slider, ScrollBar, ProgressBar, ColorPicker |
+| Data | ComboBox, ListBox, TreeView, TableGrid |
+| Menu/Toolbar | MenuBar, ToolBar, StatusBar |
+| Additional | Image, ModalDialog |
+
+The top palette renders categories in the table order. Widgets inside each category use `paletteOrder`.
 
 `FormWindow` and `TabPage` remain registered but are intentionally hidden from the palette.
 
@@ -166,4 +155,4 @@ Recommended rules for future widget additions:
 - no runtime plugin loading yet
 - no external JSON widget-definition files yet
 - registry is read-only after initialization for now
-- the palette is still a flat list and does not yet render category headers
+- the palette currently displays text labels because the registry does not yet expose widget icon metadata

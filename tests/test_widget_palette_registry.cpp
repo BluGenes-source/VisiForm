@@ -1,6 +1,7 @@
 #include "model/WidgetRegistry.h"
 
 #include <algorithm>
+#include <set>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -17,11 +18,33 @@ TEST_CASE("Widget palette includes Slider with registry-backed metadata")
     REQUIRE(sliderIt != paletteDefinitions.end());
     REQUIRE((*sliderIt)->displayName == "Slider");
     REQUIRE((*sliderIt)->paletteVisible);
-    REQUIRE((*sliderIt)->paletteGroup == "Value/Feedback");
+    REQUIRE((*sliderIt)->paletteGroup == "Forms");
 
     const auto scrollBarIt = std::find_if(paletteDefinitions.begin(), paletteDefinitions.end(), [](const auto* definition) {
         return definition != nullptr && definition->type == WidgetType::ScrollBar;
     });
     REQUIRE(scrollBarIt != paletteDefinitions.end());
     REQUIRE(std::distance(paletteDefinitions.begin(), sliderIt) < std::distance(paletteDefinitions.begin(), scrollBarIt));
+
+    const auto sizerIt = std::find_if(paletteDefinitions.begin(), paletteDefinitions.end(), [](const auto* definition) {
+        return definition != nullptr && definition->type == WidgetType::Sizer;
+    });
+    REQUIRE(sizerIt != paletteDefinitions.end());
+    REQUIRE((*sizerIt)->paletteGroup == "Layout");
+
+    const std::set<std::string> expectedGroups{
+        "Common",
+        "Containers",
+        "Layout",
+        "Forms",
+        "Data",
+        "Menu/Toolbar",
+        "Additional"
+    };
+    std::set<WidgetType> uniqueTypes;
+    for (const auto* definition : paletteDefinitions) {
+        REQUIRE(definition != nullptr);
+        REQUIRE(expectedGroups.contains(definition->paletteGroup));
+        REQUIRE(uniqueTypes.insert(definition->type).second);
+    }
 }

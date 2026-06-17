@@ -1,29 +1,44 @@
 #include "ui/WidgetPalette.h"
 
-#include "ui/WidgetPalette.h"
-
+#include "model/WidgetDefinition.h"
 #include "model/WidgetRegistry.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace visiform::ui {
 namespace {
 
-constexpr float kHeaderHeight = 34.0f;
-constexpr float kRowHeight = 32.0f;
-constexpr float kPadding = 12.0f;
-constexpr float kScrollBarWidth = 12.0f;
-constexpr float kMouseWheelSensitivity = 40.0f;
+constexpr float kOuterPadding = 8.0f;
+constexpr float kTabHeight = 30.0f;
+constexpr float kTabGap = 4.0f;
+constexpr float kItemGap = 6.0f;
+constexpr float kItemHeight = 34.0f;
+constexpr float kScrollStep = 72.0f;
+constexpr float kScrollButtonWidth = 24.0f;
 
-std::vector<const model::WidgetDefinition*> paletteEntries()
-{
-    return model::WidgetRegistry::instance().paletteDefinitions();
-}
+constexpr std::array<const char*, 7> kCategoryOrder{
+    "Common",
+    "Containers",
+    "Layout",
+    "Forms",
+    "Data",
+    "Menu/Toolbar",
+    "Additional"
+};
 
 bool containsPoint(const model::Rect& bounds, float x, float y)
 {
     return x >= bounds.x && y >= bounds.y && x <= bounds.x + bounds.width && y <= bounds.y + bounds.height;
+}
+
+int categoryRank(const std::string& category)
+{
+    const auto found = std::find(kCategoryOrder.begin(), kCategoryOrder.end(), category);
+    return found == kCategoryOrder.end()
+        ? static_cast<int>(kCategoryOrder.size())
+        : static_cast<int>(std::distance(kCategoryOrder.begin(), found));
 }
 
 } // namespace
@@ -34,7 +49,7 @@ void WidgetPalette::setBounds(float x, float y, float width, float height)
     y_ = y;
     width_ = width;
     height_ = height;
-    clampScrollOffset();
+    clampScrollOffsets();
 }
 
 bool WidgetPalette::contains(float x, float y) const
@@ -48,64 +63,62 @@ bool WidgetPalette::mouseDown(float x, float y)
         return false;
     }
 
-    updateScrollMetrics();
-    const auto scrollBar = scrollBarBounds();
-    if (!scrollBar.has_value() || !containsPoint(*scrollBar, x, y)) {
+    const auto categoryList = categories();
+    const model::Rect tabs = tabStripBounds();
+    const float maxTabScroll = maximumTabScroll(categoryList);
+    if (containsPoint(tabs, x, y)) {
+        if (maxTabScroll > 0.0f && x <= tabs.x + kScrollButtonWidth) {
+            tabScrollOffset_ = std::max(0.0f, tabScrollOffset_ - kScrollStep);
+            return true;
+        }
+        if (maxTabScroll > 0.0f && x >= tabs.x + tabs.width - kScrollButtonWidth) {
+            tabScrollOffset_ = std::min(maxTabScroll, tabScrollOffset_ + kScrollStep);
+            return true;
+        }
+
+        const float clipLeft = tabs.x + (maxTabScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+        const float clipRight = tabs.x + tabs.width - (maxTabScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+        float tabX = clipLeft - tabScrollOffset_;
+        for (const auto& category : categoryList) {
+            const float currentWidth = tabWidth(category.name);
+            if (x >= std::max(tabX, clipLeft) && x <= std::min(tabX + currentWidth, clipRight)) {
+                selectedCategory_ = category.name;
+                itemScrollOffset_ = 0.0f;
+                return true;
+            }
+            tabX += currentWidth + kTabGap;
+        }
+    }
+
+    const Category* category = selectedCategory(categoryList);
+    if (category == nullptr) {
         return false;
     }
 
-    const auto thumb = scrollBarThumbBounds();
-    if (thumb.has_value() && containsPoint(*thumb, x, y)) {
-        draggingScrollBarThumb_ = true;
-        scrollBarDragOffsetY_ = y - thumb->y;
-        return true;
+    const model::Rect items = itemStripBounds();
+    const float maxItemScroll = maximumItemScroll(*category);
+    if (containsPoint(items, x, y) && maxItemScroll > 0.0f) {
+        if (x <= items.x + kScrollButtonWidth) {
+            itemScrollOffset_ = std::max(0.0f, itemScrollOffset_ - kScrollStep);
+            return true;
+        }
+        if (x >= items.x + items.width - kScrollButtonWidth) {
+            itemScrollOffset_ = std::min(maxItemScroll, itemScrollOffset_ + kScrollStep);
+            return true;
+        }
     }
 
-    if (thumb.has_value() && y < thumb->y) {
-        setScrollOffsetY(scrollOffsetY_ - std::max(kRowHeight, visibleHeight_ * 0.85f));
-    }
-    else {
-        setScrollOffsetY(scrollOffsetY_ + std::max(kRowHeight, visibleHeight_ * 0.85f));
-    }
-
-    return true;
+    return false;
 }
 
-bool WidgetPalette::mouseDrag(float x, float y)
+bool WidgetPalette::mouseDrag(float, float)
 {
-    if (!draggingScrollBarThumb_) {
-        return false;
-    }
-
-    updateScrollMetrics();
-    const auto scrollBar = scrollBarBounds();
-    const auto thumb = scrollBarThumbBounds();
-    if (!scrollBar.has_value() || !thumb.has_value()) {
-        draggingScrollBarThumb_ = false;
-        return false;
-    }
-
-    const float trackTop = scrollBar->y;
-    const float trackHeight = scrollBar->height;
-    const float maxThumbTop = trackTop + std::max(0.0f, trackHeight - thumb->height);
-    const float thumbTop = std::clamp(y - scrollBarDragOffsetY_, trackTop, maxThumbTop);
-    const float maxScroll = std::max(0.0f, contentHeight_ - visibleHeight_);
-    if (trackHeight > thumb->height && maxScroll > 0.0f) {
-        setScrollOffsetY(maxScroll * ((thumbTop - trackTop) / (trackHeight - thumb->height)));
-    }
-    else {
-        setScrollOffsetY(0.0f);
-    }
-
-    return true;
+    return false;
 }
 
 bool WidgetPalette::mouseUp()
 {
-    const bool wasDragging = draggingScrollBarThumb_;
-    draggingScrollBarThumb_ = false;
-    scrollBarDragOffsetY_ = 0.0f;
-    return wasDragging;
+    return false;
 }
 
 bool WidgetPalette::mouseWheel(float deltaY, float x, float y)
@@ -114,43 +127,91 @@ bool WidgetPalette::mouseWheel(float deltaY, float x, float y)
         return false;
     }
 
-    updateScrollMetrics();
-    if (!needsVerticalScrollBar_) {
+    const auto categoryList = categories();
+    if (containsPoint(tabStripBounds(), x, y)) {
+        const float maximum = maximumTabScroll(categoryList);
+        if (maximum <= 0.0f) {
+            return false;
+        }
+        const float nextOffset = std::clamp(tabScrollOffset_ + (-deltaY * kScrollStep), 0.0f, maximum);
+        const bool changed = std::abs(nextOffset - tabScrollOffset_) > 0.01f;
+        tabScrollOffset_ = nextOffset;
+        return changed;
+    }
+
+    const Category* category = selectedCategory(categoryList);
+    if (category == nullptr) {
         return false;
     }
 
-    return setScrollOffsetY(scrollOffsetY_ + (-deltaY * kMouseWheelSensitivity));
+    const float maximum = maximumItemScroll(*category);
+    if (maximum <= 0.0f) {
+        return false;
+    }
+
+    const float nextOffset = std::clamp(itemScrollOffset_ + (-deltaY * kScrollStep), 0.0f, maximum);
+    const bool changed = std::abs(nextOffset - itemScrollOffset_) > 0.01f;
+    itemScrollOffset_ = nextOffset;
+    return changed;
+}
+
+bool WidgetPalette::mouseMove(float x, float y)
+{
+    const auto previousCategory = hoveredCategory_;
+    const auto previousWidget = hoveredWidgetType_;
+    hoveredCategory_.reset();
+    hoveredWidgetType_.reset();
+
+    if (contains(x, y)) {
+        const auto categoryList = categories();
+        const model::Rect tabs = tabStripBounds();
+        const float maxTabScroll = maximumTabScroll(categoryList);
+        if (containsPoint(tabs, x, y)) {
+            const float clipLeft = tabs.x + (maxTabScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+            const float clipRight = tabs.x + tabs.width - (maxTabScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+            float tabX = clipLeft - tabScrollOffset_;
+            for (const auto& category : categoryList) {
+                const float currentWidth = tabWidth(category.name);
+                if (x >= std::max(tabX, clipLeft) && x <= std::min(tabX + currentWidth, clipRight)) {
+                    hoveredCategory_ = category.name;
+                    break;
+                }
+                tabX += currentWidth + kTabGap;
+            }
+        }
+        hoveredWidgetType_ = hitTestWidgetType(x, y);
+    }
+
+    return previousCategory != hoveredCategory_ || previousWidget != hoveredWidgetType_;
 }
 
 std::optional<model::WidgetType> WidgetPalette::hitTestWidgetType(float x, float y) const
 {
-    if (!contains(x, y)) {
+    if (!containsPoint(itemStripBounds(), x, y)) {
         return std::nullopt;
     }
 
-    const auto entries = paletteEntries();
-    updateScrollMetrics();
-    if (!isWithinVisibleContent(x, y)) {
+    const auto categoryList = categories();
+    const Category* category = selectedCategory(categoryList);
+    if (category == nullptr) {
         return std::nullopt;
     }
 
-    const model::Rect bounds = contentBounds();
-    float rowTop = bounds.y - scrollOffsetY_;
-    for (const auto* entry : entries) {
-        if (rowTop + kRowHeight < bounds.y) {
-            rowTop += kRowHeight;
-            continue;
-        }
+    const model::Rect items = itemStripBounds();
+    const float maxScroll = maximumItemScroll(*category);
+    const float clipLeft = items.x + (maxScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+    const float clipRight = items.x + items.width - (maxScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+    if (x < clipLeft || x > clipRight) {
+        return std::nullopt;
+    }
 
-        if (rowTop > bounds.y + bounds.height) {
-            break;
-        }
-
-        if (y >= rowTop && y <= rowTop + kRowHeight && x >= bounds.x && x <= bounds.x + bounds.width) {
+    float itemX = clipLeft - itemScrollOffset_;
+    for (const auto* entry : category->entries) {
+        const float currentWidth = itemWidth(*entry);
+        if (x >= std::max(itemX, clipLeft) && x <= std::min(itemX + currentWidth, clipRight)) {
             return entry->type;
         }
-
-        rowTop += kRowHeight;
+        itemX += currentWidth + kItemGap;
     }
 
     return std::nullopt;
@@ -162,32 +223,17 @@ std::optional<std::string> WidgetPalette::hitTestHint(float x, float y) const
         return std::nullopt;
     }
 
-    const auto entries = paletteEntries();
-    updateScrollMetrics();
-    if (!isWithinVisibleContent(x, y)) {
-        return std::nullopt;
+    if (const auto type = hitTestWidgetType(x, y)) {
+        if (const auto* definition = model::WidgetRegistry::instance().find(*type)) {
+            return definition->displayName + ": " + definition->defaultHint;
+        }
     }
 
-    const model::Rect bounds = contentBounds();
-    float rowTop = bounds.y - scrollOffsetY_;
-    for (const auto* entry : entries) {
-        if (rowTop + kRowHeight < bounds.y) {
-            rowTop += kRowHeight;
-            continue;
-        }
-
-        if (rowTop > bounds.y + bounds.height) {
-            break;
-        }
-
-        if (y >= rowTop && y <= rowTop + kRowHeight && x >= bounds.x && x <= bounds.x + bounds.width) {
-            return entry->defaultHint;
-        }
-
-        rowTop += kRowHeight;
+    if (hoveredCategory_.has_value()) {
+        return "Widget category: " + *hoveredCategory_;
     }
 
-    return std::nullopt;
+    return std::string{ "Widget Palette" };
 }
 
 void WidgetPalette::draw(visage::Canvas& canvas, const visage::Font& font, bool drawText) const
@@ -196,158 +242,213 @@ void WidgetPalette::draw(visage::Canvas& canvas, const visage::Font& font, bool 
         return;
     }
 
-    canvas.setColor(0xff232833);
+    canvas.setColor(0xff202630);
     canvas.fill(x_, y_, width_, height_);
-
-    canvas.setColor(0xff2c3240);
-    canvas.fill(x_, y_, width_, kHeaderHeight);
-
-    canvas.setColor(0xff11141a);
+    canvas.setColor(0xff11151c);
     canvas.fill(x_, y_, width_, 1.0f);
     canvas.fill(x_, y_ + height_ - 1.0f, width_, 1.0f);
-    canvas.fill(x_, y_, 1.0f, height_);
-    canvas.fill(x_ + width_ - 1.0f, y_, 1.0f, height_);
 
-    if (drawText) {
-        canvas.setColor(0xfff3f5f8);
-        canvas.text("Widget Palette", font, visage::Font::kTopLeft,
-            x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
+    const auto categoryList = categories();
+    const model::Rect tabs = tabStripBounds();
+    const float maxTabScroll = maximumTabScroll(categoryList);
+    const float tabClipLeft = tabs.x + (maxTabScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+    const float tabClipRight = tabs.x + tabs.width - (maxTabScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+    float tabX = tabClipLeft - tabScrollOffset_;
+    for (const auto& category : categoryList) {
+        const float currentWidth = tabWidth(category.name);
+        const float visibleLeft = std::max(tabX, tabClipLeft);
+        const float visibleRight = std::min(tabX + currentWidth, tabClipRight);
+        if (visibleRight > visibleLeft) {
+            const bool selected = category.name == selectedCategory_;
+            const bool hovered = hoveredCategory_ == category.name;
+            canvas.setColor(selected ? 0xff3f78b7 : (hovered ? 0xff354252 : 0xff2a313c));
+            canvas.fill(visibleLeft, tabs.y, visibleRight - visibleLeft, tabs.height);
+            if (selected) {
+                canvas.setColor(0xff79b7ff);
+                canvas.fill(visibleLeft, tabs.y + tabs.height - 3.0f, visibleRight - visibleLeft, 3.0f);
+            }
+            if (drawText && tabX >= tabClipLeft && tabX + currentWidth <= tabClipRight) {
+                canvas.setColor(0xfff2f5f8);
+                canvas.text(category.name, font, visage::Font::kCenter, tabX, tabs.y, currentWidth, tabs.height - 2.0f);
+            }
+        }
+        tabX += currentWidth + kTabGap;
     }
 
-    const auto entries = paletteEntries();
-    updateScrollMetrics();
-    const model::Rect bounds = contentBounds();
-    float rowTop = bounds.y - scrollOffsetY_;
-    for (std::size_t index = 0; index < entries.size(); ++index) {
-        if (rowTop + kRowHeight < bounds.y) {
-            rowTop += kRowHeight;
-            continue;
+    if (maxTabScroll > 0.0f) {
+        canvas.setColor(0xff171c24);
+        canvas.fill(tabs.x, tabs.y, kScrollButtonWidth, tabs.height);
+        canvas.fill(tabs.x + tabs.width - kScrollButtonWidth, tabs.y, kScrollButtonWidth, tabs.height);
+        if (drawText) {
+            canvas.setColor(0xffdbe2ea);
+            canvas.text("<", font, visage::Font::kCenter, tabs.x, tabs.y, kScrollButtonWidth, tabs.height);
+            canvas.text(">", font, visage::Font::kCenter,
+                tabs.x + tabs.width - kScrollButtonWidth, tabs.y, kScrollButtonWidth, tabs.height);
         }
-
-        if (rowTop > bounds.y + bounds.height) {
-            break;
-        }
-
-        const float visibleTop = std::max(rowTop, bounds.y);
-        const float visibleHeight = std::min(rowTop + kRowHeight - 2.0f, bounds.y + bounds.height) - visibleTop;
-        if (visibleHeight <= 0.0f) {
-            rowTop += kRowHeight;
-            continue;
-        }
-
-        canvas.setColor(index % 2 == 0 ? 0xff2a303c : 0xff262c37);
-        canvas.fill(bounds.x, visibleTop, bounds.width, visibleHeight);
-
-        canvas.setColor(0xff3a4252);
-        canvas.fill(bounds.x, visibleTop, 4.0f, visibleHeight);
-
-        if (drawText && rowTop >= bounds.y && rowTop + kRowHeight <= bounds.y + bounds.height) {
-            canvas.setColor(0xffdde2ea);
-            canvas.text(entries[index]->displayName, font, visage::Font::kTopLeft,
-                bounds.x + 12.0f, rowTop + 6.0f, std::max(0.0f, bounds.width - 20.0f), kRowHeight - 8.0f);
-        }
-
-        rowTop += kRowHeight;
     }
 
-    if (const auto scrollBar = scrollBarBounds(); scrollBar.has_value()) {
-        canvas.setColor(0xff1c212a);
-        canvas.fill(scrollBar->x, scrollBar->y, scrollBar->width, scrollBar->height);
-        if (const auto thumb = scrollBarThumbBounds(); thumb.has_value()) {
-            canvas.setColor(0xff556070);
-            canvas.fill(thumb->x, thumb->y, thumb->width, thumb->height);
+    const Category* category = selectedCategory(categoryList);
+    if (category == nullptr) {
+        return;
+    }
+
+    const model::Rect items = itemStripBounds();
+    const float maxItemScroll = maximumItemScroll(*category);
+    const float itemClipLeft = items.x + (maxItemScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+    const float itemClipRight = items.x + items.width - (maxItemScroll > 0.0f ? kScrollButtonWidth : 0.0f);
+    float itemX = itemClipLeft - itemScrollOffset_;
+    for (const auto* entry : category->entries) {
+        const float currentWidth = itemWidth(*entry);
+        const float visibleLeft = std::max(itemX, itemClipLeft);
+        const float visibleRight = std::min(itemX + currentWidth, itemClipRight);
+        if (visibleRight > visibleLeft) {
+            const bool hovered = hoveredWidgetType_ == entry->type;
+            canvas.setColor(hovered ? 0xff44566c : 0xff303946);
+            canvas.fill(visibleLeft, items.y, visibleRight - visibleLeft, items.height);
+            canvas.setColor(hovered ? 0xff82b9f2 : 0xff536173);
+            canvas.fill(visibleLeft, items.y, 3.0f, items.height);
+            if (drawText && itemX >= itemClipLeft && itemX + currentWidth <= itemClipRight) {
+                canvas.setColor(0xffedf1f5);
+                canvas.text(entry->displayName, font, visage::Font::kCenter,
+                    itemX + 6.0f, items.y, currentWidth - 12.0f, items.height);
+            }
+        }
+        itemX += currentWidth + kItemGap;
+    }
+
+    if (maxItemScroll > 0.0f) {
+        canvas.setColor(0xff171c24);
+        canvas.fill(items.x, items.y, kScrollButtonWidth, items.height);
+        canvas.fill(items.x + items.width - kScrollButtonWidth, items.y, kScrollButtonWidth, items.height);
+        if (drawText) {
+            canvas.setColor(0xffdbe2ea);
+            canvas.text("<", font, visage::Font::kCenter, items.x, items.y, kScrollButtonWidth, items.height);
+            canvas.text(">", font, visage::Font::kCenter,
+                items.x + items.width - kScrollButtonWidth, items.y, kScrollButtonWidth, items.height);
         }
     }
 }
 
-void WidgetPalette::updateScrollMetrics() const
+std::vector<WidgetPalette::Category> WidgetPalette::categories() const
 {
-    const auto entries = paletteEntries();
-    visibleHeight_ = std::max(0.0f, height_ - kHeaderHeight - 16.0f);
-    contentHeight_ = static_cast<float>(entries.size()) * kRowHeight;
-    needsVerticalScrollBar_ = contentHeight_ > visibleHeight_ + 0.5f;
-    if (!needsVerticalScrollBar_) {
-        scrollOffsetY_ = 0.0f;
+    std::vector<Category> result;
+    for (const auto* definition : model::WidgetRegistry::instance().paletteDefinitions()) {
+        auto found = std::find_if(result.begin(), result.end(), [definition](const Category& category) {
+            return category.name == definition->paletteGroup;
+        });
+        if (found == result.end()) {
+            result.push_back(Category{ definition->paletteGroup, { definition } });
+        }
+        else {
+            found->entries.push_back(definition);
+        }
+    }
+
+    std::stable_sort(result.begin(), result.end(), [](const Category& left, const Category& right) {
+        const int leftRank = categoryRank(left.name);
+        const int rightRank = categoryRank(right.name);
+        return leftRank == rightRank ? left.name < right.name : leftRank < rightRank;
+    });
+    for (auto& category : result) {
+        std::stable_sort(category.entries.begin(), category.entries.end(), [](const auto* left, const auto* right) {
+            return left->paletteOrder == right->paletteOrder
+                ? left->displayName < right->displayName
+                : left->paletteOrder < right->paletteOrder;
+        });
+    }
+    return result;
+}
+
+const WidgetPalette::Category* WidgetPalette::selectedCategory(const std::vector<Category>& categoryList) const
+{
+    const auto selected = std::find_if(categoryList.begin(), categoryList.end(), [this](const Category& category) {
+        return category.name == selectedCategory_;
+    });
+    return selected == categoryList.end()
+        ? (categoryList.empty() ? nullptr : &categoryList.front())
+        : &*selected;
+}
+
+model::Rect WidgetPalette::tabStripBounds() const
+{
+    return { x_ + kOuterPadding, y_ + 6.0f, std::max(0.0f, width_ - kOuterPadding * 2.0f), kTabHeight };
+}
+
+model::Rect WidgetPalette::itemStripBounds() const
+{
+    return {
+        x_ + kOuterPadding,
+        y_ + kTabHeight + 10.0f,
+        std::max(0.0f, width_ - kOuterPadding * 2.0f),
+        std::max(0.0f, std::min(kItemHeight, height_ - kTabHeight - 14.0f))
+    };
+}
+
+float WidgetPalette::tabWidth(const std::string& label) const
+{
+    return std::clamp(28.0f + static_cast<float>(label.size()) * 7.2f, 76.0f, 126.0f);
+}
+
+float WidgetPalette::itemWidth(const model::WidgetDefinition& definition) const
+{
+    return std::clamp(30.0f + static_cast<float>(definition.displayName.size()) * 7.0f, 86.0f, 142.0f);
+}
+
+float WidgetPalette::totalTabWidth(const std::vector<Category>& categoryList) const
+{
+    float total = 0.0f;
+    for (const auto& category : categoryList) {
+        total += tabWidth(category.name) + kTabGap;
+    }
+    return std::max(0.0f, total - kTabGap);
+}
+
+float WidgetPalette::totalItemWidth(const Category& category) const
+{
+    float total = 0.0f;
+    for (const auto* definition : category.entries) {
+        total += itemWidth(*definition) + kItemGap;
+    }
+    return std::max(0.0f, total - kItemGap);
+}
+
+float WidgetPalette::maximumTabScroll(const std::vector<Category>& categoryList) const
+{
+    const float fullWidth = tabStripBounds().width;
+    const float totalWidth = totalTabWidth(categoryList);
+    if (totalWidth <= fullWidth) {
+        return 0.0f;
+    }
+    return std::max(0.0f, totalWidth - std::max(0.0f, fullWidth - kScrollButtonWidth * 2.0f));
+}
+
+float WidgetPalette::maximumItemScroll(const Category& category) const
+{
+    const float fullWidth = itemStripBounds().width;
+    const float totalWidth = totalItemWidth(category);
+    if (totalWidth <= fullWidth) {
+        return 0.0f;
+    }
+    return std::max(0.0f, totalWidth - std::max(0.0f, fullWidth - kScrollButtonWidth * 2.0f));
+}
+
+void WidgetPalette::clampScrollOffsets()
+{
+    const auto categoryList = categories();
+    if (!categoryList.empty()
+        && std::none_of(categoryList.begin(), categoryList.end(), [this](const Category& category) {
+            return category.name == selectedCategory_;
+        })) {
+        selectedCategory_ = categoryList.front().name;
+    }
+
+    tabScrollOffset_ = std::clamp(tabScrollOffset_, 0.0f, maximumTabScroll(categoryList));
+    if (const Category* category = selectedCategory(categoryList)) {
+        itemScrollOffset_ = std::clamp(itemScrollOffset_, 0.0f, maximumItemScroll(*category));
     }
     else {
-        const float maxScroll = std::max(0.0f, contentHeight_ - visibleHeight_);
-        scrollOffsetY_ = std::clamp(scrollOffsetY_, 0.0f, maxScroll);
+        itemScrollOffset_ = 0.0f;
     }
-}
-
-void WidgetPalette::clampScrollOffset()
-{
-    updateScrollMetrics();
-}
-
-bool WidgetPalette::setScrollOffsetY(float newScrollOffsetY)
-{
-    updateScrollMetrics();
-    const float maxScroll = std::max(0.0f, contentHeight_ - visibleHeight_);
-    const float clamped = std::clamp(newScrollOffsetY, 0.0f, maxScroll);
-    if (std::abs(clamped - scrollOffsetY_) < 0.01f) {
-        return false;
-    }
-
-    scrollOffsetY_ = clamped;
-    return true;
-}
-
-model::Rect WidgetPalette::contentBounds() const
-{
-    const float innerX = x_ + 8.0f;
-    const float innerY = y_ + kHeaderHeight + 8.0f;
-    const float innerWidth = std::max(0.0f, width_ - 16.0f);
-    const float reservedWidth = needsVerticalScrollBar_ ? (kScrollBarWidth + 6.0f) : 0.0f;
-    return {
-        innerX,
-        innerY,
-        std::max(0.0f, innerWidth - reservedWidth),
-        std::max(0.0f, height_ - kHeaderHeight - 16.0f)
-    };
-}
-
-std::optional<model::Rect> WidgetPalette::scrollBarBounds() const
-{
-    if (!needsVerticalScrollBar_) {
-        return std::nullopt;
-    }
-
-    const float innerX = x_ + 8.0f;
-    const float innerY = y_ + kHeaderHeight + 8.0f;
-    const float innerWidth = std::max(0.0f, width_ - 16.0f);
-    return model::Rect{
-        innerX + std::max(0.0f, innerWidth - kScrollBarWidth),
-        innerY,
-        kScrollBarWidth,
-        std::max(0.0f, height_ - kHeaderHeight - 16.0f)
-    };
-}
-
-std::optional<model::Rect> WidgetPalette::scrollBarThumbBounds() const
-{
-    if (!needsVerticalScrollBar_) {
-        return std::nullopt;
-    }
-
-    const auto scrollBar = scrollBarBounds();
-    if (!scrollBar.has_value()) {
-        return std::nullopt;
-    }
-
-    const float maxScroll = std::max(0.0f, contentHeight_ - visibleHeight_);
-    const float thumbHeight = maxScroll <= 0.0f
-        ? scrollBar->height
-        : std::max(24.0f, scrollBar->height * (visibleHeight_ / contentHeight_));
-    const float thumbTop = maxScroll <= 0.0f
-        ? scrollBar->y
-        : scrollBar->y + (scrollBar->height - thumbHeight) * (scrollOffsetY_ / maxScroll);
-    return model::Rect{ scrollBar->x, thumbTop, scrollBar->width, thumbHeight };
-}
-
-bool WidgetPalette::isWithinVisibleContent(float x, float y) const
-{
-    return containsPoint(contentBounds(), x, y);
 }
 
 } // namespace visiform::ui

@@ -1,3 +1,1 @@
-Phase 93 has been pushed to the repo. Text editing needs improvement. delete should delete a character, so the keypress is not hooked.  The edit coursor should blink. Which means it should use a timer.  Plan on using a timer, maybe in other places as needed. Currently, when you first enter an edit box in the property editor, the cursor is spliting in the midddle of a character. see image.
-
-Plan a phase 94 for this. Make the prompt so that it is efficient and keeps token use at minimum, but accurate.
+Phase 94 has been pushed to the repo. Now it is time to clean up the UI by moving the widget palette to the top of the app.  The image is an example as to how wxWidgets does this.  It is a tabbed bar and groups the widgets. Define a plan and a prompt for codex.  no sub agents, bump the version to 1.0.1. effiecant use of tokens.

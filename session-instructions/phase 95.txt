@@ -1,0 +1,189 @@
+Implement VisiForm Phase 95: Top Tabbed Widget Palette.
+
+Phase 94 is complete and pushed.
+
+Use:
+
+* Phase: 95
+* Version: 1.0.1
+* Subagents: none
+
+Keep the task token-efficient and narrowly scoped.
+
+## Startup steps
+
+1. Read:
+
+   * `AGENTS.md`
+   * `docs/project_status.md`
+   * the Phase 94 plan
+   * files directly related to the main layout, Widget Palette, widget registry, and widget creation
+
+2. Inspect `git status --short --branch`.
+
+3. Create:
+
+   `docs/agent_plans/phase_95_top_tabbed_widget_palette_plan.md`
+
+4. Set all authoritative VisiForm version declarations to `1.0.1` before implementation.
+
+5. Record the previous version and `1.0.1` in the phase plan and `docs/project_status.md`.
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not refactor unrelated UI systems.
+
+## Goal
+
+Replace the current vertical Widget Palette on the left side of the application with a horizontal tabbed widget palette near the top of the main window.
+
+Use the provided wxWidgets-style screenshot only as a layout reference. Do not copy its visual styling exactly.
+
+The new palette should appear below the menu/main toolbar and above the primary workspace.
+
+## Required layout
+
+Create a tabbed palette with logical widget categories.
+
+Suggested categories:
+
+* Common
+* Containers
+* Layout
+* Forms
+* Data
+* Menu/Toolbar
+* Additional
+
+Use only categories that make sense for the widget types currently supported by VisiForm.
+
+Assign widgets based on the existing widget registry or widget metadata. Avoid maintaining a second unrelated list of widget definitions.
+
+The selected tab should display a horizontal row or compact wrapped area of widget buttons.
+
+Each widget entry should show:
+
+* its existing icon when available;
+* a readable label or tooltip;
+* clear selected, hover, and pressed states where supported.
+
+## Behavior
+
+Preserve the current Widget Palette behavior:
+
+* creating widgets;
+* drag-and-drop, if currently supported;
+* click-to-create, if currently supported;
+* widget type lookup;
+* selection synchronization;
+* canvas placement;
+* undo/redo integration;
+* Project Tree updates.
+
+Do not create a second widget-creation path.
+
+Reuse the current palette actions and registry wherever possible.
+
+## Main-window cleanup
+
+After moving the palette:
+
+* remove the old left-side Widget Palette panel;
+* allow the Project Tree to occupy the appropriate left-side region;
+* give the Designer Canvas more horizontal space;
+* preserve the Property Inspector layout and splitter behavior from earlier phases;
+* avoid leaving empty space or unused splitter children.
+
+The top palette must not cause the main workspace to become excessively short.
+
+Use a compact fixed or preferred height and allow horizontal wrapping or scrolling if needed.
+
+## Responsive behavior
+
+Verify the palette at normal and maximized window sizes.
+
+Requirements:
+
+* tabs remain readable;
+* widget controls do not overlap;
+* narrow windows remain usable;
+* long categories may scroll or wrap cleanly;
+* the palette does not grow vertically without a reasonable limit;
+* maximizing and restoring the app does not distort the main workspace.
+
+## Architecture
+
+Prefer:
+
+* the existing widget registry;
+* reusable Visage tab controls;
+* existing toolbar/button controls;
+* existing palette event handlers;
+* existing layout widgets.
+
+Do not introduce:
+
+* duplicate widget metadata;
+* a separate UI framework;
+* hard-coded widget creation logic;
+* unrelated redesigns.
+
+If category metadata does not exist, add the smallest practical category field or mapping near the registry.
+
+Keep model, serialization, and generator behavior unchanged unless the palette implementation genuinely requires a small compatibility update.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration once after implementation.
+2. Launch VisiForm manually.
+3. Confirm the application displays version `1.0.1`.
+4. Confirm the old vertical Widget Palette is gone.
+5. Confirm the new tabbed palette appears at the top.
+6. Open every category tab.
+7. Confirm every currently supported palette widget is present exactly once.
+8. Create representative widgets from each category.
+9. Confirm canvas placement works.
+10. Confirm Project Tree updates.
+11. Confirm Properties and Events inspectors still work.
+12. Confirm undo and redo work for widget creation.
+13. Test normal, narrow, maximized, and restored window sizes.
+14. Confirm the Designer Canvas receives the reclaimed horizontal space.
+15. Confirm save, reload, and export behavior are unchanged.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 95 plan with:
+
+* final category list;
+* widget-to-category mapping approach;
+* layout changes;
+* files changed;
+* previous and new version;
+* build result;
+* runtime validation;
+* remaining issues.
+
+Update `docs/project_status.md`.
+
+## Completion report
+
+Report:
+
+* Phase 95 plan path;
+* version change to `1.0.1`;
+* final category structure;
+* how the existing widget registry was reused;
+* old palette removal;
+* main layout changes;
+* files changed;
+* build result;
+* manual validation performed;
+* remaining TODOs;
+* final Git status.
+
+Do not commit or push unless explicitly requested.
