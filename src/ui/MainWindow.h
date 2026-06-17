@@ -14,6 +14,7 @@
 #include "ui/editors/TextEditControl.h"
 #include "utils/AppSettings.h"
 #include "utils/IdGenerator.h"
+#include "utils/UiTimer.h"
 #include "validation/ProjectValidator.h"
 
 #include <filesystem>
@@ -37,6 +38,7 @@ public:
     void showWindow();
     void draw(visage::Canvas& canvas) override;
     void resized() override;
+    void dpiChanged() override;
     void mouseDown(const visage::MouseEvent& e) override;
     void mouseMove(const visage::MouseEvent& e) override;
     void mouseDrag(const visage::MouseEvent& e) override;
@@ -393,6 +395,7 @@ private:
     };
 
     void loadLabelFont();
+    void updateTextEditMetricsFont();
     void updateLayout();
     [[nodiscard]] WindowLayout calculateLayout(float windowWidth, float windowHeight) const;
     void applyLayout(const WindowLayout& layout);
@@ -506,6 +509,9 @@ private:
     bool applyInspectorDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
     bool applyPendingInspectorInteractionEdit();
     void handleTextEditPendingAction();
+    void updateTextEditCaretTimer();
+    void stopTextEditCaretTimer();
+    void handleTextEditCaretTimerTick();
     void handleDropdownSelection();
     void updateHoverHint(float x, float y);
     void clearCanvasInteraction();
@@ -598,6 +604,7 @@ private:
     ProjectTree projectTree_{};
     editors::TextEditControl textEditControl_{};
     editors::DropdownControl dropdownControl_{};
+    utils::UiTimer textEditCaretTimer_{};
     visage::Font labelFont_{};
     resources::ImageResourceCache imageResourceCache_{};
     bool autoSizeTextWidgets_ = true;

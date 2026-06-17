@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <visage/app.h>
 #include <visage/graphics.h>
@@ -46,9 +47,14 @@ public:
     [[nodiscard]] bool mouseDown(float x, float y);
     [[nodiscard]] bool keyPress(const visage::KeyEvent& event);
     [[nodiscard]] bool textInput(const std::string& text);
+    void showCaret();
+    void toggleCaretVisibility();
+    [[nodiscard]] bool shouldBlinkCaret() const;
+    [[nodiscard]] bool isCaretVisible() const;
 
     [[nodiscard]] std::optional<PendingAction> consumePendingAction();
 
+    void setMetricsFont(const visage::Font& font, float dpiScale);
     void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText) const;
 
 private:
@@ -60,6 +66,7 @@ private:
     void insertText(const std::string& text);
     void moveCursor(std::size_t index, bool extendSelection = false);
     void ensureCursorVisible();
+    void noteEditingInteraction();
     [[nodiscard]] std::size_t lineStartForIndex(std::size_t index) const;
     [[nodiscard]] std::size_t lineEndForIndex(std::size_t index) const;
     [[nodiscard]] std::size_t hitTestCharacterIndex(float x, float y) const;
@@ -67,10 +74,13 @@ private:
     [[nodiscard]] std::size_t currentColumnIndex() const;
     [[nodiscard]] std::size_t lineCount() const;
     [[nodiscard]] std::size_t indexForLineColumn(std::size_t lineIndex, std::size_t columnIndex) const;
-    [[nodiscard]] float characterAdvance() const;
+    [[nodiscard]] std::vector<std::size_t> lineBoundaries(std::size_t lineStart, std::size_t lineEnd) const;
+    [[nodiscard]] float measuredTextWidth(std::size_t start, std::size_t end) const;
+    [[nodiscard]] float cursorOffsetForIndex(std::size_t index) const;
     [[nodiscard]] float lineAdvance() const;
 
     Bounds bounds_{};
+    mutable std::optional<visage::Font> metricsFont_{};
     std::string originalText_{};
     std::string text_{};
     std::size_t cursorIndex_ = 0;
@@ -79,6 +89,7 @@ private:
     bool focused_ = false;
     bool editing_ = false;
     bool multiline_ = false;
+    bool caretVisible_ = false;
     float scrollX_ = 0.0f;
     float scrollY_ = 0.0f;
     PendingAction pendingAction_ = PendingAction::None;

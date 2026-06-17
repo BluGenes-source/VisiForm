@@ -49,6 +49,8 @@ constexpr float kToolbarHeight = 42.0f;
 constexpr float kStatusBarHeight = 28.0f;
 constexpr float kDefaultStartupWindowWidth = 1400.0f;
 constexpr float kDefaultStartupWindowHeight = 820.0f;
+constexpr unsigned int kTextEditCaretBlinkMilliseconds = 530;
+constexpr float kDefaultDpiScale = 1.0f;
 constexpr float kLeftPanelWidth = 220.0f;
 constexpr float kMinimumPropertyInspectorWidth = 386.0f;
 constexpr float kMaximumBalancedPropertyInspectorWidth = 520.0f;
@@ -142,6 +144,11 @@ constexpr float kTreeNodeEditorModalWidth = 760.0f;
 constexpr float kTreeNodeEditorModalHeight = 620.0f;
 constexpr float kTreeNodeEditorLineHeight = 20.0f;
 constexpr float kTreeNodeEditorRowHeight = 26.0f;
+
+float normalizedDpiScale(float dpiScale)
+{
+    return std::isfinite(dpiScale) && dpiScale > 0.0f ? dpiScale : kDefaultDpiScale;
+}
 
 float balancedPropertyInspectorWidth(float regionWidth, float requestedWidth)
 {
@@ -1644,6 +1651,7 @@ MainWindow::MainWindow()
 {
     setTitle(makeWindowTitle(false));
     loadLabelFont();
+    updateTextEditMetricsFont();
     loadAppSettings();
     applyCanvasSettings();
     updateLayout();
@@ -2614,6 +2622,13 @@ void MainWindow::resized()
     redraw();
 }
 
+void MainWindow::dpiChanged()
+{
+    updateTextEditMetricsFont();
+    updatePropertyEditorBounds();
+    updateEditorModalEditorBounds();
+}
+
 void MainWindow::draw(visage::Canvas& canvas)
 {
     updateWindowTitle();
@@ -2680,6 +2695,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (textEditControl_.isActive()) {
         if (textEditControl_.mouseDown(e.position.x, e.position.y)) {
+            updateTextEditCaretTimer();
             redraw();
             return;
         }
@@ -3493,6 +3509,7 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
 
     if (textEditControl_.isActive() && textEditControl_.keyPress(e)) {
         handleTextEditPendingAction();
+        updateTextEditCaretTimer();
         redraw();
         return true;
     }
@@ -3581,12 +3598,13 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
 
 bool MainWindow::receivesTextInput()
 {
-    return textEditControl_.isActive();
+    return textEditControl_.isFocused();
 }
 
 void MainWindow::textInput(const std::string& text)
 {
     if (textEditControl_.textInput(text)) {
+        updateTextEditCaretTimer();
         redraw();
     }
 }
@@ -3666,6 +3684,7 @@ void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveS
     clearCanvasInteraction();
     propertyInspector_.clearEditing();
     textEditControl_.clear();
+    stopTextEditCaretTimer();
     dropdownControl_.close();
     if (!additiveSelection) {
         document_.setSelection(widgetId);
@@ -5410,11 +5429,21 @@ void MainWindow::loadLabelFont()
             continue;
         }
 
-        labelFont_ = visage::Font(18.0f, std::string{ fontPath });
+        labelFont_ = visage::Font(18.0f, std::string{ fontPath }, normalizedDpiScale(dpiScale()));
         if (canDrawText()) {
+            updateTextEditMetricsFont();
             return;
         }
     }
+}
+
+void MainWindow::updateTextEditMetricsFont()
+{
+    if (!canDrawText()) {
+        return;
+    }
+
+    textEditControl_.setMetricsFont(labelFont_, normalizedDpiScale(dpiScale()));
 }
 
 void MainWindow::updateLayout()
@@ -6725,6 +6754,7 @@ void MainWindow::applyCanvasSettings()
     designerCanvas_.setSnapToGrid(settings_.snapToGrid);
     designerCanvas_.setGridSize(settings_.gridSize);
     designerCanvas_.setMajorGridSize(settings_.majorGridSize);
+    updateTextEditMetricsFont();
 }
 
 void MainWindow::updateEditorCursor(float x, float y)
@@ -6857,8 +6887,10 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
         return true;
     }
 
+    updateTextEditMetricsFont();
     textEditControl_.begin(row.displayValue);
     updatePropertyEditorBounds();
+    updateTextEditCaretTimer();
     if (!row.choices.empty()) {
         openInspectorDropdown(row);
     }
@@ -6912,6 +6944,7 @@ void MainWindow::cancelInspectorEdit()
 {
     propertyInspector_.cancelEditing();
     textEditControl_.clear();
+    stopTextEditCaretTimer();
     dropdownControl_.close();
     requestKeyboardFocus();
     redraw();
@@ -7873,6 +7906,39 @@ void MainWindow::handleTextEditPendingAction()
     }
 
     cancelInspectorEdit();
+}
+
+void MainWindow::updateTextEditCaretTimer()
+{
+    if (!textEditControl_.shouldBlinkCaret()) {
+        stopTextEditCaretTimer();
+        return;
+    }
+
+    textEditControl_.showCaret();
+    if (textEditCaretTimer_.isRunning()) {
+        return;
+    }
+
+    textEditCaretTimer_.start(kTextEditCaretBlinkMilliseconds, [this]() {
+        handleTextEditCaretTimerTick();
+    });
+}
+
+void MainWindow::stopTextEditCaretTimer()
+{
+    textEditCaretTimer_.stop();
+}
+
+void MainWindow::handleTextEditCaretTimerTick()
+{
+    if (!textEditControl_.shouldBlinkCaret()) {
+        stopTextEditCaretTimer();
+        return;
+    }
+
+    textEditControl_.toggleCaretVisibility();
+    redraw();
 }
 
 void MainWindow::handleDropdownSelection()
@@ -8880,8 +8946,10 @@ bool MainWindow::beginEditorModalFieldEdit(const EditorModalField& field)
     editorModalEdit_.active = true;
     editorModalEdit_.key = field.key;
     editorModalEdit_.editKind = field.editKind;
+    updateTextEditMetricsFont();
     textEditControl_.begin(field.value);
     updateEditorModalEditorBounds();
+    updateTextEditCaretTimer();
     redraw();
     return true;
 
@@ -9948,6 +10016,7 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
         const auto activeField = editorModalFieldAt(e.position.x, e.position.y);
         if (activeField.has_value() && activeField->field.key == editorModalEdit_.key) {
             if (textEditControl_.mouseDown(e.position.x, e.position.y)) {
+                updateTextEditCaretTimer();
                 redraw();
                 return true;
             }
@@ -9958,6 +10027,7 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
     }
 
     if (editorModal_.mode == EditorModalMode::TreeNodeEditor && textEditControl_.mouseDown(e.position.x, e.position.y)) {
+        updateTextEditCaretTimer();
         redraw();
         return true;
     }

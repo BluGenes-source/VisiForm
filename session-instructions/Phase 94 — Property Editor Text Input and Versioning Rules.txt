@@ -1,0 +1,161 @@
+# Phase 94 — Property Editor Text Input and Versioning Rules
+
+Implement VisiForm Phase 94.
+
+Phase 93 is complete and pushed. Use Phase 94 for this pass.
+
+## Token and scope constraints
+
+Keep this pass focused and efficient:
+
+* Do not use subagents.
+* Do not perform a repository-wide audit.
+* Read only `AGENTS.md`, `docs/project_status.md`, the Phase 93 plan, and files directly involved in text editing, keyboard input, timers, focus, caret drawing, and application versioning.
+* Use targeted searches before opening large files.
+* Do not refactor unrelated controls or formatting.
+* Reuse existing input and timer infrastructure where available.
+* Build once after implementation unless a failure requires another build.
+
+Create:
+
+`docs/agent_plans/phase_94_property_editor_text_input_plan.md`
+
+Keep the plan concise, with:
+
+* scope
+* targeted files
+* TODO checklist
+* validation results
+* final summary
+* remaining issues
+
+## Goal 1: Fix Delete-key text editing
+
+Text-edit controls in the Property Inspector do not correctly handle the Delete key.
+
+Required behavior:
+
+* `Delete` removes the character immediately after the caret.
+* `Backspace` removes the character immediately before the caret.
+* A selected text range is removed by either Delete or Backspace.
+* Editing updates the underlying property through the existing commit/change mechanism.
+* Delete must not trigger widget deletion while a property text editor has keyboard focus.
+* Existing application-level Delete behavior must continue when no text editor is active.
+* Verify key-down, key-press, or text-input routing and fix the missing hook at the correct input layer.
+
+Do not implement Delete as a special case only for one property row. Fix the reusable text-editing control or shared editor path.
+
+## Goal 2: Correct caret placement
+
+When a property editor first receives focus, the caret can appear through the middle of a character.
+
+Correct the caret-position calculation so that it always lands on a valid text boundary.
+
+Required behavior:
+
+* Clicking between characters places the caret at the nearest valid insertion point.
+* Clicking on the left or right half of a glyph behaves consistently.
+* Initial focus does not place the caret through a glyph.
+* Home, End, arrow keys, Backspace, and Delete continue from valid positions.
+* Horizontal padding and any text-field scrolling offset are included in hit testing.
+* Empty text fields place the caret correctly.
+* Long text fields remain editable.
+
+Use the same font metrics and text origin used for rendering. Avoid approximate fixed-width calculations.
+
+## Goal 3: Add a blinking edit caret
+
+The active text editor caret must blink.
+
+Use a timer-based design that can be reused by other VisiForm controls where practical.
+
+Required behavior:
+
+* The caret blinks only while the editor has focus.
+* Typing, clicking, moving the caret, or changing selection makes the caret immediately visible and restarts the blink interval.
+* Losing focus stops the blink timer and hides or disables the caret as appropriate.
+* Only the necessary control region is repainted.
+* Timer lifetime must be safe when controls are destroyed, replaced, or lose focus.
+* Avoid creating an uncontrolled timer per property row if one active editor or shared timer is sufficient.
+* Do not add a busy loop or continuously repaint the whole window.
+
+Prefer an existing Visage timer, animation, event-loop, or scheduled-callback facility. Introduce a small reusable VisiForm timer abstraction only if the framework lacks a suitable existing mechanism.
+
+Document the selected timer design briefly in the phase plan.
+
+## Goal 4: Update AGENTS.md versioning rules
+
+Add a concise persistent rule to `AGENTS.md` defining the VisiForm version format as:
+
+`Major.Minor.Build`
+
+Define the fields as:
+
+* `Major`: incompatible architectural, project-format, or product-level changes.
+* `Minor`: significant backward-compatible feature milestones.
+* `Build`: completed phases containing fixes, improvements, or backward-compatible additions.
+
+Add this required workflow:
+
+1. A phase uses the current version while it is being implemented and validated.
+2. After that phase builds successfully and is considered complete, increment `Build` by one to establish the version for the next phase.
+3. Example: if Phase 94 completes successfully as version `1.0.0`, update the project to `1.0.1` for the next phase.
+4. Reset `Build` to `0` whenever `Major` or `Minor` is intentionally incremented.
+5. Update every authoritative version location consistently.
+6. Do not increment the version when a phase has not passed its required build validation.
+7. Record the old and new versions in the completed phase plan and `docs/project_status.md`.
+
+Keep the rule compact and avoid duplicating existing phase-process instructions.
+
+## Version update for this pass
+
+Inspect the authoritative version declarations.
+
+After Phase 94 passes its required build validation:
+
+* increment the Build component for the next phase
+* update all authoritative version declarations consistently
+* record the previous and resulting versions in the Phase 94 plan
+* update `docs/project_status.md`
+
+Do not guess the current version from this prompt. Read it from the repository.
+
+## Validation
+
+Perform targeted validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm.
+3. Edit a text property and verify normal character insertion.
+4. Verify Backspace.
+5. Verify Delete.
+6. Verify Delete with selected text.
+7. Verify application-level widget deletion still works outside an active text editor.
+8. Click at the beginning, middle, and end of text and verify valid caret placement.
+9. Verify the caret does not split a glyph.
+10. Verify Left, Right, Home, and End.
+11. Verify the caret blinks while focused.
+12. Verify typing or clicking restarts the visible blink state.
+13. Verify focus loss stops caret blinking.
+14. Verify repeated focus changes do not leave timers or callbacks active.
+15. Verify property editing still updates the selected widget and supports save/reload.
+16. After successful validation, increment the Build version for the next phase.
+
+Run existing relevant automated tests if available. Do not add broad tests unrelated to text input.
+
+## Completion report
+
+Before claiming completion, report:
+
+* root cause of the Delete-key failure
+* caret hit-testing correction
+* timer and caret-blink design
+* safeguards for application-level Delete handling
+* `AGENTS.md` rule added
+* previous and next `Major.Minor.Build` versions
+* files changed
+* build command and result
+* manual checks completed
+* remaining limitations
+
+Do not claim manual runtime checks were completed unless they were actually performed.

@@ -285,30 +285,17 @@ VisiForm versions use `Major.Minor.Build`.
 - `Major`: incompatible architectural, project-format, or product-level
   changes.
 - `Minor`: significant backward-compatible feature milestones.
-- `Build`: each new numbered development phase.
+- `Build`: completed phases containing fixes, improvements, or
+  backward-compatible additions.
 
-### Phase Version Workflow
-
-Starting a new numbered phase requires a new version.
-
-1. Determine the next unused phase number using the existing phase-selection
-   rules.
-2. Before implementation begins, read the current authoritative version and
-   increment only `Build`.
-3. Apply that new version to the entire phase, including development and
-   validation builds.
-4. Update every authoritative version declaration consistently.
-5. Record the previous version and new phase version in the phase plan and
-   `docs/project_status.md`.
-6. Do not increment the version again when the phase is completed.
-7. Reset `Build` to `0` whenever `Major` or `Minor` is intentionally
-   incremented.
-
-Example: if Phase 93 uses `1.0.0`, Phase 94 begins as `1.0.1`.
-
-Keep version discovery targeted. Inspect known authoritative version
-declarations and directly related build/configuration files only; do not perform
-a repository-wide version search unless those sources are inconsistent.
+A phase uses the current version while it is implemented and validated. After
+the phase builds successfully and is considered complete, increment `Build` by
+one for the next phase, reset `Build` to `0` whenever `Major` or `Minor` is
+intentionally incremented, update every authoritative version location
+consistently, and record the old and new versions in the completed phase plan
+and `docs/project_status.md`. Do not increment the version when required build
+validation has not passed; for example, if Phase 94 completes successfully as
+`1.0.0`, update the project to `1.0.1` for the next phase.
 
 ## Work Continuity
 

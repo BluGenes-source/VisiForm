@@ -1,1 +1,3 @@
-Phase 92 has been pushed to the repo. The slider is working, but, it is not in the widget pallete. Text formatting for the dropdown needs improving. Width of the app can be wider on app startup.  In full screen, the splitter splits is to big.
+Phase 93 has been pushed to the repo. Text editing needs improvement. delete should delete a character, so the keypress is not hooked.  The edit coursor should blink. Which means it should use a timer.  Plan on using a timer, maybe in other places as needed. Currently, when you first enter an edit box in the property editor, the cursor is spliting in the midddle of a character. see image.
+
+Plan a phase 94 for this. Make the prompt so that it is efficient and keeps token use at minimum, but accurate.

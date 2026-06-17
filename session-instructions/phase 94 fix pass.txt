@@ -1,0 +1,137 @@
+Continue VisiForm Phase 94. Do not create a new phase and do not increment the version.
+
+Phase 94 currently builds, but launching VisiForm causes this runtime assertion:
+
+- `visage::Font::dpiScale()` asserts because `dpi_scale_` is zero.
+- The failure occurs when `TextEditControl::draw()` calls font measurement such as `stringWidth()`.
+- The font appears to be created or used before valid canvas DPI settings are applied.
+
+Keep this investigation narrow and token-efficient.
+
+Read only:
+
+- `AGENTS.md`
+- the active Phase 94 plan
+- `docs/project_status.md`
+- `TextEditControl` implementation
+- directly related font creation, DPI initialization, and canvas-settings code
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Do not create Phase 95.
+Do not bump the version again.
+
+Tasks
+=====
+
+1. Reproduce and trace the exact initialization path
+----------------------------------------------------
+
+Determine:
+
+- where the `TextEditControl` label/edit font is constructed
+- its initial `dpi_scale_`
+- when `loadLabelFont()` is called
+- when `applyCanvasSettings()` or equivalent DPI propagation runs
+- why `draw()` or `stringWidth()` executes before the font has valid DPI
+
+Record the confirmed root cause in the Phase 94 plan.
+
+2. Fix the initialization order
+-------------------------------
+
+Preferred solution:
+
+- ensure every font used by `TextEditControl` has a valid DPI scale before any draw, hit-test, caret-position, or string-measurement call
+- initialize the font with the current canvas DPI when the editor is created or focused
+- reapply DPI when canvas settings change
+
+Do not rely solely on delaying the crash.
+
+If a safe default is required before a canvas is available, use a deliberate default DPI scale of `1.0f`, then replace it with the real canvas DPI when known.
+
+Avoid scattered one-off assignments. Use the existing font/canvas settings path where possible.
+
+3. Add narrowly scoped defensive handling
+-----------------------------------------
+
+Inspect `Font::dpiScale()` and its constructor behavior.
+
+Only if consistent with the existing Visage design, make the runtime behavior defensive so a missing DPI does not cause a fatal assertion in normal application use.
+
+Acceptable behavior:
+
+- initialize `dpi_scale_` to `1.0f` in constructors, or
+- return `1.0f` when the stored value is invalid while retaining an appropriate debug diagnostic
+
+Do not silently conceal persistent incorrect DPI propagation.
+
+The primary fix must still ensure the editor receives the actual DPI value.
+
+4. Check all Phase 94 font-measurement paths
+--------------------------------------------
+
+Verify the following do not measure text with an invalid font:
+
+- caret hit testing
+- caret drawing
+- selection drawing
+- horizontal text scrolling
+- placeholder or property-value rendering
+- focus-entry initialization
+- timer-triggered repaint
+
+Avoid broad changes outside the shared text editor path.
+
+5. Validation
+=============
+
+Build through the approved VisiForm Debug workflow once after the fix.
+
+Then manually verify:
+
+- VisiForm launches without the assertion
+- Property Inspector text editors can receive focus
+- the caret is positioned only between characters
+- the caret blinks
+- typing works
+- Backspace works
+- Delete works
+- selection deletion works
+- focus changes do not crash
+- changing display scale or moving between monitors does not leave stale DPI, if practical
+- existing widget deletion still works outside an active editor
+
+Do not claim manual runtime validation unless it was actually performed.
+
+6. Documentation
+================
+
+Update the existing Phase 94 plan with:
+
+- runtime regression
+- confirmed root cause
+- initialization-order fix
+- any defensive font fallback
+- files changed
+- build result
+- manual runtime result
+- remaining issues
+
+Update `docs/project_status.md` only as needed.
+
+Completion response
+===================
+
+Report:
+
+- exact root cause
+- why Phase 94 exposed it
+- initialization-order fix
+- whether a defensive DPI fallback was added
+- files changed
+- build result
+- runtime validation performed
+- remaining limitations
+
+Do not create a new phase, new version, commit, or push unless explicitly requested.

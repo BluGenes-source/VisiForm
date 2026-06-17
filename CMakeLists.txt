@@ -115,6 +115,7 @@ add_executable(VisiForm
     src/utils/CppIdentifier.cpp
     src/utils/IdGenerator.cpp
     src/utils/AppSettings.cpp
+    src/utils/UiTimer.cpp
     src/utils/NativeFileDialogs.cpp
     src/utils/RecentFiles.cpp
 )
