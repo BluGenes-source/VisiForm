@@ -48,8 +48,10 @@ constexpr float kMenuBarHeight = 30.0f;
 constexpr float kToolbarHeight = 42.0f;
 constexpr float kStatusBarHeight = 28.0f;
 constexpr float kLeftPanelWidth = 220.0f;
-constexpr float kRightPanelWidth = 430.0f;
-constexpr float kRightPanelMinimumWidth = 386.0f;
+constexpr float kMinimumPropertyInspectorWidth = 386.0f;
+constexpr float kMinimumDesignerCanvasWidth = 320.0f;
+constexpr float kSplitterDividerThickness = 6.0f;
+constexpr float kSplitterHitThickness = 14.0f;
 constexpr float kGap = 8.0f;
 constexpr float kProjectTreeMinHeight = 160.0f;
 constexpr float kProjectTreePreferredHeight = 180.0f;
@@ -2615,6 +2617,7 @@ void MainWindow::draw(visage::Canvas& canvas)
         || canvasInteraction_.mode == CanvasInteractionState::Mode::Resize;
     designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, &imageResourceCache_, simplifySelectedImages, marqueeRect, canvasInteraction_.smartGuides);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, settings_, document_.selectedWidgetIds().size());
+    canvasInspectorSplitter_.draw(canvas);
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
     }
@@ -2677,6 +2680,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (widgetPalette_.mouseDown(e.position.x, e.position.y)) {
+        redraw();
+        return;
+    }
+
+    if (canvasInspectorSplitter_.mouseDown(e.position.x, e.position.y)) {
+        visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
         redraw();
         return;
     }
@@ -2968,6 +2977,7 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
         return;
     }
 
+    updateEditorCursor(e.position.x, e.position.y);
     updateHoverHint(e.position.x, e.position.y);
 }
 
@@ -2982,6 +2992,14 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
     }
 
     if (widgetPalette_.mouseDrag(e.position.x, e.position.y)) {
+        redraw();
+        return;
+    }
+
+    if (canvasInspectorSplitter_.mouseDrag(e.position.x, e.position.y)) {
+        settings_.propertyInspectorWidth = std::max(1, static_cast<int>(std::lround(canvasInspectorSplitter_.secondPaneSize())));
+        applyLayout(layout_);
+        visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
         redraw();
         return;
     }
@@ -3158,6 +3176,15 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
     }
 
     if (openMenuIndex_ >= 0) {
+        return;
+    }
+
+    if (canvasInspectorSplitter_.mouseUp()) {
+        settings_.propertyInspectorWidth = std::max(1, static_cast<int>(std::lround(canvasInspectorSplitter_.secondPaneSize())));
+        saveAppSettings();
+        setOperationStatus("Resized Property Inspector to " + std::to_string(settings_.propertyInspectorWidth) + " px.");
+        updateEditorCursor(e.position.x, e.position.y);
+        redraw();
         return;
     }
 
@@ -5390,10 +5417,7 @@ MainWindow::WindowLayout MainWindow::calculateLayout(float windowWidth, float wi
     const float contentHeight = std::max(0.0f, contentBottom - contentTop);
 
     const float leftWidth = std::min(kLeftPanelWidth, std::max(140.0f, windowWidth * 0.2f));
-    const float availableRightWidth = std::max(kRightPanelMinimumWidth, windowWidth - leftWidth - kGap * 4.0f);
-    const float rightWidth = std::min(kRightPanelWidth, availableRightWidth);
     const float leftX = kGap;
-    const float rightX = std::max(leftX + leftWidth + kGap, windowWidth - rightWidth - kGap);
 
     float projectTreeHeight = 0.0f;
     if (contentHeight >= 420.0f) {
@@ -5410,14 +5434,12 @@ MainWindow::WindowLayout MainWindow::calculateLayout(float windowWidth, float wi
         layout.projectTree = { leftX, contentTop + paletteHeight + kGap, leftWidth, projectTreeHeight };
     }
 
-    layout.propertyInspector = { rightX, contentTop, rightWidth, contentHeight };
-
     const float canvasX = layout.widgetPalette.x + layout.widgetPalette.width + kGap;
-    const float canvasRight = layout.propertyInspector.x - kGap;
-    layout.designerCanvas = {
+    const float regionRight = std::max(canvasX, windowWidth - kGap);
+    layout.canvasInspectorRegion = {
         canvasX,
         contentTop,
-        std::max(0.0f, canvasRight - canvasX),
+        std::max(0.0f, regionRight - canvasX),
         contentHeight
     };
 
@@ -5429,12 +5451,31 @@ void MainWindow::applyLayout(const WindowLayout& layout)
     layout_ = layout;
     widgetPalette_.setBounds(layout_.widgetPalette.x, layout_.widgetPalette.y,
         layout_.widgetPalette.width, layout_.widgetPalette.height);
+    projectTree_.setBounds(layout_.projectTree.x, layout_.projectTree.y,
+        layout_.projectTree.width, layout_.projectTree.height);
+
+    canvasInspectorSplitter_.setOrientation(Splitter::Orientation::Vertical);
+    canvasInspectorSplitter_.setMinimumFirstPaneSize(kMinimumDesignerCanvasWidth);
+    canvasInspectorSplitter_.setMinimumSecondPaneSize(kMinimumPropertyInspectorWidth);
+    canvasInspectorSplitter_.setDividerThickness(kSplitterDividerThickness);
+    canvasInspectorSplitter_.setHitThickness(kSplitterHitThickness);
+    canvasInspectorSplitter_.setBounds(layout_.canvasInspectorRegion.x, layout_.canvasInspectorRegion.y,
+        layout_.canvasInspectorRegion.width, layout_.canvasInspectorRegion.height);
+
+    const float desiredInspectorWidth = std::max(1.0f, static_cast<float>(settings_.propertyInspectorWidth));
+    const float desiredSplitPosition = std::max(0.0f, layout_.canvasInspectorRegion.width - kSplitterDividerThickness - desiredInspectorWidth);
+    canvasInspectorSplitter_.setSplitPosition(desiredSplitPosition);
+
+    const Splitter::Bounds firstPane = canvasInspectorSplitter_.firstPaneBounds();
+    const Splitter::Bounds secondPane = canvasInspectorSplitter_.secondPaneBounds();
+    layout_.designerCanvas = { firstPane.x, firstPane.y, firstPane.width, firstPane.height };
+    layout_.propertyInspector = { secondPane.x, secondPane.y, secondPane.width, secondPane.height };
+    settings_.propertyInspectorWidth = std::max(1, static_cast<int>(std::lround(secondPane.width)));
+
     designerCanvas_.setBounds(layout_.designerCanvas.x, layout_.designerCanvas.y,
         layout_.designerCanvas.width, layout_.designerCanvas.height);
     propertyInspector_.setBounds(layout_.propertyInspector.x, layout_.propertyInspector.y,
         layout_.propertyInspector.width, layout_.propertyInspector.height);
-    projectTree_.setBounds(layout_.projectTree.x, layout_.projectTree.y,
-        layout_.projectTree.width, layout_.projectTree.height);
     updatePropertyEditorBounds();
 }
 
@@ -6643,6 +6684,7 @@ void MainWindow::loadAppSettings()
 {
     std::string errorMessage;
     settings_ = utils::AppSettings::load(errorMessage);
+    settings_.propertyInspectorWidth = std::max(1, settings_.propertyInspectorWidth);
     projectTree_.setRecentFiles(settings_.recentFiles);
 }
 
@@ -6661,6 +6703,16 @@ void MainWindow::applyCanvasSettings()
     designerCanvas_.setSnapToGrid(settings_.snapToGrid);
     designerCanvas_.setGridSize(settings_.gridSize);
     designerCanvas_.setMajorGridSize(settings_.majorGridSize);
+}
+
+void MainWindow::updateEditorCursor(float x, float y)
+{
+    if (canvasInspectorSplitter_.isDragging() || canvasInspectorSplitter_.isPointOverDivider(x, y)) {
+        visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
+        return;
+    }
+
+    visage::setCursorStyle(visage::MouseCursor::Arrow);
 }
 
 void MainWindow::toggleGrid()

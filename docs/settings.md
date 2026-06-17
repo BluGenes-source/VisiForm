@@ -27,8 +27,10 @@ Current settings include:
 - `visageGitTag`
 - `showGrid`
 - `snapToGrid`
+- `smartGuidesEnabled`
 - `gridSize`
 - `majorGridSize`
+- `propertyInspectorWidth`
 
 ## Recent files
 
@@ -47,10 +49,23 @@ The designer canvas loads these preferences on startup:
 
 - `showGrid`
 - `snapToGrid`
+- `smartGuidesEnabled`
 - `gridSize`
 - `majorGridSize`
 
-If toolbar grid or snap toggles are used, the updated values are saved immediately.
+If toolbar grid, snap, or smart-guide toggles are used, the updated values are saved immediately.
+
+## Editor shell layout state
+
+The editor shell also persists the Property Inspector width through:
+
+- `propertyInspectorWidth`
+
+Behavior:
+
+- the Designer Canvas / Property Inspector splitter restores the last saved inspector width on startup
+- restored width is clamped against the current window size and pane minimums
+- dragging the splitter saves the updated width after the drag completes
 
 ## Project and export directories
 

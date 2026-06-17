@@ -1,0 +1,432 @@
+Implement Phase 92: Reusable Splitter Widget and Editor UI Dogfooding
+
+This task is intended to use Codex subagents. Use a subagent-capable model such as GPT-5.4.
+
+Create the persistent phase plan:
+
+docs/agent_plans/phase_92_reusable_splitter_widget_plan.md
+
+The plan must include:
+
+* architectural findings
+* proposed reusable widget API
+* implementation scope
+* Markdown TODO checklist
+* delegated subagent assignments
+* files changed
+* build-validation results
+* manual-test results
+* final implementation summary
+* deferred work and remaining TODOs
+
+## Phase 92 goal
+
+Create a reusable VisiForm splitter widget and use it between the Designer Canvas and Property Inspector.
+
+VisiForm should increasingly use its own reusable widget and layout infrastructure to construct the VisiForm editor.
+
+Follow a reusable-widget-first architecture:
+
+* Prefer existing VisiForm widgets when they already provide the required behavior.
+* Improve an existing reusable widget when practical.
+* Add a reusable widget when no suitable widget exists.
+* Avoid one-off editor-only layout and mouse-handling code.
+* Layer editor-specific behavior on top of generic reusable widgets.
+* Do not rewrite the entire editor during this phase.
+
+## Subagent workflow
+
+The primary agent owns the phase, coordinates all work, maintains the Phase 92 plan, and is responsible for the final integration.
+
+Use subagents in this sequence.
+
+### Stage 1: Parallel investigation
+
+Delegate these investigations concurrently where practical.
+
+#### Explorer subagent
+
+Inspect the repository for:
+
+* widget base classes
+* containers and sizers
+* existing resizers, dividers, splitters, sashes, or two-pane controls
+* mouse input and pointer capture patterns
+* resize cursor handling
+* component ownership and child layout conventions
+* styling and drawing conventions
+* current main-editor layout implementation
+* existing Canvas and Property Inspector bounds calculations
+* application settings or preferences support
+
+Report:
+
+* relevant files and classes
+* reusable components that may already solve part of the problem
+* risks and architectural constraints
+* recommended files to modify
+
+Do not edit files.
+
+#### Architect subagent
+
+Using the repository architecture, propose a reusable splitter design.
+
+Define:
+
+* recommended class name
+* class ownership
+* public API
+* orientation handling
+* child-pane ownership
+* split-position representation
+* minimum pane constraints
+* separator thickness and hit area
+* dragging and mouse-capture behavior
+* resize cursor behavior
+* layout recalculation
+* persistence integration
+* editor integration approach
+* designer-facing integration implications
+
+Report the design and alternatives.
+
+Do not edit files.
+
+#### Designer-integration subagent
+
+Inspect what is required to expose the splitter as a normal VisiForm designer widget.
+
+Review:
+
+* Widget Palette registration
+* document/model representation
+* property metadata
+* serialization and deserialization
+* Designer Canvas preview
+* validation
+* generated C++ output
+* tests and documentation
+
+Report whether full designer integration is safe within Phase 92 or should become a later phase.
+
+Do not edit files.
+
+#### Editor-UI audit subagent
+
+Audit the current VisiForm editor and classify these areas:
+
+* Widget Palette
+* Project Tree
+* Designer Canvas container
+* Property Inspector
+* Properties and Events tabs
+* toolbar
+* menus
+* status bar
+* existing separators and resizable regions
+
+Classify each as:
+
+* using reusable VisiForm widgets
+* using reusable widgets with editor-specific wrappers
+* custom editor-only components
+* manually laid-out regions that should eventually use reusable widgets
+
+Do not edit files.
+
+### Stage 2: Primary-agent consolidation
+
+After the investigation subagents finish:
+
+1. Review and reconcile their findings.
+2. Record the findings in the Phase 92 plan.
+3. Select the final splitter architecture.
+4. Define the exact Phase 92 implementation scope.
+5. List the files expected to change.
+6. Identify deferred designer integration, if applicable.
+7. Update the TODO checklist before implementation.
+
+Do not begin implementation until the architecture and scope are recorded in the phase plan.
+
+### Stage 3: Controlled implementation
+
+Delegate implementation to one implementer subagent only.
+
+Do not allow multiple subagents to edit overlapping files concurrently.
+
+#### Implementer subagent
+
+Implement the approved reusable splitter architecture and editor integration.
+
+The implementer must:
+
+* follow the architecture recorded in the Phase 92 plan
+* avoid unrelated refactoring
+* keep the splitter generic and free of editor-specific dependencies
+* integrate it between the Designer Canvas and Property Inspector
+* add tests where practical
+* update documentation directly related to the implementation
+* report every file changed
+* report any architectural conflict before deviating from the plan
+
+The primary agent must review the implementer’s changes before accepting them.
+
+### Stage 4: Parallel post-implementation review
+
+After implementation, delegate review tasks concurrently where practical.
+
+#### Reviewer subagent
+
+Review the implementation for:
+
+* adherence to the approved architecture
+* reusable-widget design quality
+* unintended editor-specific coupling
+* ownership and lifetime problems
+* mouse-capture errors
+* invalid bounds calculations
+* duplicate layout logic
+* state leakage between splitter instances
+* unrelated changes
+* regression risks
+
+Do not edit files unless the primary agent explicitly requests a correction pass.
+
+#### Test and validation subagent
+
+Inspect and validate:
+
+* build-system integration
+* available automated tests
+* splitter layout calculations
+* minimum-width clamping
+* multiple-instance independence
+* resize behavior
+* persistence behavior, if implemented
+* likely regressions in the Events tab and editor shell
+
+Run appropriate tests and builds where available.
+
+Report exact commands, configurations, results, and failures.
+
+Do not hide or reinterpret failed validation.
+
+#### Documentation subagent
+
+Review:
+
+* the Phase 92 plan
+* TODO completion status
+* architecture notes
+* editor UI audit
+* build results
+* manual validation instructions
+* deferred work
+
+Report missing or inaccurate documentation.
+
+Do not mark work complete independently.
+
+### Stage 5: Primary-agent correction and completion
+
+The primary agent must:
+
+1. Consolidate reviewer findings.
+2. Correct confirmed defects directly or through a controlled implementer correction pass.
+3. Re-run affected tests and builds.
+4. Update the Phase 92 plan.
+5. Record remaining deferred work.
+6. Confirm that no unresolved implementation TODOs are hidden.
+7. Provide the final phase summary.
+
+## Current problem
+
+The Phase 91 Events-tab implementation requires additional horizontal space.
+
+Increasing the Property Inspector’s fixed width permanently reduces the Designer Canvas.
+
+Add a draggable vertical splitter on the left edge of the Property Inspector so the user can resize the Designer Canvas and Property Inspector interactively.
+
+## Reusable splitter requirements
+
+Create or extend a genuine reusable VisiForm widget.
+
+The splitter should support:
+
+* vertical orientation
+* horizontal orientation where practical
+* two child panes
+* draggable separator
+* live resizing while dragging
+* appropriate horizontal or vertical resize cursor
+* visible separator
+* a larger usable hit area than the visible divider
+* minimum size constraints for both panes
+* safe split-position clamping
+* recalculation when the parent is resized
+* mouse capture during dragging
+* clean release after dragging
+* safe handling when the pointer leaves the widget or application
+* independent state for multiple splitter instances
+* initial split position
+* access to the current split position
+* normal VisiForm styling conventions
+* no dependencies on editor-specific classes
+
+Possible names include:
+
+* Splitter
+* SplitterWidget
+* SplitView
+
+Choose the name that best matches existing VisiForm conventions.
+
+## Editor integration
+
+Use the reusable splitter between:
+
+* first or left pane: Designer Canvas
+* second or right pane: Property Inspector
+
+Required behavior:
+
+* The separator appears on the left edge of the Property Inspector.
+* Dragging left widens the Property Inspector.
+* Dragging right widens the Designer Canvas.
+* The application window size remains unchanged.
+* Both panes resize interactively.
+* The Property Inspector has a sensible minimum width.
+* The Designer Canvas has a sensible minimum width.
+* Neither pane can collapse or receive invalid dimensions.
+* Main-window resizing preserves a valid layout.
+* The separator remains usable at minimum and maximum positions.
+* Properties and Events tabs continue to work.
+* Phase 91 event rows use additional inspector width correctly.
+* Handler fields and Create, Existing, and Clear controls remain readable.
+* Existing Widget Palette and Project Tree behavior does not regress.
+* Existing left-side layout and separators continue working.
+
+## Split-position state
+
+Preserve the Property Inspector width or splitter position during the current application session.
+
+Inspect the existing settings or preferences architecture.
+
+If a suitable mechanism already exists:
+
+* save the splitter position
+* restore it on startup
+* validate and clamp restored values
+* use a safe default when no valid value exists
+
+If no suitable mechanism exists:
+
+* retain the value during the current session
+* document cross-session persistence as deferred work
+* do not introduce an unrelated settings subsystem without approval
+
+## Designer-facing splitter integration
+
+The splitter must be implemented as a real reusable widget, even if complete designer exposure is deferred.
+
+If full integration is safe within Phase 92, add it to:
+
+* Widget Palette
+* document/model representation
+* property metadata
+* serialization
+* deserialization
+* Designer Canvas preview
+* validation
+* generated C++ output
+* automated tests
+* documentation
+
+Potential properties include:
+
+* orientation
+* split position
+* first-pane minimum size
+* second-pane minimum size
+* separator thickness
+* live resize
+
+Do not add speculative features merely to enlarge the phase.
+
+If full palette, model, serialization, and generator integration would make Phase 92 too broad or unstable:
+
+* complete the reusable splitter widget
+* use it in the VisiForm editor
+* document the exact remaining integration work
+* recommend that work as the next numbered phase
+* do not claim full designer integration
+
+## Editor UI architecture rule
+
+Record this project rule in the Phase 92 plan and the appropriate persistent project documentation:
+
+When modifying a VisiForm editor UI region, prefer using or improving a reusable VisiForm widget rather than adding new one-off editor-only layout code.
+
+Do not convert the complete editor during Phase 92.
+
+## Manual validation checklist
+
+Validate all implemented behavior:
+
+* Hovering over the separator shows the correct resize cursor.
+* Dragging left widens the Property Inspector.
+* Dragging right widens the Designer Canvas.
+* Resizing occurs live during dragging.
+* Both panes respect minimum widths.
+* Neither pane collapses.
+* The splitter remains usable at its minimum position.
+* The splitter remains usable at its maximum position.
+* Mouse capture ends correctly after releasing the button.
+* Moving outside the splitter during a drag does not leave it stuck.
+* Resizing the main window preserves a valid layout.
+* Properties-tab behavior remains correct.
+* Events-tab behavior remains correct.
+* Event controls remain readable.
+* The Existing-handler dropdown continues to work correctly.
+* Widget Palette and Project Tree behavior do not regress.
+* Multiple splitter instances maintain independent state.
+* Horizontal orientation works if included.
+* Session-state restoration works.
+* Cross-session restoration works if persistence is implemented.
+* A designer-created splitter serializes and generates correctly if designer integration is included.
+
+## Build validation
+
+Build the supported Visual Studio 2022 configuration.
+
+Record:
+
+* CMake configure or cache-refresh steps, if needed
+* exact build preset or configuration
+* target built
+* build command
+* success or failure
+* warnings related to Phase 92
+* tests executed
+* test results
+* executable output path
+
+Do not report success based only on source inspection.
+
+## Completion rules
+
+Do not declare Phase 92 complete until:
+
+* the persistent phase plan exists
+* investigation findings are recorded
+* the reusable splitter architecture is documented
+* the reusable splitter is implemented
+* the editor uses the reusable splitter
+* the editor UI audit is documented
+* reviewer findings are resolved or explicitly deferred
+* the supported configuration builds successfully
+* test and manual-validation results are recorded
+* completed and deferred scope is accurately documented
+* no unresolved implementation TODO is hidden
+* remaining work is summarized before completion

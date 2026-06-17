@@ -397,6 +397,7 @@ Implemented editor features include:
 - Grid, snap, and smart guide behavior.
 - Project tree hierarchy navigation.
 - Property inspector updates for selected widgets, including a fixed tab strip with separate `Properties` and `Events` views.
+- A reusable splitter-based shell boundary between the Designer Canvas and Property Inspector, with persisted inspector width.
 - Modal editor dialogs for project settings, resources, keyboard shortcuts, item lists, table grids, and tree nodes.
 - Resource preview for images through `ImageResourceCache`.
 - Validation modal summary display.
@@ -699,6 +700,7 @@ Rules from `AGENTS.md` and `.github` instructions:
 - Agents must preserve user changes and avoid reverting unrelated work.
 - Product behavior changes must update relevant docs.
 - Build validation uses Visual Studio workspace pipeline when available and unambiguous; otherwise defer to developer.
+- When modifying an editor UI region, prefer using or improving a reusable VisiForm widget instead of adding new one-off editor-only layout code.
 
 Multi-agent workflow:
 

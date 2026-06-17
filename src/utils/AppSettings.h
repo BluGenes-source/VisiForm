@@ -11,6 +11,7 @@ class AppSettings {
 public:
     static constexpr const char* defaultVisageGitRepository = "https://github.com/VitalAudio/visage.git";
     static constexpr const char* defaultVisageGitTag = "main";
+    static constexpr int defaultPropertyInspectorWidth = 430;
 
     std::vector<std::filesystem::path> recentFiles{};
     std::filesystem::path lastProjectDirectory{};
@@ -23,6 +24,7 @@ public:
     bool smartGuidesEnabled = true;
     int gridSize = 10;
     int majorGridSize = 50;
+    int propertyInspectorWidth = defaultPropertyInspectorWidth;
     std::map<std::string, std::string> keyboardShortcuts{};
 
     [[nodiscard]] static AppSettings load(std::string& errorMessage);

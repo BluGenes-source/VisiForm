@@ -6,6 +6,7 @@
 #include "ui/DesignerCanvas.h"
 #include "ui/ProjectTree.h"
 #include "ui/PropertyInspector.h"
+#include "ui/Splitter.h"
 #include "ui/WidgetMetrics.h"
 #include "ui/WidgetPalette.h"
 #include "ui/resources/ImageResourceCache.h"
@@ -80,6 +81,7 @@ private:
         PanelBounds menuBar{};
         PanelBounds toolbar{};
         PanelBounds widgetPalette{};
+        PanelBounds canvasInspectorRegion{};
         PanelBounds designerCanvas{};
         PanelBounds propertyInspector{};
         PanelBounds projectTree{};
@@ -420,6 +422,7 @@ private:
     void loadAppSettings();
     void saveAppSettings();
     void applyCanvasSettings();
+    void updateEditorCursor(float x, float y);
     [[nodiscard]] bool hasSelectedNonRootWidgets(std::size_t minimumCount) const;
     [[nodiscard]] model::WidgetNode* selectedNonRootWidget();
     bool requireSelectedNonRootWidgets(std::size_t minimumCount, std::vector<model::WidgetNode*>& selectedWidgets);
@@ -589,6 +592,7 @@ private:
     utils::IdGenerator idGenerator_{};
     utils::AppSettings settings_{};
     WidgetPalette widgetPalette_{};
+    Splitter canvasInspectorSplitter_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};
     ProjectTree projectTree_{};
