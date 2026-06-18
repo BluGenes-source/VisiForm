@@ -83,6 +83,7 @@ private:
         PanelBounds menuBar{};
         PanelBounds toolbar{};
         PanelBounds widgetPalette{};
+        PanelBounds projectTreeCanvasRegion{};
         PanelBounds canvasInspectorRegion{};
         PanelBounds designerCanvas{};
         PanelBounds propertyInspector{};
@@ -598,6 +599,7 @@ private:
     utils::IdGenerator idGenerator_{};
     utils::AppSettings settings_{};
     WidgetPalette widgetPalette_{};
+    Splitter projectTreeCanvasSplitter_{};
     Splitter canvasInspectorSplitter_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};
@@ -607,6 +609,7 @@ private:
     utils::UiTimer textEditCaretTimer_{};
     visage::Font labelFont_{};
     resources::ImageResourceCache imageResourceCache_{};
+    bool projectTreeWidthInitialized_ = false;
     bool autoSizeTextWidgets_ = true;
     bool multiSelectMode_ = false;
     // Export progress state

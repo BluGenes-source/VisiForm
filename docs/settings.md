@@ -30,6 +30,7 @@ Current settings include:
 - `smartGuidesEnabled`
 - `gridSize`
 - `majorGridSize`
+- `projectTreeWidth`
 - `propertyInspectorWidth`
 
 ## Recent files
@@ -57,15 +58,20 @@ If toolbar grid, snap, or smart-guide toggles are used, the updated values are s
 
 ## Editor shell layout state
 
-The editor shell also persists the Property Inspector width through:
+The editor shell persists both adjustable side-panel widths through:
 
+- `projectTreeWidth`
 - `propertyInspectorWidth`
 
 Behavior:
 
+- the Project Tree / Designer Canvas splitter restores the last saved tree width on startup
+- when no saved tree width exists, the initial width is derived from the widest expanded Project Tree row measured with the active UI font
+- the Project Tree maximum width stays close to its visible content requirement while preserving the Designer Canvas minimum width
 - the Designer Canvas / Property Inspector splitter restores the last saved inspector width on startup
-- restored width is clamped against the current window size and pane minimums
-- dragging the splitter saves the updated width after the drag completes
+- restored widths are clamped against current content limits, window size, and pane minimums
+- dragging either splitter saves its updated width after the drag completes
+- the two splitter positions remain independent
 
 ## Project and export directories
 

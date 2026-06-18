@@ -1,0 +1,190 @@
+Continue VisiForm Phase 97. Do not create a new phase and do not change version 1.0.3.
+
+The Project Tree / Designer Canvas splitter works, but the Project Tree can be resized much wider than its content requires.
+
+Keep this pass narrow and token-efficient.
+
+## Rules
+
+* Do not use subagents.
+* Read only the active Phase 97 plan and files directly related to:
+
+  * Project Tree row measurement
+  * splitter limits
+  * workspace layout
+  * panel minimum, preferred, and maximum widths
+* Search before opening large files.
+* Do not inspect unrelated systems.
+* Do not refactor tree hierarchy, selection, hover hints, or model code.
+* Build once after the focused changes are complete.
+
+## Goal
+
+Limit the Project Tree width according to the longest currently visible rendered tree row, plus a modest readability buffer.
+
+Do not use a fixed width from the screenshot.
+
+Do not use 125 pixels as a constant. That value was only an example of adding extra space beyond measured content.
+
+## Content-width calculation
+
+Measure the full width required by each visible tree row using the actual Project Tree font metrics.
+
+The measurement must include:
+
+* hierarchy indentation for the row depth
+* expand/collapse control and spacing
+* optional icon and spacing
+* complete rendered label
+* normal left and right padding
+* vertical-scrollbar allowance when present
+* a modest readability buffer after the content
+
+Conceptually:
+
+`required width = indentation + controls + icon + label + padding + buffer`
+
+Use the widest currently visible row as the content-derived width.
+
+Do not use character counts or fixed-width font estimates.
+
+## Width policy
+
+Define three values:
+
+### Minimum width
+
+A practical width that keeps:
+
+* the Project Tree title readable
+* expand/collapse controls usable
+* short rows recognizable
+
+### Preferred width
+
+The width required by the longest visible row plus the normal readability buffer.
+
+Use this for the initial/default splitter position when there is no valid saved or user-selected position.
+
+### Maximum width
+
+Cap the Project Tree close to its content-derived preferred width.
+
+The maximum may include a small additional drag margin beyond the preferred width, but must not allow large unused empty space.
+
+The intent is:
+
+* the Project Tree can be made narrower by the user
+* it can be widened enough to display its visible content comfortably
+* it cannot be dragged substantially wider than its content requires
+* the Designer Canvas retains the reclaimed workspace
+
+Do not use a large percentage-based maximum that allows the tree to dominate the window.
+
+Still enforce the Designer Canvas minimum width in case the application window is narrow.
+
+## Example behavior
+
+If the complete longest visible row requires a measured width of 260 pixels and the selected readability buffer is 20 pixels, the preferred width would be approximately 280 pixels.
+
+The actual values must come from current font and row measurements rather than this example.
+
+## Manual resizing
+
+Preserve splitter dragging.
+
+Required behavior:
+
+* dragging left reduces the tree to its minimum width
+* dragging right stops at the calculated maximum width
+* do not snap continuously while the user is dragging
+* preserve the user-selected width while it remains within the valid range
+* clamp the width only when it falls outside recalculated limits
+* do not automatically expand the panel merely because a longer row becomes visible
+* allow existing text elision and hover hints to handle content beyond the allowed maximum
+
+## Visible-row policy
+
+Base the measurement on rows currently visible through expanded branches.
+
+Collapsed descendants must not affect the preferred width.
+
+Recalculate limits when relevant events occur, including:
+
+* branch expansion or collapse
+* node addition or removal
+* rename
+* reparenting
+* project load
+* font or DPI change
+* workspace resize
+
+Avoid recalculating on every paint when the hierarchy and font metrics have not changed.
+
+## Deep and unusually long rows
+
+For deeply nested or unusually long labels:
+
+* enforce a practical application-level maximum if necessary to protect the Designer Canvas
+* elide text that cannot fit
+* preserve the complete row text for the existing hover hint
+* do not allow one extreme row to consume most of the application width
+
+The practical maximum should be derived from available workspace and the Designer Canvas minimum width, not from an arbitrary fixed screenshot coordinate.
+
+## Preserve existing behavior
+
+Do not regress:
+
+* tree hierarchy
+* row formatting
+* hover hints
+* expand/collapse
+* tree-to-canvas selection
+* canvas-to-tree selection
+* add, delete, rename, and reparent updates
+* Project Tree scrolling
+* existing Canvas / Property Inspector splitter
+* maximize and restore behavior
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm the default Project Tree width closely matches its visible content plus buffer.
+4. Confirm it no longer contains excessive unused horizontal space.
+5. Drag the splitter to the minimum.
+6. Drag it to the calculated maximum.
+7. Confirm it cannot be dragged substantially beyond its content requirement.
+8. Confirm the Designer Canvas retains a usable minimum width.
+9. Add short and long widget names.
+10. Test multiple hierarchy depths.
+11. Expand and collapse branches.
+12. Rename and reparent nodes.
+13. Confirm limits update without unwanted width jumps.
+14. Confirm long labels elide correctly.
+15. Confirm hover hints show complete labels.
+16. Maximize and restore the application.
+17. Confirm the Property Inspector splitter still works.
+
+## Documentation
+
+Update the existing Phase 97 plan with:
+
+* complete width-measurement formula
+* minimum-width policy
+* readability buffer chosen
+* maximum-width and safety-cap policy
+* visible-row measurement behavior
+* recalculation triggers
+* user-width preservation and clamping behavior
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Do not create Phase 98.
+Do not change version 1.0.3.
+Do not commit or push unless explicitly requested.

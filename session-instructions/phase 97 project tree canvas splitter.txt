@@ -1,0 +1,188 @@
+Implement VisiForm Phase 97: Project Tree / Designer Canvas Splitter.
+
+Phase 96 is complete and pushed.
+
+Use:
+
+- Phase: 97
+- Version: 1.0.3
+- Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+- `AGENTS.md`
+- `docs/project_status.md`
+- the Phase 96 plan
+- `README.md`
+- files directly related to the main workspace layout, Project Tree, Designer Canvas, splitter behavior, and version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_97_project_tree_canvas_splitter_plan.md`
+
+Before implementation:
+
+- update all authoritative VisiForm version declarations to `1.0.3`
+- record the previous version and `1.0.3` in the phase plan
+- update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Do not refactor unrelated UI systems.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Add a draggable vertical splitter between the Project Tree panel and the Designer Canvas.
+
+The splitter must allow the user to resize the Project Tree width without affecting the existing Property Inspector splitter behavior.
+
+## Required behavior
+
+- the splitter appears between the Project Tree and Designer Canvas
+- dragging it resizes both adjacent panels
+- the Project Tree has a practical minimum width
+- the Designer Canvas has a practical minimum width
+- neither panel may collapse to zero width
+- resizing remains smooth and stable
+- maximizing and restoring the window preserves a usable layout
+- the existing splitter between the canvas and Property Inspector continues to work
+- splitter handles must not overlap panel borders or content
+- the cursor should indicate horizontal resizing when hovering over the splitter, if supported by the existing UI framework
+
+## Layout requirements
+
+Preserve this workspace order:
+
+1. Project Tree
+2. new Project Tree / Canvas splitter
+3. Designer Canvas
+4. existing Canvas / Property Inspector splitter
+5. Property Inspector
+
+The new splitter should:
+
+- use the same visual language as the existing splitter
+- have a compact hit area
+- remain easy to grab
+- not consume excessive width
+- resize only the two neighboring regions
+
+Prefer the existing splitter widget or layout abstraction already used by VisiForm.
+
+Do not implement separate custom mouse-drag code if the existing splitter control can be reused.
+
+## Initial sizing
+
+Choose a practical startup width for the Project Tree based on the current layout.
+
+Requirements:
+
+- Project Tree labels remain readable
+- Designer Canvas receives most of the workspace width
+- Property Inspector sizing remains unchanged unless required for layout correctness
+- narrow windows remain usable
+
+If splitter positions are already persisted, integrate this splitter with that mechanism.
+
+If no persistence exists, use a sensible default and do not add a large persistence system solely for this phase.
+
+## Preserve Phase 96 behavior
+
+Do not regress:
+
+- hierarchical tree structure
+- expand/collapse
+- tree formatting
+- hover hints
+- tree-to-canvas selection
+- canvas-to-tree selection
+- add/delete/reparent updates
+- undo/redo
+- save/reload
+
+## README update
+
+Update the repository `README.md` with the current project progress.
+
+Keep the update concise.
+
+Include:
+
+- current version: `1.0.3`
+- current development phase: Phase 97
+- completed recent UI work:
+  - top tabbed widget palette
+  - hierarchical Project Tree
+  - Project Tree hover hints and hierarchy fixes
+  - draggable splitter between Project Tree and Designer Canvas
+- current capabilities only if they are already confirmed by repository documentation or implementation
+- no speculative roadmap claims
+
+Do not rewrite the entire README.
+Do not duplicate `docs/project_status.md`.
+Update only the relevant status, version, feature-summary, or progress sections.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.3`.
+4. Drag the new splitter left and right.
+5. Confirm Project Tree and Designer Canvas resize correctly.
+6. Confirm minimum widths are enforced.
+7. Confirm the splitter remains usable at normal window size.
+8. Confirm behavior when maximized.
+9. Confirm behavior after restoring the window.
+10. Confirm the existing Property Inspector splitter still works.
+11. Confirm tree selection and canvas selection remain synchronized.
+12. Confirm tree scrolling, hover hints, and expand/collapse still work.
+13. Confirm no panel overlap, clipping, or empty layout gaps.
+14. Confirm README and project status accurately describe current progress.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 97 plan with:
+
+- old and new versions
+- splitter implementation used
+- minimum-width policy
+- startup sizing behavior
+- persistence behavior, if any
+- files changed
+- build result
+- runtime validation
+- README changes
+- remaining issues
+
+Update `docs/project_status.md`.
+
+## Completion report
+
+Report:
+
+- Phase 97 plan path
+- version change to `1.0.3`
+- splitter implementation
+- minimum-width and resizing behavior
+- interaction with the existing inspector splitter
+- README updates
+- files changed
+- build result
+- manual validation actually performed
+- remaining TODOs
+- final Git status
+
+Do not commit or push unless explicitly requested.

@@ -23,6 +23,8 @@ constexpr float kTypeWidthRatio = 0.38f;
 constexpr float kScrollBarWidth = 16.0f;
 constexpr float kScrollBarGap = 6.0f;
 constexpr float kMinimumThumbSize = 20.0f;
+constexpr float kMinimumPanelWidth = 180.0f;
+constexpr float kReadabilityBuffer = 20.0f;
 
 struct TreeEntry {
     enum class Kind {
@@ -223,6 +225,45 @@ void ProjectTree::revealWidget(const model::ProjectDocument& document, const std
     expandAncestors(document, widgetId);
     pendingRevealWidgetId_ = widgetId;
     observedSelectionId_ = widgetId;
+}
+
+ProjectTree::WidthRequirements ProjectTree::measureWidthRequirements(
+    const visage::Font& font,
+    bool canMeasureText,
+    const model::ProjectDocument& document)
+{
+    if (canMeasureText && font.packedFont() != nullptr) {
+        rowHeight_ = std::ceil(std::max(font.lineHeight() + kRowVerticalPadding, kExpanderSize + kExpanderPadding));
+    }
+    updateScrollMetrics(document);
+
+    const float titleWidth = canMeasureText ? measuredTextWidth(font, "Project Tree") : 0.0f;
+    const float minimumWidth = std::max(kMinimumPanelWidth, kPadding + titleWidth + kPadding);
+    if (!canMeasureText || font.packedFont() == nullptr) {
+        return { minimumWidth, minimumWidth };
+    }
+
+    float widestRowWidth = minimumWidth;
+    const auto entries = buildEntries(document, projectRootExpanded_, expandedWidgetIds_);
+    const float verticalScrollBarAllowance = needsVerticalScrollBar_ ? kScrollBarWidth + kScrollBarGap : 0.0f;
+    for (const auto& entry : entries) {
+        const float indentation = static_cast<float>(entry.depth) * kIndentWidth;
+        const float controlAndSpacing = kExpanderSize + kControlLabelGap;
+        const float labelWidth = measuredTextWidth(font, entry.name)
+            + measuredTextWidth(font, " : ")
+            + measuredTextWidth(font, entry.type);
+        const float normalPadding = 8.0f + kContentLeftPadding + kLabelRightPadding + 8.0f;
+        widestRowWidth = std::max(
+            widestRowWidth,
+            normalPadding
+                + indentation
+                + controlAndSpacing
+                + labelWidth
+                + verticalScrollBarAllowance
+                + kReadabilityBuffer);
+    }
+
+    return { minimumWidth, std::max(minimumWidth, std::ceil(widestRowWidth)) };
 }
 
 bool ProjectTree::contains(float x, float y) const

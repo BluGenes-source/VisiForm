@@ -13,9 +13,18 @@ namespace visiform::ui {
 
 class ProjectTree {
 public:
+    struct WidthRequirements {
+        float minimum = 0.0f;
+        float preferred = 0.0f;
+    };
+
     void setBounds(float x, float y, float width, float height);
     void resetForDocument(const model::ProjectDocument& document);
     void revealWidget(const model::ProjectDocument& document, const std::string& widgetId);
+    [[nodiscard]] WidthRequirements measureWidthRequirements(
+        const visage::Font& font,
+        bool canMeasureText,
+        const model::ProjectDocument& document);
     [[nodiscard]] bool contains(float x, float y) const;
     [[nodiscard]] bool updateHover(const model::ProjectDocument& document, float x, float y);
     void clearHover();

@@ -52,7 +52,8 @@ constexpr float kDefaultStartupWindowWidth = 1400.0f;
 constexpr float kDefaultStartupWindowHeight = 820.0f;
 constexpr unsigned int kTextEditCaretBlinkMilliseconds = 530;
 constexpr float kDefaultDpiScale = 1.0f;
-constexpr float kProjectTreeWidth = 190.0f;
+constexpr float kMinimumProjectTreeWidth = 180.0f;
+constexpr float kProjectTreeMaximumDragMargin = 16.0f;
 constexpr float kMinimumPropertyInspectorWidth = 386.0f;
 constexpr float kMaximumBalancedPropertyInspectorWidth = 520.0f;
 constexpr float kMaximumPropertyInspectorRegionFraction = 0.45f;
@@ -2013,6 +2014,7 @@ bool MainWindow::applyUndoableDocumentChange(const std::string& description, con
         std::move(beforeDocument),
         std::move(afterDocument)));
     document_.markDirty();
+    updateLayout();
     return true;
 }
 
@@ -2223,6 +2225,7 @@ bool MainWindow::applyNewProjectWizard()
     undoRedo_.clear();
     document_.setSelection(document_.root.id);
     projectTree_.resetForDocument(document_);
+    updateLayout();
     setOperationStatus("Created new project: " + document_.projectName);
     closeEditorModalDialog("create");
     redraw();
@@ -2298,6 +2301,7 @@ bool MainWindow::applyProjectSettingsDialog()
 
     if (projectChanged) {
         document_.markDirty();
+        updateLayout();
     }
     if (settingsChanged) {
         saveAppSettings();
@@ -2518,6 +2522,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
         document_.setSelection(document_.root.id);
     }
     projectTree_.resetForDocument(document_);
+    updateLayout();
 
     currentProjectPath_ = path;
     undoRedo_.clear();
@@ -2637,6 +2642,7 @@ void MainWindow::draw(visage::Canvas& canvas)
     canvasInspectorSplitter_.draw(canvas);
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
+        projectTreeCanvasSplitter_.draw(canvas);
     }
     drawStatusBar(canvas);
     if (openMenuIndex_ >= 0) {
@@ -2702,6 +2708,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
+    if (layout_.showProjectTree && projectTreeCanvasSplitter_.mouseDown(e.position.x, e.position.y)) {
+        visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
+        redraw();
+        return;
+    }
+
     if (canvasInspectorSplitter_.mouseDown(e.position.x, e.position.y)) {
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
         redraw();
@@ -2732,6 +2744,7 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (layout_.showProjectTree && projectTree_.mouseDown(document_, e.position.x, e.position.y)) {
+        updateLayout();
         redraw();
         return;
     }
@@ -3026,7 +3039,17 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         return;
     }
 
-    if (canvasInspectorSplitter_.mouseDrag(e.position.x, e.position.y)) {
+    if (layout_.showProjectTree && projectTreeCanvasSplitter_.isDragging()) {
+        (void)projectTreeCanvasSplitter_.mouseDrag(e.position.x, e.position.y);
+        settings_.projectTreeWidth = std::max(1, static_cast<int>(std::lround(projectTreeCanvasSplitter_.firstPaneSize())));
+        applyLayout(layout_);
+        visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
+        redraw();
+        return;
+    }
+
+    if (canvasInspectorSplitter_.isDragging()) {
+        (void)canvasInspectorSplitter_.mouseDrag(e.position.x, e.position.y);
         settings_.propertyInspectorWidth = std::max(1, static_cast<int>(std::lround(canvasInspectorSplitter_.secondPaneSize())));
         applyLayout(layout_);
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
@@ -3209,6 +3232,17 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         return;
     }
 
+    if (projectTreeCanvasSplitter_.mouseUp()) {
+        if (layout_.showProjectTree) {
+            settings_.projectTreeWidth = std::max(1, static_cast<int>(std::lround(projectTreeCanvasSplitter_.firstPaneSize())));
+            saveAppSettings();
+            setOperationStatus("Resized Project Tree to " + std::to_string(settings_.projectTreeWidth) + " px.");
+        }
+        updateEditorCursor(e.position.x, e.position.y);
+        redraw();
+        return;
+    }
+
     if (canvasInspectorSplitter_.mouseUp()) {
         settings_.propertyInspectorWidth = std::max(1, static_cast<int>(std::lround(canvasInspectorSplitter_.secondPaneSize())));
         saveAppSettings();
@@ -3388,6 +3422,7 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 
         document_.markDirty();
         projectTree_.revealWidget(document_, widgetId);
+        updateLayout();
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
             if (!canvasInteraction_.dropTargetWidgetId.empty() && canvasInteraction_.dropTargetWidgetId != canvasInteraction_.originalParentId) {
                 if (const auto* parent = document_.findWidgetById(canvasInteraction_.dropTargetWidgetId)) {
@@ -3737,6 +3772,7 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
     normalizeWidgetBoundsForEditor();
     document_.markDirty();
     projectTree_.revealWidget(document_, addedId);
+    updateLayout();
     updatePropertyEditorBounds();
     if (type == model::WidgetType::GroupBox && parentId == document_.root.id) {
         setOperationStatus("Added GroupBox");
@@ -3785,6 +3821,7 @@ void MainWindow::deleteSelectedWidget()
                 std::move(afterDocument)));
             document_.markDirty();
             setOperationStatus("Deleted " + std::to_string(removedCount) + " widgets");
+            updateLayout();
         }
         else {
             setOperationStatus("No widget selected");
@@ -3824,6 +3861,7 @@ void MainWindow::deleteSelectedWidget()
         std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus("Deleted widget: " + displayName + " (" + widgetId + ")");
+    updateLayout();
     redraw();
 }
 
@@ -3869,6 +3907,7 @@ void MainWindow::duplicateSelectedWidget()
     setOperationStatus(hadMultiSelection
         ? "Duplicated primary widget: " + displayName + " (" + duplicateId + ")"
         : "Duplicated widget: " + displayName + " (" + duplicateId + ")");
+    updateLayout();
     redraw();
 }
 
@@ -3884,6 +3923,7 @@ void MainWindow::undo()
     undoRedo_.undo();
     document_.markDirty();
     projectTree_.revealWidget(document_, document_.selectedWidgetId);
+    updateLayout();
     setOperationStatus("Undo: " + description);
     redraw();
 }
@@ -3900,6 +3940,7 @@ void MainWindow::redo()
     undoRedo_.redo();
     document_.markDirty();
     projectTree_.revealWidget(document_, document_.selectedWidgetId);
+    updateLayout();
     setOperationStatus("Redo: " + description);
     redraw();
 }
@@ -4299,6 +4340,7 @@ void MainWindow::pasteWidgets()
         std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus("Pasted " + std::to_string(pastedIds.size()) + " widgets");
+    updateLayout();
     redraw();
 }
 
@@ -4889,6 +4931,7 @@ bool MainWindow::setSelectedWidgetName(const std::string& name)
         std::move(afterDocument)));
     document_.markDirty();
     setOperationStatus("Widget renamed: " + trimmedName);
+    updateLayout();
     updatePropertyEditorBounds();
     redraw();
     return true;
@@ -5475,23 +5518,22 @@ MainWindow::WindowLayout MainWindow::calculateLayout(float windowWidth, float wi
     const float contentBottom = std::max(contentTop, layout.statusBar.y - kGap);
     const float contentHeight = std::max(0.0f, contentBottom - contentTop);
 
-    const float leftWidth = std::min(kProjectTreeWidth, std::max(150.0f, windowWidth * 0.18f));
-    const float leftX = kGap;
-    layout.showProjectTree = contentHeight >= kProjectTreeMinHeight && windowWidth >= 760.0f;
-    layout.projectTree = layout.showProjectTree
-        ? PanelBounds{ leftX, contentTop, leftWidth, contentHeight }
-        : PanelBounds{};
-
-    const float canvasX = layout.showProjectTree
-        ? layout.projectTree.x + layout.projectTree.width + kGap
-        : kGap;
-    const float regionRight = std::max(canvasX, windowWidth - kGap);
-    layout.canvasInspectorRegion = {
-        canvasX,
+    layout.projectTreeCanvasRegion = {
+        kGap,
         contentTop,
-        std::max(0.0f, regionRight - canvasX),
+        std::max(0.0f, windowWidth - kGap * 2.0f),
         contentHeight
     };
+    constexpr float minimumSplitWorkspaceWidth =
+        kMinimumProjectTreeWidth + kSplitterDividerThickness
+        + kMinimumDesignerCanvasWidth + kSplitterDividerThickness
+        + kMinimumPropertyInspectorWidth;
+    layout.showProjectTree = contentHeight >= kProjectTreeMinHeight
+        && layout.projectTreeCanvasRegion.width >= minimumSplitWorkspaceWidth;
+    layout.canvasInspectorRegion = layout.showProjectTree
+        ? PanelBounds{}
+        : layout.projectTreeCanvasRegion;
+    layout.projectTree = {};
 
     return layout;
 }
@@ -5501,6 +5543,60 @@ void MainWindow::applyLayout(const WindowLayout& layout)
     layout_ = layout;
     widgetPalette_.setBounds(layout_.widgetPalette.x, layout_.widgetPalette.y,
         layout_.widgetPalette.width, layout_.widgetPalette.height);
+
+    if (layout_.showProjectTree) {
+        projectTree_.setBounds(
+            layout_.projectTreeCanvasRegion.x,
+            layout_.projectTreeCanvasRegion.y,
+            std::max(1.0f, static_cast<float>(settings_.projectTreeWidth)),
+            layout_.projectTreeCanvasRegion.height);
+        const ProjectTree::WidthRequirements treeWidths =
+            projectTree_.measureWidthRequirements(labelFont_, canDrawText(), document_);
+        const float minimumTreeWidth = std::max(kMinimumProjectTreeWidth, treeWidths.minimum);
+        const float minimumCanvasInspectorWidth =
+            kMinimumDesignerCanvasWidth + kSplitterDividerThickness + kMinimumPropertyInspectorWidth;
+        const float availableTreeAxis =
+            std::max(0.0f, layout_.projectTreeCanvasRegion.width - kSplitterDividerThickness);
+        const float maximumTreeWidthFromWorkspace =
+            std::max(0.0f, availableTreeAxis - minimumCanvasInspectorWidth);
+        const float maximumTreeWidth = std::clamp(
+            treeWidths.preferred + kProjectTreeMaximumDragMargin,
+            std::min(minimumTreeWidth, maximumTreeWidthFromWorkspace),
+            maximumTreeWidthFromWorkspace);
+        if (!projectTreeWidthInitialized_) {
+            settings_.projectTreeWidth = static_cast<int>(std::lround(
+                std::clamp(treeWidths.preferred, minimumTreeWidth, maximumTreeWidth)));
+            projectTreeWidthInitialized_ = true;
+        }
+
+        projectTreeCanvasSplitter_.setOrientation(Splitter::Orientation::Vertical);
+        projectTreeCanvasSplitter_.setMinimumFirstPaneSize(minimumTreeWidth);
+        projectTreeCanvasSplitter_.setMinimumSecondPaneSize(std::max(
+            minimumCanvasInspectorWidth,
+            availableTreeAxis - maximumTreeWidth));
+        projectTreeCanvasSplitter_.setDividerThickness(kSplitterDividerThickness);
+        projectTreeCanvasSplitter_.setHitThickness(kSplitterHitThickness);
+        projectTreeCanvasSplitter_.setBounds(layout_.projectTreeCanvasRegion.x, layout_.projectTreeCanvasRegion.y,
+            layout_.projectTreeCanvasRegion.width, layout_.projectTreeCanvasRegion.height);
+        projectTreeCanvasSplitter_.setSplitPosition(
+            std::max(1.0f, static_cast<float>(settings_.projectTreeWidth)));
+
+        const Splitter::Bounds projectTreePane = projectTreeCanvasSplitter_.firstPaneBounds();
+        const Splitter::Bounds canvasInspectorPane = projectTreeCanvasSplitter_.secondPaneBounds();
+        layout_.projectTree = {
+            projectTreePane.x, projectTreePane.y, projectTreePane.width, projectTreePane.height
+        };
+        layout_.canvasInspectorRegion = {
+            canvasInspectorPane.x, canvasInspectorPane.y, canvasInspectorPane.width, canvasInspectorPane.height
+        };
+        settings_.projectTreeWidth = std::max(1, static_cast<int>(std::lround(projectTreePane.width)));
+    }
+    else {
+        projectTreeCanvasSplitter_.setBounds(0.0f, 0.0f, 0.0f, 0.0f);
+        layout_.projectTree = {};
+        layout_.canvasInspectorRegion = layout_.projectTreeCanvasRegion;
+    }
+
     projectTree_.setBounds(layout_.projectTree.x, layout_.projectTree.y,
         layout_.projectTree.width, layout_.projectTree.height);
 
@@ -6740,6 +6836,8 @@ void MainWindow::loadAppSettings()
 {
     std::string errorMessage;
     settings_ = utils::AppSettings::load(errorMessage);
+    settings_.projectTreeWidth = std::max(1, settings_.projectTreeWidth);
+    projectTreeWidthInitialized_ = settings_.projectTreeWidthWasLoaded;
     settings_.propertyInspectorWidth = std::max(1, settings_.propertyInspectorWidth);
 }
 
@@ -6762,7 +6860,10 @@ void MainWindow::applyCanvasSettings()
 
 void MainWindow::updateEditorCursor(float x, float y)
 {
-    if (canvasInspectorSplitter_.isDragging() || canvasInspectorSplitter_.isPointOverDivider(x, y)) {
+    if ((layout_.showProjectTree
+            && (projectTreeCanvasSplitter_.isDragging() || projectTreeCanvasSplitter_.isPointOverDivider(x, y)))
+        || canvasInspectorSplitter_.isDragging()
+        || canvasInspectorSplitter_.isPointOverDivider(x, y)) {
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
         return;
     }

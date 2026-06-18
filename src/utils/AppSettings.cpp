@@ -94,6 +94,10 @@ AppSettings AppSettings::load(std::string& errorMessage)
         if (const auto iterator = json.find("majorGridSize"); iterator != json.end() && iterator->is_number_integer()) {
             settings.majorGridSize = std::max(1, iterator->get<int>());
         }
+        if (const auto iterator = json.find("projectTreeWidth"); iterator != json.end() && iterator->is_number_integer()) {
+            settings.projectTreeWidth = std::max(1, iterator->get<int>());
+            settings.projectTreeWidthWasLoaded = true;
+        }
         if (const auto iterator = json.find("propertyInspectorWidth"); iterator != json.end() && iterator->is_number_integer()) {
             settings.propertyInspectorWidth = std::max(1, iterator->get<int>());
         }
@@ -140,6 +144,7 @@ bool AppSettings::save(std::string& errorMessage) const
     json["smartGuidesEnabled"] = smartGuidesEnabled;
     json["gridSize"] = gridSize;
     json["majorGridSize"] = majorGridSize;
+    json["projectTreeWidth"] = std::max(1, projectTreeWidth);
     json["propertyInspectorWidth"] = std::max(1, propertyInspectorWidth);
     json["keyboardShortcuts"] = nlohmann::json::object();
     for (const auto& [commandId, shortcut] : keyboardShortcuts) {
