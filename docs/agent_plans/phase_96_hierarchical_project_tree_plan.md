@@ -35,7 +35,14 @@
 - Row metric rule: `ceil(font.lineHeight() + 12 px)` with a minimum of `kExpanderSize + 10 px`. The resulting `rowHeight_` is the single source of truth for layout, drawing, selection bounds, hit testing, reveal calculations, and scroll steps.
 - Horizontal layout rule: each depth adds 16 px; rows then reserve a 12 px expander region and an 8 px control-to-label gap before the name, separator, and type regions. Name and type are measured separately so they cannot overlap.
 - Clipping/elision rule: all rows remain clamped to the Project Tree content bounds. Long UTF-8 names and types are measured with the active Visage font and elided with an ellipsis; stored model values are unchanged. No tooltip was added because Project Tree has no existing hover/tooltip integration and adding one would expand this formatting-only pass into MainWindow input plumbing.
+- Hover hint mechanism: reuse `MainWindow`'s existing status-bar hover-hint path. `ProjectTree` stores only the hovered project/widget row identity and resolves the displayed text live from `ProjectDocument`.
+- Hover hit testing: use the same visible content bounds, generated row layouts, `rowHeight_`, and scroll offset used by drawing and selection hit testing.
+- Hint content: project root uses `projectName : Project root`; widget rows use `widgetName : WidgetType`, with ` - Parent: parentName` for nested widgets.
+- Stale-hover cleanup: clear on tree exit through pointer hit testing, document reset, scrolling, and expand/collapse. Live document lookup prevents deleted rows from displaying, and rename/type changes update without retaining copied label text.
 - Scroll rule: the viewport height and scroll offsets are aligned to complete rows. Wheel, arrow, page, thumb-drag, and selected-item reveal paths all snap to the same row metric.
+- Frame hierarchy bug root cause: the Project Tree already rendered the recursive model hierarchy correctly, but palette insertion and canvas reparent hit testing used separate hard-coded parent-type lists. Those lists included GroupBox, Sizer, and TabPage but omitted Frame and Panel, so visually overlapping widgets could remain children of the root form.
+- Parent assignment fix: palette insertion and canvas reparenting now consult `WidgetRegistry::canContainChild`, the same model capability used by `ProjectDocument::addChildToParent` and `ProjectDocument::canReparentWidget`. This keeps Frame, Panel, GroupBox, Sizer, and tab-page containment on one shared rule.
+- Hierarchy refresh fix: add, move/reparent, undo, and redo explicitly reveal the selected widget in `ProjectTree`. This expands its current model ancestors even when the selected widget ID did not change during a reparent operation.
 
 ## TODO Checklist
 
@@ -55,6 +62,12 @@
 - [x] Separate indentation, expander, name, separator, and type regions.
 - [x] Add measured UTF-8-safe label elision and content clipping.
 - [x] Align scrolling and selected-item reveal to complete rows.
+- [x] Add Project Tree row hover tracking and status-bar hints using full, untruncated model text.
+- [x] Clear stale Project Tree hover state on exit, scrolling, expand/collapse, and document reset.
+- [x] Trace Frame add/reparent ownership from insertion target through model mutation and Project Tree rendering.
+- [x] Replace hard-coded add/reparent container lists with the shared model containment rule.
+- [x] Reveal the affected selection after add, reparent, undo, and redo.
+- [x] Confirm serialization already persists recursive `WidgetNode::children` and requires no schema change.
 
 ## Validation Plan
 
@@ -77,10 +90,13 @@
 - Starting worktree contained pre-existing session-instruction changes; they were preserved and not modified as part of Phase 96.
 - Static validation: `git diff --check` passed with line-ending normalization warnings only.
 - Formatting-pass static validation: `git diff --check -- src/ui/ProjectTree.cpp src/ui/ProjectTree.h` passed with line-ending normalization warnings only.
+- Hover-hint static validation: `git diff --check -- src/ui/ProjectTree.h src/ui/ProjectTree.cpp src/ui/MainWindow.cpp docs/agent_plans/phase_96_hierarchical_project_tree_plan.md` passed with line-ending normalization warnings only.
+- Frame hierarchy fix static validation: `git diff --check -- src/ui/MainWindow.cpp docs/agent_plans/phase_96_hierarchical_project_tree_plan.md` passed with line-ending normalization warnings only.
 - Visage API inspection confirmed `Font::lineHeight()`, `Font::stringWidth()`, and `Font::widthOverflowIndex()` are available for rendered row metrics and label elision.
 - Targeted searches confirmed Project Tree Recent Files APIs/text were removed and File-menu recent-file handling remains.
+- Targeted source tracing confirmed add/reparent now assign ownership through `ProjectDocument` and the tree reads the resulting recursive `WidgetNode::children` directly. JSON save/load already writes and restores that same recursive relationship.
 - Automated tests: not run. No focused Project Tree test target exists, and existing tests require an approved build path.
-- Windows Debug build: deferred because no exact approved build command was provided.
+- Windows Debug build: deferred because no exact approved build command or unambiguous Visual Studio workspace build tool was available.
 - Manual runtime validation: not performed because automated agents may not launch `VisiForm.exe`.
 
 ## Files Changed
@@ -100,9 +116,13 @@
 - A UI-only project row contains the top-level form, and widget rows recursively mirror `WidgetNode::children`, including containers, sizers, tab pages, and deeper descendants.
 - Rows use `name : WidgetType`, indentation guides, expand/collapse controls, selected-row styling, clipping, and the existing vertical scrollbar.
 - Rows now derive their height from the active rendered font, vertically center text and expanders, use the full shared row bounds for selection and hit testing, and scroll in complete-row increments.
+- Hovering any visible row now displays its full untruncated name and type in the existing status-bar hint area. Nested rows also identify their parent, and the project row identifies itself as the project root.
+- Hover state uses the same row geometry as drawing and selection, updates only when the row changes, and clears on exit, scrolling, expand/collapse, document reset, or missing/deleted model nodes.
 - Name, separator, and widget type use measured non-overlapping regions. Long labels are UTF-8-safe and end in an ellipsis instead of clipping abruptly.
 - Expansion is tracked by widget ID and pruned when widgets disappear. New/load operations reset the tree, while routine property edits and hierarchy changes retain valid expansion state.
 - Tree selection continues through the existing `MainWindow` selection path. Canvas/command selection changes reveal the primary selected widget by expanding ancestors and scrolling it into view.
+- Palette insertion and canvas reparenting now recognize every container supported by the model registry, including Frame and Panel, instead of relying on incomplete UI-only type lists.
+- Add, move/reparent, undo, and redo reveal the selected widget so the corrected model branch is visible immediately without a project reload.
 - No model, serialization, validation, generator, or ownership behavior changed.
 
 ## Remaining TODOs

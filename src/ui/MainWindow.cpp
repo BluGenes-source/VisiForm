@@ -885,12 +885,9 @@ const model::WidgetNode* nearestAncestorOfType(const model::ProjectDocument& doc
     return nullptr;
 }
 
-bool isRepairPassParentTarget(const model::WidgetNode& widget)
+bool canAcceptChild(const model::WidgetNode& parent, model::WidgetType childType)
 {
-    return widget.type == model::WidgetType::FormWindow
-        || widget.type == model::WidgetType::GroupBox
-        || widget.type == model::WidgetType::Sizer
-        || widget.type == model::WidgetType::TabPage;
+    return model::WidgetRegistry::instance().canContainChild(parent.type, childType);
 }
 
 std::string insertionParentIdForNewWidget(const model::ProjectDocument& document, model::WidgetType type)
@@ -906,36 +903,18 @@ std::string insertionParentIdForNewWidget(const model::ProjectDocument& document
         return document.root.id;
     }
 
-    if (type != model::WidgetType::GroupBox && type != model::WidgetType::TabPage) {
-        if (const auto* groupBox = nearestAncestorOfType(document, selectedWidget, model::WidgetType::GroupBox)) {
-            return groupBox->id;
-        }
-        if (selectedWidget->type == model::WidgetType::Sizer) {
-            return selectedWidget->id;
-        }
-        if (const auto* sizer = nearestAncestorOfType(document, selectedWidget, model::WidgetType::Sizer)) {
-            return sizer->id;
-        }
-    }
-
-    if (type == model::WidgetType::TabPage) {
-        if (const auto* tabControl = document.findTabControlFor(selectedWidget->id)) {
-            return tabControl->id;
-        }
-
-        return document.root.id;
-    }
-
-    if (selectedWidget->type == model::WidgetType::TabControl) {
+    if (type != model::WidgetType::TabPage && selectedWidget->type == model::WidgetType::TabControl) {
         if (const auto* selectedTabPage = document.selectedTabPageFor(selectedWidget->id)) {
             return selectedTabPage->id;
         }
     }
-    else if (selectedWidget->type == model::WidgetType::TabPage) {
-        return selectedWidget->id;
-    }
-    else if (const auto* tabPage = document.findTabPageFor(selectedWidget->id)) {
-        return tabPage->id;
+
+    const model::WidgetNode* candidate = selectedWidget;
+    while (candidate != nullptr) {
+        if (canAcceptChild(*candidate, type)) {
+            return candidate->id;
+        }
+        candidate = document.findParentOf(candidate->id);
     }
 
     return document.root.id;
@@ -3000,23 +2979,36 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 void MainWindow::mouseMove(const visage::MouseEvent& e)
 {
     if (isEditorModalVisible()) {
+        projectTree_.clearHover();
         return;
     }
 
     if (openMenuIndex_ >= 0) {
+        projectTree_.clearHover();
         updateHoverHint(e.position.x, e.position.y);
         return;
     }
 
     if (canvasInteraction_.mode != CanvasInteractionState::Mode::None) {
+        projectTree_.clearHover();
         return;
     }
 
+    bool hoverChanged = false;
+    if (layout_.showProjectTree) {
+        hoverChanged = projectTree_.updateHover(document_, e.position.x, e.position.y);
+    }
+    else {
+        projectTree_.clearHover();
+    }
     if (widgetPalette_.mouseMove(e.position.x, e.position.y)) {
         redraw();
     }
     updateEditorCursor(e.position.x, e.position.y);
     updateHoverHint(e.position.x, e.position.y);
+    if (hoverChanged) {
+        redraw();
+    }
 }
 
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
@@ -3395,6 +3387,7 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         }
 
         document_.markDirty();
+        projectTree_.revealWidget(document_, widgetId);
         if (canvasInteraction_.mode == CanvasInteractionState::Mode::Move) {
             if (!canvasInteraction_.dropTargetWidgetId.empty() && canvasInteraction_.dropTargetWidgetId != canvasInteraction_.originalParentId) {
                 if (const auto* parent = document_.findWidgetById(canvasInteraction_.dropTargetWidgetId)) {
@@ -3480,6 +3473,7 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
     }
 
     if (layout_.showProjectTree && projectTree_.mouseWheel(document_, deltaY, e.position.x, e.position.y)) {
+        hoverHint_.clear();
         redraw();
         return true;
     }
@@ -3742,6 +3736,7 @@ void MainWindow::addWidgetFromPalette(model::WidgetType type)
     undoRedo_.executeCommand(std::make_unique<commands::AddWidgetCommand>(document_, parentId, std::move(widget), addedId));
     normalizeWidgetBoundsForEditor();
     document_.markDirty();
+    projectTree_.revealWidget(document_, addedId);
     updatePropertyEditorBounds();
     if (type == model::WidgetType::GroupBox && parentId == document_.root.id) {
         setOperationStatus("Added GroupBox");
@@ -3888,6 +3883,7 @@ void MainWindow::undo()
     const std::string description = undoRedo_.undoDescription();
     undoRedo_.undo();
     document_.markDirty();
+    projectTree_.revealWidget(document_, document_.selectedWidgetId);
     setOperationStatus("Undo: " + description);
     redraw();
 }
@@ -3903,6 +3899,7 @@ void MainWindow::redo()
     const std::string description = undoRedo_.redoDescription();
     undoRedo_.redo();
     document_.markDirty();
+    projectTree_.revealWidget(document_, document_.selectedWidgetId);
     setOperationStatus("Redo: " + description);
     redraw();
 }
@@ -4088,7 +4085,7 @@ std::string MainWindow::resolveDropParentId(const std::string& movingWidgetId, f
         if (candidateId != movingWidgetId) {
             if (const auto* candidate = document_.findWidgetById(candidateId);
                 candidate != nullptr
-                && isRepairPassParentTarget(*candidate)
+                && canAcceptChild(*candidate, movingWidget->type)
                 && movingWidget->findById(candidateId) == nullptr) {
                 const model::Rect candidateBounds = absoluteBoundsForWidget(document_, candidateId);
                 if (candidate->type == model::WidgetType::FormWindow
@@ -6352,6 +6349,10 @@ void MainWindow::selectWidget(const std::string& widgetId)
 
 std::string MainWindow::statusText() const
 {
+    if (const auto projectTreeHint = projectTree_.hoverHint(document_)) {
+        return "Hint: " + *projectTreeHint;
+    }
+
     if (!hoverHint_.empty()) {
         return hoverHint_;
     }

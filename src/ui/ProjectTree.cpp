@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace visiform::ui {
@@ -201,6 +202,7 @@ void ProjectTree::setBounds(float x, float y, float width, float height)
 
 void ProjectTree::resetForDocument(const model::ProjectDocument& document)
 {
+    clearHover();
     projectRootExpanded_ = true;
     expandedWidgetIds_.clear();
     expandedWidgetIds_.insert(document.root.id);
@@ -226,6 +228,69 @@ void ProjectTree::revealWidget(const model::ProjectDocument& document, const std
 bool ProjectTree::contains(float x, float y) const
 {
     return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
+}
+
+bool ProjectTree::updateHover(const model::ProjectDocument& document, float x, float y)
+{
+    updateScrollMetrics(document);
+
+    bool nextProjectRootHovered = false;
+    std::string nextHoveredWidgetId;
+    if (isWithinVisibleContent(x, y)) {
+        const auto entries = buildEntries(document, projectRootExpanded_, expandedWidgetIds_);
+        const auto layouts = buildLayouts(contentBounds().y, rowHeight_, entries);
+        const Bounds bounds = contentBounds();
+        for (const auto& layout : layouts) {
+            const float rowTop = rowYWithScroll(layout.top);
+            if (rowTop + rowHeight_ <= bounds.y || rowTop >= bounds.y + bounds.height) {
+                continue;
+            }
+            if (y < rowTop || y >= rowTop + rowHeight_) {
+                continue;
+            }
+
+            if (layout.entry.kind == TreeEntry::Kind::Project) {
+                nextProjectRootHovered = true;
+            }
+            else {
+                nextHoveredWidgetId = layout.entry.widgetId;
+            }
+            break;
+        }
+    }
+
+    const bool changed = projectRootHovered_ != nextProjectRootHovered
+        || hoveredWidgetId_ != nextHoveredWidgetId;
+    projectRootHovered_ = nextProjectRootHovered;
+    hoveredWidgetId_ = std::move(nextHoveredWidgetId);
+    return changed;
+}
+
+void ProjectTree::clearHover()
+{
+    projectRootHovered_ = false;
+    hoveredWidgetId_.clear();
+}
+
+std::optional<std::string> ProjectTree::hoverHint(const model::ProjectDocument& document) const
+{
+    if (projectRootHovered_) {
+        const std::string projectName = document.projectName.empty() ? std::string{ "Project" } : document.projectName;
+        return projectName + " : Project root";
+    }
+
+    const model::WidgetNode* widget = document.findWidgetById(hoveredWidgetId_);
+    if (widget == nullptr) {
+        return std::nullopt;
+    }
+
+    const std::string displayName = widget->name.empty() ? widget->id : widget->name;
+    std::string hint = displayName + " : " + widget->typeName();
+    if (const model::WidgetNode* parent = document.findParentOf(widget->id)) {
+        const std::string parentName = parent->name.empty() ? parent->id : parent->name;
+        hint += " - Parent: " + parentName;
+    }
+    return hint;
 }
 
 void ProjectTree::pruneExpansionState(const model::ProjectDocument& document)
@@ -410,6 +475,7 @@ bool ProjectTree::mouseDown(const model::ProjectDocument& document, float x, flo
         if (thumb.has_value() && containsPoint({ thumb->x, thumb->y, thumb->width, thumb->height }, x, y)) {
             draggingScrollBarThumb_ = true;
             scrollBarDragOffsetY_ = y - thumb->y;
+            clearHover();
             return true;
         }
 
@@ -427,6 +493,7 @@ bool ProjectTree::mouseDown(const model::ProjectDocument& document, float x, flo
         }
 
         clampScrollOffset();
+        clearHover();
         return true;
     }
 
@@ -456,6 +523,7 @@ bool ProjectTree::mouseDown(const model::ProjectDocument& document, float x, flo
         else {
             expandedWidgetIds_.insert(layout.entry.widgetId);
         }
+        clearHover();
         updateScrollMetrics(document);
         return true;
     }
@@ -492,6 +560,7 @@ bool ProjectTree::mouseDrag(const model::ProjectDocument& document, float x, flo
     }
 
     clampScrollOffset();
+    clearHover();
     return true;
 }
 
@@ -516,6 +585,7 @@ bool ProjectTree::mouseWheel(const model::ProjectDocument& document, float delta
 
     scrollOffsetY_ += deltaY < 0.0f ? rowHeight_ : -rowHeight_;
     clampScrollOffset();
+    clearHover();
     return true;
 }
 

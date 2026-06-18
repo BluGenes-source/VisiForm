@@ -17,6 +17,9 @@ public:
     void resetForDocument(const model::ProjectDocument& document);
     void revealWidget(const model::ProjectDocument& document, const std::string& widgetId);
     [[nodiscard]] bool contains(float x, float y) const;
+    [[nodiscard]] bool updateHover(const model::ProjectDocument& document, float x, float y);
+    void clearHover();
+    [[nodiscard]] std::optional<std::string> hoverHint(const model::ProjectDocument& document) const;
     [[nodiscard]] std::optional<std::string> hitTestWidgetId(const model::ProjectDocument& document, float x, float y);
     [[nodiscard]] bool mouseDown(const model::ProjectDocument& document, float x, float y);
     [[nodiscard]] bool mouseDrag(const model::ProjectDocument& document, float x, float y);
@@ -49,6 +52,8 @@ private:
     float height_{};
     bool projectRootExpanded_ = true;
     std::unordered_set<std::string> expandedWidgetIds_{};
+    bool projectRootHovered_ = false;
+    std::string hoveredWidgetId_{};
     std::string observedRootWidgetId_{};
     std::string observedSelectionId_{};
     std::string pendingRevealWidgetId_{};

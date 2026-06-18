@@ -1,0 +1,119 @@
+Continue VisiForm Phase 96. Do not create a new phase and do not change version 1.0.2.
+
+The Project Tree hierarchy and text formatting are now working. Add hover hints/tooltips for tree rows.
+
+Keep this pass narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 96 plan and files directly related to Project Tree hover, hit testing, labels, and tooltip/hint display
+- do not refactor hierarchy, selection, or model code
+- reuse the existing VisiForm/Visage hint or tooltip mechanism
+- build once after implementation
+
+Goal
+====
+
+When the pointer hovers over a Project Tree row, show a useful hint for that node.
+
+Required behavior
+=================
+
+1. Hover detection
+
+- use the same row bounds and hit testing already used by the tree
+- update the hovered node as the pointer moves
+- clear the hover state when leaving the tree
+- do not interfere with selection, expand/collapse, dragging, or scrolling
+
+2. Hint content
+
+For normal widget rows, show a concise hint containing:
+
+- full widget name
+- full widget type
+- hierarchy role or parent when useful
+
+Suggested format:
+
+`widgetName : WidgetType`
+
+For truncated labels, the hint must expose the complete untruncated text.
+
+For special nodes:
+
+- project root: show project name and that it is the project root
+- top-level form: show form name and type
+- sizers/layout nodes: show layout name and type
+- tab pages or container nodes: show their full name and type
+
+Do not expose internal IDs unless they are already part of normal UI behavior.
+
+3. Display behavior
+
+- use the existing application hint/status mechanism if one already exists
+- otherwise use the smallest existing tooltip mechanism provided by Visage
+- add a short hover delay if the framework already supports it
+- avoid flicker while moving within the same row
+- update promptly when moving to a different row
+- hide the hint when:
+  - leaving the tree
+  - scrolling
+  - collapsing a branch that contains the hovered row
+  - the hovered item is deleted
+  - the tree is rebuilt
+  - another control takes over hint display
+
+4. Truncation handling
+
+- always show the hint for truncated labels
+- showing it for all rows is acceptable if simpler and consistent
+- use the full stored label, not the clipped rendering text
+
+5. Preserve existing behavior
+
+Do not regress:
+
+- expand/collapse
+- row formatting
+- selection synchronization
+- rename updates
+- add/delete
+- scrolling
+- undo/redo
+- save/reload
+- Property Inspector synchronization
+
+Validation
+==========
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Hover the project root.
+4. Hover the top-level form.
+5. Hover normal widgets, containers, sizers, and nested nodes.
+6. Verify full text appears for truncated labels.
+7. Move quickly between rows and confirm hints update correctly.
+8. Leave the tree and confirm the hint clears.
+9. Scroll while hovering and confirm stale hints clear.
+10. Collapse a hovered branch and confirm the hint clears safely.
+11. Delete or rename a hovered node and confirm the hint updates or clears.
+12. Confirm selection and expand/collapse still work.
+
+Update the existing Phase 96 plan with:
+
+- hint mechanism used
+- hover hit-testing approach
+- hint content format
+- stale-hover cleanup behavior
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 97.
+Do not change version 1.0.2.
+Do not commit or push unless explicitly requested.

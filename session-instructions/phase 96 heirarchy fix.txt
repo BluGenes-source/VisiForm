@@ -1,0 +1,123 @@
+Continue VisiForm Phase 96. Do not create a new phase and do not change version 1.0.2.
+
+Bug: when a Frame is added and then another widget is added inside that Frame, the Project Tree does not show the widget as a child of the Frame. The canvas ownership appears correct, but the tree displays the new widget at the wrong hierarchy level.
+
+Keep this pass narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 96 plan and files directly related to:
+  - widget parent/child ownership
+  - Frame containment
+  - Project Tree node construction and refresh
+  - add/reparent notifications
+  - undo/redo hierarchy updates
+- do not perform a repository-wide audit
+- do not refactor unrelated tree formatting or tooltip code
+- build once after the focused fix
+
+Tasks
+=====
+
+1. Confirm the source-of-truth relationship
+-------------------------------------------
+
+Trace the exact path when a widget is added inside a Frame:
+
+- how the canvas determines the drop target
+- where the child widget's parent/container is assigned
+- whether the Frame owns the child in the model
+- which notification or refresh reaches the Project Tree
+- whether the tree uses model ownership, canvas geometry, or stale cached parent data
+
+Record the confirmed root cause in the Phase 96 plan.
+
+2. Fix Frame child hierarchy
+----------------------------
+
+Ensure widgets added inside a Frame appear beneath that Frame in the Project Tree.
+
+Requirements:
+
+- use the actual model parent-child relationship
+- do not infer hierarchy only from visual overlap
+- avoid Frame-specific duplicate hierarchy logic if a shared container path exists
+- preserve correct ordering among Frame children
+- update immediately after add or reparent
+- do not require project reload to show the correct parent
+
+3. Verify all supported container paths
+---------------------------------------
+
+Use the same hierarchy update path for other existing containers where applicable, including:
+
+- Panel
+- Group Box
+- Frame
+- Sizer
+- tab page/container nodes
+
+Do not broaden into a redesign. Only correct shared logic directly implicated by the Frame bug.
+
+4. Preserve tree state
+----------------------
+
+When correcting or refreshing the affected branch:
+
+- keep the Frame expanded when practical
+- preserve selection
+- reveal the newly added child
+- avoid collapsing unrelated branches
+- clear or update hover hints safely
+- avoid rebuilding the entire tree when a focused branch update is sufficient
+
+A full rebuild is acceptable only if that is the existing correct mechanism and it preserves state.
+
+5. Undo, redo, move, and load
+-----------------------------
+
+Verify hierarchy remains correct when:
+
+- adding a widget to a Frame
+- undoing the add
+- redoing the add
+- moving or reparenting a widget into a Frame
+- moving it back out
+- deleting the Frame
+- saving and reloading the project
+
+Do not change `.vfb.json` unless the model relationship is genuinely not being persisted.
+
+Validation
+==========
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Add a Frame.
+4. Add a Button inside the Frame.
+5. Confirm the Button appears beneath the Frame in the Project Tree.
+6. Add multiple children and confirm their order.
+7. Select the child in the tree and confirm canvas selection.
+8. Select it on the canvas and confirm tree selection.
+9. Test undo and redo.
+10. Move a widget into and out of the Frame.
+11. Delete the Frame and confirm descendants are removed.
+12. Save and reload, then confirm the hierarchy remains correct.
+13. Spot-check Panel, Group Box, Sizer, and tab-page containment.
+14. Confirm expand/collapse, formatting, scrolling, and hover hints still work.
+
+Update the existing Phase 96 plan with:
+
+- confirmed root cause
+- parent assignment or refresh fix
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 97.
+Do not change version 1.0.2.
+Do not commit or push unless explicitly requested.
