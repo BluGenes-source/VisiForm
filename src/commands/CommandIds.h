@@ -24,6 +24,10 @@ inline constexpr std::string_view kViewSnap = "view.snap";
 inline constexpr std::string_view kViewGuides = "view.guides";
 inline constexpr std::string_view kViewMultiSelect = "view.multiSelect";
 inline constexpr std::string_view kViewPreview = "view.preview";
+inline constexpr std::string_view kViewZoomIn = "view.zoomIn";
+inline constexpr std::string_view kViewZoomOut = "view.zoomOut";
+inline constexpr std::string_view kViewZoomReset = "view.zoomReset";
+inline constexpr std::string_view kViewZoomFit = "view.zoomFit";
 
 inline constexpr std::string_view kLayoutFitText = "layout.fitText";
 inline constexpr std::string_view kLayoutAlignLeft = "layout.alignLeft";

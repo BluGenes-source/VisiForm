@@ -1,0 +1,393 @@
+Implement VisiForm Phase 99: Canvas Zoom and Pan.
+
+Phase 98 is complete and pushed.
+
+Use:
+
+* Phase: 99
+* Version: 1.0.5
+* Subagents: none
+
+Keep token usage minimal and scope this to the base zoom-and-pan implementation.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 98 plan
+* files directly related to:
+
+  * Designer Canvas rendering
+  * coordinate transforms
+  * mouse input and hit testing
+  * selection and resize handles
+  * drag/drop placement
+  * grid and guides
+  * Preview Mode
+  * toolbar/menu commands
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_99_canvas_zoom_pan_plan.md`
+
+Before implementation:
+
+* update all authoritative VisiForm version declarations to `1.0.5`
+* record the previous version and `1.0.5` in the phase plan
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not refactor unrelated rendering or model systems.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Add editor-only zoom and pan support to the Designer Canvas.
+
+Zoom and pan must work in both:
+
+* Design Mode
+* Preview Mode
+
+They must not change widget model coordinates, sizes, serialization, or generated output.
+
+## Zoom controls
+
+Add commands for:
+
+* Zoom In
+* Zoom Out
+* Reset to 100%
+* Fit Form to Canvas
+
+Place them in the most appropriate existing toolbar and menu locations.
+
+Also support:
+
+* `Ctrl + mouse wheel` for zoom
+* an existing standard shortcut pattern if one already exists
+
+Display the current zoom percentage in a compact UI location, such as:
+
+* toolbar control
+* status area
+* zoom dropdown
+
+Use one shared command path for toolbar, menu, and shortcuts.
+
+## Zoom range
+
+Use practical limits.
+
+Suggested initial range:
+
+* minimum: 25%
+* maximum: 400%
+* default: 100%
+
+Use sensible zoom increments, such as:
+
+* 25%, 33%, 50%, 67%, 75%, 100%, 125%, 150%, 200%, 300%, 400%
+
+Exact values may follow an existing application pattern if available.
+
+Clamp zoom to the supported range.
+
+## Zoom behavior
+
+When zooming with the mouse wheel:
+
+* keep the canvas location under the pointer visually stable
+* update pan offset so the pointer remains over the same model-space point
+* avoid jumping toward the canvas origin
+
+When using toolbar or menu commands:
+
+* zoom around the visible canvas center
+* preserve a useful viewport position
+
+Reset to 100% should:
+
+* set zoom to 100%
+* preserve or reasonably recenter the form
+* avoid changing model coordinates
+
+Fit Form to Canvas should:
+
+* calculate a scale that fits the complete form inside the available canvas viewport
+* include a modest margin
+* preserve aspect ratio
+* not exceed the maximum zoom
+* not change the form dimensions
+* center the form when practical
+
+## Pan behavior
+
+Support canvas panning using:
+
+* middle mouse button drag
+* `Space + left mouse drag`
+
+Requirements:
+
+* use a pan cursor when practical
+* panning must not select, drag, resize, or create widgets
+* release must end panning cleanly
+* losing focus or leaving the canvas must cancel the active pan safely
+* Space alone must not modify the project
+* existing keyboard shortcuts must not be broken
+
+Normal left-button editing behavior must remain unchanged when Space is not held.
+
+## Coordinate system
+
+Introduce or use one consistent viewport transform.
+
+Conceptually support:
+
+* model space: stored widget coordinates and sizes
+* view space: zoomed and panned screen coordinates
+
+Provide shared conversion helpers, such as:
+
+* model-to-view point
+* view-to-model point
+* model-to-view rectangle
+* view-to-model rectangle
+
+Use the same transform for:
+
+* widget drawing
+* hit testing
+* selection
+* resize handles
+* drag movement
+* drop placement
+* grid
+* snap guides
+* alignment guides
+* insertion markers
+* container targeting
+* Preview Mode
+* hover behavior
+
+Do not add unrelated independent scaling formulas in multiple controls.
+
+## Model integrity
+
+Zoom and pan are editor viewport state only.
+
+Do not modify:
+
+* widget `x` and `y`
+* widget width and height
+* parent-child relationships
+* `.vfb.json`
+* generated C++
+* validation behavior
+
+A widget moved by 10 model units must still move by exactly 10 model units regardless of zoom.
+
+Avoid rounding model coordinates repeatedly during drag operations.
+
+## Rendering
+
+Scale canvas content cleanly.
+
+Requirements:
+
+* widget borders remain aligned with their model geometry
+* text stays readable
+* selection handles remain usable
+* handle sizes may remain approximately constant in screen pixels
+* splitter lines, guides, and grid remain visible at useful sizes
+* avoid cumulative transform errors
+* avoid applying the zoom transform twice
+
+If the graphics framework supports transform stacks, save and restore them safely.
+
+## Grid and snapping
+
+Preserve grid and snapping behavior in model space.
+
+Requirements:
+
+* grid spacing scales visually with zoom
+* snapping still targets the same model coordinates
+* guide calculations remain in model space
+* grid or guides may be simplified at very low zoom to avoid visual clutter
+* zoom must not alter saved positions
+
+## Selection and resize handles
+
+At every supported zoom:
+
+* clicking selects the correct widget
+* selection outlines match widget bounds
+* resize handles appear at correct locations
+* handles remain large enough to use
+* resizing updates the correct model dimensions
+* nested widgets and containers remain hittable
+* overlapping widgets preserve current hit-test ordering
+
+## Drag, drop, and creation
+
+Verify that zoom and pan do not break:
+
+* dragging existing widgets
+* resizing widgets
+* palette widget creation
+* drop coordinates
+* container targeting
+* reparenting
+* sizer insertion
+* undo and redo
+
+Convert pointer coordinates to model space before applying model changes.
+
+## Preview Mode integration
+
+Preserve the same zoom and pan state when switching between Design and Preview modes.
+
+Preview Mode must:
+
+* render at the current zoom
+* use the current pan offset
+* continue blocking editing
+* allow zoom and pan
+* preserve the viewport when returning to Design Mode
+
+Do not reset zoom merely because Preview Mode is entered or exited.
+
+## Viewport state
+
+For the base iteration:
+
+* maintain zoom and pan for the active document during the session
+* do not store zoom or pan in `.vfb.json`
+* reset to a sensible view for a new project
+* ensure opening another project does not leave the form permanently off-screen
+
+Persisting viewport state across application sessions is optional and should not be added unless an existing lightweight editor-state mechanism already supports it.
+
+## Responsive behavior
+
+Verify behavior when:
+
+* resizing the main window
+* moving the Project Tree splitter
+* moving the Property Inspector splitter
+* maximizing and restoring the app
+* changing Preview Mode
+* fitting the form after workspace size changes
+
+Do not automatically reset user zoom during ordinary window resizing.
+
+## Performance
+
+Avoid unnecessary full-state reconstruction during pan or zoom.
+
+Use targeted repainting where practical, but correctness is more important than premature optimization.
+
+Do not add a continuous repaint loop.
+
+## Scope boundaries
+
+Do not add in this phase:
+
+* mini-map
+* rulers
+* device presets
+* infinite canvas
+* rotation
+* canvas animation
+* touch gestures
+* multi-document viewport tabs
+* runtime theme refinement
+* new shadow or raised-widget styling
+
+Record these only as possible future work.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.5`.
+4. Test Zoom In and Zoom Out.
+5. Test Reset to 100%.
+6. Test Fit Form to Canvas.
+7. Test `Ctrl + mouse wheel`.
+8. Confirm pointer-centered zoom does not jump.
+9. Test middle-button pan.
+10. Test `Space + left-drag` pan.
+11. Confirm normal left-drag still moves widgets.
+12. Select widgets at several zoom levels.
+13. Resize widgets at several zoom levels.
+14. Verify selection outlines and handles align.
+15. Create a widget from the palette while zoomed.
+16. Verify correct drop position.
+17. Test nested containers and sizers.
+18. Test snapping and guides.
+19. Test undo and redo.
+20. Enter Preview Mode and confirm zoom/pan are preserved.
+21. Zoom and pan while previewing.
+22. Return to Design Mode and confirm the viewport is unchanged.
+23. Resize splitters and the main window.
+24. Maximize and restore.
+25. Test minimum and maximum zoom.
+26. Confirm save, reload, and export do not contain zoom or pan state.
+27. Confirm widget model coordinates remain unchanged by viewport-only operations.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 99 plan with:
+
+* previous and new version
+* viewport transform design
+* zoom range and increments
+* zoom anchor behavior
+* pan controls
+* model/view conversion helpers
+* Preview Mode integration
+* persistence policy
+* files changed
+* build result
+* manual validation actually performed
+* known limitations
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep the change concise.
+
+## Completion report
+
+Report:
+
+* Phase 99 plan path
+* version change to `1.0.5`
+* zoom controls and shortcuts
+* pan controls
+* coordinate-transform design
+* model-integrity safeguards
+* Preview Mode behavior
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

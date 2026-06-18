@@ -598,7 +598,15 @@ ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, c
     return style;
 }
 
-PreviewLayout calculatePreviewLayout(float x, float y, float width, float height, const model::ProjectDocument& document, bool previewMode)
+PreviewLayout calculatePreviewLayout(float x,
+    float y,
+    float width,
+    float height,
+    const model::ProjectDocument& document,
+    bool previewMode,
+    float zoom,
+    float panX,
+    float panY)
 {
     PreviewLayout layout;
     layout.preview = {
@@ -612,22 +620,16 @@ PreviewLayout calculatePreviewLayout(float x, float y, float width, float height
         return layout;
     }
 
-    const float availableWidth = std::max(0.0f, layout.preview.width - kPreviewPadding * 2.0f);
-    const float availableHeight = std::max(0.0f, layout.preview.height - kPreviewPadding * 2.0f);
-    if (availableWidth <= 0.0f || availableHeight <= 0.0f) {
+    if (layout.preview.width <= 0.0f || layout.preview.height <= 0.0f || zoom <= 0.0f) {
         return layout;
     }
 
-    layout.scale = std::min(availableWidth / document.root.bounds.width, availableHeight / document.root.bounds.height);
-    if (layout.scale <= 0.0f) {
-        return layout;
-    }
-
+    layout.scale = zoom;
     const float formWidth = document.root.bounds.width * layout.scale;
     const float formHeight = document.root.bounds.height * layout.scale;
     layout.form = {
-        layout.preview.x + (layout.preview.width - formWidth) * 0.5f,
-        layout.preview.y + (layout.preview.height - formHeight) * 0.5f,
+        layout.preview.x + (layout.preview.width - formWidth) * 0.5f + panX,
+        layout.preview.y + (layout.preview.height - formHeight) * 0.5f + panY,
         formWidth,
         formHeight
     };
@@ -1647,35 +1649,155 @@ int DesignerCanvas::majorGridSize() const
     return majorGridSize_;
 }
 
+float DesignerCanvas::zoom() const
+{
+    return zoom_;
+}
+
+int DesignerCanvas::zoomPercent() const
+{
+    return static_cast<int>(std::lround(zoom_ * 100.0f));
+}
+
 bool DesignerCanvas::contains(float x, float y) const
 {
     return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
 }
 
-std::optional<DesignerCanvas::FormPoint> DesignerCanvas::toFormPoint(const model::ProjectDocument& document, float x, float y) const
+bool DesignerCanvas::containsViewport(float x, float y) const
 {
-    if (!contains(x, y) || !document.root.bounds.isValid()) {
-        return std::nullopt;
+    if (!contains(x, y)) {
+        return false;
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
-    if (!previewLayout.form.contains(x, y) || previewLayout.scale <= 0.0f) {
-        return std::nullopt;
+    const float top = y_ + (mode_ == Mode::Preview ? kPadding : kHeaderHeight + 12.0f);
+    const float bottom = y_ + height_ - kPadding;
+    return x >= x_ + kPadding && x <= x_ + width_ - kPadding && y >= top && y <= bottom;
+}
+
+DesignerCanvas::ViewPoint DesignerCanvas::viewportCenter() const
+{
+    const float top = y_ + (mode_ == Mode::Preview ? kPadding : kHeaderHeight + 12.0f);
+    const float bottom = y_ + height_ - kPadding;
+    return { x_ + width_ * 0.5f, top + std::max(0.0f, bottom - top) * 0.5f };
+}
+
+DesignerCanvas::FormPoint DesignerCanvas::viewToModelPoint(const model::ProjectDocument& document, float x, float y) const
+{
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
+    if (previewLayout.scale <= 0.0f) {
+        return {};
     }
 
-    return FormPoint{
+    return {
         (x - previewLayout.form.x) / previewLayout.scale + document.root.bounds.x,
         (y - previewLayout.form.y) / previewLayout.scale + document.root.bounds.y
     };
 }
 
-std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const
+DesignerCanvas::ViewPoint DesignerCanvas::modelToViewPoint(const model::ProjectDocument& document, float x, float y) const
 {
-    if (!contains(x, y) || !document.root.bounds.isValid()) {
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
+    return {
+        previewLayout.form.x + (x - document.root.bounds.x) * previewLayout.scale,
+        previewLayout.form.y + (y - document.root.bounds.y) * previewLayout.scale
+    };
+}
+
+model::Rect DesignerCanvas::viewToModelRect(const model::ProjectDocument& document, const model::Rect& rect) const
+{
+    const FormPoint topLeft = viewToModelPoint(document, rect.x, rect.y);
+    const FormPoint bottomRight = viewToModelPoint(document, rect.x + rect.width, rect.y + rect.height);
+    return { topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y };
+}
+
+model::Rect DesignerCanvas::modelToViewRect(const model::ProjectDocument& document, const model::Rect& rect) const
+{
+    const ViewPoint topLeft = modelToViewPoint(document, rect.x, rect.y);
+    const ViewPoint bottomRight = modelToViewPoint(document, rect.x + rect.width, rect.y + rect.height);
+    return { topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y };
+}
+
+void DesignerCanvas::setZoomAround(const model::ProjectDocument& document, float zoom, float viewX, float viewY)
+{
+    if (!document.root.bounds.isValid()) {
+        return;
+    }
+
+    const float nextZoom = std::clamp(zoom, kMinimumZoom, kMaximumZoom);
+    if (std::abs(nextZoom - zoom_) < 0.0001f) {
+        return;
+    }
+
+    const FormPoint anchor = viewToModelPoint(document, viewX, viewY);
+    zoom_ = nextZoom;
+
+    const PreviewLayout centeredLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, 0.0f, 0.0f);
+    panX_ = viewX - centeredLayout.form.x - (anchor.x - document.root.bounds.x) * zoom_;
+    panY_ = viewY - centeredLayout.form.y - (anchor.y - document.root.bounds.y) * zoom_;
+}
+
+void DesignerCanvas::resetView(const model::ProjectDocument&)
+{
+    zoom_ = 1.0f;
+    panX_ = 0.0f;
+    panY_ = 0.0f;
+}
+
+void DesignerCanvas::fitFormToCanvas(const model::ProjectDocument& document)
+{
+    const PreviewLayout centeredLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, 1.0f, 0.0f, 0.0f);
+    if (!centeredLayout.preview.isValid() || !document.root.bounds.isValid()) {
+        return;
+    }
+
+    const float availableWidth = std::max(0.0f, centeredLayout.preview.width - kPreviewPadding * 2.0f);
+    const float availableHeight = std::max(0.0f, centeredLayout.preview.height - kPreviewPadding * 2.0f);
+    if (availableWidth <= 0.0f || availableHeight <= 0.0f) {
+        return;
+    }
+
+    zoom_ = std::clamp(
+        std::min(availableWidth / document.root.bounds.width, availableHeight / document.root.bounds.height),
+        kMinimumZoom,
+        kMaximumZoom);
+    panX_ = 0.0f;
+    panY_ = 0.0f;
+}
+
+void DesignerCanvas::panBy(float deltaX, float deltaY)
+{
+    panX_ += deltaX;
+    panY_ += deltaY;
+}
+
+std::optional<DesignerCanvas::FormPoint> DesignerCanvas::toFormPoint(const model::ProjectDocument& document, float x, float y) const
+{
+    if (!containsViewport(x, y) || !document.root.bounds.isValid()) {
         return std::nullopt;
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
+    if (!previewLayout.form.contains(x, y) || previewLayout.scale <= 0.0f) {
+        return std::nullopt;
+    }
+
+    return viewToModelPoint(document, x, y);
+}
+
+std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const
+{
+    if (!containsViewport(x, y) || !document.root.bounds.isValid()) {
+        return std::nullopt;
+    }
+
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
     if (!previewLayout.form.contains(x, y) || previewLayout.scale <= 0.0f) {
         return std::nullopt;
     }
@@ -1690,7 +1812,7 @@ std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectD
 
 std::optional<int> DesignerCanvas::hitTestTabHeader(const model::ProjectDocument& document, const std::string& widgetId, float x, float y) const
 {
-    if (!contains(x, y) || widgetId.empty() || !document.root.bounds.isValid()) {
+    if (!containsViewport(x, y) || widgetId.empty() || !document.root.bounds.isValid()) {
         return std::nullopt;
     }
 
@@ -1699,7 +1821,8 @@ std::optional<int> DesignerCanvas::hitTestTabHeader(const model::ProjectDocument
         return std::nullopt;
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
     if (!previewLayout.form.isValid()) {
         return std::nullopt;
     }
@@ -1727,7 +1850,12 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
     float y,
     const std::string& selectedWidgetId) const
 {
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
+    if (!containsViewport(x, y)) {
+        return std::nullopt;
+    }
+
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
     if (!previewLayout.form.isValid()) {
         return std::nullopt;
     }
@@ -1886,7 +2014,8 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
     if (!previewLayout.preview.isValid()) {
         return;
     }
@@ -1902,6 +2031,9 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     if (!previewLayout.form.isValid()) {
         return;
     }
+
+    canvas.saveState();
+    canvas.trimClampBounds(previewLayout.preview.x, previewLayout.preview.y, previewLayout.preview.width, previewLayout.preview.height);
 
     drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
@@ -1931,6 +2063,8 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
             }
         }
     }
+
+    canvas.restoreState();
 
     if (drawText && showEditorDecorations) {
         canvas.setColor(0xff243041);

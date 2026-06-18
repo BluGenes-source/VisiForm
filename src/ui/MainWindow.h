@@ -45,6 +45,9 @@ public:
     void mouseUp(const visage::MouseEvent& e) override;
     bool mouseWheel(const visage::MouseEvent& e) override;
     bool keyPress(const visage::KeyEvent& e) override;
+    bool keyRelease(const visage::KeyEvent& e) override;
+    void mouseExit(const visage::MouseEvent& e) override;
+    void focusChanged(bool isFocused, bool wasClicked) override;
     bool receivesTextInput() override;
     void textInput(const std::string& text) override;
 
@@ -126,6 +129,10 @@ private:
         DistributeVertically,
         ToggleSmartGuides,
         TogglePreviewMode,
+        ZoomIn,
+        ZoomOut,
+        ResetZoom,
+        FitFormToCanvas,
         BringForward,
         SendBackward,
         ToggleGrid,
@@ -170,6 +177,14 @@ private:
         std::vector<DesignerCanvas::SmartGuide> smartGuides{};
         bool smartGuideSnapUsed = false;
         bool changed = false;
+    };
+
+    struct CanvasPanState {
+        bool active = false;
+        bool spaceDown = false;
+        bool startedWithMiddleButton = false;
+        float lastX = 0.0f;
+        float lastY = 0.0f;
     };
 
     struct ToolbarButton {
@@ -438,6 +453,13 @@ private:
     void toggleMultiSelectMode();
     void toggleSmartGuides();
     void togglePreviewMode();
+    void zoomCanvasIn();
+    void zoomCanvasOut();
+    void resetCanvasZoom();
+    void fitFormToCanvas();
+    void zoomCanvasAround(float zoom, float viewX, float viewY);
+    void beginCanvasPan(const visage::MouseEvent& e);
+    void endCanvasPan();
     void setDesignerCanvasMode(DesignerCanvas::Mode mode);
     [[nodiscard]] bool isPreviewMode() const;
     [[nodiscard]] bool isMultiSelectModeEnabled() const;
@@ -600,6 +622,7 @@ private:
     std::string statusMessage_{};
     std::string hoverHint_{};
     CanvasInteractionState canvasInteraction_{};
+    CanvasPanState canvasPan_{};
     commands::UndoRedoStack undoRedo_{};
     utils::IdGenerator idGenerator_{};
     utils::AppSettings settings_{};

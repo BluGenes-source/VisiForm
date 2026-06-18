@@ -30,6 +30,10 @@ const std::vector<CommandDefinition> kDefinitions = {
     { ids::kViewGuides, "Guides", "View", "Ctrl+Shift+G", "Toggle smart guides" },
     { ids::kViewMultiSelect, "Multi Select", "View", "", "Toggle multi-select mode" },
     { ids::kViewPreview, "Preview", "View", "F5", "Toggle Designer Preview Mode" },
+    { ids::kViewZoomIn, "Zoom In", "View", "Ctrl+=", "Increase Designer Canvas zoom" },
+    { ids::kViewZoomOut, "Zoom Out", "View", "Ctrl+-", "Decrease Designer Canvas zoom" },
+    { ids::kViewZoomReset, "Reset Zoom", "View", "Ctrl+0", "Reset Designer Canvas zoom to 100%" },
+    { ids::kViewZoomFit, "Fit Form to Canvas", "View", "", "Fit the complete form in the Designer Canvas" },
     { ids::kLayoutFitText, "Fit Text", "Layout", "Ctrl+Alt+F", "Fit the selected widget to its text" },
     { ids::kLayoutAlignLeft, "Align Left", "Layout", "Ctrl+Alt+Left", "Align selected widgets left" },
     { ids::kLayoutAlignTop, "Align Top", "Layout", "Ctrl+Alt+Up", "Align selected widgets top" },
@@ -80,6 +84,12 @@ visage::KeyCode parseKeyToken(std::string_view token)
 
     if (normalized == "DEL" || normalized == "DELETE") {
         return visage::KeyCode::Delete;
+    }
+    if (normalized == "-" || normalized == "MINUS") {
+        return visage::KeyCode::Minus;
+    }
+    if (normalized == "=" || normalized == "EQUALS") {
+        return visage::KeyCode::Equals;
     }
     if (normalized == "BACKSPACE" || normalized == "BKSP") {
         return visage::KeyCode::Backspace;
@@ -168,6 +178,10 @@ std::string keyToken(visage::KeyCode key)
         return "Tab";
     case visage::KeyCode::Space:
         return "Space";
+    case visage::KeyCode::Minus:
+        return "-";
+    case visage::KeyCode::Equals:
+        return "=";
     case visage::KeyCode::Left:
         return "Left";
     case visage::KeyCode::Right:

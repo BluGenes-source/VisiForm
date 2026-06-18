@@ -43,6 +43,11 @@ public:
         float y = 0.0f;
     };
 
+    struct ViewPoint {
+        float x = 0.0f;
+        float y = 0.0f;
+    };
+
     struct SelectionRect {
         float x = 0.0f;
         float y = 0.0f;
@@ -72,7 +77,19 @@ public:
     [[nodiscard]] bool snapToGrid() const;
     [[nodiscard]] int gridSize() const;
     [[nodiscard]] int majorGridSize() const;
+    [[nodiscard]] float zoom() const;
+    [[nodiscard]] int zoomPercent() const;
     [[nodiscard]] bool contains(float x, float y) const;
+    [[nodiscard]] bool containsViewport(float x, float y) const;
+    [[nodiscard]] ViewPoint viewportCenter() const;
+    [[nodiscard]] FormPoint viewToModelPoint(const model::ProjectDocument& document, float x, float y) const;
+    [[nodiscard]] ViewPoint modelToViewPoint(const model::ProjectDocument& document, float x, float y) const;
+    [[nodiscard]] model::Rect viewToModelRect(const model::ProjectDocument& document, const model::Rect& rect) const;
+    [[nodiscard]] model::Rect modelToViewRect(const model::ProjectDocument& document, const model::Rect& rect) const;
+    void setZoomAround(const model::ProjectDocument& document, float zoom, float viewX, float viewY);
+    void resetView(const model::ProjectDocument& document);
+    void fitFormToCanvas(const model::ProjectDocument& document);
+    void panBy(float deltaX, float deltaY);
     [[nodiscard]] std::optional<std::string> hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] std::optional<int> hitTestTabHeader(const model::ProjectDocument& document, const std::string& widgetId, float x, float y) const;
     [[nodiscard]] std::optional<InteractionHit> hitTestInteraction(const model::ProjectDocument& document, float x, float y, const std::string& selectedWidgetId) const;
@@ -91,6 +108,8 @@ public:
 private:
     [[nodiscard]] float snap(float value) const;
 
+    static constexpr float kMinimumZoom = 0.25f;
+    static constexpr float kMaximumZoom = 4.0f;
     float x_{};
     float y_{};
     float width_{};
@@ -101,6 +120,9 @@ private:
     bool snapToGrid_ = true;
     int gridSize_ = 10;
     int majorGridSize_ = 50;
+    float zoom_ = 1.0f;
+    float panX_ = 0.0f;
+    float panY_ = 0.0f;
     float resizeHandleVisualSize_ = 10.0f;
     float resizeHandleHitSize_ = 16.0f;
     float smallWidgetHitPadding_ = 4.0f;

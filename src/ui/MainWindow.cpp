@@ -2227,6 +2227,7 @@ bool MainWindow::applyNewProjectWizard()
     document_.setSelection(document_.root.id);
     projectTree_.resetForDocument(document_);
     updateLayout();
+    designerCanvas_.resetView(document_);
     setOperationStatus("Created new project: " + document_.projectName);
     closeEditorModalDialog("create");
     redraw();
@@ -2525,6 +2526,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     }
     projectTree_.resetForDocument(document_);
     updateLayout();
+    designerCanvas_.resetView(document_);
 
     currentProjectPath_ = path;
     undoRedo_.clear();
@@ -2659,6 +2661,16 @@ void MainWindow::draw(visage::Canvas& canvas)
 
 void MainWindow::mouseDown(const visage::MouseEvent& e)
 {
+    if (e.isMiddleButton()) {
+        requestKeyboardFocus();
+        if (!isEditorModalVisible() && openMenuIndex_ < 0
+            && designerCanvas_.containsViewport(e.position.x, e.position.y)) {
+            beginCanvasPan(e);
+            redraw();
+        }
+        return;
+    }
+
     if (!e.isLeftButton()) {
         return;
     }
@@ -2718,6 +2730,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (canvasInspectorSplitter_.mouseDown(e.position.x, e.position.y)) {
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
+        redraw();
+        return;
+    }
+
+    if (canvasPan_.spaceDown && designerCanvas_.containsViewport(e.position.x, e.position.y)) {
+        beginCanvasPan(e);
         redraw();
         return;
     }
@@ -3049,6 +3067,21 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         return;
     }
 
+    if (canvasPan_.active) {
+        if (!designerCanvas_.containsViewport(e.position.x, e.position.y)) {
+            canvasPan_.lastX = e.position.x;
+            canvasPan_.lastY = e.position.y;
+            endCanvasPan();
+            return;
+        }
+        designerCanvas_.panBy(e.position.x - canvasPan_.lastX, e.position.y - canvasPan_.lastY);
+        canvasPan_.lastX = e.position.x;
+        canvasPan_.lastY = e.position.y;
+        visage::setCursorStyle(visage::MouseCursor::Dragging);
+        redraw();
+        return;
+    }
+
     if (widgetPalette_.mouseDrag(e.position.x, e.position.y)) {
         redraw();
         return;
@@ -3243,6 +3276,15 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 
 void MainWindow::mouseUp(const visage::MouseEvent& e)
 {
+    if (canvasPan_.active
+        && ((canvasPan_.startedWithMiddleButton && e.isMiddleButton())
+            || (!canvasPan_.startedWithMiddleButton && e.isLeftButton()))) {
+        canvasPan_.lastX = e.position.x;
+        canvasPan_.lastY = e.position.y;
+        endCanvasPan();
+        return;
+    }
+
     if (isEditorModalVisible()) {
         return;
     }
@@ -3474,6 +3516,28 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
 bool MainWindow::mouseWheel(const visage::MouseEvent& e)
 {
     const float deltaY = e.precise_wheel_delta_y != 0.0f ? e.precise_wheel_delta_y : e.wheel_delta_y;
+    if (!isEditorModalVisible() && openMenuIndex_ < 0 && e.isCtrlDown()
+        && designerCanvas_.containsViewport(e.position.x, e.position.y)) {
+        static constexpr std::array<float, 11> kZoomLevels{
+            0.25f, 0.33f, 0.50f, 0.67f, 0.75f, 1.00f, 1.25f, 1.50f, 2.00f, 3.00f, 4.00f
+        };
+        float zoom = designerCanvas_.zoom();
+        if (deltaY > 0.0f) {
+            const auto next = std::find_if(kZoomLevels.begin(), kZoomLevels.end(), [zoom](float level) {
+                return level > zoom + 0.001f;
+            });
+            zoom = next == kZoomLevels.end() ? kZoomLevels.back() : *next;
+        }
+        else if (deltaY < 0.0f) {
+            const auto next = std::find_if(kZoomLevels.rbegin(), kZoomLevels.rend(), [zoom](float level) {
+                return level < zoom - 0.001f;
+            });
+            zoom = next == kZoomLevels.rend() ? kZoomLevels.front() : *next;
+        }
+        zoomCanvasAround(zoom, e.position.x, e.position.y);
+        return true;
+    }
+
     if (!isEditorModalVisible() && propertyInspector_.contains(e.position.x, e.position.y)) {
         if (propertyInspector_.mouseWheel(document_, settings_, deltaY, e.position.x, e.position.y)) {
             if (propertyInspector_.consumeScrollInteraction()) {
@@ -3609,6 +3673,11 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
 
     const bool usesGlobalShortcutModifier = e.isCtrlDown() || e.isAltDown() || e.isCmdDown() || e.isMetaDown();
+    if (!usesGlobalShortcutModifier && e.keyCode() == KeyCode::Space) {
+        canvasPan_.spaceDown = true;
+        return true;
+    }
+
     if (!isPreviewMode()
         && !usesGlobalShortcutModifier
         && (e.keyCode() == KeyCode::Left || e.keyCode() == KeyCode::Right
@@ -3659,6 +3728,35 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     return false;
 }
 
+bool MainWindow::keyRelease(const visage::KeyEvent& e)
+{
+    if (e.keyCode() != visage::KeyCode::Space) {
+        return false;
+    }
+
+    canvasPan_.spaceDown = false;
+    if (canvasPan_.active && !canvasPan_.startedWithMiddleButton) {
+        endCanvasPan();
+    }
+    return true;
+}
+
+void MainWindow::mouseExit(const visage::MouseEvent&)
+{
+    canvasPan_.spaceDown = false;
+    endCanvasPan();
+}
+
+void MainWindow::focusChanged(bool isFocused, bool)
+{
+    if (isFocused) {
+        return;
+    }
+
+    canvasPan_.spaceDown = false;
+    endCanvasPan();
+}
+
 bool MainWindow::receivesTextInput()
 {
     return textEditControl_.isFocused();
@@ -3690,6 +3788,78 @@ void MainWindow::toggleSmartGuides()
 void MainWindow::togglePreviewMode()
 {
     setDesignerCanvasMode(isPreviewMode() ? DesignerCanvas::Mode::Design : DesignerCanvas::Mode::Preview);
+}
+
+void MainWindow::zoomCanvasAround(float zoom, float viewX, float viewY)
+{
+    designerCanvas_.setZoomAround(document_, zoom, viewX, viewY);
+    setOperationStatus("Canvas zoom: " + std::to_string(designerCanvas_.zoomPercent()) + "%");
+    redraw();
+}
+
+void MainWindow::zoomCanvasIn()
+{
+    static constexpr std::array<float, 11> kZoomLevels{
+        0.25f, 0.33f, 0.50f, 0.67f, 0.75f, 1.00f, 1.25f, 1.50f, 2.00f, 3.00f, 4.00f
+    };
+    const auto next = std::find_if(kZoomLevels.begin(), kZoomLevels.end(), [this](float level) {
+        return level > designerCanvas_.zoom() + 0.001f;
+    });
+    const float zoom = next == kZoomLevels.end() ? kZoomLevels.back() : *next;
+    const DesignerCanvas::ViewPoint center = designerCanvas_.viewportCenter();
+    zoomCanvasAround(zoom, center.x, center.y);
+}
+
+void MainWindow::zoomCanvasOut()
+{
+    static constexpr std::array<float, 11> kZoomLevels{
+        0.25f, 0.33f, 0.50f, 0.67f, 0.75f, 1.00f, 1.25f, 1.50f, 2.00f, 3.00f, 4.00f
+    };
+    const auto next = std::find_if(kZoomLevels.rbegin(), kZoomLevels.rend(), [this](float level) {
+        return level < designerCanvas_.zoom() - 0.001f;
+    });
+    const float zoom = next == kZoomLevels.rend() ? kZoomLevels.front() : *next;
+    const DesignerCanvas::ViewPoint center = designerCanvas_.viewportCenter();
+    zoomCanvasAround(zoom, center.x, center.y);
+}
+
+void MainWindow::resetCanvasZoom()
+{
+    designerCanvas_.resetView(document_);
+    setOperationStatus("Canvas zoom: 100%");
+    redraw();
+}
+
+void MainWindow::fitFormToCanvas()
+{
+    designerCanvas_.fitFormToCanvas(document_);
+    setOperationStatus("Fit form to canvas: " + std::to_string(designerCanvas_.zoomPercent()) + "%");
+    redraw();
+}
+
+void MainWindow::beginCanvasPan(const visage::MouseEvent& e)
+{
+    clearCanvasInteraction();
+    canvasPan_.active = true;
+    canvasPan_.startedWithMiddleButton = e.isMiddleButton();
+    canvasPan_.lastX = e.position.x;
+    canvasPan_.lastY = e.position.y;
+    hoverHint_.clear();
+    visage::setCursorStyle(visage::MouseCursor::Dragging);
+    setOperationStatus("Panning canvas");
+}
+
+void MainWindow::endCanvasPan()
+{
+    if (!canvasPan_.active) {
+        return;
+    }
+
+    canvasPan_.active = false;
+    canvasPan_.startedWithMiddleButton = false;
+    updateEditorCursor(canvasPan_.lastX, canvasPan_.lastY);
+    setOperationStatus("Canvas zoom: " + std::to_string(designerCanvas_.zoomPercent()) + "%");
+    redraw();
 }
 
 void MainWindow::setDesignerCanvasMode(DesignerCanvas::Mode mode)
@@ -5763,6 +5933,14 @@ std::string_view MainWindow::commandRegistryId(CommandId command)
         return kViewGuides;
     case CommandId::TogglePreviewMode:
         return kViewPreview;
+    case CommandId::ZoomIn:
+        return kViewZoomIn;
+    case CommandId::ZoomOut:
+        return kViewZoomOut;
+    case CommandId::ResetZoom:
+        return kViewZoomReset;
+    case CommandId::FitFormToCanvas:
+        return kViewZoomFit;
     case CommandId::BringForward:
         return kLayoutBringForward;
     case CommandId::SendBackward:
@@ -5835,6 +6013,18 @@ MainWindow::CommandId MainWindow::commandFromRegistryId(std::string_view registr
     }
     if (registryId == kViewPreview) {
         return CommandId::TogglePreviewMode;
+    }
+    if (registryId == kViewZoomIn) {
+        return CommandId::ZoomIn;
+    }
+    if (registryId == kViewZoomOut) {
+        return CommandId::ZoomOut;
+    }
+    if (registryId == kViewZoomReset) {
+        return CommandId::ResetZoom;
+    }
+    if (registryId == kViewZoomFit) {
+        return CommandId::FitFormToCanvas;
     }
     if (registryId == kLayoutFitText) {
         return CommandId::FitText;
@@ -6035,6 +6225,14 @@ std::string MainWindow::commandHintText(CommandId command) const
             return isPreviewMode()
                 ? "Return to Design Mode" + shortcutSuffix
                 : "Show the form without editor decorations" + shortcutSuffix;
+        case CommandId::ZoomIn:
+            return "Increase Designer Canvas zoom" + shortcutSuffix;
+        case CommandId::ZoomOut:
+            return "Decrease Designer Canvas zoom" + shortcutSuffix;
+        case CommandId::ResetZoom:
+            return "Reset Designer Canvas zoom to 100%" + shortcutSuffix;
+        case CommandId::FitFormToCanvas:
+            return "Fit the complete form in the Designer Canvas" + shortcutSuffix;
         case CommandId::BringForward:
             return "Bring the selected widget forward" + shortcutSuffix;
         case CommandId::SendBackward:
@@ -6209,6 +6407,11 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     addCommand(viewMenu, CommandId::ToggleSmartGuides, "Guides");
     addCommand(viewMenu, CommandId::ToggleMultiSelect, "Multi Select");
     addCommand(viewMenu, CommandId::TogglePreviewMode, "Preview");
+    addSeparator(viewMenu);
+    addCommand(viewMenu, CommandId::ZoomIn, "Zoom In");
+    addCommand(viewMenu, CommandId::ZoomOut, "Zoom Out");
+    addCommand(viewMenu, CommandId::ResetZoom, "Reset to 100%");
+    addCommand(viewMenu, CommandId::FitFormToCanvas, "Fit Form to Canvas");
     addSeparator(viewMenu);
     addCommand(viewMenu, CommandId::ShowValidationReport, "Validation Report");
     result.push_back(std::move(viewMenu));
@@ -6534,6 +6737,11 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
                 progressBarX, progressBarY - 2.0f, pw, ph + 4.0f);
         }
     }
+    else {
+        canvas.setColor(0xffaab4c3);
+        canvas.text("Zoom: " + std::to_string(designerCanvas_.zoomPercent()) + "%", labelFont_, visage::Font::kTopRight,
+            rightX, layout_.statusBar.y + 4.0f, rightWidth, layout_.statusBar.height - 6.0f);
+    }
 }
 
 void MainWindow::selectWidget(const std::string& widgetId)
@@ -6680,6 +6888,10 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(CommandId::ToggleSnap, "Snap");
     addButton(CommandId::ToggleSmartGuides, "Guides");
     addButton(CommandId::TogglePreviewMode, isPreviewMode() ? "Design" : "Preview");
+    addButton(CommandId::ZoomOut, "-");
+    addButton(CommandId::ResetZoom, std::to_string(designerCanvas_.zoomPercent()) + "%");
+    addButton(CommandId::ZoomIn, "+");
+    addButton(CommandId::FitFormToCanvas, "Fit");
 
     return buttons;
 }
@@ -6831,6 +7043,18 @@ bool MainWindow::executeCommand(CommandId command)
     case CommandId::TogglePreviewMode:
         togglePreviewMode();
         return true;
+    case CommandId::ZoomIn:
+        zoomCanvasIn();
+        return true;
+    case CommandId::ZoomOut:
+        zoomCanvasOut();
+        return true;
+    case CommandId::ResetZoom:
+        resetCanvasZoom();
+        return true;
+    case CommandId::FitFormToCanvas:
+        fitFormToCanvas();
+        return true;
     case CommandId::BringForward:
         bringSelectedForward();
         return true;
@@ -6973,11 +7197,21 @@ void MainWindow::applyCanvasSettings()
 
 void MainWindow::updateEditorCursor(float x, float y)
 {
+    if (canvasPan_.active) {
+        visage::setCursorStyle(visage::MouseCursor::Dragging);
+        return;
+    }
+
     if ((layout_.showProjectTree
             && (projectTreeCanvasSplitter_.isDragging() || projectTreeCanvasSplitter_.isPointOverDivider(x, y)))
         || canvasInspectorSplitter_.isDragging()
         || canvasInspectorSplitter_.isPointOverDivider(x, y)) {
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
+        return;
+    }
+
+    if (canvasPan_.spaceDown && designerCanvas_.containsViewport(x, y)) {
+        visage::setCursorStyle(visage::MouseCursor::Dragging);
         return;
     }
 
