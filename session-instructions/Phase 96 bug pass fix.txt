@@ -1,0 +1,144 @@
+Continue VisiForm Phase 96. Do not create a new phase and do not change the version.
+
+The hierarchical Project Tree works, but its text layout has visual defects.
+
+Keep this pass narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 96 plan and files directly related to Project Tree drawing, row layout, fonts, indentation, scrolling, and selection
+- do not inspect unrelated systems
+- do not refactor the tree model or selection logic
+- build once after the formatting changes are complete
+
+Observed problems
+=================
+
+The current Project Tree shows:
+
+- vertically clipped text
+- text overlapping neighboring rows
+- row height that is too small for the active font
+- expand/collapse controls crowded against labels
+- inconsistent indentation
+- selected-row highlight not matching the row bounds
+- long labels clipped abruptly
+- name and widget type text crowded together
+
+Tasks
+=====
+
+1. Correct row metrics
+----------------------
+
+Calculate each tree row using the actual rendered font metrics.
+
+Requirements:
+
+- row height must accommodate the font plus reasonable top and bottom padding
+- text must be vertically centered
+- adjacent rows must not overlap
+- expand/collapse controls must be vertically centered within the same row
+- selection highlight must cover the full row bounds
+- hit testing must use the same row bounds as drawing
+
+Avoid fixed row heights that are smaller than the current font.
+
+2. Correct horizontal layout
+----------------------------
+
+Define consistent horizontal regions for:
+
+- hierarchy indentation
+- expand/collapse control
+- optional icon
+- widget name
+- separator
+- widget type
+
+Requirements:
+
+- labels must not overlap expand/collapse controls
+- each hierarchy level must add consistent indentation
+- the text origin must account for control width, icon width, and padding
+- child rows must align consistently beneath their parent
+- deep nesting must remain readable
+
+3. Improve label formatting
+---------------------------
+
+Use a readable label format such as:
+
+`widgetName : WidgetType`
+
+Requirements:
+
+- keep clear spacing around the separator
+- do not allow the type text to overwrite the widget name
+- long labels should be clipped or elided cleanly
+- preserve the full value internally
+- add a tooltip for truncated labels if the existing UI framework supports it easily
+- do not change stored widget names or types
+
+4. Correct scrolling and clipping
+---------------------------------
+
+Ensure tree rendering uses the proper content clipping region.
+
+Requirements:
+
+- rows must not draw outside the Project Tree panel
+- vertical scrolling must align to complete rows
+- selected rows must remain visible
+- long labels must not draw into the Designer Canvas
+- horizontal scrolling may be used only if already supported and necessary
+
+5. Preserve existing Phase 96 behavior
+--------------------------------------
+
+Do not regress:
+
+- expand/collapse
+- tree-to-canvas selection
+- canvas-to-tree selection
+- hierarchy refresh
+- rename updates
+- add/delete
+- undo/redo
+- save/reload
+- Project Inspector synchronization
+
+Validation
+==========
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Verify root, form, container, sizer, and widget rows.
+4. Verify no row text is clipped vertically.
+5. Verify no rows overlap.
+6. Verify expand/collapse controls align with their row.
+7. Verify indentation across at least four nested levels.
+8. Verify selected-row highlight matches the row.
+9. Verify short and long widget names.
+10. Verify long labels clip or elide cleanly.
+11. Verify scrolling through a large hierarchy.
+12. Verify selection synchronization still works.
+13. Verify add, delete, rename, undo, redo, save, and reload.
+
+Update the existing Phase 96 plan with:
+
+- confirmed formatting root cause
+- final row-height calculation
+- indentation and text-layout rules
+- clipping/elision behavior
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 97.
+Do not change version 1.0.2.
+Do not commit or push unless explicitly requested.

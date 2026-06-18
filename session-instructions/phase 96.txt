@@ -1,0 +1,236 @@
+Implement VisiForm Phase 96: Hierarchical Project Tree.
+
+Phase 95 is complete and pushed.
+
+Use:
+
+* Phase: 96
+* Version: 1.0.2
+* Subagents: none
+
+Keep token usage minimal.
+
+## Startup
+
+1. Read only:
+
+   * `AGENTS.md`
+   * `docs/project_status.md`
+   * the Phase 95 plan
+   * files directly related to the Project Tree, widget hierarchy, selection, and version declarations
+
+2. Inspect `git status --short --branch`.
+
+3. Create:
+
+   `docs/agent_plans/phase_96_hierarchical_project_tree_plan.md`
+
+4. Set all authoritative VisiForm version declarations to `1.0.2` before implementation.
+
+5. Record the previous version and `1.0.2` in the phase plan and `docs/project_status.md`.
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not refactor unrelated UI code.
+
+## Goal 1: Remove Recent Files from the Project Tree
+
+Remove the Recent Files list currently displayed below the widget entries.
+
+Requirements:
+
+* remove the Recent Files heading and entries from the Project Tree panel;
+* remove any related layout code that reserves space inside the Project Tree;
+* preserve recent-file functionality elsewhere if it already exists in menus or another appropriate location;
+* do not remove recent-file persistence unless it is used only by this panel and is confirmed obsolete.
+
+The Project Tree panel should be dedicated to the active project hierarchy.
+
+## Goal 2: Replace the Flat List with a Real Tree View
+
+Replace the current shallow Project Tree display with a hierarchical tree that mirrors the actual widget ownership and layout structure.
+
+Use the wxWidgets-style Object Tree screenshot only as a behavioral reference.
+
+The tree should represent:
+
+* project or document root;
+* top-level form or window;
+* child widgets;
+* nested containers;
+* sizers and layout objects;
+* widgets contained inside sizers;
+* panels, tab pages, group boxes, frames, and other supported parents;
+* deeper nested descendants.
+
+Use the existing project model as the source of truth.
+
+Do not maintain a separate duplicate hierarchy.
+
+## Tree Behavior
+
+Required behavior:
+
+* parent-child indentation;
+* expand and collapse controls;
+* clear selected-row state;
+* selection of a tree item selects the same widget on the canvas;
+* selection on the canvas selects and reveals the same tree item;
+* adding a widget inserts it in the correct hierarchy position;
+* deleting a widget removes it and its descendants;
+* reparenting or moving a widget updates the tree;
+* loading a project rebuilds the tree correctly;
+* new projects start with the correct root structure;
+* renaming a widget updates its tree label;
+* widget type remains visible where practical.
+
+Suggested label format:
+
+`widgetName : WidgetType`
+
+Use existing names and type metadata. Do not alter stored widget names.
+
+## Hierarchy Rules
+
+Derive hierarchy from the actual model relationships.
+
+Examples:
+
+* a widget inside a Panel appears beneath that Panel;
+* a widget inside a Sizer appears beneath that Sizer;
+* nested Sizers appear beneath their owning Sizer or container;
+* tab pages appear beneath their Tab Control;
+* widgets on a tab page appear beneath that page;
+* the top-level form appears beneath the project root.
+
+Do not flatten sizers or containers merely for display convenience.
+
+If layout objects and visual widgets use different model types, introduce the smallest shared tree-node adapter needed.
+
+## Tree State
+
+Preserve reasonable UI state during refreshes:
+
+* expanded branches should remain expanded when possible;
+* the selected item should remain visible;
+* routine property changes should not collapse the entire tree;
+* avoid rebuilding the entire tree for every small change when a focused update is practical.
+
+A full rebuild is acceptable for project load, new project, or major hierarchy changes.
+
+## Visual Design
+
+Use the existing VisiForm visual style.
+
+Include:
+
+* indentation guides or equivalent hierarchy spacing;
+* expand/collapse indicators;
+* widget icons if existing icons are readily reusable;
+* readable labels;
+* clipping or elision for long names;
+* vertical scrolling;
+* horizontal scrolling only if needed.
+
+Do not copy wxWidgets styling exactly.
+Do not introduce a second UI framework.
+
+## Selection and Commands
+
+Preserve existing behavior for:
+
+* canvas selection;
+* Property Inspector synchronization;
+* Events tab synchronization;
+* Delete;
+* undo and redo;
+* copy and paste;
+* multi-selection behavior, if currently supported.
+
+For multi-selection, keep the current primary-selection behavior unless the existing model already supports multiple selected tree rows.
+
+## Architecture
+
+Prefer reusing:
+
+* the current project model;
+* existing parent-child relationships;
+* selection controller;
+* widget registry metadata;
+* existing command notifications;
+* existing tree or list controls in Visage.
+
+Do not change:
+
+* `.vfb.json` format;
+* generator behavior;
+* validation rules;
+* widget ownership semantics;
+
+unless a small correction is required to expose an already-existing hierarchy.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration once after implementation.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.2`.
+4. Confirm Recent Files no longer appears in the Project Tree.
+5. Confirm the project root and top-level form appear.
+6. Add a nested structure containing:
+
+   * a container;
+   * a sizer;
+   * widgets inside the sizer;
+   * at least one deeper nested child.
+7. Confirm the tree matches the model hierarchy.
+8. Expand and collapse branches.
+9. Select items in the tree and confirm canvas selection.
+10. Select widgets on the canvas and confirm tree selection.
+11. Rename a widget and confirm its label updates.
+12. Delete a parent and confirm descendants disappear.
+13. Test undo and redo.
+14. Save and reload the project.
+15. Confirm the hierarchy rebuilds correctly.
+16. Confirm the Property Inspector and Events tab remain synchronized.
+17. Confirm scrolling works with a large hierarchy.
+
+Run only existing relevant automated tests.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 96 plan with:
+
+* version change;
+* hierarchy source of truth;
+* tree-node mapping approach;
+* selection synchronization;
+* refresh strategy;
+* files changed;
+* build result;
+* runtime checks;
+* remaining issues.
+
+Update `docs/project_status.md`.
+
+## Completion Report
+
+Report:
+
+* Phase 96 plan path;
+* version change to `1.0.2`;
+* removal of Recent Files;
+* hierarchy implementation;
+* selection synchronization;
+* refresh and expansion-state behavior;
+* files changed;
+* build result;
+* manual validation actually performed;
+* remaining TODOs;
+* final Git status.
+
+Do not commit or push unless explicitly requested.

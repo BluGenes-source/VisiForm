@@ -1,11 +1,9 @@
 #include "ui/ProjectTree.h"
 
-#include "ui/WidgetMetrics.h"
-#include "utils/FileUtils.h"
-
 #include <algorithm>
-#include <filesystem>
+#include <cmath>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace visiform::ui {
@@ -13,28 +11,31 @@ namespace {
 
 constexpr float kHeaderHeight = 34.0f;
 constexpr float kPadding = 12.0f;
-constexpr float kRowHeight = 24.0f;
-constexpr float kSectionSpacing = 12.0f;
-constexpr float kSectionHeaderHeight = 22.0f;
+constexpr float kRowVerticalPadding = 12.0f;
+constexpr float kIndentWidth = 16.0f;
+constexpr float kExpanderSize = 12.0f;
+constexpr float kExpanderPadding = 10.0f;
+constexpr float kContentLeftPadding = 4.0f;
+constexpr float kControlLabelGap = 8.0f;
+constexpr float kLabelRightPadding = 6.0f;
+constexpr float kTypeWidthRatio = 0.38f;
 constexpr float kScrollBarWidth = 16.0f;
 constexpr float kScrollBarGap = 6.0f;
 constexpr float kMinimumThumbSize = 20.0f;
-constexpr float kMouseWheelSensitivity = 28.0f;
 
 struct TreeEntry {
     enum class Kind {
-        Widget,
-        Section,
-        RecentFile
+        Project,
+        Widget
     };
 
     Kind kind = Kind::Widget;
-    std::string widgetId;
-    std::string label;
-    std::string typeLabel;
-    std::size_t recentIndex = 0;
+    std::string widgetId{};
+    std::string name{};
+    std::string type{};
     int depth = 0;
-    float height = kRowHeight;
+    bool hasChildren = false;
+    bool expanded = false;
 };
 
 struct TreeLayout {
@@ -54,51 +55,137 @@ struct LayoutBounds {
     return x >= bounds.x && y >= bounds.y && x <= bounds.x + bounds.width && y <= bounds.y + bounds.height;
 }
 
-void appendRows(const model::WidgetNode& widget, int depth, std::vector<TreeEntry>& rows)
+void appendWidgetRows(
+    const model::WidgetNode& widget,
+    int depth,
+    const std::unordered_set<std::string>& expandedWidgetIds,
+    std::vector<TreeEntry>& rows)
 {
+    const bool hasChildren = !widget.children.empty();
+    const bool expanded = hasChildren && expandedWidgetIds.contains(widget.id);
     const std::string displayName = widget.name.empty() ? widget.id : widget.name;
-    const std::string typeLabel = widget.type == model::WidgetType::TabPage
-        ? widget.typeName() + ": " + widget.tabTitle()
-        : widget.typeName();
-    rows.push_back({ TreeEntry::Kind::Widget, widget.id, displayName, typeLabel, 0, depth, kRowHeight });
+    rows.push_back({ TreeEntry::Kind::Widget, widget.id, displayName, widget.typeName(), depth, hasChildren, expanded });
+    if (!expanded) {
+        return;
+    }
+
     for (const auto& child : widget.children) {
-        appendRows(child, depth + 1, rows);
+        appendWidgetRows(child, depth + 1, expandedWidgetIds, rows);
     }
 }
 
-std::vector<TreeEntry> buildEntries(const model::ProjectDocument& document, const std::vector<std::filesystem::path>& recentFiles)
+[[nodiscard]] std::vector<TreeEntry> buildEntries(
+    const model::ProjectDocument& document,
+    bool projectRootExpanded,
+    const std::unordered_set<std::string>& expandedWidgetIds)
 {
     std::vector<TreeEntry> entries;
-    appendRows(document.root, 0, entries);
-    if (!recentFiles.empty()) {
-        entries.push_back({ TreeEntry::Kind::Section, {}, "Recent Files", {}, 0, 0, kSectionSpacing + kSectionHeaderHeight });
-        for (std::size_t index = 0; index < recentFiles.size(); ++index) {
-            entries.push_back({ TreeEntry::Kind::RecentFile, {}, {}, {}, index, 0, kRowHeight });
-        }
+    const std::string projectName = document.projectName.empty() ? std::string{ "Project" } : document.projectName;
+    entries.push_back({ TreeEntry::Kind::Project, {}, projectName, "Project", 0, true, projectRootExpanded });
+    if (projectRootExpanded) {
+        appendWidgetRows(document.root, 1, expandedWidgetIds, entries);
     }
     return entries;
 }
 
-std::vector<TreeLayout> buildLayouts(float top, const std::vector<TreeEntry>& entries)
+[[nodiscard]] std::vector<TreeLayout> buildLayouts(
+    float top,
+    float rowHeight,
+    const std::vector<TreeEntry>& entries)
 {
     std::vector<TreeLayout> layouts;
     layouts.reserve(entries.size());
     float rowTop = top;
     for (const auto& entry : entries) {
         layouts.push_back({ entry, rowTop });
-        rowTop += entry.height;
+        rowTop += rowHeight;
     }
     return layouts;
 }
 
-std::string recentFileLabel(const std::filesystem::path& path)
+[[nodiscard]] float expanderX(float contentX, int depth)
 {
-    const std::string filename = path.filename().string();
-    if (!filename.empty()) {
-        return filename + " - " + utils::FileUtils::normalizeSeparators(path.parent_path().string());
+    return contentX + kContentLeftPadding + static_cast<float>(depth) * kIndentWidth;
+}
+
+[[nodiscard]] float measuredTextWidth(const visage::Font& font, const std::string& text)
+{
+    if (text.empty()) {
+        return 0.0f;
     }
 
-    return utils::FileUtils::normalizeSeparators(path.string());
+    const std::u32string utf32 = visage::String::convertUtf8ToUtf32<std::u32string>(text);
+    return font.stringWidth(utf32);
+}
+
+[[nodiscard]] std::string elideText(const visage::Font& font, const std::string& text, float availableWidth)
+{
+    if (text.empty() || availableWidth <= 0.0f) {
+        return {};
+    }
+    if (measuredTextWidth(font, text) <= availableWidth) {
+        return text;
+    }
+
+    const std::u32string ellipsis = U"\u2026";
+    const float ellipsisWidth = font.stringWidth(ellipsis);
+    if (ellipsisWidth > availableWidth) {
+        return {};
+    }
+
+    std::u32string utf32 = visage::String::convertUtf8ToUtf32<std::u32string>(text);
+    const int prefixLength = font.widthOverflowIndex(
+        utf32.c_str(),
+        static_cast<int>(utf32.size()),
+        availableWidth - ellipsisWidth);
+    utf32.resize(static_cast<std::size_t>(std::max(0, prefixLength)));
+    utf32 += ellipsis;
+    return visage::String::convertUtf32ToUtf8(utf32);
+}
+
+struct FittedLabel {
+    std::string name{};
+    std::string separator{};
+    std::string type{};
+};
+
+[[nodiscard]] FittedLabel fitLabel(
+    const visage::Font& font,
+    const TreeEntry& entry,
+    float availableWidth)
+{
+    static const std::string kSeparator = " : ";
+    const float separatorWidth = measuredTextWidth(font, kSeparator);
+    const float nameWidth = measuredTextWidth(font, entry.name);
+    const float typeWidth = measuredTextWidth(font, entry.type);
+    if (nameWidth + separatorWidth + typeWidth <= availableWidth) {
+        return { entry.name, kSeparator, entry.type };
+    }
+
+    const std::u32string ellipsis = U"\u2026";
+    const float minimumPartWidth = font.stringWidth(ellipsis);
+    if (availableWidth < separatorWidth + minimumPartWidth * 2.0f) {
+        return { elideText(font, entry.name + kSeparator + entry.type, availableWidth), {}, {} };
+    }
+
+    const float typeRegionWidth = std::clamp(
+        availableWidth * kTypeWidthRatio,
+        minimumPartWidth,
+        availableWidth - separatorWidth - minimumPartWidth);
+    const float nameRegionWidth = availableWidth - separatorWidth - typeRegionWidth;
+    return {
+        elideText(font, entry.name, nameRegionWidth),
+        kSeparator,
+        elideText(font, entry.type, typeRegionWidth)
+    };
+}
+
+void collectWidgetIds(const model::WidgetNode& widget, std::unordered_set<std::string>& ids)
+{
+    ids.insert(widget.id);
+    for (const auto& child : widget.children) {
+        collectWidgetIds(child, ids);
+    }
 }
 
 } // namespace
@@ -112,10 +199,28 @@ void ProjectTree::setBounds(float x, float y, float width, float height)
     clampScrollOffset();
 }
 
-void ProjectTree::setRecentFiles(std::vector<std::filesystem::path> recentFiles)
+void ProjectTree::resetForDocument(const model::ProjectDocument& document)
 {
-    recentFiles_ = std::move(recentFiles);
-    clampScrollOffset();
+    projectRootExpanded_ = true;
+    expandedWidgetIds_.clear();
+    expandedWidgetIds_.insert(document.root.id);
+    observedRootWidgetId_ = document.root.id;
+    observedSelectionId_.clear();
+    pendingRevealWidgetId_.clear();
+    scrollOffsetY_ = 0.0f;
+    revealWidget(document, document.selectedWidgetId);
+}
+
+void ProjectTree::revealWidget(const model::ProjectDocument& document, const std::string& widgetId)
+{
+    if (widgetId.empty() || document.findWidgetById(widgetId) == nullptr) {
+        return;
+    }
+
+    projectRootExpanded_ = true;
+    expandAncestors(document, widgetId);
+    pendingRevealWidgetId_ = widgetId;
+    observedSelectionId_ = widgetId;
 }
 
 bool ProjectTree::contains(float x, float y) const
@@ -123,22 +228,92 @@ bool ProjectTree::contains(float x, float y) const
     return x >= x_ && y >= y_ && x <= x_ + width_ && y <= y_ + height_;
 }
 
+void ProjectTree::pruneExpansionState(const model::ProjectDocument& document)
+{
+    std::unordered_set<std::string> existingIds;
+    collectWidgetIds(document.root, existingIds);
+    std::erase_if(expandedWidgetIds_, [&existingIds](const std::string& id) {
+        return !existingIds.contains(id);
+    });
+}
+
+void ProjectTree::expandAncestors(const model::ProjectDocument& document, const std::string& widgetId)
+{
+    const model::WidgetNode* current = document.findWidgetById(widgetId);
+    while (current != nullptr) {
+        const model::WidgetNode* parent = document.findParentOf(current->id);
+        if (parent == nullptr) {
+            break;
+        }
+
+        expandedWidgetIds_.insert(parent->id);
+        current = parent;
+    }
+}
+
 void ProjectTree::updateScrollMetrics(const model::ProjectDocument& document)
 {
-    visibleHeight_ = std::max(0.0f, height_ - (kHeaderHeight + 16.0f));
-    const auto entries = buildEntries(document, recentFiles_);
-    contentHeight_ = 0.0f;
-    for (const auto& entry : entries) {
-        contentHeight_ += entry.height;
+    if (observedRootWidgetId_ != document.root.id) {
+        observedRootWidgetId_ = document.root.id;
+        projectRootExpanded_ = true;
+        expandedWidgetIds_.clear();
+        expandedWidgetIds_.insert(document.root.id);
+        pendingRevealWidgetId_ = document.selectedWidgetId;
     }
 
+    pruneExpansionState(document);
+    if (observedSelectionId_ != document.selectedWidgetId) {
+        observedSelectionId_ = document.selectedWidgetId;
+        revealWidget(document, document.selectedWidgetId);
+    }
+
+    const float rawVisibleHeight = std::max(0.0f, height_ - (kHeaderHeight + 16.0f));
+    visibleHeight_ = rawVisibleHeight >= rowHeight_
+        ? std::floor(rawVisibleHeight / rowHeight_) * rowHeight_
+        : rawVisibleHeight;
+    const auto entries = buildEntries(document, projectRootExpanded_, expandedWidgetIds_);
+    contentHeight_ = static_cast<float>(entries.size()) * rowHeight_;
     needsVerticalScrollBar_ = contentHeight_ > visibleHeight_ + 0.5f;
     clampScrollOffset();
+    revealPendingWidget(document);
+}
+
+void ProjectTree::revealPendingWidget(const model::ProjectDocument& document)
+{
+    if (pendingRevealWidgetId_.empty() || document.findWidgetById(pendingRevealWidgetId_) == nullptr) {
+        pendingRevealWidgetId_.clear();
+        return;
+    }
+
+    const auto entries = buildEntries(document, projectRootExpanded_, expandedWidgetIds_);
+    const auto layouts = buildLayouts(contentBounds().y, rowHeight_, entries);
+    const Bounds bounds = contentBounds();
+    const auto selected = std::find_if(layouts.begin(), layouts.end(), [this](const TreeLayout& layout) {
+        return layout.entry.kind == TreeEntry::Kind::Widget
+            && layout.entry.widgetId == pendingRevealWidgetId_;
+    });
+    if (selected == layouts.end()) {
+        pendingRevealWidgetId_.clear();
+        return;
+    }
+
+    const float selectedTop = selected->top - scrollOffsetY_;
+    if (selectedTop < bounds.y) {
+        scrollOffsetY_ = std::max(0.0f, selected->top - bounds.y);
+    }
+    else if (selectedTop + rowHeight_ > bounds.y + bounds.height) {
+        scrollOffsetY_ += selectedTop + rowHeight_ - (bounds.y + bounds.height);
+    }
+    clampScrollOffset();
+    pendingRevealWidgetId_.clear();
 }
 
 void ProjectTree::clampScrollOffset()
 {
     const float maxScroll = std::max(0.0f, contentHeight_ - visibleHeight_);
+    if (rowHeight_ > 0.0f) {
+        scrollOffsetY_ = std::round(scrollOffsetY_ / rowHeight_) * rowHeight_;
+    }
     scrollOffsetY_ = std::clamp(scrollOffsetY_, 0.0f, maxScroll);
     if (!needsVerticalScrollBar_ || maxScroll <= 0.0f) {
         scrollOffsetY_ = 0.0f;
@@ -208,41 +383,17 @@ std::optional<std::string> ProjectTree::hitTestWidgetId(const model::ProjectDocu
         return std::nullopt;
     }
 
-    const auto entries = buildEntries(document, recentFiles_);
-    const auto layouts = buildLayouts(contentBounds().y, entries);
+    const auto entries = buildEntries(document, projectRootExpanded_, expandedWidgetIds_);
+    const auto layouts = buildLayouts(contentBounds().y, rowHeight_, entries);
     const Bounds bounds = contentBounds();
     for (const auto& layout : layouts) {
         const float rowTop = rowYWithScroll(layout.top);
-        if (rowTop + layout.entry.height < bounds.y || rowTop > bounds.y + bounds.height) {
+        if (rowTop + rowHeight_ <= bounds.y || rowTop >= bounds.y + bounds.height) {
             continue;
         }
 
-        if (layout.entry.kind == TreeEntry::Kind::Widget && y >= rowTop && y <= rowTop + layout.entry.height) {
+        if (layout.entry.kind == TreeEntry::Kind::Widget && y >= rowTop && y < rowTop + rowHeight_) {
             return layout.entry.widgetId;
-        }
-    }
-
-    return std::nullopt;
-}
-
-std::optional<std::size_t> ProjectTree::hitTestRecentFileIndex(const model::ProjectDocument& document, float x, float y)
-{
-    updateScrollMetrics(document);
-    if (!isWithinVisibleContent(x, y)) {
-        return std::nullopt;
-    }
-
-    const auto entries = buildEntries(document, recentFiles_);
-    const auto layouts = buildLayouts(contentBounds().y, entries);
-    const Bounds bounds = contentBounds();
-    for (const auto& layout : layouts) {
-        const float rowTop = rowYWithScroll(layout.top);
-        if (rowTop + layout.entry.height < bounds.y || rowTop > bounds.y + bounds.height) {
-            continue;
-        }
-
-        if (layout.entry.kind == TreeEntry::Kind::RecentFile && y >= rowTop && y <= rowTop + layout.entry.height) {
-            return layout.entry.recentIndex;
         }
     }
 
@@ -253,33 +404,63 @@ bool ProjectTree::mouseDown(const model::ProjectDocument& document, float x, flo
 {
     updateScrollMetrics(document);
     const auto scrollBar = scrollBarBounds();
-    if (!scrollBar.has_value() || !containsPoint({ scrollBar->x, scrollBar->y, scrollBar->width, scrollBar->height }, x, y)) {
-        return false;
-    }
+    if (scrollBar.has_value() && containsPoint({ scrollBar->x, scrollBar->y, scrollBar->width, scrollBar->height }, x, y)) {
+        const float arrowSize = std::min(scrollBar->width, 20.0f);
+        const auto thumb = scrollBarThumbBounds();
+        if (thumb.has_value() && containsPoint({ thumb->x, thumb->y, thumb->width, thumb->height }, x, y)) {
+            draggingScrollBarThumb_ = true;
+            scrollBarDragOffsetY_ = y - thumb->y;
+            return true;
+        }
 
-    const float arrowSize = std::min(scrollBar->width, 20.0f);
-    const auto thumb = scrollBarThumbBounds();
-    if (thumb.has_value() && containsPoint({ thumb->x, thumb->y, thumb->width, thumb->height }, x, y)) {
-        draggingScrollBarThumb_ = true;
-        scrollBarDragOffsetY_ = y - thumb->y;
+        if (y < scrollBar->y + arrowSize) {
+            scrollOffsetY_ -= rowHeight_;
+        }
+        else if (y > scrollBar->y + scrollBar->height - arrowSize) {
+            scrollOffsetY_ += rowHeight_;
+        }
+        else if (thumb.has_value() && y < thumb->y) {
+            scrollOffsetY_ -= std::max(rowHeight_, visibleHeight_ - rowHeight_);
+        }
+        else {
+            scrollOffsetY_ += std::max(rowHeight_, visibleHeight_ - rowHeight_);
+        }
+
+        clampScrollOffset();
         return true;
     }
 
-    if (y < scrollBar->y + arrowSize) {
-        scrollOffsetY_ -= kRowHeight;
-    }
-    else if (y > scrollBar->y + scrollBar->height - arrowSize) {
-        scrollOffsetY_ += kRowHeight;
-    }
-    else if (thumb.has_value() && y < thumb->y) {
-        scrollOffsetY_ -= std::max(kRowHeight, visibleHeight_ * 0.85f);
-    }
-    else {
-        scrollOffsetY_ += std::max(kRowHeight, visibleHeight_ * 0.85f);
+    if (!isWithinVisibleContent(x, y)) {
+        return false;
     }
 
-    clampScrollOffset();
-    return true;
+    const auto entries = buildEntries(document, projectRootExpanded_, expandedWidgetIds_);
+    const auto layouts = buildLayouts(contentBounds().y, rowHeight_, entries);
+    for (const auto& layout : layouts) {
+        const float rowTop = rowYWithScroll(layout.top);
+        if (!layout.entry.hasChildren || y < rowTop || y >= rowTop + rowHeight_) {
+            continue;
+        }
+
+        const float indicatorX = expanderX(contentBounds().x, layout.entry.depth);
+        if (x < indicatorX || x > indicatorX + kExpanderSize) {
+            continue;
+        }
+
+        if (layout.entry.kind == TreeEntry::Kind::Project) {
+            projectRootExpanded_ = !projectRootExpanded_;
+        }
+        else if (layout.entry.expanded) {
+            expandedWidgetIds_.erase(layout.entry.widgetId);
+        }
+        else {
+            expandedWidgetIds_.insert(layout.entry.widgetId);
+        }
+        updateScrollMetrics(document);
+        return true;
+    }
+
+    return false;
 }
 
 bool ProjectTree::mouseDrag(const model::ProjectDocument& document, float x, float y)
@@ -333,7 +514,7 @@ bool ProjectTree::mouseWheel(const model::ProjectDocument& document, float delta
         return false;
     }
 
-    scrollOffsetY_ += -deltaY * kMouseWheelSensitivity;
+    scrollOffsetY_ += deltaY < 0.0f ? rowHeight_ : -rowHeight_;
     clampScrollOffset();
     return true;
 }
@@ -344,6 +525,9 @@ void ProjectTree::drawPanel(visage::Canvas& canvas, const visage::Font& font, bo
         return;
     }
 
+    if (drawText && font.packedFont() != nullptr) {
+        rowHeight_ = std::ceil(std::max(font.lineHeight() + kRowVerticalPadding, kExpanderSize + kExpanderPadding));
+    }
     updateScrollMetrics(document);
 
     canvas.setColor(0xff232833);
@@ -364,56 +548,64 @@ void ProjectTree::drawPanel(visage::Canvas& canvas, const visage::Font& font, bo
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
-    const auto entries = buildEntries(document, recentFiles_);
-    const auto layouts = buildLayouts(contentBounds().y, entries);
+    const auto entries = buildEntries(document, projectRootExpanded_, expandedWidgetIds_);
+    const auto layouts = buildLayouts(contentBounds().y, rowHeight_, entries);
     const Bounds bounds = contentBounds();
 
     canvas.saveState();
     canvas.setClampBounds(bounds.x, bounds.y, bounds.width, bounds.height);
     for (const auto& layout : layouts) {
         const float rowTop = rowYWithScroll(layout.top);
-        if (rowTop + layout.entry.height < bounds.y || rowTop > bounds.y + bounds.height) {
+        if (rowTop + rowHeight_ <= bounds.y || rowTop >= bounds.y + bounds.height) {
             continue;
         }
 
-        switch (layout.entry.kind) {
-        case TreeEntry::Kind::Widget: {
-            const bool isPrimarySelected = document.selectedWidgetId == layout.entry.widgetId;
-            const bool isSecondarySelected = document.isSelected(layout.entry.widgetId) && !isPrimarySelected;
-            canvas.setColor(isPrimarySelected ? 0xff355382 : (isSecondarySelected ? 0xff2d4668 : 0xff252b36));
-            canvas.fill(bounds.x, rowTop, bounds.width, layout.entry.height - 2.0f);
-            if (drawText) {
-                canvas.setColor(isPrimarySelected ? 0xfff8fbff : (isSecondarySelected ? 0xffd9ebff : 0xffdde2ea));
-                const float textX = bounds.x + 8.0f + layout.entry.depth * 16.0f;
-                const float availableWidth = std::max(0.0f, bounds.width - 20.0f - layout.entry.depth * 16.0f);
-                const float nameWidth = std::min(estimateDesignerTextWidth(layout.entry.label, 14.0f), availableWidth * 0.62f);
-                canvas.text(layout.entry.label, font, visage::Font::kTopLeft,
-                    textX, rowTop + 4.0f, nameWidth, layout.entry.height - 6.0f);
-                const float typeX = textX + nameWidth + 8.0f;
-                if (typeX < bounds.x + bounds.width - 8.0f) {
-                    canvas.setColor(isPrimarySelected ? 0xffc6d7ee : (isSecondarySelected ? 0xffa8c4e8 : 0xff96a0af));
-                    canvas.text(layout.entry.typeLabel, font, visage::Font::kTopLeft,
-                        typeX, rowTop + 4.0f, std::max(0.0f, bounds.x + bounds.width - typeX - 8.0f), layout.entry.height - 6.0f);
-                }
-            }
-            break;
+        const bool isProject = layout.entry.kind == TreeEntry::Kind::Project;
+        const bool isPrimarySelected = !isProject && document.selectedWidgetId == layout.entry.widgetId;
+        const bool isSecondarySelected = !isProject && document.isSelected(layout.entry.widgetId) && !isPrimarySelected;
+        canvas.setColor(isPrimarySelected ? 0xff355382 : (isSecondarySelected ? 0xff2d4668 : (isProject ? 0xff29313d : 0xff252b36)));
+        canvas.fill(bounds.x, rowTop, bounds.width, rowHeight_);
+
+        for (int guideDepth = 0; guideDepth < layout.entry.depth; ++guideDepth) {
+            const float guideX = expanderX(bounds.x, guideDepth) + kExpanderSize * 0.5f;
+            canvas.setColor(0xff3a4554);
+            canvas.fill(guideX, rowTop, 1.0f, rowHeight_);
         }
-        case TreeEntry::Kind::Section:
-            if (drawText) {
-                canvas.setColor(0xfff3f5f8);
-                canvas.text(layout.entry.label, font, visage::Font::kTopLeft,
-                    bounds.x + 4.0f, rowTop + kSectionSpacing, bounds.width - 8.0f, kSectionHeaderHeight - 4.0f);
+
+        const float indicatorX = expanderX(bounds.x, layout.entry.depth);
+        if (layout.entry.hasChildren) {
+            const float indicatorY = rowTop + (rowHeight_ - kExpanderSize) * 0.5f;
+            canvas.setColor(0xff465365);
+            canvas.fill(indicatorX, indicatorY, kExpanderSize, kExpanderSize);
+            canvas.setColor(0xffaebed3);
+            canvas.fill(indicatorX + 3.0f, indicatorY + 5.0f, kExpanderSize - 6.0f, 2.0f);
+            if (!layout.entry.expanded) {
+                canvas.fill(indicatorX + 5.0f, indicatorY + 3.0f, 2.0f, kExpanderSize - 6.0f);
             }
-            break;
-        case TreeEntry::Kind::RecentFile:
-            canvas.setColor(0xff252b36);
-            canvas.fill(bounds.x, rowTop, bounds.width, layout.entry.height - 2.0f);
-            if (drawText && layout.entry.recentIndex < recentFiles_.size()) {
-                canvas.setColor(0xffcfd6e2);
-                canvas.text(recentFileLabel(recentFiles_[layout.entry.recentIndex]), font, visage::Font::kTopLeft,
-                    bounds.x + 8.0f, rowTop + 4.0f, bounds.width - 16.0f, layout.entry.height - 6.0f);
+        }
+
+        if (drawText) {
+            const float textX = indicatorX + kExpanderSize + kControlLabelGap;
+            const float textWidth = std::max(0.0f, bounds.x + bounds.width - textX - kLabelRightPadding);
+            const FittedLabel fitted = fitLabel(font, layout.entry, textWidth);
+            float partX = textX;
+
+            canvas.setColor(isPrimarySelected ? 0xfff8fbff : (isSecondarySelected ? 0xffd9ebff : (isProject ? 0xfff0f4fa : 0xffdde2ea)));
+            const float fittedNameWidth = measuredTextWidth(font, fitted.name);
+            canvas.text(fitted.name, font, visage::Font::kLeft, partX, rowTop, fittedNameWidth, rowHeight_);
+            partX += fittedNameWidth;
+
+            if (!fitted.separator.empty()) {
+                const float separatorWidth = measuredTextWidth(font, fitted.separator);
+                canvas.text(fitted.separator, font, visage::Font::kLeft, partX, rowTop, separatorWidth, rowHeight_);
+                partX += separatorWidth;
             }
-            break;
+
+            if (!fitted.type.empty()) {
+                canvas.setColor(isPrimarySelected ? 0xffc6d7ee : (isSecondarySelected ? 0xffa8c4e8 : 0xff96a0af));
+                canvas.text(fitted.type, font, visage::Font::kLeft,
+                    partX, rowTop, std::max(0.0f, textX + textWidth - partX), rowHeight_);
+            }
         }
     }
     canvas.restoreState();

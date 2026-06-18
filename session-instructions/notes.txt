@@ -1,1 +1,1 @@
-Phase 94 has been pushed to the repo. Now it is time to clean up the UI by moving the widget palette to the top of the app.  The image is an example as to how wxWidgets does this.  It is a tabbed bar and groups the widgets. Define a plan and a prompt for codex.  no sub agents, bump the version to 1.0.1. effiecant use of tokens.
+phase 95 is pushed to the repo so it is now complete, for phase 96 remove the recent files list from the project tree at the bootom.  Replace the project trr with an actual tree view of the widgets on the canvase, similar to wxWidgets.

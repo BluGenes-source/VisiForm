@@ -2,10 +2,11 @@
 
 #include "model/ProjectDocument.h"
 
-#include <filesystem>
 #include <visage/graphics.h>
 
 #include <optional>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace visiform::ui {
@@ -13,10 +14,10 @@ namespace visiform::ui {
 class ProjectTree {
 public:
     void setBounds(float x, float y, float width, float height);
-    void setRecentFiles(std::vector<std::filesystem::path> recentFiles);
+    void resetForDocument(const model::ProjectDocument& document);
+    void revealWidget(const model::ProjectDocument& document, const std::string& widgetId);
     [[nodiscard]] bool contains(float x, float y) const;
     [[nodiscard]] std::optional<std::string> hitTestWidgetId(const model::ProjectDocument& document, float x, float y);
-    [[nodiscard]] std::optional<std::size_t> hitTestRecentFileIndex(const model::ProjectDocument& document, float x, float y);
     [[nodiscard]] bool mouseDown(const model::ProjectDocument& document, float x, float y);
     [[nodiscard]] bool mouseDrag(const model::ProjectDocument& document, float x, float y);
     [[nodiscard]] bool mouseUp();
@@ -32,6 +33,9 @@ private:
     };
 
     void updateScrollMetrics(const model::ProjectDocument& document);
+    void pruneExpansionState(const model::ProjectDocument& document);
+    void expandAncestors(const model::ProjectDocument& document, const std::string& widgetId);
+    void revealPendingWidget(const model::ProjectDocument& document);
     void clampScrollOffset();
     [[nodiscard]] float rowYWithScroll(float originalY) const;
     [[nodiscard]] Bounds contentBounds() const;
@@ -43,7 +47,12 @@ private:
     float y_{};
     float width_{};
     float height_{};
-    std::vector<std::filesystem::path> recentFiles_{};
+    bool projectRootExpanded_ = true;
+    std::unordered_set<std::string> expandedWidgetIds_{};
+    std::string observedRootWidgetId_{};
+    std::string observedSelectionId_{};
+    std::string pendingRevealWidgetId_{};
+    float rowHeight_ = 32.0f;
     float scrollOffsetY_ = 0.0f;
     float contentHeight_ = 0.0f;
     float visibleHeight_ = 0.0f;

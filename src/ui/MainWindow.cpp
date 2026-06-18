@@ -2243,6 +2243,7 @@ bool MainWindow::applyNewProjectWizard()
     currentProjectPath_.clear();
     undoRedo_.clear();
     document_.setSelection(document_.root.id);
+    projectTree_.resetForDocument(document_);
     setOperationStatus("Created new project: " + document_.projectName);
     closeEditorModalDialog("create");
     redraw();
@@ -2537,6 +2538,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     else {
         document_.setSelection(document_.root.id);
     }
+    projectTree_.resetForDocument(document_);
 
     currentProjectPath_ = path;
     undoRedo_.clear();
@@ -2809,10 +2811,6 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         const bool additiveSelection = multiSelectMode_ || isAdditiveSelectionModifierDown();
         if (const auto widgetId = projectTree_.hitTestWidgetId(document_, e.position.x, e.position.y)) {
             handleWidgetClicked(*widgetId, additiveSelection);
-            return;
-        }
-        if (const auto recentFileIndex = projectTree_.hitTestRecentFileIndex(document_, e.position.x, e.position.y)) {
-            openRecentFile(settings_.recentFiles[*recentFileIndex]);
             return;
         }
     }
@@ -3691,6 +3689,7 @@ void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveS
     dropdownControl_.close();
     if (!additiveSelection) {
         document_.setSelection(widgetId);
+        projectTree_.revealWidget(document_, widgetId);
         updatePropertyEditorBounds();
         setOperationStatus("Selected: " + widgetDisplayName(*widget) + " (" + widgetId + ")");
         redraw();
@@ -3714,6 +3713,9 @@ void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveS
         setOperationStatus("Removed from selection: " + widgetDisplayName(*widget) + " (" + widgetId + ")");
     }
     updatePropertyEditorBounds();
+    if (document_.hasSelection()) {
+        projectTree_.revealWidget(document_, document_.selectedWidgetId);
+    }
     redraw();
 }
 
@@ -6337,6 +6339,7 @@ void MainWindow::selectWidget(const std::string& widgetId)
     hoverHint_.clear();
     cancelInspectorEdit();
     document_.selectWidget(widgetId);
+    projectTree_.revealWidget(document_, widgetId);
     updatePropertyEditorBounds();
     if (const auto* widget = document_.selectedWidget()) {
         setOperationStatus("Selected: " + widgetDisplayName(*widget) + " (" + widget->id + ")");
@@ -6737,13 +6740,11 @@ void MainWindow::loadAppSettings()
     std::string errorMessage;
     settings_ = utils::AppSettings::load(errorMessage);
     settings_.propertyInspectorWidth = std::max(1, settings_.propertyInspectorWidth);
-    projectTree_.setRecentFiles(settings_.recentFiles);
 }
 
 void MainWindow::saveAppSettings()
 {
     settings_.removeMissingRecentFiles();
-    projectTree_.setRecentFiles(settings_.recentFiles);
     std::string errorMessage;
     const bool saved = settings_.save(errorMessage);
     (void)saved;
