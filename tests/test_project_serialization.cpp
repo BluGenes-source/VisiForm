@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <utility>
+
 using visiform::model::ProjectDocument;
 using visiform::serialization::JsonProjectReader;
 using visiform::serialization::JsonProjectWriter;
@@ -43,6 +45,37 @@ TEST_CASE("ProjectDocument round-trips through JSON")
     REQUIRE(loaded->selectedWidgetId == document.selectedWidgetId);
     REQUIRE(loaded->root.children.size() == 1);
     REQUIRE(loaded->root.children.front().getStringProperty("text", "") == "Click Me");
+}
+
+TEST_CASE("ProjectDocument z-order commands move one sibling step and preserve selection")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    auto second = document.root.children.front();
+    second.id = "button_second";
+    second.name = "Second";
+    auto third = second;
+    third.id = "button_third";
+    third.name = "Third";
+    document.root.appendChild(std::move(second));
+    document.root.appendChild(std::move(third));
+    document.setSelection("button_hello");
+    document.addToSelection("button_second");
+
+    REQUIRE(document.selectedWidgetId == "button_second");
+    REQUIRE(document.selectedWidgetIds().size() == 2);
+    REQUIRE(document.bringWidgetForward("button_second"));
+    CHECK(document.root.children[0].id == "button_hello");
+    CHECK(document.root.children[1].id == "button_third");
+    CHECK(document.root.children[2].id == "button_second");
+    CHECK(document.selectedWidgetId == "button_second");
+    CHECK(document.selectedWidgetIds().size() == 2);
+
+    REQUIRE(document.sendWidgetBackward("button_second"));
+    CHECK(document.root.children[0].id == "button_hello");
+    CHECK(document.root.children[1].id == "button_second");
+    CHECK(document.root.children[2].id == "button_third");
+    CHECK_FALSE(document.sendWidgetBackward("button_hello"));
+    CHECK_FALSE(document.bringWidgetForward("button_third"));
 }
 
 TEST_CASE("Invalid JSON returns an error")

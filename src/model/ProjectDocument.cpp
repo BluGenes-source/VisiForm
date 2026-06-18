@@ -104,24 +104,19 @@ bool reorderWithinParent(ParentType* parent, const std::string& id, bool forward
         // Z-order convention:
         // - children[0] is backmost
         // - children.back() is frontmost
-        // Toolbar actions use Front/Back semantics, so move the selected widget
-        // all the way to the end or beginning of the child vector.
+        // Forward/backward commands move by one sibling position.
         if (forward) {
             if (index + 1 >= parent->size()) {
                 return false;
             }
-            auto widget = std::move((*parent)[index]);
-            parent->erase(parent->begin() + static_cast<std::ptrdiff_t>(index));
-            parent->push_back(std::move(widget));
+            std::swap((*parent)[index], (*parent)[index + 1]);
             return true;
         }
 
         if (index == 0) {
             return false;
         }
-        auto widget = std::move((*parent)[index]);
-        parent->erase(parent->begin() + static_cast<std::ptrdiff_t>(index));
-        parent->insert(parent->begin(), std::move(widget));
+        std::swap((*parent)[index], (*parent)[index - 1]);
         return true;
     }
 

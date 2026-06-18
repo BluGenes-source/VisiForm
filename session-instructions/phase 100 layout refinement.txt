@@ -1,0 +1,360 @@
+Implement VisiForm Phase 100: Multi-Selection Layout Command Refinement.
+
+Phase 99 is complete and pushed.
+
+Use:
+
+* Phase: 100
+* Version: 1.0.6
+* Subagents: none
+
+Keep token usage minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 99 plan
+* files directly related to:
+
+  * multi-selection
+  * Layout menu commands
+  * widget geometry
+  * parent/container relationships
+  * sizer constraints
+  * undo/redo
+  * menu enable/disable state
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_100_multi_selection_layout_refinement_plan.md`
+
+Before implementation:
+
+* update all authoritative VisiForm version declarations to `1.0.6`
+* record the previous version and `1.0.6` in the phase plan
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not redesign unrelated layout systems.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Refine the existing multi-selection layout commands rather than adding duplicate commands.
+
+Existing commands include:
+
+* Align Left
+* Align Top
+* Align Right
+* Align Bottom
+* Center Horizontally
+* Center Vertically
+* Same Width
+* Same Height
+* Distribute Horizontally
+* Distribute Vertically
+* Bring Forward
+* Send Backward
+* Fit Text
+
+Make these commands reliable, clearly defined, correctly enabled, and fully integrated with undo/redo.
+
+## Selection model
+
+Confirm the existing multi-selection behavior.
+
+Define one selected widget as the primary or reference widget.
+
+Preferred behavior:
+
+* the first or primary selected widget is the alignment reference
+* other selected widgets move or resize relative to it
+* the reference widget remains unchanged unless the command logically affects the full selection
+* selection order and reference behavior must be predictable
+
+Do not introduce a second competing selection model.
+
+Document the final reference-widget rule in the Phase 100 plan.
+
+## Command enablement
+
+Update Layout menu command states based on the current selection.
+
+Requirements:
+
+* alignment requires at least two compatible selected widgets
+* distribution requires at least three compatible selected widgets
+* same width or height requires at least two compatible widgets
+* bring forward and send backward require a valid selected widget and sibling ordering
+* Fit Text is enabled only for supported widget types
+* invalid commands remain disabled
+* command state updates immediately when selection changes
+
+Do not enable commands that cannot safely execute.
+
+## Alignment commands
+
+Refine:
+
+* Align Left
+* Align Top
+* Align Right
+* Align Bottom
+* Center Horizontally
+* Center Vertically
+
+Requirements:
+
+* align selected widgets to the primary/reference widget
+* preserve widget size unless the command is a sizing command
+* use model-space coordinates
+* work correctly at any canvas zoom level
+* preserve parent-child relationships
+* prevent invalid cross-parent alignment
+
+Widgets should only be aligned together when they share a compatible coordinate space, normally the same direct parent.
+
+If selected widgets have different parents, disable the command or exclude incompatible items with clear behavior. Prefer disabling ambiguous operations.
+
+## Same-size commands
+
+Refine:
+
+* Same Width
+* Same Height
+
+Use the primary widget as the reference size.
+
+Requirements:
+
+* update all compatible selected widgets except the reference
+* preserve position unless resizing constraints require adjustment
+* respect minimum sizes
+* respect widget-specific fixed-size behavior
+* respect sizer-managed dimensions
+* do not resize widgets whose dimensions are controlled by a parent layout
+
+If practical and already supported by the command architecture, add:
+
+* Same Size
+
+Do not add it if doing so requires unrelated UI expansion.
+
+## Distribution commands
+
+Implement or correct:
+
+* Distribute Horizontally
+* Distribute Vertically
+
+Requirements:
+
+* require at least three compatible selected widgets
+* keep the two outermost widgets fixed
+* distribute interior widgets evenly
+* distribute by equal gaps between widget bounds, not merely equal center distances
+* preserve widget sizes
+* use model-space coordinates
+* maintain stable ordering
+* avoid cumulative rounding drift
+
+Horizontal ordering should use left-to-right geometry.
+Vertical ordering should use top-to-bottom geometry.
+
+If widgets overlap or the available gap is negative, use a deterministic rule and document it.
+
+## Container and parent rules
+
+Only apply geometry commands when selected widgets share a compatible parent coordinate system.
+
+Validate behavior for:
+
+* top-level form children
+* widgets inside Panel
+* widgets inside Frame
+* widgets inside Group Box
+* widgets inside tab pages
+* nested containers
+* widgets managed by Sizers
+
+For sizer-managed children:
+
+* do not directly change geometry that the sizer owns
+* disable incompatible commands
+* allow only operations that safely map to layout metadata, if such support already exists
+* do not silently break sizer ownership
+
+Do not reparent widgets as a side effect of alignment or distribution.
+
+## Undo and redo
+
+Every successful layout operation must create one undoable command.
+
+Requirements:
+
+* one menu action produces one undo step
+* undo restores all affected positions and sizes
+* redo reapplies the complete operation
+* failed or no-op commands must not create undo entries
+* selection should remain stable after undo and redo
+
+Reuse the existing command system.
+
+Do not perform direct untracked model mutations.
+
+## Bring Forward and Send Backward
+
+Verify existing sibling-order commands.
+
+Requirements:
+
+* affect only siblings under the same parent
+* preserve parent-child relationships
+* update canvas z-order
+* update Project Tree ordering if the tree reflects sibling order
+* support undo and redo
+* disable when movement is impossible
+
+Do not move widgets across containers.
+
+## Fit Text
+
+Verify Fit Text only operates on supported text-bearing widgets.
+
+Requirements:
+
+* use actual font metrics
+* include widget padding and border requirements
+* respect DPI
+* avoid clipping
+* preserve unsupported dimensions when appropriate
+* support undo and redo
+* do not apply to widgets without meaningful text sizing
+
+Keep this focused on existing Fit Text behavior.
+
+## Visual and interaction feedback
+
+Preserve:
+
+* selection outlines
+* resize handles
+* Project Tree selection
+* Property Inspector synchronization
+* canvas zoom and pan
+* Preview Mode restrictions
+
+While Preview Mode is active:
+
+* layout-editing commands must remain disabled
+* commands must not mutate the project
+
+## No-op handling
+
+Before creating an undo command, detect whether the operation changes any geometry or ordering.
+
+If nothing changes:
+
+* do not modify the model
+* do not add an undo entry
+* do not mark the project dirty unnecessarily
+
+## Scope boundaries
+
+Do not add in this phase:
+
+* smart guides redesign
+* automatic responsive layout
+* constraint-based layout engine
+* alignment to canvas edges
+* alignment to selection bounding box as a second mode
+* spacing dialogs
+* toolbar redesign
+* new sizer algorithms
+* cross-container alignment
+* automatic reparenting
+
+Record useful future refinements as follow-up items only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.6`.
+4. Select two sibling widgets.
+5. Test all alignment commands.
+6. Confirm the primary/reference widget remains fixed.
+7. Test Same Width and Same Height.
+8. Test three or more widgets with horizontal distribution.
+9. Test vertical distribution.
+10. Confirm equal gaps between widget bounds.
+11. Test widgets of different sizes.
+12. Test nested containers.
+13. Confirm cross-parent operations are disabled.
+14. Test widgets inside Frames, Panels, Group Boxes, and tab pages.
+15. Confirm sizer-managed widgets are protected.
+16. Test Bring Forward and Send Backward.
+17. Confirm Project Tree ordering remains correct if applicable.
+18. Test Fit Text on supported and unsupported widgets.
+19. Test undo and redo for every successful operation.
+20. Confirm one action creates one undo step.
+21. Confirm no-op actions create no undo entry.
+22. Test commands at several zoom levels.
+23. Confirm Preview Mode disables layout editing.
+24. Save and reload the project.
+25. Confirm geometry and ordering persist correctly.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 100 plan with:
+
+* previous and new version
+* reference-widget rule
+* command enablement rules
+* parent compatibility rules
+* sizer restrictions
+* distribution algorithm
+* undo/redo integration
+* files changed
+* build result
+* manual validation actually performed
+* known limitations
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep the change concise.
+
+## Completion report
+
+Report:
+
+* Phase 100 plan path
+* version change to `1.0.6`
+* refined commands
+* primary/reference selection behavior
+* distribution behavior
+* container and sizer restrictions
+* undo/redo behavior
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

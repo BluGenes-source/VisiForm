@@ -96,6 +96,10 @@ public:
     [[nodiscard]] std::optional<FormPoint> toFormPoint(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] model::Rect moveBounds(const model::Rect& originalBounds, const FormPoint& dragStart, const FormPoint& currentPoint) const;
     [[nodiscard]] model::Rect resizeBounds(const model::Rect& originalBounds, HitRegion region, const FormPoint& dragStart, const FormPoint& currentPoint) const;
+    [[nodiscard]] float measureWidgetTextWidth(const model::ProjectDocument& document,
+        const model::WidgetNode& widget,
+        const std::string& text,
+        const visage::Font& fallbackFont) const;
     void draw(visage::Canvas& canvas,
         const visage::Font& font,
         bool drawText,

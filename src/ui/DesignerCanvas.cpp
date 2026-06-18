@@ -1591,6 +1591,22 @@ void drawWidget(visage::Canvas& canvas,
 
 } // namespace
 
+float DesignerCanvas::measureWidgetTextWidth(const model::ProjectDocument& document,
+    const model::WidgetNode& widget,
+    const std::string& text,
+    const visage::Font& fallbackFont) const
+{
+    if (text.empty()) {
+        return 0.0f;
+    }
+
+    const ResolvedWidgetStyle style = resolveWidgetStyle(document, widget);
+    visage::Font fontStorage{};
+    const visage::Font& widgetFont = resolvedWidgetFont(widget, style, fallbackFont, fontStorage);
+    const std::u32string utf32Text = visage::String::convertUtf8ToUtf32<std::u32string>(text);
+    return widgetFont.stringWidth(utf32Text);
+}
+
 void DesignerCanvas::setBounds(float x, float y, float width, float height)
 {
     x_ = x;

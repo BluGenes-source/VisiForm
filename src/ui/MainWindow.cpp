@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <set>
@@ -934,33 +935,88 @@ std::vector<model::WidgetNode*> selectedNonRootWidgets(model::ProjectDocument& d
     return widgets;
 }
 
+std::vector<const model::WidgetNode*> selectedNonRootWidgets(const model::ProjectDocument& document)
+{
+    std::vector<const model::WidgetNode*> widgets;
+    for (const auto* widget : document.selectedWidgets()) {
+        if (widget != nullptr && !document.isRootWidgetId(widget->id)) {
+            widgets.push_back(widget);
+        }
+    }
+    return widgets;
+}
+
+bool isGeometryManagedByParent(const model::ProjectDocument& document, const model::WidgetNode& widget)
+{
+    const auto* parent = document.findParentOf(widget.id);
+    return (parent != nullptr && parent->type == model::WidgetType::Sizer)
+        || widget.dockMode() != model::DockMode::None;
+}
+
+bool hasCompatibleGeometrySelection(const model::ProjectDocument& document, std::size_t minimumCount)
+{
+    const auto widgets = selectedNonRootWidgets(document);
+    if (widgets.size() < minimumCount) {
+        return false;
+    }
+
+    const auto* primary = document.selectedWidget();
+    if (primary == nullptr || document.isRootWidgetId(primary->id) || isGeometryManagedByParent(document, *primary)) {
+        return false;
+    }
+
+    const auto* sharedParent = document.findParentOf(primary->id);
+    if (sharedParent == nullptr) {
+        return false;
+    }
+
+    return std::all_of(widgets.begin(), widgets.end(), [&document, sharedParent](const model::WidgetNode* widget) {
+        return widget != nullptr
+            && document.findParentOf(widget->id) == sharedParent
+            && !isGeometryManagedByParent(document, *widget);
+    });
+}
+
+bool supportsFitText(model::WidgetType type)
+{
+    switch (type) {
+    case model::WidgetType::Label:
+    case model::WidgetType::Button:
+    case model::WidgetType::TextBox:
+    case model::WidgetType::CheckBox:
+    case model::WidgetType::RadioButton:
+    case model::WidgetType::Frame:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool canReorderPrimaryWidget(const model::ProjectDocument& document, bool forward)
+{
+    const auto* primary = document.selectedWidget();
+    const auto* parent = primary == nullptr ? nullptr : document.findParentOf(primary->id);
+    if (primary == nullptr || parent == nullptr || document.isRootWidgetId(primary->id)) {
+        return false;
+    }
+
+    const auto iterator = std::find_if(parent->children.begin(), parent->children.end(),
+        [&primary](const model::WidgetNode& child) { return child.id == primary->id; });
+    if (iterator == parent->children.end()) {
+        return false;
+    }
+
+    return forward
+        ? std::next(iterator) != parent->children.end()
+        : iterator != parent->children.begin();
+}
+
 struct SelectionBoundsInfo {
     float left = 0.0f;
     float top = 0.0f;
     float right = 0.0f;
     float bottom = 0.0f;
 };
-
-SelectionBoundsInfo calculateSelectionBounds(const std::vector<model::WidgetNode*>& widgets)
-{
-    SelectionBoundsInfo bounds{};
-    if (widgets.empty()) {
-        return bounds;
-    }
-
-    bounds.left = widgets.front()->bounds.x;
-    bounds.top = widgets.front()->bounds.y;
-    bounds.right = widgets.front()->bounds.x + widgets.front()->bounds.width;
-    bounds.bottom = widgets.front()->bounds.y + widgets.front()->bounds.height;
-    for (const auto* widget : widgets) {
-        bounds.left = std::min(bounds.left, widget->bounds.x);
-        bounds.top = std::min(bounds.top, widget->bounds.y);
-        bounds.right = std::max(bounds.right, widget->bounds.x + widget->bounds.width);
-        bounds.bottom = std::max(bounds.bottom, widget->bounds.y + widget->bounds.height);
-    }
-
-    return bounds;
-}
 
 model::Rect absoluteBoundsForWidget(const model::ProjectDocument& document, const std::string& widgetId)
 {
@@ -4438,7 +4494,8 @@ bool MainWindow::autoSizeWidgetForTextProperty(model::WidgetNode& widget, const 
         return false;
     }
 
-    const float desiredWidth = std::max(minimumWidth, estimateDesignerTextWidth(valueText) + padding);
+    const float measuredWidth = designerCanvas_.measureWidgetTextWidth(document_, widget, valueText, labelFont_);
+    const float desiredWidth = std::max(minimumWidth, measuredWidth + padding);
     const float desiredHeight = std::max(widget.bounds.height, minimumHeight);
     const bool changed = desiredWidth > widget.bounds.width || desiredHeight > widget.bounds.height;
     widget.bounds.width = std::max(widget.bounds.width, desiredWidth);
@@ -4451,6 +4508,16 @@ void MainWindow::fitSelectedWidgetToText()
     auto* widget = selectedNonRootWidget();
     if (widget == nullptr) {
         setOperationStatus("Select one or more widgets first.");
+        redraw();
+        return;
+    }
+    if (!supportsFitText(widget->type)) {
+        setOperationStatus("Fit text not supported for selected widget");
+        redraw();
+        return;
+    }
+    if (isGeometryManagedByParent(document_, *widget)) {
+        setOperationStatus("Fit text disabled while parent layout controls widget geometry");
         redraw();
         return;
     }
@@ -4470,14 +4537,7 @@ void MainWindow::fitSelectedWidgetToText()
         key = "title";
         valueText = widget->getStringProperty("title", {});
         break;
-    case model::WidgetType::Slider:
-    case model::WidgetType::ScrollBar:
-    case model::WidgetType::Image:
-    case model::WidgetType::Spacer:
-    case model::WidgetType::Sizer:
-    case model::WidgetType::FormWindow:
-        setOperationStatus("Fit text not supported for selected widget");
-        redraw();
+    default:
         return;
     }
 
@@ -4580,424 +4640,335 @@ void MainWindow::pasteWidgets()
 
 void MainWindow::alignSelectedLeft()
 {
-    auto selectedWidgets = document_.selectedWidgets();
-    if (selectedWidgets.empty()) {
-        setOperationStatus("No widget selected");
-        redraw();
-        return;
-    }
-    auto* widget = document_.selectedWidget();
-    if (document_.isRootWidgetId(widget->id)) {
-        setOperationStatus("Cannot layout root form");
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Align requires at least two non-sizer siblings");
         redraw();
         return;
     }
 
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        float targetX = selectedWidgets.front()->bounds.x;
-        for (const auto* selected : selectedWidgets) {
-            if (!document_.isRootWidgetId(selected->id)) {
-                targetX = std::min(targetX, selected->bounds.x);
-            }
-        }
-        targetX = snapToCanvasGrid(designerCanvas_, targetX);
-        applyUndoableDocumentChange("Align left", [this, &selectedWidgets, targetX]() {
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    const auto* primary = document_.selectedWidget();
+    const float targetX = primary->bounds.x;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Align left", [&selectedWidgets, targetX, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                if (!document_.isRootWidgetId(selected->id)) {
+                if (selected->id != primaryId && selected->bounds.x != targetX) {
                     selected->bounds.x = targetX;
+                    changed = true;
                 }
             }
-            return true;
-        });
-        setOperationStatus("Aligned left: " + std::to_string(selectedCount) + " widgets");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Align left: already aligned");
         redraw();
         return;
     }
 
-    const std::string displayName = widgetDisplayName(*widget);
-    const std::string widgetId = widget->id;
-    applyUndoableDocumentChange("Align left", [this, widget]() {
-        widget->bounds.x = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
-        return true;
-    });
-    setOperationStatus("Aligned left: " + displayName + " (" + widgetId + ")");
+    setOperationStatus("Aligned left to primary: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::alignSelectedTop()
 {
-    auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.empty()) {
-        setOperationStatus("No widget selected");
-        redraw();
-        return;
-    }
-    auto* widget = document_.selectedWidget();
-    if (document_.isRootWidgetId(widget->id)) {
-        setOperationStatus("Cannot layout root form");
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Align requires at least two non-sizer siblings");
         redraw();
         return;
     }
 
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        float targetY = selectedWidgets.front()->bounds.y;
-        for (const auto* selected : selectedWidgets) {
-            if (!document_.isRootWidgetId(selected->id)) {
-                targetY = std::min(targetY, selected->bounds.y);
-            }
-        }
-        targetY = snapToCanvasGrid(designerCanvas_, targetY);
-        applyUndoableDocumentChange("Align top", [this, &selectedWidgets, targetY]() {
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    const auto* primary = document_.selectedWidget();
+    const float targetY = primary->bounds.y;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Align top", [&selectedWidgets, targetY, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                if (!document_.isRootWidgetId(selected->id)) {
+                if (selected->id != primaryId && selected->bounds.y != targetY) {
                     selected->bounds.y = targetY;
+                    changed = true;
                 }
             }
-            return true;
-        });
-        setOperationStatus("Aligned top: " + std::to_string(selectedCount) + " widgets");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Align top: already aligned");
         redraw();
         return;
     }
 
-    const std::string displayName = widgetDisplayName(*widget);
-    const std::string widgetId = widget->id;
-    applyUndoableDocumentChange("Align top", [this, widget]() {
-        widget->bounds.y = snapToCanvasGrid(designerCanvas_, kLayoutMargin);
-        return true;
-    });
-    setOperationStatus("Aligned top: " + displayName + " (" + widgetId + ")");
+    setOperationStatus("Aligned top to primary: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::alignSelectedRight()
 {
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Align requires at least two non-sizer siblings");
+        redraw();
+        return;
+    }
+
     auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.empty()) {
-        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
-        redraw();
-        return;
-    }
-
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        float targetRight = selectedWidgets.front()->bounds.x + selectedWidgets.front()->bounds.width;
-        for (const auto* selected : selectedWidgets) {
-            targetRight = std::max(targetRight, selected->bounds.x + selected->bounds.width);
-        }
-        applyUndoableDocumentChange("Align right", [this, &selectedWidgets, targetRight]() {
+    const auto* primary = document_.selectedWidget();
+    const float targetRight = primary->bounds.x + primary->bounds.width;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Align right", [&selectedWidgets, targetRight, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                selected->bounds.x = snapToCanvasGrid(designerCanvas_, targetRight - selected->bounds.width);
+                if (selected->id == primaryId) {
+                    continue;
+                }
+                const float targetX = targetRight - selected->bounds.width;
+                if (selected->bounds.x != targetX) {
+                    selected->bounds.x = targetX;
+                    changed = true;
+                }
             }
-            return true;
-        });
-        setOperationStatus("Aligned right: " + std::to_string(selectedCount) + " widget(s)");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Align right: already aligned");
         redraw();
         return;
     }
 
-    auto* widget = selectedWidgets.front();
-    applyUndoableDocumentChange("Align right", [this, widget]() {
-        widget->bounds.x = snapToCanvasGrid(designerCanvas_, document_.root.bounds.width - kLayoutMargin - widget->bounds.width);
-        return true;
-    });
-    setOperationStatus("Aligned right: 1 widget(s)");
+    setOperationStatus("Aligned right to primary: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::alignSelectedBottom()
 {
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Align requires at least two non-sizer siblings");
+        redraw();
+        return;
+    }
+
     auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.empty()) {
-        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
-        redraw();
-        return;
-    }
-
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        float targetBottom = selectedWidgets.front()->bounds.y + selectedWidgets.front()->bounds.height;
-        for (const auto* selected : selectedWidgets) {
-            targetBottom = std::max(targetBottom, selected->bounds.y + selected->bounds.height);
-        }
-        applyUndoableDocumentChange("Align bottom", [this, &selectedWidgets, targetBottom]() {
+    const auto* primary = document_.selectedWidget();
+    const float targetBottom = primary->bounds.y + primary->bounds.height;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Align bottom", [&selectedWidgets, targetBottom, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                selected->bounds.y = snapToCanvasGrid(designerCanvas_, targetBottom - selected->bounds.height);
+                if (selected->id == primaryId) {
+                    continue;
+                }
+                const float targetY = targetBottom - selected->bounds.height;
+                if (selected->bounds.y != targetY) {
+                    selected->bounds.y = targetY;
+                    changed = true;
+                }
             }
-            return true;
-        });
-        setOperationStatus("Aligned bottom: " + std::to_string(selectedCount) + " widget(s)");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Align bottom: already aligned");
         redraw();
         return;
     }
 
-    auto* widget = selectedWidgets.front();
-    applyUndoableDocumentChange("Align bottom", [this, widget]() {
-        widget->bounds.y = snapToCanvasGrid(designerCanvas_, document_.root.bounds.height - kLayoutMargin - widget->bounds.height);
-        return true;
-    });
-    setOperationStatus("Aligned bottom: 1 widget(s)");
+    setOperationStatus("Aligned bottom to primary: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::centerSelectedHorizontally()
 {
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Align requires at least two non-sizer siblings");
+        redraw();
+        return;
+    }
+
     auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.empty()) {
-        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
-        redraw();
-        return;
-    }
-
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        const SelectionBoundsInfo bounds = calculateSelectionBounds(selectedWidgets);
-        const float centerX = (bounds.left + bounds.right) * 0.5f;
-        applyUndoableDocumentChange("Center horizontally", [this, &selectedWidgets, centerX]() {
+    const auto* primary = document_.selectedWidget();
+    const float centerX = primary->bounds.x + primary->bounds.width * 0.5f;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Center horizontally", [&selectedWidgets, centerX, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                selected->bounds.x = snapToCanvasGrid(designerCanvas_, centerX - selected->bounds.width * 0.5f);
+                if (selected->id == primaryId) {
+                    continue;
+                }
+                const float targetX = centerX - selected->bounds.width * 0.5f;
+                if (selected->bounds.x != targetX) {
+                    selected->bounds.x = targetX;
+                    changed = true;
+                }
             }
-            return true;
-        });
-        setOperationStatus("Centered horizontally: " + std::to_string(selectedCount) + " widget(s)");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Center horizontally: already aligned");
         redraw();
         return;
     }
 
-    auto* widget = selectedWidgets.front();
-    applyUndoableDocumentChange("Center horizontally", [this, widget]() {
-        widget->bounds.x = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.width - widget->bounds.width) * 0.5f);
-        return true;
-    });
-    setOperationStatus("Centered horizontally: 1 widget(s)");
+    setOperationStatus("Centered horizontally on primary: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::centerSelectedVertically()
 {
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Align requires at least two non-sizer siblings");
+        redraw();
+        return;
+    }
+
     auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.empty()) {
-        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
-        redraw();
-        return;
-    }
-
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        const SelectionBoundsInfo bounds = calculateSelectionBounds(selectedWidgets);
-        const float centerY = (bounds.top + bounds.bottom) * 0.5f;
-        applyUndoableDocumentChange("Center vertically", [this, &selectedWidgets, centerY]() {
+    const auto* primary = document_.selectedWidget();
+    const float centerY = primary->bounds.y + primary->bounds.height * 0.5f;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Center vertically", [&selectedWidgets, centerY, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                selected->bounds.y = snapToCanvasGrid(designerCanvas_, centerY - selected->bounds.height * 0.5f);
+                if (selected->id == primaryId) {
+                    continue;
+                }
+                const float targetY = centerY - selected->bounds.height * 0.5f;
+                if (selected->bounds.y != targetY) {
+                    selected->bounds.y = targetY;
+                    changed = true;
+                }
             }
-            return true;
-        });
-        setOperationStatus("Centered vertically: " + std::to_string(selectedCount) + " widget(s)");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Center vertically: already aligned");
         redraw();
         return;
     }
 
-    auto* widget = selectedWidgets.front();
-    applyUndoableDocumentChange("Center vertically", [this, widget]() {
-        widget->bounds.y = snapToCanvasGrid(designerCanvas_, (document_.root.bounds.height - widget->bounds.height) * 0.5f);
-        return true;
-    });
-    setOperationStatus("Centered vertically: 1 widget(s)");
+    setOperationStatus("Centered vertically on primary: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::makeSelectedSameWidth()
 {
-    auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.empty()) {
-        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
-        redraw();
-        return;
-    }
-    auto* widget = document_.selectedWidget();
-    if (document_.isRootWidgetId(widget->id)) {
-        setOperationStatus("Cannot layout root form");
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Same Width requires at least two non-sizer siblings");
         redraw();
         return;
     }
 
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        const float referenceWidth = widget->bounds.width;
-        const std::string selectedId = widget->id;
-        applyUndoableDocumentChange("Match width", [this, &selectedWidgets, referenceWidth, &selectedId]() {
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    const auto* primary = document_.selectedWidget();
+    const float referenceWidth = primary->bounds.width;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Match width", [&selectedWidgets, referenceWidth, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                if (selected->id == selectedId || document_.isRootWidgetId(selected->id)) {
+                if (selected->id == primaryId) {
                     continue;
                 }
                 const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
-                selected->bounds.width = std::max(metrics.minWidth, referenceWidth);
+                const float targetWidth = std::max(metrics.minWidth, referenceWidth);
+                if (selected->bounds.width != targetWidth) {
+                    selected->bounds.width = targetWidth;
+                    changed = true;
+                }
             }
-            return true;
-        });
-        setOperationStatus("Same width: " + std::to_string(selectedCount) + " widgets");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Same Width: already matched");
         redraw();
         return;
     }
 
-    const std::string displayName = widgetDisplayName(*widget);
-    const std::string widgetId = widget->id;
-    const auto* parent = document_.findParentOf(widgetId);
-    if (parent != nullptr && parent->type == model::WidgetType::Sizer) {
-        applyUndoableDocumentChange("Fill width", [this, widgetId]() {
-            auto* currentWidget = document_.findWidgetById(widgetId);
-            const auto* currentParent = document_.findParentOf(widgetId);
-            if (currentWidget == nullptr || currentParent == nullptr || currentParent->type != model::WidgetType::Sizer) {
-                return false;
-            }
-
-            const model::BoxSizerLayout parentLayout = model::boxSizerLayoutFor(*currentParent);
-            const model::SizerItemLayout itemLayout = model::sizerItemLayoutFor(*currentWidget);
-            if (parentLayout.orientation == model::SizerOrientation::Vertical) {
-                currentWidget->setProperty(std::string{ model::sizer_properties::kItemExpand }, true);
-            }
-            else {
-                currentWidget->setProperty(std::string{ model::sizer_properties::kItemProportion }, std::max(1, itemLayout.proportion));
-            }
-            document_.applyDockLayout();
-            return true;
-        });
-        setOperationStatus("Fill width: " + displayName + " (" + widgetId + ")");
-        updatePropertyEditorBounds();
-        redraw();
-        return;
-    }
-
-    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
-    const model::WidgetNode* fillParent = parent != nullptr ? parent : &document_.root;
-    const model::Rect parentClientBounds = model::LayoutEngine::clientBoundsForParent(*fillParent);
-    const float targetWidth = std::max(metrics.minWidth, parentClientBounds.width);
-    applyUndoableDocumentChange("Fill width", [widget, parentClientBounds, targetWidth]() {
-        widget->bounds.x = parentClientBounds.x;
-        widget->bounds.width = targetWidth;
-        return true;
-    });
-    setOperationStatus("Fill width: " + displayName + " (" + widgetId + ")");
+    setOperationStatus("Matched primary width: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::makeSelectedSameHeight()
 {
-    auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.empty()) {
-        setOperationStatus(document_.hasSelection() ? "Cannot layout root form" : "No widget selected");
-        redraw();
-        return;
-    }
-    auto* widget = document_.selectedWidget();
-    if (document_.isRootWidgetId(widget->id)) {
-        setOperationStatus("Cannot layout root form");
+    if (!hasCompatibleGeometrySelection(document_, 2)) {
+        setOperationStatus("Same Height requires at least two non-sizer siblings");
         redraw();
         return;
     }
 
-    if (selectedWidgets.size() > 1) {
-        const std::size_t selectedCount = selectedWidgets.size();
-        const float referenceHeight = widget->bounds.height;
-        const std::string selectedId = widget->id;
-        applyUndoableDocumentChange("Match height", [this, &selectedWidgets, referenceHeight, &selectedId]() {
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    const auto* primary = document_.selectedWidget();
+    const float referenceHeight = primary->bounds.height;
+    const std::string primaryId = primary->id;
+    const std::size_t selectedCount = selectedWidgets.size();
+    if (!applyUndoableDocumentChange("Match height", [&selectedWidgets, referenceHeight, &primaryId]() {
+            bool changed = false;
             for (auto* selected : selectedWidgets) {
-                if (selected->id == selectedId || document_.isRootWidgetId(selected->id)) {
+                if (selected->id == primaryId) {
                     continue;
                 }
                 const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
-                selected->bounds.height = std::max(metrics.minHeight, referenceHeight);
+                const float targetHeight = std::max(metrics.minHeight, referenceHeight);
+                if (selected->bounds.height != targetHeight) {
+                    selected->bounds.height = targetHeight;
+                    changed = true;
+                }
             }
-            return true;
-        });
-        setOperationStatus("Same height: " + std::to_string(selectedCount) + " widgets");
-        updatePropertyEditorBounds();
+            return changed;
+        })) {
+        setOperationStatus("Same Height: already matched");
         redraw();
         return;
     }
 
-    const std::string displayName = widgetDisplayName(*widget);
-    const std::string widgetId = widget->id;
-    const auto* parent = document_.findParentOf(widgetId);
-    if (parent != nullptr && parent->type == model::WidgetType::Sizer) {
-        applyUndoableDocumentChange("Fill height", [this, widgetId]() {
-            auto* currentWidget = document_.findWidgetById(widgetId);
-            const auto* currentParent = document_.findParentOf(widgetId);
-            if (currentWidget == nullptr || currentParent == nullptr || currentParent->type != model::WidgetType::Sizer) {
-                return false;
-            }
-
-            const model::BoxSizerLayout parentLayout = model::boxSizerLayoutFor(*currentParent);
-            const model::SizerItemLayout itemLayout = model::sizerItemLayoutFor(*currentWidget);
-            if (parentLayout.orientation == model::SizerOrientation::Horizontal) {
-                currentWidget->setProperty(std::string{ model::sizer_properties::kItemExpand }, true);
-            }
-            else {
-                currentWidget->setProperty(std::string{ model::sizer_properties::kItemProportion }, std::max(1, itemLayout.proportion));
-            }
-            document_.applyDockLayout();
-            return true;
-        });
-        setOperationStatus("Fill height: " + displayName + " (" + widgetId + ")");
-        updatePropertyEditorBounds();
-        redraw();
-        return;
-    }
-
-    const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
-    const model::WidgetNode* fillParent = parent != nullptr ? parent : &document_.root;
-    const model::Rect parentClientBounds = model::LayoutEngine::clientBoundsForParent(*fillParent);
-    const float targetHeight = std::max(metrics.minHeight, parentClientBounds.height);
-    applyUndoableDocumentChange("Fill height", [widget, parentClientBounds, targetHeight]() {
-        widget->bounds.y = parentClientBounds.y;
-        widget->bounds.height = targetHeight;
-        return true;
-    });
-    setOperationStatus("Fill height: " + displayName + " (" + widgetId + ")");
+    setOperationStatus("Matched primary height: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
 void MainWindow::distributeSelectedHorizontally()
 {
-    auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.size() < 3) {
-        setOperationStatus("Select at least 3 widgets to distribute horizontally");
+    if (!hasCompatibleGeometrySelection(document_, 3)) {
+        setOperationStatus("Horizontal distribution requires at least three non-sizer siblings");
         redraw();
         return;
     }
 
+    auto selectedWidgets = selectedNonRootWidgets(document_);
     std::sort(selectedWidgets.begin(), selectedWidgets.end(),
         [](const model::WidgetNode* left, const model::WidgetNode* right) {
-            return left->bounds.x < right->bounds.x;
+            if (left->bounds.x != right->bounds.x) {
+                return left->bounds.x < right->bounds.x;
+            }
+            return left->id < right->id;
         });
 
-    const float leftX = selectedWidgets.front()->bounds.x;
-    const float rightX = selectedWidgets.back()->bounds.x;
-    const float step = (rightX - leftX) / static_cast<float>(selectedWidgets.size() - 1);
+    float totalWidth = 0.0f;
+    for (const auto* selected : selectedWidgets) {
+        totalWidth += selected->bounds.width;
+    }
+    const float span = selectedWidgets.back()->bounds.x + selectedWidgets.back()->bounds.width
+        - selectedWidgets.front()->bounds.x;
+    const float gap = (span - totalWidth) / static_cast<float>(selectedWidgets.size() - 1);
     const std::size_t selectedCount = selectedWidgets.size();
-    applyUndoableDocumentChange("Distribute horizontally", [this, &selectedWidgets, leftX, step]() {
+    if (!applyUndoableDocumentChange("Distribute horizontally", [&selectedWidgets, gap]() {
+        bool changed = false;
+        float nextX = selectedWidgets.front()->bounds.x + selectedWidgets.front()->bounds.width + gap;
         for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
-            selectedWidgets[index]->bounds.x = snapToCanvasGrid(designerCanvas_, leftX + step * static_cast<float>(index));
+            if (selectedWidgets[index]->bounds.x != nextX) {
+                selectedWidgets[index]->bounds.x = nextX;
+                changed = true;
+            }
+            nextX += selectedWidgets[index]->bounds.width + gap;
         }
-        return true;
-    });
+        return changed;
+    })) {
+        setOperationStatus("Horizontal distribution: gaps already equal");
+        redraw();
+        return;
+    }
 
     setOperationStatus("Distributed horizontally: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
@@ -5006,28 +4977,45 @@ void MainWindow::distributeSelectedHorizontally()
 
 void MainWindow::distributeSelectedVertically()
 {
-    auto selectedWidgets = selectedNonRootWidgets(document_);
-    if (selectedWidgets.size() < 3) {
-        setOperationStatus("Select at least 3 widgets to distribute vertically");
+    if (!hasCompatibleGeometrySelection(document_, 3)) {
+        setOperationStatus("Vertical distribution requires at least three non-sizer siblings");
         redraw();
         return;
     }
 
+    auto selectedWidgets = selectedNonRootWidgets(document_);
     std::sort(selectedWidgets.begin(), selectedWidgets.end(),
         [](const model::WidgetNode* top, const model::WidgetNode* bottom) {
-            return top->bounds.y < bottom->bounds.y;
+            if (top->bounds.y != bottom->bounds.y) {
+                return top->bounds.y < bottom->bounds.y;
+            }
+            return top->id < bottom->id;
         });
 
-    const float topY = selectedWidgets.front()->bounds.y;
-    const float bottomY = selectedWidgets.back()->bounds.y;
-    const float step = (bottomY - topY) / static_cast<float>(selectedWidgets.size() - 1);
+    float totalHeight = 0.0f;
+    for (const auto* selected : selectedWidgets) {
+        totalHeight += selected->bounds.height;
+    }
+    const float span = selectedWidgets.back()->bounds.y + selectedWidgets.back()->bounds.height
+        - selectedWidgets.front()->bounds.y;
+    const float gap = (span - totalHeight) / static_cast<float>(selectedWidgets.size() - 1);
     const std::size_t selectedCount = selectedWidgets.size();
-    applyUndoableDocumentChange("Distribute vertically", [this, &selectedWidgets, topY, step]() {
+    if (!applyUndoableDocumentChange("Distribute vertically", [&selectedWidgets, gap]() {
+        bool changed = false;
+        float nextY = selectedWidgets.front()->bounds.y + selectedWidgets.front()->bounds.height + gap;
         for (std::size_t index = 1; index + 1 < selectedWidgets.size(); ++index) {
-            selectedWidgets[index]->bounds.y = snapToCanvasGrid(designerCanvas_, topY + step * static_cast<float>(index));
+            if (selectedWidgets[index]->bounds.y != nextY) {
+                selectedWidgets[index]->bounds.y = nextY;
+                changed = true;
+            }
+            nextY += selectedWidgets[index]->bounds.height + gap;
         }
-        return true;
-    });
+        return changed;
+    })) {
+        setOperationStatus("Vertical distribution: gaps already equal");
+        redraw();
+        return;
+    }
 
     setOperationStatus("Distributed vertically: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
@@ -5072,8 +5060,8 @@ void MainWindow::bringSelectedForward()
 {
     const std::string selectedId = document_.selectedWidgetId;
     auto* widget = document_.selectedWidget();
-    if (widget == nullptr) {
-        setOperationStatus("No widget selected");
+    if (widget == nullptr || !canReorderPrimaryWidget(document_, true)) {
+        setOperationStatus(widget == nullptr ? "No widget selected" : "Selected widget is already in front");
         redraw();
         return;
     }
@@ -5094,7 +5082,6 @@ void MainWindow::bringSelectedForward()
         return;
     }
 
-    document_.selectWidget(selectedId);
     setOperationStatus(document_.hasMultiSelection()
         ? "Brought forward: " + displayName + " (" + selectedId + ") - primary only"
         : "Brought forward: " + displayName + " (" + selectedId + ")");
@@ -5105,8 +5092,8 @@ void MainWindow::sendSelectedBackward()
 {
     const std::string selectedId = document_.selectedWidgetId;
     auto* widget = document_.selectedWidget();
-    if (widget == nullptr) {
-        setOperationStatus("No widget selected");
+    if (widget == nullptr || !canReorderPrimaryWidget(document_, false)) {
+        setOperationStatus(widget == nullptr ? "No widget selected" : "Selected widget is already in back");
         redraw();
         return;
     }
@@ -5127,7 +5114,6 @@ void MainWindow::sendSelectedBackward()
         return;
     }
 
-    document_.selectWidget(selectedId);
     setOperationStatus(document_.hasMultiSelection()
         ? "Sent backward: " + displayName + " (" + selectedId + ") - primary only"
         : "Sent backward: " + displayName + " (" + selectedId + ")");
@@ -6200,25 +6186,25 @@ std::string MainWindow::commandHintText(CommandId command) const
         case CommandId::ToggleMultiSelect:
             return "Toggle multi-select mode" + shortcutSuffix;
         case CommandId::AlignLeft:
-            return "Align selected widgets left" + shortcutSuffix;
+            return "Align selected widgets to the primary widget's left edge" + shortcutSuffix;
         case CommandId::AlignTop:
-            return "Align selected widgets top" + shortcutSuffix;
+            return "Align selected widgets to the primary widget's top edge" + shortcutSuffix;
         case CommandId::AlignRight:
-            return "Align selected widgets right" + shortcutSuffix;
+            return "Align selected widgets to the primary widget's right edge" + shortcutSuffix;
         case CommandId::AlignBottom:
-            return "Align selected widgets bottom" + shortcutSuffix;
+            return "Align selected widgets to the primary widget's bottom edge" + shortcutSuffix;
         case CommandId::CenterHorizontally:
-            return "Center selected widgets horizontally" + shortcutSuffix;
+            return "Align selected widget centers to the primary widget horizontally" + shortcutSuffix;
         case CommandId::CenterVertically:
-            return "Center selected widgets vertically" + shortcutSuffix;
+            return "Align selected widget centers to the primary widget vertically" + shortcutSuffix;
         case CommandId::SameWidth:
-            return "Match selected widget widths, or fill parent width for one widget" + shortcutSuffix;
+            return "Match selected widget widths to the primary widget" + shortcutSuffix;
         case CommandId::SameHeight:
-            return "Match selected widget heights, or fill parent height for one widget" + shortcutSuffix;
+            return "Match selected widget heights to the primary widget" + shortcutSuffix;
         case CommandId::DistributeHorizontally:
-            return "Distribute selected widgets horizontally" + shortcutSuffix;
+            return "Distribute selected widgets with equal horizontal gaps" + shortcutSuffix;
         case CommandId::DistributeVertically:
-            return "Distribute selected widgets vertically" + shortcutSuffix;
+            return "Distribute selected widgets with equal vertical gaps" + shortcutSuffix;
         case CommandId::ToggleSmartGuides:
             return "Toggle smart guides" + shortcutSuffix;
         case CommandId::TogglePreviewMode:
@@ -6257,7 +6243,11 @@ std::string MainWindow::commandHintText(CommandId command) const
 bool MainWindow::isCommandEnabled(CommandId command) const
 {
     const bool hasNonRootSelection = hasSelectedNonRootWidgets(1);
-    const bool hasMultiSelection = hasSelectedNonRootWidgets(2);
+    const auto* primary = document_.selectedWidget();
+    const bool canFitText = primary != nullptr
+        && !document_.isRootWidgetId(primary->id)
+        && supportsFitText(primary->type)
+        && !isGeometryManagedByParent(document_, *primary);
 
     if (isPreviewMode()) {
         switch (command) {
@@ -6299,10 +6289,13 @@ bool MainWindow::isCommandEnabled(CommandId command) const
     case CommandId::CopyWidgets:
     case CommandId::DeleteWidget:
     case CommandId::DuplicateWidget:
-    case CommandId::FitText:
-    case CommandId::BringForward:
-    case CommandId::SendBackward:
         return hasNonRootSelection;
+    case CommandId::FitText:
+        return canFitText;
+    case CommandId::BringForward:
+        return canReorderPrimaryWidget(document_, true);
+    case CommandId::SendBackward:
+        return canReorderPrimaryWidget(document_, false);
     case CommandId::AlignLeft:
     case CommandId::AlignTop:
     case CommandId::AlignRight:
@@ -6311,10 +6304,10 @@ bool MainWindow::isCommandEnabled(CommandId command) const
     case CommandId::CenterVertically:
     case CommandId::SameWidth:
     case CommandId::SameHeight:
-        return hasNonRootSelection;
+        return hasCompatibleGeometrySelection(document_, 2);
     case CommandId::DistributeHorizontally:
     case CommandId::DistributeVertically:
-        return hasMultiSelection;
+        return hasCompatibleGeometrySelection(document_, 3);
     case CommandId::ShowValidationReport:
         return std::filesystem::exists(projectRootPath() / "Generated" / "validation_report.md");
     case CommandId::None:
@@ -6441,8 +6434,8 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     addCommand(layoutMenu, CommandId::AlignBottom, "Align Bottom");
     addCommand(layoutMenu, CommandId::CenterHorizontally, "Center Horizontally");
     addCommand(layoutMenu, CommandId::CenterVertically, "Center Vertically");
-    addCommand(layoutMenu, CommandId::SameWidth, "Same Width / Fill Width");
-    addCommand(layoutMenu, CommandId::SameHeight, "Same Height / Fill Height");
+    addCommand(layoutMenu, CommandId::SameWidth, "Same Width");
+    addCommand(layoutMenu, CommandId::SameHeight, "Same Height");
     addCommand(layoutMenu, CommandId::DistributeHorizontally, "Distribute Horizontally");
     addCommand(layoutMenu, CommandId::DistributeVertically, "Distribute Vertically");
     addCommand(layoutMenu, CommandId::BringForward, "Bring Forward");

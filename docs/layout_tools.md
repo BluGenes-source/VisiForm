@@ -1,8 +1,6 @@
 # Layout tools
 
-`VisiForm` now includes basic single-selection layout tools for the currently selected widget.
-
-`VisiForm` also supports a basic multi-select foundation for layout operations.
+`VisiForm` includes multi-selection layout tools that use the primary selected widget as the alignment and sizing reference.
 
 ## BoxSizer layout
 
@@ -27,7 +25,7 @@ Designer movement is constrained to the parent canvas. Dragging, nudging, or edi
 
 Dragging a widget close to a `Sizer` can snap-connect it into that sizer when the pointer is within the editor's sizer drop threshold. Spacers are the intended widgets for empty space: fixed spacers reserve a fixed amount, and stretch spacers take weighted extra space.
 
-For one selected widget, `Same Width / Fill Width` and `Same Height / Fill Height` fill the available parent width or height. For a direct child of a sizer, these commands set the relevant sizer-item fill behavior instead of editing dormant absolute bounds.
+Geometry layout commands are disabled for direct children of a `Sizer`; sizer-owned dimensions must be changed through sizer-item properties or the existing sizer resize interaction.
 
 ## Box select
 
@@ -126,84 +124,86 @@ Toolbar and palette entries now surface short status-bar hints on hover to make 
 
 ## Align Left
 
-Moves the selected non-root widget to the left editor margin.
+Aligns selected sibling widgets to the primary widget's left edge.
 
 Current behavior:
 
-- target x position is `20`
-- snap-to-grid is applied when enabled
+- requires at least two selected widgets with the same direct parent
+- the primary widget stays unchanged
 - y, width, and height stay unchanged
+- cross-parent, sizer-managed, and dock-managed selections are disabled
 
 ## Align Top
 
-Moves the selected non-root widget to the top editor margin.
+Aligns selected sibling widgets to the primary widget's top edge.
 
 Current behavior:
 
-- target y position is `20`
-- snap-to-grid is applied when enabled
+- requires at least two selected widgets with the same direct parent
+- the primary widget stays unchanged
 - x, width, and height stay unchanged
+- cross-parent, sizer-managed, and dock-managed selections are disabled
 
 ## Align Right
 
-Aligns the selected widget set to a shared right edge.
+Aligns selected sibling widgets to the primary widget's right edge.
 
 Current behavior:
 
-- single selection aligns to the root form right margin of `20`
-- multi-selection aligns all selected right edges to the current maximum selected right edge
-- snap-to-grid is applied when enabled
+- requires at least two selected widgets with the same direct parent
+- the primary widget stays unchanged
+- widget sizes stay unchanged
 
 ## Align Bottom
 
-Aligns the selected widget set to a shared bottom edge.
+Aligns selected sibling widgets to the primary widget's bottom edge.
 
 Current behavior:
 
-- single selection aligns to the root form bottom margin of `20`
-- multi-selection aligns all selected bottom edges to the current maximum selected bottom edge
-- snap-to-grid is applied when enabled
+- requires at least two selected widgets with the same direct parent
+- the primary widget stays unchanged
+- widget sizes stay unchanged
 
 ## Center Horizontally
 
-Centers the selected widget set horizontally.
+Aligns selected sibling widget centers to the primary widget horizontally.
 
 Current behavior:
 
-- single selection centers inside the root form
-- multi-selection aligns each selected widget center to the horizontal center of the selected bounding box
-- snap-to-grid is applied when enabled
+- requires at least two selected widgets with the same direct parent
+- the primary widget stays unchanged
+- widget sizes stay unchanged
 
 ## Center Vertically
 
-Centers the selected widget set vertically.
+Aligns selected sibling widget centers to the primary widget vertically.
 
 Current behavior:
 
-- single selection centers inside the root form
-- multi-selection aligns each selected widget center to the vertical center of the selected bounding box
-- snap-to-grid is applied when enabled
+- requires at least two selected widgets with the same direct parent
+- the primary widget stays unchanged
+- widget sizes stay unchanged
 
-## Same Width / Fill Width
+## Same Width
 
-Sets selected widget widths, or fills the parent width when exactly one widget is selected.
+Matches selected sibling widget widths to the primary widget.
 
 Current behavior:
 
-- for multiple selected widgets, match selected widget widths
-- for one normal widget, fill the available parent client width
-- for one direct child of a sizer, set the relevant sizer-item fill behavior instead of editing dormant absolute bounds
+- requires at least two compatible selected widgets
+- the primary widget stays unchanged
+- positions stay unchanged
 - widget-specific minimum width is enforced
 
-## Same Height / Fill Height
+## Same Height
 
-Sets selected widget heights, or fills the parent height when exactly one widget is selected.
+Matches selected sibling widget heights to the primary widget.
 
 Current behavior:
 
-- for multiple selected widgets, match selected widget heights
-- for one normal widget, fill the available parent client height
-- for one direct child of a sizer, set the relevant sizer-item fill behavior instead of editing dormant absolute bounds
+- requires at least two compatible selected widgets
+- the primary widget stays unchanged
+- positions stay unchanged
 - widget-specific minimum height is enforced
 
 ## Distribute Horizontally
@@ -214,7 +214,8 @@ Current behavior:
 
 - requires at least three selected non-root widgets
 - keeps the leftmost and rightmost widgets fixed
-- spaces middle widgets evenly by left x position
+- creates equal gaps between widget bounds
+- negative available space produces deterministic equal overlap
 
 ## Distribute Vertically
 
@@ -224,7 +225,15 @@ Current behavior:
 
 - requires at least three selected non-root widgets
 - keeps the topmost and bottommost widgets fixed
-- spaces middle widgets evenly by top y position
+- creates equal gaps between widget bounds
+- negative available space produces deterministic equal overlap
+
+## Ordering, Fit Text, and undo
+
+- `Bring Forward` and `Send Backward` move the primary widget by one position within its direct parent's sibling order.
+- Ordering commands are disabled at the frontmost or backmost boundary and preserve the complete selection.
+- `Fit Text` is available only for supported text-bearing widgets whose geometry is not parent-layout managed, and uses the widget's rendered font metrics.
+- Every successful layout action creates one undo step; failed and no-op actions do not mark the project dirty or add undo history.
 
 ## Nudge
 
