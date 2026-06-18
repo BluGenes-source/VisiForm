@@ -1,0 +1,322 @@
+Implement VisiForm Phase 98: Designer Preview Mode.
+
+Phase 97 is complete and pushed.
+
+Use:
+
+* Phase: 98
+* Version: 1.0.4
+* Subagents: none
+
+Keep token use minimal and scope this to the base preview-mode iteration.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 97 plan
+* files directly related to:
+
+  * Designer Canvas rendering
+  * selection and resize handles
+  * grid and guides
+  * toolbar/menu commands
+  * widget interaction
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_98_designer_preview_mode_plan.md`
+
+Before implementation:
+
+* update all authoritative VisiForm version declarations to `1.0.4`
+* record the previous version and `1.0.4` in the phase plan
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Do not refactor unrelated rendering or widget systems.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Add a Designer Preview Mode that shows the current form without editor-only decorations.
+
+The preview should approximate how the exported form will look at runtime using the current VisiForm widget rendering.
+
+This first iteration does not need perfect exported-runtime parity or advanced visual styling.
+
+Future phases may refine:
+
+* button shadows
+* raised or recessed splitter lines
+* hover and pressed states
+* runtime themes
+* widget depth and border effects
+* exact generated-app rendering parity
+
+Do not implement those refinements in this phase unless they already exist and require no additional redesign.
+
+## User interface
+
+Add a Preview command in the most appropriate existing locations:
+
+* toolbar button
+* View menu or another suitable menu
+* optional keyboard shortcut only if there is an existing shortcut pattern
+
+The command should toggle between:
+
+* Design Mode
+* Preview Mode
+
+The UI must clearly indicate which mode is active.
+
+Use existing VisiForm toolbar, menu, and command infrastructure.
+
+Do not create a duplicate command path.
+
+## Preview Mode behavior
+
+While Preview Mode is active, hide all editor-only canvas visuals:
+
+* selection outlines
+* resize handles
+* grid
+* snap guides
+* alignment guides
+* drop targets
+* insertion markers
+* editor labels
+* selection status overlays
+* hover decorations used only for editing
+
+Render the form and its widgets using their current stored properties.
+
+The result should look like a clean runtime form rather than an editable design surface.
+
+## Editing restrictions
+
+Preview Mode must not modify the project.
+
+While active:
+
+* prevent widget dragging
+* prevent resizing
+* prevent creation from the palette
+* prevent canvas deletion
+* prevent reparenting
+* prevent property edits caused by canvas interaction
+* prevent layout editing
+* disable or ignore editor-only canvas commands
+
+Save, load, and export may remain available because they do not directly edit the canvas, unless existing command architecture requires otherwise.
+
+Do not discard project changes when entering Preview Mode.
+
+## Widget interaction
+
+For the base iteration, use the safest behavior supported by the current architecture.
+
+Preferred order:
+
+1. Allow harmless visual interaction where it already works safely.
+2. Allow controls to show hover, pressed, checked, or selected appearance without changing the project model.
+3. Suppress actions that would mutate the model or execute generated application code.
+4. If safe runtime-style interaction is not currently possible, render widgets without interaction.
+
+Examples:
+
+* a Button may visually press and release
+* a Check Box may show a temporary preview state
+* a Slider may move temporarily
+* text editing should not update stored project properties
+* event handlers must not execute generated user code
+
+Any temporary preview state must be discarded when leaving Preview Mode.
+
+Do not add a large simulation framework in this phase.
+
+## Entering Preview Mode
+
+When Preview Mode begins:
+
+* preserve the current selection
+* preserve canvas scroll or viewport state
+* preserve zoom if zoom already exists
+* clear or hide editor-only hover state
+* cancel any active drag or resize safely
+* stop active inline property or canvas editing
+* repaint the canvas cleanly
+
+Do not alter the project model solely to enter preview.
+
+## Leaving Preview Mode
+
+When returning to Design Mode:
+
+* restore the previous selection if the widget still exists
+* restore normal editing behavior
+* restore grid and guide visibility according to the user’s prior settings
+* discard temporary preview-only widget states
+* repaint selection handles and editor overlays
+* preserve canvas position and layout
+
+Preview Mode must not permanently turn off the user’s grid, snap, or guide preferences.
+
+## Escape and mode safety
+
+Provide a predictable way to exit Preview Mode.
+
+Preferred behavior:
+
+* clicking the Preview command again exits
+* Escape exits Preview Mode when no higher-priority modal action is active
+
+If Escape already has established editor behavior, integrate without breaking it.
+
+Opening or creating another project while in Preview Mode must leave the application in a valid state.
+
+## Rendering architecture
+
+Prefer a single explicit canvas mode, such as:
+
+* Design
+* Preview
+
+Avoid scattered independent booleans for every decoration.
+
+Canvas drawing and input handling should consult the shared mode.
+
+Reuse the same widget definitions and rendering paths used by the designer wherever possible.
+
+Do not duplicate widget rendering.
+
+Do not change:
+
+* `.vfb.json`
+* generated C++ behavior
+* widget model ownership
+* serialization format
+* user-code preservation
+
+unless a small change is genuinely required for mode state, which should normally remain editor-only and non-persistent.
+
+## Toolbar and command state
+
+While Preview Mode is active, visually disable editor commands that cannot be used safely, such as:
+
+* Delete
+* Paste
+* widget creation
+* alignment tools
+* layout editing
+* grid or guide editing when inappropriate
+* canvas resizing commands
+
+Undo and Redo should not be affected unless preview interactions accidentally create commands, which they must not.
+
+The Preview command should remain enabled so the user can exit.
+
+## Initial scope boundaries
+
+This phase is only the base preview implementation.
+
+Do not add:
+
+* separate preview windows
+* generated executable launching
+* live code execution
+* user event-handler execution
+* advanced theme editor
+* shadow editor
+* custom 2D skin system
+* responsive-device presets
+* animation preview
+* full runtime simulator
+
+Record those as possible future phases only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.4`.
+4. Open an existing project.
+5. Select a widget.
+6. Enter Preview Mode.
+7. Confirm selection handles disappear.
+8. Confirm grid and guides disappear.
+9. Confirm widgets remain visible in the correct positions and sizes.
+10. Confirm dragging and resizing are blocked.
+11. Confirm Delete and widget creation are blocked.
+12. Confirm preview interaction does not modify the project model.
+13. Exit Preview Mode.
+14. Confirm the prior selection returns.
+15. Confirm prior grid and guide settings return.
+16. Confirm normal editing resumes.
+17. Toggle Preview Mode repeatedly.
+18. Test Preview Mode with:
+
+    * Button
+    * Label
+    * Text Box
+    * Check Box
+    * Slider
+    * Frame or Group Box
+    * Sizer-contained widgets
+19. Confirm save and reload do not persist preview-only state.
+20. Confirm undo history is unchanged by preview-only interaction.
+21. Confirm opening or creating a project while previewing does not leave stale mode state.
+22. Confirm Escape exits Preview Mode if implemented.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 98 plan with:
+
+* previous and new version
+* mode-state design
+* hidden editor decorations
+* disabled commands
+* preview interaction policy
+* temporary-state handling
+* files changed
+* build result
+* manual validation performed
+* known differences from exported runtime
+* remaining issues and future refinements
+
+Update `docs/project_status.md`.
+
+Add a concise README progress update only if the README has an existing current-progress section. Do not rewrite the README.
+
+## Completion report
+
+Report:
+
+* Phase 98 plan path
+* version change to `1.0.4`
+* Preview command location
+* mode-state implementation
+* editor visuals hidden
+* editing operations blocked
+* widget interaction behavior
+* known runtime-parity limitations
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

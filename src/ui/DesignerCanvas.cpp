@@ -598,14 +598,14 @@ ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, c
     return style;
 }
 
-PreviewLayout calculatePreviewLayout(float x, float y, float width, float height, const model::ProjectDocument& document)
+PreviewLayout calculatePreviewLayout(float x, float y, float width, float height, const model::ProjectDocument& document, bool previewMode)
 {
     PreviewLayout layout;
     layout.preview = {
         x + kPadding,
-        y + kHeaderHeight + 12.0f,
+        y + (previewMode ? kPadding : kHeaderHeight + 12.0f),
         std::max(0.0f, width - kPadding * 2.0f),
-        std::max(0.0f, height - (kHeaderHeight + 24.0f))
+        std::max(0.0f, height - (previewMode ? kPadding * 2.0f : kHeaderHeight + 24.0f))
     };
 
     if (!layout.preview.isValid() || !document.root.bounds.isValid()) {
@@ -837,7 +837,8 @@ void drawWidget(visage::Canvas& canvas,
     bool showGrid,
     bool showMinorGrid,
     int gridSize,
-    int majorGridSize)
+    int majorGridSize,
+    bool showEditorDecorations)
 {
     const float widgetLocalX = parentLocalX + widget.bounds.x;
     const float widgetLocalY = parentLocalY + widget.bounds.y;
@@ -1572,16 +1573,16 @@ void drawWidget(visage::Canvas& canvas,
             continue;
         }
         drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
-            scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize);
+            scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize, showEditorDecorations);
     }
 
-    if (document.isPrimarySelected(widget.id)) {
+    if (showEditorDecorations && document.isPrimarySelected(widget.id)) {
         drawSelectionOutline(canvas, bounds);
         if (widget.type != model::WidgetType::FormWindow && widget.type != model::WidgetType::TabPage) {
             drawSelectionHandles(canvas, bounds, visualHandleSize);
         }
     }
-    else if (document.isSecondarySelected(widget.id)) {
+    else if (showEditorDecorations && document.isSecondarySelected(widget.id)) {
         drawSecondarySelectionOutline(canvas, bounds);
     }
 }
@@ -1594,6 +1595,11 @@ void DesignerCanvas::setBounds(float x, float y, float width, float height)
     y_ = y;
     width_ = width;
     height_ = height;
+}
+
+void DesignerCanvas::setMode(Mode mode)
+{
+    mode_ = mode;
 }
 
 void DesignerCanvas::setShowGrid(bool showGrid)
@@ -1619,6 +1625,11 @@ void DesignerCanvas::setMajorGridSize(int majorGridSize)
 bool DesignerCanvas::showGrid() const
 {
     return showGrid_;
+}
+
+DesignerCanvas::Mode DesignerCanvas::mode() const
+{
+    return mode_;
 }
 
 bool DesignerCanvas::snapToGrid() const
@@ -1647,7 +1658,7 @@ std::optional<DesignerCanvas::FormPoint> DesignerCanvas::toFormPoint(const model
         return std::nullopt;
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
     if (!previewLayout.form.contains(x, y) || previewLayout.scale <= 0.0f) {
         return std::nullopt;
     }
@@ -1664,7 +1675,7 @@ std::optional<std::string> DesignerCanvas::hitTestWidgetId(const model::ProjectD
         return std::nullopt;
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
     if (!previewLayout.form.contains(x, y) || previewLayout.scale <= 0.0f) {
         return std::nullopt;
     }
@@ -1688,7 +1699,7 @@ std::optional<int> DesignerCanvas::hitTestTabHeader(const model::ProjectDocument
         return std::nullopt;
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
     if (!previewLayout.form.isValid()) {
         return std::nullopt;
     }
@@ -1716,7 +1727,7 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
     float y,
     const std::string& selectedWidgetId) const
 {
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
     if (!previewLayout.form.isValid()) {
         return std::nullopt;
     }
@@ -1857,8 +1868,11 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     canvas.setColor(0xff1f242d);
     canvas.fill(x_, y_, width_, height_);
 
-    canvas.setColor(0xff2a303a);
-    canvas.fill(x_, y_, width_, kHeaderHeight);
+    const bool showEditorDecorations = mode_ == Mode::Design;
+    if (showEditorDecorations) {
+        canvas.setColor(0xff2a303a);
+        canvas.fill(x_, y_, width_, kHeaderHeight);
+    }
 
     canvas.setColor(0xff101318);
     canvas.fill(x_, y_, width_, 1.0f);
@@ -1866,22 +1880,24 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     canvas.fill(x_, y_, 1.0f, height_);
     canvas.fill(x_ + width_ - 1.0f, y_, 1.0f, height_);
 
-    if (drawText) {
+    if (drawText && showEditorDecorations) {
         canvas.setColor(0xfff3f5f8);
         canvas.text("Designer Canvas", font, visage::Font::kTopLeft,
             x_ + kPadding, y_ + 6.0f, width_ - kPadding * 2.0f, kHeaderHeight - 8.0f);
     }
 
-    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document);
+    const PreviewLayout previewLayout = calculatePreviewLayout(x_, y_, width_, height_, document, mode_ == Mode::Preview);
     if (!previewLayout.preview.isValid()) {
         return;
     }
 
-    canvas.setColor(0xff303746);
-    canvas.fill(previewLayout.preview.x, previewLayout.preview.y, previewLayout.preview.width, previewLayout.preview.height);
-    canvas.setColor(0xff475064);
-    canvas.fill(previewLayout.preview.x + 1.0f, previewLayout.preview.y + 1.0f,
-        previewLayout.preview.width - 2.0f, previewLayout.preview.height - 2.0f);
+    if (showEditorDecorations) {
+        canvas.setColor(0xff303746);
+        canvas.fill(previewLayout.preview.x, previewLayout.preview.y, previewLayout.preview.width, previewLayout.preview.height);
+        canvas.setColor(0xff475064);
+        canvas.fill(previewLayout.preview.x + 1.0f, previewLayout.preview.y + 1.0f,
+            previewLayout.preview.width - 2.0f, previewLayout.preview.height - 2.0f);
+    }
 
     if (!previewLayout.form.isValid()) {
         return;
@@ -1889,9 +1905,9 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
 
     drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
-        resizeHandleVisualSize_, showGrid_, showMinorGrid_, gridSize_, majorGridSize_);
+        resizeHandleVisualSize_, showEditorDecorations && showGrid_, showMinorGrid_, gridSize_, majorGridSize_, showEditorDecorations);
 
-    if (marqueeRect.has_value()) {
+    if (showEditorDecorations && marqueeRect.has_value()) {
         const PanelRect screenRect = selectionRectToScreenRect(previewLayout, *marqueeRect);
         canvas.setColor(0x226fa9ff);
         canvas.fill(screenRect.x, screenRect.y, screenRect.width, screenRect.height);
@@ -1902,19 +1918,21 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
         canvas.fill(screenRect.x + screenRect.width - 1.0f, screenRect.y, 1.0f, screenRect.height);
     }
 
-    for (const auto& guide : smartGuides) {
-        canvas.setColor(0xffff6b2c);
-        if (guide.orientation == GuideOrientation::Vertical) {
-            const float x = previewLayout.form.x + guide.position * previewLayout.scale;
-            canvas.fill(x, previewLayout.form.y, 1.0f, previewLayout.form.height);
-        }
-        else {
-            const float y = previewLayout.form.y + guide.position * previewLayout.scale;
-            canvas.fill(previewLayout.form.x, y, previewLayout.form.width, 1.0f);
+    if (showEditorDecorations) {
+        for (const auto& guide : smartGuides) {
+            canvas.setColor(0xffff6b2c);
+            if (guide.orientation == GuideOrientation::Vertical) {
+                const float x = previewLayout.form.x + guide.position * previewLayout.scale;
+                canvas.fill(x, previewLayout.form.y, 1.0f, previewLayout.form.height);
+            }
+            else {
+                const float y = previewLayout.form.y + guide.position * previewLayout.scale;
+                canvas.fill(previewLayout.form.x, y, previewLayout.form.width, 1.0f);
+            }
         }
     }
 
-    if (drawText) {
+    if (drawText && showEditorDecorations) {
         canvas.setColor(0xff243041);
         const std::string selectedLabel = document.hasSelection() && document.selectedWidget() != nullptr
             ? "Selected: " + widgetLabel(*document.selectedWidget())

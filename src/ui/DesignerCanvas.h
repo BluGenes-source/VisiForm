@@ -19,6 +19,11 @@ class ImageResourceCache;
 
 class DesignerCanvas {
 public:
+    enum class Mode {
+        Design,
+        Preview
+    };
+
     enum class HitRegion {
         None,
         Body,
@@ -57,11 +62,13 @@ public:
     };
 
     void setBounds(float x, float y, float width, float height);
+    void setMode(Mode mode);
     void setShowGrid(bool showGrid);
     void setSnapToGrid(bool snapToGrid);
     void setGridSize(int gridSize);
     void setMajorGridSize(int majorGridSize);
     [[nodiscard]] bool showGrid() const;
+    [[nodiscard]] Mode mode() const;
     [[nodiscard]] bool snapToGrid() const;
     [[nodiscard]] int gridSize() const;
     [[nodiscard]] int majorGridSize() const;
@@ -88,6 +95,7 @@ private:
     float y_{};
     float width_{};
     float height_{};
+    Mode mode_ = Mode::Design;
     bool showGrid_ = true;
     bool showMinorGrid_ = true;
     bool snapToGrid_ = true;

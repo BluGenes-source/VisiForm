@@ -29,6 +29,7 @@ const std::vector<CommandDefinition> kDefinitions = {
     { ids::kViewSnap, "Snap", "View", "Ctrl+Alt+S", "Toggle snap-to-grid" },
     { ids::kViewGuides, "Guides", "View", "Ctrl+Shift+G", "Toggle smart guides" },
     { ids::kViewMultiSelect, "Multi Select", "View", "", "Toggle multi-select mode" },
+    { ids::kViewPreview, "Preview", "View", "F5", "Toggle Designer Preview Mode" },
     { ids::kLayoutFitText, "Fit Text", "Layout", "Ctrl+Alt+F", "Fit the selected widget to its text" },
     { ids::kLayoutAlignLeft, "Align Left", "Layout", "Ctrl+Alt+Left", "Align selected widgets left" },
     { ids::kLayoutAlignTop, "Align Top", "Layout", "Ctrl+Alt+Up", "Align selected widgets top" },

@@ -2,9 +2,9 @@
 
 *A C++ / Visage UI form builder that generates Visage-based C++ projects.*
 
-Current version: `1.0.3`
+Current version: `1.0.4`
 
-Current development phase: Phase 97
+Current development phase: Phase 98
 
 ## Screenshot
 
@@ -65,6 +65,7 @@ Current major features include:
 
 Recent editor UI progress:
 
+- Designer Preview Mode with decoration-free canvas rendering and read-only editor input
 - top tabbed Widget Palette
 - hierarchical Project Tree
 - Project Tree hover hints and hierarchy fixes

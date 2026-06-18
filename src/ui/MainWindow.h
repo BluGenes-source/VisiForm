@@ -125,6 +125,7 @@ private:
         DistributeHorizontally,
         DistributeVertically,
         ToggleSmartGuides,
+        TogglePreviewMode,
         BringForward,
         SendBackward,
         ToggleGrid,
@@ -177,6 +178,7 @@ private:
         std::string hint{};
         PanelBounds bounds{};
         bool accent = false;
+        bool enabled = true;
     };
 
     struct MenuItem {
@@ -435,6 +437,9 @@ private:
     void pasteWidgets();
     void toggleMultiSelectMode();
     void toggleSmartGuides();
+    void togglePreviewMode();
+    void setDesignerCanvasMode(DesignerCanvas::Mode mode);
+    [[nodiscard]] bool isPreviewMode() const;
     [[nodiscard]] bool isMultiSelectModeEnabled() const;
     void handleWidgetClicked(const std::string& widgetId, bool additiveSelection);
     void alignSelectedLeft();

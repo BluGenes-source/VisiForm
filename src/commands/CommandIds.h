@@ -23,6 +23,7 @@ inline constexpr std::string_view kViewGrid = "view.grid";
 inline constexpr std::string_view kViewSnap = "view.snap";
 inline constexpr std::string_view kViewGuides = "view.guides";
 inline constexpr std::string_view kViewMultiSelect = "view.multiSelect";
+inline constexpr std::string_view kViewPreview = "view.preview";
 
 inline constexpr std::string_view kLayoutFitText = "layout.fitText";
 inline constexpr std::string_view kLayoutAlignLeft = "layout.alignLeft";

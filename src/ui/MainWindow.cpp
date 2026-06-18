@@ -1644,6 +1644,7 @@ bool MainWindow::newProject()
 
 bool MainWindow::openNewProjectWizard()
 {
+    setDesignerCanvasMode(DesignerCanvas::Mode::Design);
     cancelInspectorEdit();
     cancelEditorModalFieldEdit();
     clearCanvasInteraction();
@@ -2502,6 +2503,7 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 
 bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 {
+    setDesignerCanvasMode(DesignerCanvas::Mode::Design);
     cancelInspectorEdit();
     serialization::JsonProjectReader reader;
     std::string errorMessage;
@@ -2716,6 +2718,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (canvasInspectorSplitter_.mouseDown(e.position.x, e.position.y)) {
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
+        redraw();
+        return;
+    }
+
+    if (isPreviewMode()) {
+        setOperationStatus("Preview Mode is read-only.");
         redraw();
         return;
     }
@@ -3007,6 +3015,13 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
         return;
     }
 
+    if (isPreviewMode()) {
+        projectTree_.clearHover();
+        hoverHint_.clear();
+        updateEditorCursor(e.position.x, e.position.y);
+        return;
+    }
+
     bool hoverChanged = false;
     if (layout_.showProjectTree) {
         hoverChanged = projectTree_.updateHover(document_, e.position.x, e.position.y);
@@ -3054,6 +3069,10 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         applyLayout(layout_);
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
         redraw();
+        return;
+    }
+
+    if (isPreviewMode()) {
         return;
     }
 
@@ -3249,6 +3268,14 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         setOperationStatus("Resized Property Inspector to " + std::to_string(settings_.propertyInspectorWidth) + " px.");
         updateEditorCursor(e.position.x, e.position.y);
         redraw();
+        return;
+    }
+
+    if (isPreviewMode()) {
+        (void)widgetPalette_.mouseUp();
+        (void)propertyInspector_.mouseUp();
+        (void)projectTree_.mouseUp();
+        clearCanvasInteraction();
         return;
     }
 
@@ -3572,12 +3599,18 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
         return true;
     }
 
+    if (isPreviewMode() && e.keyCode() == KeyCode::Escape) {
+        setDesignerCanvasMode(DesignerCanvas::Mode::Design);
+        return true;
+    }
+
     if (propertyInspector_.isEditing()) {
         return false;
     }
 
     const bool usesGlobalShortcutModifier = e.isCtrlDown() || e.isAltDown() || e.isCmdDown() || e.isMetaDown();
-    if (!usesGlobalShortcutModifier
+    if (!isPreviewMode()
+        && !usesGlobalShortcutModifier
         && (e.keyCode() == KeyCode::Left || e.keyCode() == KeyCode::Right
             || e.keyCode() == KeyCode::Up || e.keyCode() == KeyCode::Down)) {
         const float amount = e.isShiftDown() ? static_cast<float>(std::max(1, designerCanvas_.gridSize())) : 1.0f;
@@ -3652,6 +3685,37 @@ void MainWindow::toggleSmartGuides()
     saveAppSettings();
     setOperationStatus(std::string{"Smart guides: "} + (settings_.smartGuidesEnabled ? "On" : "Off"));
     redraw();
+}
+
+void MainWindow::togglePreviewMode()
+{
+    setDesignerCanvasMode(isPreviewMode() ? DesignerCanvas::Mode::Design : DesignerCanvas::Mode::Preview);
+}
+
+void MainWindow::setDesignerCanvasMode(DesignerCanvas::Mode mode)
+{
+    if (designerCanvas_.mode() == mode) {
+        return;
+    }
+
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    cancelPopupEditors();
+    clearCanvasInteraction();
+    hoverHint_.clear();
+    projectTree_.clearHover();
+    openMenuIndex_ = -1;
+    designerCanvas_.setMode(mode);
+    requestKeyboardFocus();
+    setOperationStatus(mode == DesignerCanvas::Mode::Preview
+            ? "Preview Mode - press Escape or Preview to return to Design Mode."
+            : "Design Mode");
+    redraw();
+}
+
+bool MainWindow::isPreviewMode() const
+{
+    return designerCanvas_.mode() == DesignerCanvas::Mode::Preview;
 }
 
 bool MainWindow::hasSelectedNonRootWidgets(std::size_t minimumCount) const
@@ -5697,6 +5761,8 @@ std::string_view MainWindow::commandRegistryId(CommandId command)
         return kLayoutDistributeVertical;
     case CommandId::ToggleSmartGuides:
         return kViewGuides;
+    case CommandId::TogglePreviewMode:
+        return kViewPreview;
     case CommandId::BringForward:
         return kLayoutBringForward;
     case CommandId::SendBackward:
@@ -5766,6 +5832,9 @@ MainWindow::CommandId MainWindow::commandFromRegistryId(std::string_view registr
     }
     if (registryId == kViewMultiSelect) {
         return CommandId::ToggleMultiSelect;
+    }
+    if (registryId == kViewPreview) {
+        return CommandId::TogglePreviewMode;
     }
     if (registryId == kLayoutFitText) {
         return CommandId::FitText;
@@ -5962,6 +6031,10 @@ std::string MainWindow::commandHintText(CommandId command) const
             return "Distribute selected widgets vertically" + shortcutSuffix;
         case CommandId::ToggleSmartGuides:
             return "Toggle smart guides" + shortcutSuffix;
+        case CommandId::TogglePreviewMode:
+            return isPreviewMode()
+                ? "Return to Design Mode" + shortcutSuffix
+                : "Show the form without editor decorations" + shortcutSuffix;
         case CommandId::BringForward:
             return "Bring the selected widget forward" + shortcutSuffix;
         case CommandId::SendBackward:
@@ -5987,6 +6060,36 @@ bool MainWindow::isCommandEnabled(CommandId command) const
 {
     const bool hasNonRootSelection = hasSelectedNonRootWidgets(1);
     const bool hasMultiSelection = hasSelectedNonRootWidgets(2);
+
+    if (isPreviewMode()) {
+        switch (command) {
+        case CommandId::PasteWidgets:
+        case CommandId::DeleteWidget:
+        case CommandId::DuplicateWidget:
+        case CommandId::ToggleMultiSelect:
+        case CommandId::AlignLeft:
+        case CommandId::AlignTop:
+        case CommandId::AlignRight:
+        case CommandId::AlignBottom:
+        case CommandId::CenterHorizontally:
+        case CommandId::CenterVertically:
+        case CommandId::SameWidth:
+        case CommandId::SameHeight:
+        case CommandId::DistributeHorizontally:
+        case CommandId::DistributeVertically:
+        case CommandId::ToggleSmartGuides:
+        case CommandId::BringForward:
+        case CommandId::SendBackward:
+        case CommandId::ToggleGrid:
+        case CommandId::ToggleSnap:
+        case CommandId::FitText:
+        case CommandId::ShowProjectSettings:
+        case CommandId::ShowResourceManager:
+            return false;
+        default:
+            break;
+        }
+    }
 
     switch (command) {
     case CommandId::UndoAction:
@@ -6034,6 +6137,8 @@ bool MainWindow::isCommandChecked(CommandId command) const
         return settings_.smartGuidesEnabled;
     case CommandId::ToggleMultiSelect:
         return multiSelectMode_;
+    case CommandId::TogglePreviewMode:
+        return isPreviewMode();
     default:
         return false;
     }
@@ -6059,11 +6164,11 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
         item.enabled = false;
         menu.items.push_back(std::move(item));
     };
-    auto addWidgetItem = [](Menu& menu, const std::string& id, const std::string& label, model::WidgetType widgetType) {
+    auto addWidgetItem = [this](Menu& menu, const std::string& id, const std::string& label, model::WidgetType widgetType) {
         MenuItem item;
         item.id = id;
         item.label = label;
-        item.enabled = true;
+        item.enabled = !isPreviewMode();
         item.widgetType = widgetType;
         menu.items.push_back(std::move(item));
     };
@@ -6103,6 +6208,7 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     addCommand(viewMenu, CommandId::ToggleSnap, "Snap");
     addCommand(viewMenu, CommandId::ToggleSmartGuides, "Guides");
     addCommand(viewMenu, CommandId::ToggleMultiSelect, "Multi Select");
+    addCommand(viewMenu, CommandId::TogglePreviewMode, "Preview");
     addSeparator(viewMenu);
     addCommand(viewMenu, CommandId::ShowValidationReport, "Validation Report");
     result.push_back(std::move(viewMenu));
@@ -6347,11 +6453,11 @@ void MainWindow::drawToolbar(visage::Canvas& canvas) const
     }
 
     for (const auto& button : toolbarButtons()) {
-        canvas.setColor(button.accent ? 0xff355382 : 0xff39414e);
+        canvas.setColor(!button.enabled ? 0xff2b3038 : (button.accent ? 0xff355382 : 0xff39414e));
         canvas.fill(button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
         canvas.setColor(0xff14161b);
         canvas.fill(button.bounds.x, button.bounds.y + button.bounds.height - 1.0f, button.bounds.width, 1.0f);
-        canvas.setColor(0xfff3f5f8);
+        canvas.setColor(button.enabled ? 0xfff3f5f8 : 0xff737c89);
         canvas.text(button.label, labelFont_, visage::Font::kCenter,
             button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height);
     }
@@ -6390,7 +6496,10 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
 
     // Middle: selection info (do not duplicate hints here)
     std::string middleText;
-    if (document_.hasMultiSelection()) {
+    if (isPreviewMode()) {
+        middleText = "PREVIEW MODE";
+    }
+    else if (document_.hasMultiSelection()) {
         middleText = "Selected: " + std::to_string(document_.selectedWidgetIds().size()) + " widgets";
     }
     else if (const auto* sel = document_.selectedWidget()) {
@@ -6551,7 +6660,7 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     const auto addButton = [&](CommandId command, std::string label) {
         const float buttonWidth = std::max(kToolbarButtonMinWidth, 14.0f + static_cast<float>(label.size()) * 8.0f);
         const bool accent = isCommandChecked(command) || command == CommandId::SaveProjectAsDialog || command == CommandId::ExportCode || command == CommandId::ValidateProject;
-        buttons.push_back(ToolbarButton{ command, std::move(label), commandHintText(command), { left, top, buttonWidth, kToolbarButtonHeight }, accent });
+        buttons.push_back(ToolbarButton{ command, std::move(label), commandHintText(command), { left, top, buttonWidth, kToolbarButtonHeight }, accent, isCommandEnabled(command) });
         left += buttonWidth + kToolbarButtonSpacing;
     };
 
@@ -6570,6 +6679,7 @@ std::vector<MainWindow::ToolbarButton> MainWindow::toolbarButtons() const
     addButton(CommandId::ToggleGrid, "Grid");
     addButton(CommandId::ToggleSnap, "Snap");
     addButton(CommandId::ToggleSmartGuides, "Guides");
+    addButton(CommandId::TogglePreviewMode, isPreviewMode() ? "Design" : "Preview");
 
     return buttons;
 }
@@ -6717,6 +6827,9 @@ bool MainWindow::executeCommand(CommandId command)
         return true;
     case CommandId::ToggleSmartGuides:
         toggleSmartGuides();
+        return true;
+    case CommandId::TogglePreviewMode:
+        togglePreviewMode();
         return true;
     case CommandId::BringForward:
         bringSelectedForward();
