@@ -1,2 +1,3 @@
-phasee 100 is working, but it does need improvement. I would like to also have to the ablilty to do same width with smallest, and largest. Maybe as a control click or some other method.   
-Also, when teh app starts up, the default button appears half off of the canvas on the right.  When you create a new project, new widgets do the same thing, appear half off the canvas. I have pushed this phase to the repo.
+Some widgets will benfit from a layout choice of fit width.  There is no menu choice for this. The fit width or fit height should also be constrained to child items of the parent.  If a fit width is clicked, it should only affect the width, not the height, Conversly, if fit height is clicked, width should not change.
+New widgets added still show as half on the canvas and half off.
+phase 102 is working and the repo was updated for this.

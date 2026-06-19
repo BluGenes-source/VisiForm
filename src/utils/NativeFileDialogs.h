@@ -7,6 +7,7 @@
 namespace visiform::utils {
 
 void setNativeDialogOwnerHandle(void* nativeHandle);
+[[nodiscard]] bool isNativeDialogActive();
 
 [[nodiscard]] std::optional<std::filesystem::path> showOpenProjectDialog(const std::filesystem::path& initialDirectory = {});
 [[nodiscard]] std::optional<std::filesystem::path> showSaveProjectDialog(

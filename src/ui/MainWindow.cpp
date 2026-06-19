@@ -22,7 +22,9 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -53,6 +55,7 @@ constexpr float kStatusBarHeight = 28.0f;
 constexpr float kDefaultStartupWindowWidth = 1400.0f;
 constexpr float kDefaultStartupWindowHeight = 820.0f;
 constexpr unsigned int kTextEditCaretBlinkMilliseconds = 530;
+constexpr unsigned int kAutosaveIntervalMilliseconds = 5u * 60u * 1000u;
 constexpr float kDefaultDpiScale = 1.0f;
 constexpr float kMinimumProjectTreeWidth = 180.0f;
 constexpr float kProjectTreeMaximumDragMargin = 16.0f;
@@ -1695,6 +1698,25 @@ float measuredMenuTextWidth(const visage::Font& font, bool canMeasureText, const
     return font.stringWidth(utf32);
 }
 
+std::string currentLocalTimeText()
+{
+    const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+
+    std::ostringstream stream;
+    stream << std::put_time(&local, "%I:%M %p");
+    std::string value = stream.str();
+    if (!value.empty() && value.front() == '0') {
+        value.erase(value.begin());
+    }
+    return value;
+}
+
 } // namespace
 
 MainWindow::MainWindow()
@@ -1704,7 +1726,14 @@ MainWindow::MainWindow()
     updateTextEditMetricsFont();
     loadAppSettings();
     applyCanvasSettings();
+    recoveryDocumentId_ = utils::ProjectRecovery::newUnsavedDocumentId();
     updateLayout();
+}
+
+MainWindow::~MainWindow()
+{
+    autosaveTimer_.stop();
+    textEditCaretTimer_.stop();
 }
 
 bool MainWindow::newProject()
@@ -2303,6 +2332,7 @@ bool MainWindow::applyNewProjectWizard()
     document_ = createDocumentFromWizard();
     normalizeWidgetBoundsForEditor();
     currentProjectPath_.clear();
+    resetRecoveryAssociation();
     undoRedo_.clear();
     document_.setSelection(document_.root.id);
     projectTree_.resetForDocument(document_);
@@ -2405,13 +2435,16 @@ bool MainWindow::openProjectDialog()
     const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() && std::filesystem::exists(settings_.lastProjectDirectory)
         ? settings_.lastProjectDirectory
         : defaultProjectDir;
+    fileOperationInProgress_ = true;
     const auto selectedPath = utils::showOpenProjectDialog(initialProjectDir);
     if (!selectedPath.has_value()) {
+        fileOperationInProgress_ = false;
         setOperationStatus("Open cancelled");
         redraw();
         return false;
     }
 
+    fileOperationInProgress_ = false;
     return loadProjectFromPath(*selectedPath);
 }
 
@@ -2553,43 +2586,62 @@ bool MainWindow::saveProjectAsDialog()
     const std::filesystem::path initialProjectDir = !settings_.lastProjectDirectory.empty() && std::filesystem::exists(settings_.lastProjectDirectory)
         ? settings_.lastProjectDirectory
         : defaultProjectDir;
+    fileOperationInProgress_ = true;
     const auto selectedPath = utils::showSaveProjectDialog(suggestedPath, initialProjectDir);
     if (!selectedPath.has_value()) {
+        fileOperationInProgress_ = false;
         setOperationStatus("Save cancelled");
         redraw();
         return false;
     }
 
+    fileOperationInProgress_ = false;
     return saveProjectAs(*selectedPath);
 }
 
 bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 {
+    fileOperationInProgress_ = true;
     serialization::JsonProjectWriter writer;
     std::string errorMessage;
     if (!writer.writeToFile(document_, path, errorMessage)) {
+        fileOperationInProgress_ = false;
         setOperationStatus("Save failed: " + errorMessage);
         redraw();
         return false;
     }
 
+    std::string recoveryCleanupError;
+    const bool recoveryCleaned = removeActiveRecovery(recoveryCleanupError);
     currentProjectPath_ = path;
     document_.clearDirty();
+    recoveryDocumentId_ = utils::ProjectRecovery::savedDocumentId(currentProjectPath_);
+    if (recoveryCleaned) {
+        activeRecovery_.reset();
+    }
     settings_.lastProjectDirectory = currentProjectPath_.parent_path();
     addRecentFile(currentProjectPath_);
-    setOperationStatus("Project saved: " + normalizedPathText(currentProjectPath_));
+    resetAutosaveTimer();
+    fileOperationInProgress_ = false;
+    std::string status = "Project saved: " + normalizedPathText(currentProjectPath_);
+    if (!recoveryCleaned) {
+        status += " (recovery cleanup failed: " + recoveryCleanupError + ")";
+    }
+    setOperationStatus(std::move(status));
     redraw();
     return true;
 }
 
 bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
 {
+    fileOperationInProgress_ = true;
     setDesignerCanvasMode(DesignerCanvas::Mode::Design);
     cancelInspectorEdit();
     serialization::JsonProjectReader reader;
     std::string errorMessage;
     auto loadedDocument = reader.readFromFile(path, errorMessage);
     if (!loadedDocument.has_value()) {
+        fileOperationInProgress_ = false;
         setOperationStatus("Load failed: " + errorMessage);
         redraw();
         return false;
@@ -2609,6 +2661,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     designerCanvas_.resetView(document_);
 
     currentProjectPath_ = path;
+    resetRecoveryAssociation();
     undoRedo_.clear();
     if (boundsNormalized || radioNormalized) {
         document_.markDirty();
@@ -2629,6 +2682,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
         loadStatus += " (radio groups normalized)";
     }
     setOperationStatus(loadStatus);
+    fileOperationInProgress_ = false;
     redraw();
     return true;
 }
@@ -2668,6 +2722,216 @@ void MainWindow::showWindow()
 {
     show(visage::Dimension::logicalPixels(kDefaultStartupWindowWidth), visage::Dimension::logicalPixels(kDefaultStartupWindowHeight));
     applyNativeWindowIcon();
+    startAutosaveTimer();
+    offerStartupRecovery();
+}
+
+void MainWindow::startAutosaveTimer()
+{
+    autosaveTimer_.start(kAutosaveIntervalMilliseconds, [this]() {
+        performAutosave();
+    });
+}
+
+void MainWindow::resetAutosaveTimer()
+{
+    startAutosaveTimer();
+}
+
+void MainWindow::performAutosave()
+{
+    if (autosaveInProgress_ || fileOperationInProgress_ || modalOperationInProgress_
+        || utils::isNativeDialogActive() || exportInProgress_
+        || isEditorModalVisible() || !document_.dirty || document_.root.id.empty()) {
+        return;
+    }
+
+    validation::ProjectValidator validator;
+    if (validator.validate(document_, settings_).hasErrors()) {
+        return;
+    }
+
+    autosaveInProgress_ = true;
+    utils::RecoveryEntry entry;
+    std::string errorMessage;
+    const auto previousRecovery = activeRecovery_;
+    const bool saved = utils::ProjectRecovery::write(
+        document_,
+        currentProjectPath_,
+        recoveryDocumentId_,
+        std::string{ VersionString },
+        entry,
+        errorMessage);
+    autosaveInProgress_ = false;
+
+    if (!saved) {
+        if (!autosaveErrorReported_) {
+            setOperationStatus("Autosave failed: " + errorMessage);
+            autosaveErrorReported_ = true;
+            redraw();
+        }
+        return;
+    }
+
+    activeRecovery_ = entry;
+    autosaveErrorReported_ = false;
+    if (previousRecovery.has_value()
+        && previousRecovery->projectDataPath != entry.projectDataPath) {
+        std::string cleanupError;
+        const bool previousRecoveryRemoved = utils::ProjectRecovery::remove(*previousRecovery, cleanupError);
+        (void)previousRecoveryRemoved;
+    }
+
+    setOperationStatus("Autosaved at " + currentLocalTimeText());
+    redraw();
+}
+
+void MainWindow::offerStartupRecovery()
+{
+    if (isEditorModalVisible()) {
+        return;
+    }
+
+    std::string errorMessage;
+    const auto entries = utils::ProjectRecovery::discover(errorMessage);
+    if (entries.empty()) {
+        if (!errorMessage.empty()) {
+            setOperationStatus("Recovery check failed: " + errorMessage);
+        }
+        return;
+    }
+
+    pendingRecovery_ = entries.front();
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::Recovery;
+    editorModal_.title = "Recovery Available";
+    editorModal_.message = "A newer autosave is available for "
+        + pendingRecovery_->displayName + ".";
+    editorModal_.lines.clear();
+    if (pendingRecovery_->originalWasUnsaved) {
+        editorModal_.lines.push_back("Original project: Unsaved");
+    }
+    else {
+        editorModal_.lines.push_back("Original project: " + normalizedPathText(pendingRecovery_->originalProjectPath));
+    }
+    if (!pendingRecovery_->updatedUtc.empty()) {
+        editorModal_.lines.push_back("Recovery updated: " + pendingRecovery_->updatedUtc);
+    }
+    editorModal_.buttons = {
+        { "restore_recovery", "Restore" },
+        { "discard_recovery", "Discard" },
+        { "later_recovery", "Later" }
+    };
+    editorModal_.result.clear();
+    editorModal_.statusText = "Restore keeps the project modified and does not overwrite the original file.";
+    editorModal_.preferredWidth = 620.0f;
+    editorModal_.preferredHeight = 300.0f;
+    setOperationStatus("Recovery available");
+    redraw();
+}
+
+bool MainWindow::restorePendingRecovery()
+{
+    if (!pendingRecovery_.has_value()) {
+        closeEditorModalDialog("later_recovery");
+        return false;
+    }
+
+    fileOperationInProgress_ = true;
+    std::string errorMessage;
+    auto recoveredDocument = utils::ProjectRecovery::load(*pendingRecovery_, errorMessage);
+    if (!recoveredDocument.has_value()) {
+        fileOperationInProgress_ = false;
+        editorModal_.statusText = "Restore failed: " + errorMessage;
+        setOperationStatus("Recovery restore failed");
+        redraw();
+        return false;
+    }
+
+    setDesignerCanvasMode(DesignerCanvas::Mode::Design);
+    cancelInspectorEdit();
+    document_ = std::move(*recoveredDocument);
+    const bool boundsNormalized = normalizeWidgetBoundsForEditor();
+    const bool radioNormalized = document_.normalizeRadioGroups();
+    (void)boundsNormalized;
+    (void)radioNormalized;
+    if (!document_.selectedWidgetId.empty() && document_.findWidgetById(document_.selectedWidgetId) != nullptr) {
+        document_.setSelection(document_.selectedWidgetId);
+    }
+    else {
+        document_.setSelection(document_.root.id);
+    }
+    currentProjectPath_ = pendingRecovery_->originalWasUnsaved
+        ? std::filesystem::path{}
+        : pendingRecovery_->originalProjectPath;
+    recoveryDocumentId_ = pendingRecovery_->documentId.empty()
+        ? (currentProjectPath_.empty()
+            ? utils::ProjectRecovery::newUnsavedDocumentId()
+            : utils::ProjectRecovery::savedDocumentId(currentProjectPath_))
+        : pendingRecovery_->documentId;
+    activeRecovery_ = pendingRecovery_;
+    undoRedo_.clear();
+    document_.markDirty();
+    projectTree_.resetForDocument(document_);
+    updateLayout();
+    designerCanvas_.resetView(document_);
+    pendingRecovery_.reset();
+    closeEditorModalDialog("restore_recovery");
+    resetAutosaveTimer();
+    fileOperationInProgress_ = false;
+    setOperationStatus("Recovery restored; save normally to keep it.");
+    redraw();
+    return true;
+}
+
+bool MainWindow::discardPendingRecovery()
+{
+    if (!pendingRecovery_.has_value()) {
+        closeEditorModalDialog("discard_recovery");
+        return true;
+    }
+
+    std::string errorMessage;
+    if (!utils::ProjectRecovery::remove(*pendingRecovery_, errorMessage)) {
+        editorModal_.statusText = "Discard failed: " + errorMessage;
+        setOperationStatus("Recovery discard failed");
+        redraw();
+        return false;
+    }
+
+    pendingRecovery_.reset();
+    closeEditorModalDialog("discard_recovery");
+    setOperationStatus("Recovery discarded");
+    redraw();
+    return true;
+}
+
+void MainWindow::laterPendingRecovery()
+{
+    pendingRecovery_.reset();
+    closeEditorModalDialog("later_recovery");
+    setOperationStatus("Recovery kept for later");
+    redraw();
+}
+
+void MainWindow::resetRecoveryAssociation()
+{
+    activeRecovery_.reset();
+    recoveryDocumentId_ = currentProjectPath_.empty()
+        ? utils::ProjectRecovery::newUnsavedDocumentId()
+        : utils::ProjectRecovery::savedDocumentId(currentProjectPath_);
+    autosaveErrorReported_ = false;
+    resetAutosaveTimer();
+}
+
+bool MainWindow::removeActiveRecovery(std::string& errorMessage)
+{
+    errorMessage.clear();
+    if (!activeRecovery_.has_value()) {
+        return true;
+    }
+
+    return utils::ProjectRecovery::remove(*activeRecovery_, errorMessage);
 }
 
 void MainWindow::applyNativeWindowIcon()
@@ -7253,11 +7517,13 @@ std::filesystem::path MainWindow::defaultDebugSavePath() const
 
 MainWindow::UnsavedChangesResult MainWindow::promptForUnsavedChanges()
 {
+    modalOperationInProgress_ = true;
     const int response = MessageBoxW(
         nullptr,
         L"The current project has unsaved changes. Save before continuing?",
         L"VisiForm - Unsaved Changes",
         MB_ICONWARNING | MB_YESNOCANCEL);
+    modalOperationInProgress_ = false;
 
     switch (response) {
     case IDYES:
@@ -9801,6 +10067,19 @@ std::vector<editors::DropdownControl::Item> MainWindow::dropdownItemsFromChoices
 
 bool MainWindow::activateEditorModalButton(const std::string& buttonId)
 {
+    if (editorModal_.mode == EditorModalMode::Recovery) {
+        if (buttonId == "restore_recovery") {
+            return restorePendingRecovery();
+        }
+        if (buttonId == "discard_recovery") {
+            return discardPendingRecovery();
+        }
+        if (buttonId == "later_recovery" || buttonId == "cancel" || buttonId == "ok") {
+            laterPendingRecovery();
+            return true;
+        }
+    }
+
     if (buttonId == "cancel") {
         closeEditorModalDialog(buttonId);
         return true;

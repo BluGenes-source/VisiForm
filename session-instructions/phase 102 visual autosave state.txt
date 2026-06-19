@@ -1,0 +1,204 @@
+Continue VisiForm Phase 102. Do not create a new phase and do not change version 1.0.8.
+
+Autosave may be working, but the user has no visible confirmation. The dirty-state asterisk remains visible.
+
+This is expected: recovery autosave must not clear the dirty flag because the main project file has not been manually saved.
+
+Keep this pass narrow and token-efficient.
+
+## Rules
+
+* Do not use subagents.
+* Read only the active Phase 102 plan and files directly related to:
+
+  * autosave timer
+  * recovery writes
+  * dirty-state/title updates
+  * status bar messages
+  * manual Save and Save As
+* Do not perform a repository-wide audit.
+* Do not redesign project serialization.
+* Build once after the focused changes are complete.
+* Do not commit or push.
+
+## Required state semantics
+
+Preserve these distinct states:
+
+### Dirty project
+
+The title-bar asterisk means the main project file contains unsaved changes.
+
+Recovery autosave must not:
+
+* remove the asterisk
+* mark the model clean
+* reset normal Save enablement
+* change the main project file timestamp
+* make closing the project skip the unsaved-changes prompt
+
+### Recovery autosaved
+
+A successful recovery autosave means a separate recovery copy exists.
+
+It must not be treated as a normal project save.
+
+### Manually saved
+
+Only a successful Save or Save As may:
+
+* clear the dirty state
+* remove the title-bar asterisk
+* clean up the associated recovery file
+* reset the recovery timer
+
+## Goal 1: Add visible autosave status
+
+Use the existing VisiForm status area.
+
+Display concise status messages:
+
+* `Autosaving recovery…`
+* `Recovery autosaved at <time>`
+* `Recovery autosave failed: <brief reason>`
+* `Project saved` after a successful normal Save or Save As
+
+Requirements:
+
+* show the success message only after the recovery file has been written successfully
+* include the local time of the completed autosave
+* do not use a modal dialog for normal autosave success
+* do not repeatedly overwrite a more important active error message
+* autosave failure should remain visible long enough to be noticed
+* repeated failures should not open repeated dialogs
+
+Prefer the wording `Recovery autosaved` rather than only `Autosaved`, so users do not mistake it for a normal project save.
+
+## Goal 2: Make autosave state inspectable
+
+Track editor-only autosave status such as:
+
+* idle
+* waiting
+* writing
+* succeeded
+* failed
+
+Also track:
+
+* last successful recovery autosave time
+* last error message, if any
+* recovery-file path internally for diagnostics
+
+Do not store these values in `.vfb.json`.
+
+The UI does not need to display the recovery path during normal use.
+
+## Goal 3: Add a practical testing path
+
+The normal autosave interval may remain five minutes, but provide a safe way to validate it without waiting repeatedly.
+
+Preferred options, in order:
+
+1. Existing debug configuration uses a short interval, such as 15 or 30 seconds.
+2. Add a debug-only `Autosave Recovery Now` command.
+3. Make the interval a clearly named development constant that can be temporarily changed.
+
+Do not expose a permanent end-user command unless it fits the existing UI cleanly.
+
+Do not leave the release interval at an excessively short test value.
+
+Record the testing method in the Phase 102 plan.
+
+## Goal 4: Verify the timer actually runs
+
+Trace and confirm:
+
+* the autosave timer starts after a project becomes active
+* dirty-state changes are visible to the timer callback
+* the callback runs after the configured interval
+* autosave is skipped for an unmodified project
+* autosave is skipped during save/load or unsafe modal state
+* a successful write updates the status message and timestamp
+* a failed write reports failure
+* callbacks stop safely during shutdown
+
+If autosave is not firing, fix the actual timer ownership or callback issue rather than only adding UI messages.
+
+## Optional small indicator
+
+If the status area already supports persistent fields cleanly, add a compact indicator such as:
+
+* `Recovery: waiting`
+* `Recovery: saved 2:15 PM`
+* `Recovery: failed`
+
+Do not add a large toolbar redesign or permanent panel in this pass.
+
+A transient status message is sufficient for the base implementation.
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Open or create a project.
+4. Modify the project.
+5. Confirm the title-bar asterisk appears.
+6. Wait for or manually trigger the test autosave.
+7. Confirm `Autosaving recovery…` appears.
+8. Confirm `Recovery autosaved at <time>` appears after success.
+9. Confirm the asterisk remains visible.
+10. Confirm the normal Save command remains enabled.
+11. Confirm the main project file was not overwritten.
+12. Confirm a separate recovery file exists.
+13. Perform a normal Save.
+14. Confirm the asterisk clears.
+15. Confirm `Project saved` appears.
+16. Confirm the recovery file is removed.
+17. Modify the project again and confirm another recovery autosave occurs.
+18. Test an intentional recovery-write failure if practical.
+19. Confirm failure status is visible and dirty state remains unchanged.
+20. Confirm an unmodified project does not produce unnecessary recovery writes.
+21. Confirm shutdown leaves no active timer callback.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the existing Phase 102 plan with:
+
+* dirty-state versus recovery-state semantics
+* autosave status states
+* status messages
+* test interval or debug trigger used
+* confirmation that the timer fires
+* recovery-file verification
+* files changed
+* build result
+* manual validation performed
+* remaining issues
+
+Update `docs/project_status.md` only after Phase 102 is fully validated.
+
+## Completion report
+
+Report:
+
+* whether autosave was already firing
+* timer or callback fix, if needed
+* status feedback added
+* test mechanism used
+* last-autosave state handling
+* confirmation that recovery autosave does not clear the dirty flag
+* confirmation that manual Save does clear it
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+* final Git status
+
+Do not create Phase 103.
+Do not change version 1.0.8.
+Do not commit or push.

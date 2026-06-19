@@ -38,6 +38,20 @@ constexpr wchar_t kFontResourceFilter[] =
     L"All Files (*.*)\0*.*\0\0";
 
 HWND g_dialogOwnerHandle = nullptr;
+bool g_nativeDialogActive = false;
+
+class NativeDialogActivity {
+public:
+    NativeDialogActivity()
+    {
+        g_nativeDialogActive = true;
+    }
+
+    ~NativeDialogActivity()
+    {
+        g_nativeDialogActive = false;
+    }
+};
 
 std::filesystem::path normalizeProjectSavePath(std::filesystem::path path)
 {
@@ -85,6 +99,7 @@ std::optional<std::filesystem::path> showProjectDialog(bool saveDialog,
         dialog.Flags |= OFN_FILEMUSTEXIST;
     }
 
+    NativeDialogActivity activity;
     const BOOL result = saveDialog ? GetSaveFileNameW(&dialog) : GetOpenFileNameW(&dialog);
     if (!result) {
         return std::nullopt;
@@ -108,6 +123,7 @@ std::optional<std::filesystem::path> showOpenFilteredFileDialog(const wchar_t* f
     dialog.lpstrInitialDir = initialDirectory.empty() ? nullptr : initialDirectory.c_str();
     dialog.Flags = OFN_EXPLORER | OFN_HIDEREADONLY | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
+    NativeDialogActivity activity;
     if (!GetOpenFileNameW(&dialog)) {
         return std::nullopt;
     }
@@ -147,6 +163,15 @@ void setNativeDialogOwnerHandle(void* nativeHandle)
     g_dialogOwnerHandle = static_cast<HWND>(nativeHandle);
 #else
     static_cast<void>(nativeHandle);
+#endif
+}
+
+bool isNativeDialogActive()
+{
+#ifdef _WIN32
+    return g_nativeDialogActive;
+#else
+    return false;
 #endif
 }
 
@@ -195,6 +220,7 @@ std::optional<std::filesystem::path> showSelectExportFolderDialog(const std::fil
             }
         }
 
+        NativeDialogActivity activity;
         if (SUCCEEDED(pfd->Show(g_dialogOwnerHandle))) {
             IShellItem* psiResult = nullptr;
             if (SUCCEEDED(pfd->GetResult(&psiResult)) && psiResult != nullptr) {
@@ -253,6 +279,7 @@ std::optional<std::string> showColorPickerDialog(const std::string& initialColor
     dialog.lpCustColors = customColors;
     dialog.Flags = CC_FULLOPEN | CC_RGBINIT;
 
+    NativeDialogActivity activity;
     if (!ChooseColorW(&dialog)) {
         return std::nullopt;
     }

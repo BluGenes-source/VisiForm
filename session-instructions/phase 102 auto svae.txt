@@ -1,0 +1,346 @@
+Implement VisiForm Phase 102: Autosave and Crash Recovery.
+
+Phase 101 is complete and pushed.
+
+Use:
+
+* Phase: 102
+* Version: 1.0.8
+* Subagents: none
+
+Keep token use minimal and implement only the base recovery workflow.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 101 plan
+* files directly related to:
+
+  * project save/load
+  * dirty-state tracking
+  * application startup and shutdown
+  * timers
+  * status messages
+  * dialogs
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_102_autosave_crash_recovery_plan.md`
+
+Before implementation:
+
+* update authoritative VisiForm version declarations to `1.0.8`
+* record the previous and new versions in the phase plan
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not redesign serialization.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Add timed autosave and startup recovery without overwriting the user’s main `.vfb.json` project file.
+
+Autosave files are recovery data only.
+
+## Autosave behavior
+
+Autosave only when:
+
+* a project is open
+* the project is modified
+* the model is in a valid saveable state
+* no normal save or load operation is active
+* no modal operation makes saving unsafe
+
+Use a reasonable default interval, such as five minutes.
+
+If an existing settings mechanism makes it simple, store the interval there. Otherwise, use one documented default for this phase.
+
+Do not autosave continuously after every edit.
+
+## Recovery file location
+
+Write recovery data to a separate file.
+
+Preferred policy:
+
+* saved project: recovery file beside the project or in an existing application recovery-data location
+* unsaved project: recovery file in an application recovery directory
+
+Use a deterministic name that avoids collisions.
+
+Examples may include:
+
+* project path hash
+* project name
+* document identifier
+* recovery suffix
+
+Do not replace or rename the main project file.
+
+Use the existing serializer so recovery content matches normal project data.
+
+## Safe file writing
+
+Autosave must avoid leaving a partially written recovery file.
+
+Preferred sequence:
+
+1. serialize to a temporary recovery file
+2. flush and close successfully
+3. atomically replace the prior recovery file where supported
+
+On failure:
+
+* preserve the prior valid recovery file when possible
+* do not clear the project dirty state
+* show a concise status message
+* avoid repeated error dialogs on every timer interval
+
+## Recovery metadata
+
+Store enough metadata to determine:
+
+* original project path, if any
+* project display name
+* recovery creation or update time
+* VisiForm version
+* whether the original project was unsaved
+
+Prefer a small companion metadata file or a lightweight recovery wrapper only if this does not require changing the normal `.vfb.json` format.
+
+Do not add recovery-only fields to normal project files unless the serializer already supports editor metadata cleanly.
+
+## Startup recovery detection
+
+At application startup, detect valid recovery files.
+
+Only offer recovery when the recovery data is newer or otherwise more relevant than the normal project file.
+
+Provide clear choices:
+
+* Restore
+* Discard
+* Later or Cancel, if supported cleanly
+
+Required behavior:
+
+### Restore
+
+* load the recovery content
+* keep the project marked modified
+* preserve the original project path when known
+* do not overwrite the original project automatically
+* allow the user to use Save or Save As normally
+
+### Discard
+
+* delete the selected recovery data
+* continue normal startup
+
+### Later or Cancel
+
+* leave the recovery file intact
+* continue without deleting it
+
+If only one simple dialog can be implemented cleanly, Restore and Discard are the minimum required actions.
+
+## Manual save interaction
+
+After a successful normal Save or Save As:
+
+* remove recovery files associated with that document
+* reset the autosave timer
+* preserve normal dirty-state behavior
+
+If manual save fails:
+
+* do not delete recovery data
+* do not mark the project clean
+
+Save As must update recovery-file association to the new project path.
+
+## New and opened projects
+
+When creating or opening another project:
+
+* safely finish or cancel the current autosave operation
+* do not associate the previous project’s recovery file with the new project
+* restart the autosave timer for the new active document
+* remove obsolete recovery data only when it is safe to do so
+
+Opening a project must not immediately create a recovery file until the project becomes modified.
+
+## Shutdown behavior
+
+On normal clean shutdown:
+
+* do not create recovery data for an unmodified project
+* remove stale recovery data after a confirmed successful manual save
+* preserve recovery data for modified work that was not saved, unless the user explicitly discards changes
+
+Respect the existing unsaved-changes prompt.
+
+Do not treat normal shutdown recovery as a substitute for the existing Save/Discard/Cancel workflow.
+
+## Timer design
+
+Reuse the existing safe timer mechanism introduced for editor behavior where practical.
+
+Requirements:
+
+* one application or document autosave timer
+* no busy loop
+* no full-window repaint dependency
+* safe cancellation during shutdown
+* no callback after the owning object is destroyed
+* avoid overlapping autosave operations
+
+If an autosave is already running when the timer fires again, skip that cycle.
+
+## Status feedback
+
+Use the existing status area for concise messages such as:
+
+* Autosaved at 2:15 PM
+* Autosave failed
+* Recovery available
+
+Do not show a success dialog for routine autosaves.
+
+Errors should be logged or shown in status without repeatedly interrupting the user.
+
+## Recovery cleanup
+
+Remove recovery data when:
+
+* the associated project is manually saved successfully
+* the user chooses Discard
+* the recovery file is invalid and the user confirms removal
+
+Do not delete recovery data merely because:
+
+* loading the original project failed
+* the application closed unexpectedly
+* the user chose Later
+* restore was attempted but failed
+
+Optionally remove clearly stale orphaned temporary files if this can be done safely and narrowly.
+
+## Data integrity
+
+Recovery must preserve the same project content as a normal save, including:
+
+* widget hierarchy
+* properties
+* layout data
+* events
+* project settings
+* supported editor model state already serialized normally
+
+Do not store:
+
+* canvas zoom
+* canvas pan
+* current selection
+* temporary Preview Mode state
+
+unless such editor state is already part of a separate established settings system.
+
+## Scope boundaries
+
+Do not add in this phase:
+
+* cloud backup
+* version history browser
+* multiple recovery generations
+* background threads unless required by existing architecture
+* automatic generated-project export
+* file synchronization
+* project journaling
+* user-configurable recovery directories
+* complex recovery management UI
+
+Record those as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.8`.
+4. Open a saved project and make a change.
+5. Trigger or wait for autosave.
+6. Confirm the main project file was not overwritten.
+7. Confirm a separate valid recovery file exists.
+8. Confirm an unmodified project is not autosaved.
+9. Confirm repeated autosaves replace recovery data safely.
+10. Perform a normal Save and confirm recovery data is removed.
+11. Test Save As and confirm recovery association changes.
+12. Create an unsaved project, modify it, and trigger autosave.
+13. Restart the application and confirm recovery is offered.
+14. Test Restore.
+15. Confirm restored work remains marked modified.
+16. Test Discard.
+17. Test Later or Cancel if implemented.
+18. Confirm invalid recovery data does not crash startup.
+19. Confirm autosave failure does not clear dirty state.
+20. Confirm opening another project resets recovery association correctly.
+21. Confirm normal shutdown preserves unsaved recovery where appropriate.
+22. Confirm no timer callbacks occur after shutdown.
+23. Confirm normal project save/load format remains unchanged.
+
+Do not claim crash simulation or runtime checks unless they were actually performed.
+
+## Documentation
+
+Update the Phase 102 plan with:
+
+* previous and new version
+* autosave interval
+* timer ownership
+* recovery-file naming and location
+* safe-write method
+* recovery metadata
+* startup decision flow
+* cleanup rules
+* files changed
+* build result
+* manual validation actually performed
+* known limitations
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep the change concise.
+
+## Completion report
+
+Report:
+
+* Phase 102 plan path
+* version change to `1.0.8`
+* autosave interval
+* recovery-file location and naming
+* safe-write behavior
+* startup recovery choices
+* manual-save cleanup behavior
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

@@ -72,6 +72,29 @@ Current choices:
 If `Save` is chosen, the normal `Save` workflow runs first.
 If that save fails or is cancelled, the original operation stops.
 
+## Autosave and recovery
+
+While a project is modified and valid, VisiForm writes recovery data every five minutes when no save, load, export, or modal operation is active.
+Recovery never overwrites the main `.vfb.json` file.
+
+Recovery files are stored under:
+
+- `%APPDATA%/VisiForm/recovery/` on Windows
+- the matching VisiForm application configuration directory on macOS or Linux
+- `Generated/recovery/` when no application-data directory is available
+
+Each document uses one `*.recovery.vfb.json` serializer-compatible recovery file and one `*.recovery.meta.json` companion file.
+Writes go through temporary files and replace the prior recovery files only after the temporary content is flushed and closed.
+
+At startup, VisiForm offers the newest relevant recovery entry with:
+
+- `Restore`: load the recovery content, preserve the original project path when known, and keep the project modified
+- `Discard`: delete the recovery data
+- `Later`: continue without deleting the recovery data
+
+A successful normal `Save` or `Save As` removes recovery data associated with the active document.
+Failed saves keep the project dirty and leave recovery data intact.
+
 ## Related file format
 
 Project file structure is documented in `docs/project_file_format.md`.

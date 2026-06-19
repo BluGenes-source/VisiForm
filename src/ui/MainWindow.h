@@ -14,6 +14,7 @@
 #include "ui/editors/TextEditControl.h"
 #include "utils/AppSettings.h"
 #include "utils/IdGenerator.h"
+#include "utils/ProjectRecovery.h"
 #include "utils/UiTimer.h"
 #include "validation/ProjectValidator.h"
 
@@ -33,7 +34,7 @@ namespace visiform::ui {
 class MainWindow : public visage::ApplicationWindow {
 public:
     MainWindow();
-    ~MainWindow() override = default;
+    ~MainWindow() override;
 
     void showWindow();
     void draw(visage::Canvas& canvas) override;
@@ -241,7 +242,8 @@ private:
         KeyboardShortcuts,
         ItemListEditor,
         TableGridEditor,
-        TreeNodeEditor
+        TreeNodeEditor,
+        Recovery
     };
 
     struct ItemListEditorDialogState {
@@ -624,6 +626,15 @@ private:
     void drawEditorModalDialog(visage::Canvas& canvas) const;
     bool handleEditorModalMouseDown(const visage::MouseEvent& e);
     void applyNativeWindowIcon();
+    void startAutosaveTimer();
+    void resetAutosaveTimer();
+    void performAutosave();
+    void offerStartupRecovery();
+    bool restorePendingRecovery();
+    bool discardPendingRecovery();
+    void laterPendingRecovery();
+    void resetRecoveryAssociation();
+    bool removeActiveRecovery(std::string& errorMessage);
 
     WindowLayout layout_{};
     model::ProjectDocument document_ = model::ProjectDocument::createDefault();
@@ -644,6 +655,14 @@ private:
     editors::TextEditControl textEditControl_{};
     editors::DropdownControl dropdownControl_{};
     utils::UiTimer textEditCaretTimer_{};
+    utils::UiTimer autosaveTimer_{};
+    std::optional<utils::RecoveryEntry> activeRecovery_{};
+    std::optional<utils::RecoveryEntry> pendingRecovery_{};
+    std::string recoveryDocumentId_{};
+    bool fileOperationInProgress_ = false;
+    bool modalOperationInProgress_ = false;
+    bool autosaveInProgress_ = false;
+    bool autosaveErrorReported_ = false;
     visage::Font labelFont_{};
     resources::ImageResourceCache imageResourceCache_{};
     bool projectTreeWidthInitialized_ = false;
