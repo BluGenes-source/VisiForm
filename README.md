@@ -2,9 +2,9 @@
 
 *A C++ / Visage UI form builder that generates Visage-based C++ projects.*
 
-Current version: `1.0.11`
+Current version: `1.0.12`
 
-Current development phase: Phase 105
+Current development phase: Phase 106
 
 ## Screenshot
 

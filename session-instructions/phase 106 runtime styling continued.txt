@@ -1,0 +1,369 @@
+Implement VisiForm Phase 106: Runtime Styling Expansion.
+
+Phase 105 is complete and pushed.
+
+Use:
+
+* Phase: 106
+* Version: 1.0.12
+* Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 105 plan
+* files directly related to:
+
+  * shared widget style primitives
+  * widget rendering
+  * Preview Mode
+  * generated runtime styling
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_106_runtime_styling_expansion_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.12`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not create a theme editor.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Extend the Phase 105 shared visual-style baseline to additional widgets while preserving consistent runtime behavior.
+
+Use the existing Phase 105 style helpers and state rules.
+
+Do not create separate per-widget styling systems.
+
+## Widget scope
+
+Apply the shared baseline where relevant to:
+
+* Radio Button
+* List Box
+* Progress Bar
+* Scroll Bar
+* Color Picker
+* Frame
+* Group Box
+* Panel
+* Tab Control and tab pages
+* Status Bar
+* Menu Bar
+* Modal Dialog
+* Sizer or splitter-like visual layout indicators where runtime-visible
+
+Do not force decorative styling onto invisible layout-only objects.
+
+## Shared visual rules
+
+Reuse the existing style primitives for:
+
+* normal fill
+* border
+* highlight edge
+* shadow edge
+* recessed state
+* raised state
+* hover
+* pressed
+* focused
+* selected
+* checked
+* disabled
+* DPI-aware line widths
+* corner radius
+
+Do not duplicate color literals across renderers.
+
+If Phase 105 helpers are insufficient, extend them minimally.
+
+## Widget-specific direction
+
+### Radio Button
+
+Add:
+
+* clear circular control
+* hover and pressed feedback
+* distinct checked state
+* disabled appearance
+* readable label spacing
+
+### List Box
+
+Add:
+
+* recessed outer border
+* readable row spacing
+* selected-row highlight
+* hover feedback if already supported
+* disabled appearance
+* visible scroll region where applicable
+
+### Progress Bar
+
+Add:
+
+* recessed track
+* clear progress fill
+* readable border
+* disabled appearance
+* correct behavior at 0%, partial, and 100%
+
+Do not add animation.
+
+### Scroll Bar
+
+Add:
+
+* recessed track
+* raised thumb
+* hover and pressed states
+* clear arrow or end controls where present
+* disabled state
+
+Do not change scrolling behavior.
+
+### Color Picker
+
+Add:
+
+* visible color swatch
+* consistent border
+* hover and pressed feedback
+* focus indication
+* disabled appearance
+
+Do not change color-selection behavior.
+
+### Frame and Group Box
+
+Add:
+
+* subtle border depth
+* readable caption integration
+* consistent padding
+* no overlap between caption and border
+* clear disabled state if supported
+
+### Panel
+
+Add:
+
+* restrained surface treatment
+* optional subtle border only where the widget is configured to show one
+* no unnecessary heavy shadow
+
+### Tab Control
+
+Add:
+
+* clear active tab
+* readable inactive tabs
+* hover state
+* disabled state
+* consistent page border
+* proper seam between selected tab and page area
+
+Do not change tab switching behavior.
+
+### Status Bar
+
+Add:
+
+* subtle recessed or separated top edge
+* readable text
+* consistent panel divisions if supported
+
+### Menu Bar
+
+Add:
+
+* consistent top-level item spacing
+* hover and active states
+* disabled item appearance
+* alignment with existing application menu styling
+
+Do not redesign menu behavior.
+
+### Modal Dialog
+
+Add:
+
+* consistent frame and surface
+* clear title/header treatment where supported
+* runtime-style padding
+* no editor-only labels in Preview Mode or export
+
+## Designer, Preview, and export parity
+
+For each affected widget:
+
+* Design Mode should show widget styling plus editor overlays
+* Preview Mode should show runtime styling without editor-only decorations
+* generated output should use equivalent styling where the current architecture supports it
+
+Do not claim exact parity if generated rendering differs.
+
+Record confirmed parity gaps in the phase plan.
+
+## Internal names and runtime text
+
+Preserve the Phase 105 invariant:
+
+* internal widget names remain editor metadata
+* internal names must not appear in Preview Mode
+* internal names must not appear as runtime captions
+* only explicit Text, Caption, Label, Title, Value, or equivalent properties are rendered
+
+Do not reintroduce fallback-to-Name behavior.
+
+## Interaction states
+
+Use existing state sources only.
+
+Support where already available:
+
+* hover
+* pressed
+* selected
+* checked
+* focused
+* disabled
+* active tab
+* progress value
+* scroll-thumb interaction
+
+Do not create duplicate state machines.
+
+## Selection overlays
+
+Preserve:
+
+* selection outline
+* resize handles
+* corner resize arcs
+* guides
+* editor hover indicators
+
+The styling must not obscure editor overlays.
+
+Preview Mode must continue hiding editor-only visuals.
+
+## Layout and geometry
+
+Do not alter widget model geometry solely for visual styling.
+
+Borders, highlights, and shadows should render within or predictably around existing bounds without changing saved width or height.
+
+Preserve:
+
+* parent-child relationships
+* sizer behavior
+* fit commands
+* alignment commands
+* zoom and pan
+* hit testing
+* save/load
+
+## Scope boundaries
+
+Do not add:
+
+* user-selectable themes
+* theme files
+* gradients
+* animations
+* glow effects
+* custom shadow properties
+* per-widget style editors
+* dark/light switching
+* skinning language
+* complete styling for every unsupported widget
+
+Record future refinements only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.12`.
+4. Create a sample form containing each in-scope widget.
+5. Inspect all widgets in Design Mode.
+6. Enter Preview Mode.
+7. Confirm editor-only labels and overlays disappear.
+8. Test hover, pressed, selected, checked, focused, and disabled states where supported.
+9. Test List Box selected rows.
+10. Test Progress Bar at 0%, 50%, and 100%.
+11. Test Scroll Bar interaction.
+12. Test Radio Button checked and unchecked states.
+13. Test Color Picker interaction.
+14. Test active and inactive tabs.
+15. Inspect Frame and Group Box captions.
+16. Test at several zoom levels.
+17. Export a representative project.
+18. Inspect or build generated output through the approved workflow.
+19. Record visual parity differences.
+20. Confirm save/reload and autosave remain unchanged.
+
+Do not claim runtime or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 106 plan with:
+
+* previous and new version
+* shared style helpers reused or extended
+* widgets updated
+* state mappings
+* runtime-text policy confirmation
+* designer/preview/export parity
+* known gaps
+* files changed
+* build result
+* manual validation performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has a current-progress section. Keep the change concise.
+
+## Completion report
+
+Report:
+
+* Phase 106 plan path
+* version change to `1.0.12`
+* widgets styled
+* shared helpers reused or extended
+* supported states
+* Design/Preview/export parity
+* known limitations
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.
