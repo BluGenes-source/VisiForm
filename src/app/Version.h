@@ -7,12 +7,12 @@ namespace visiform {
 
 inline constexpr int VersionMajor = 1;
 inline constexpr int VersionMinor = 0;
-inline constexpr int VersionPatch = 12;
-inline constexpr std::string_view VersionString = "1.0.12";
+inline constexpr int VersionPatch = 13;
+inline constexpr std::string_view VersionString = "1.0.13";
 inline constexpr std::string_view ProductName = "VisiForm";
 inline constexpr std::string_view ProductDescription = "Visage Form Builder";
-inline constexpr std::string_view BuildName = "VisiForm 1.0.12";
-inline constexpr std::string_view WindowTitle = "VisiForm 1.0.12 - Visage Form Builder";
+inline constexpr std::string_view BuildName = "VisiForm 1.0.13";
+inline constexpr std::string_view WindowTitle = "VisiForm 1.0.13 - Visage Form Builder";
 
 #ifdef NDEBUG
 inline constexpr std::string_view BuildConfiguration = "Release";

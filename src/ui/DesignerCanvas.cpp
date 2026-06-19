@@ -937,6 +937,7 @@ void drawWidget(visage::Canvas& canvas,
     const visage::Font& font,
     bool drawText,
     const model::ProjectDocument& document,
+    const DesignerCanvas& designerCanvas,
     resources::ImageResourceCache* imageCache,
     bool simplifySelectedImages,
     const model::WidgetNode& widget,
@@ -961,6 +962,7 @@ void drawWidget(visage::Canvas& canvas,
         std::max(1.0f, widget.bounds.height * scale)
     };
     const ResolvedWidgetStyle style = resolveWidgetStyle(document, widget);
+    const visual_style::State visualState = designerCanvas.resolvedVisualState(widget);
     visage::Font widgetFontStorage{};
     const visage::Font& widgetFont = resolvedWidgetFont(widget, style, font, widgetFontStorage);
     const float fontSize = resolvedFontSize(widget, style);
@@ -993,7 +995,7 @@ void drawWidget(visage::Canvas& canvas,
             widget.getIntProperty(selectedIndexKey, items.empty() ? -1 : 0));
         const float itemHeight = std::max(0.0f, bounds.height - 8.0f);
         float itemLeft = bounds.x + 6.0f;
-        visual_style::drawBevel(canvas, baselineRect(bounds), palette, false, false, enabled);
+        visual_style::drawBevel(canvas, baselineRect(bounds), palette, visualState);
         for (std::size_t index = 0; index < items.size() && itemLeft < bounds.x + bounds.width - 6.0f; ++index) {
             const std::string& item = items[index];
             const float idealWidth = std::max(56.0f, estimateDesignerTextWidth(item, fontSize) + 12.0f);
@@ -1103,7 +1105,7 @@ void drawWidget(visage::Canvas& canvas,
         const float swatchX = bounds.x + 6.0f;
         const float swatchY = bounds.y + (bounds.height - swatchSize) * 0.5f;
         const float textX = swatchX + swatchSize + 10.0f;
-        visual_style::drawBevel(canvas, baselineRect(bounds), palette, false, false, enabled);
+        visual_style::drawBevel(canvas, baselineRect(bounds), palette, visualState);
         canvas.setColor(enabled ? parseColorOrDefault(colorValue, style.accentColor)
                                 : visual_style::blend(parseColorOrDefault(colorValue, style.accentColor), style.disabledColor, 0.58f));
         canvas.fill(swatchX, swatchY, swatchSize, swatchSize);
@@ -1166,7 +1168,7 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::Frame: {
         const bool enabled = widgetIsEnabled(widget);
         const auto palette = baselinePalette(style, style.fillColor);
-        visual_style::drawBevel(canvas, baselineRect(bounds), palette, false, false, enabled);
+        visual_style::drawBevel(canvas, baselineRect(bounds), palette, visualState);
         canvas.setColor(enabled ? style.panelColor : visual_style::blend(style.panelColor, style.disabledColor, 0.55f));
         canvas.fill(bounds.x + 2.0f, bounds.y + 2.0f, std::max(0.0f, bounds.width - 4.0f), std::min(24.0f, std::max(0.0f, bounds.height - 4.0f)));
         if (drawText) {
@@ -1224,9 +1226,9 @@ void drawWidget(visage::Canvas& canvas,
         const bool enabled = widgetIsEnabled(widget);
         const auto palette = baselinePalette(style, style.fillColor);
         const std::vector<std::string> labels = tabLabels(widget);
-        const int selectedTab = selectedTabIndex(widget);
+        const int selectedTab = designerCanvas.previewSelectedTab(widget, selectedTabIndex(widget));
         const float headerHeight = std::min(32.0f, std::max(24.0f, bounds.height * 0.18f));
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
         const float tabWidth = bounds.width / static_cast<float>(std::max<std::size_t>(1, labels.size()));
         for (std::size_t index = 0; index < labels.size(); ++index) {
             const PanelRect tabBounds{
@@ -1238,7 +1240,11 @@ void drawWidget(visage::Canvas& canvas,
             auto tabPalette = palette;
             const bool selected = static_cast<int>(index) == selectedTab;
             tabPalette.fill = selected ? style.fillColor : blendColor(style.panelColor, style.fillColor, 0.22f);
-            visual_style::drawBevel(canvas, baselineRect(tabBounds), tabPalette, false, false, enabled);
+            auto tabState = visualState;
+            tabState.checkedOrSelected = selected;
+            tabState.active = selected;
+            tabState.pressed = selected && visualState.pressed;
+            visual_style::drawBevel(canvas, baselineRect(tabBounds), tabPalette, tabState);
             if (drawText) {
                 canvas.setColor(visual_style::stateTextColor(tabPalette, enabled));
                 canvas.text(labels[index], widgetFont, visage::Font::kCenter,
@@ -1269,7 +1275,8 @@ void drawWidget(visage::Canvas& canvas,
         break;
     case model::WidgetType::Button:
     {
-        const bool pressedState = widget.getBoolProperty("toggleMode", false) && widget.getBoolProperty("checked", false);
+        const bool pressedState = visualState.pressed
+            || (widget.getBoolProperty("toggleMode", false) && visualState.checkedOrSelected);
         const bool enabled = widgetIsEnabled(widget);
         const std::string text = getStringProperty(widget, "text", {});
         const std::string configuredNormalText = getStringProperty(widget, "normalText", {});
@@ -1282,7 +1289,9 @@ void drawWidget(visage::Canvas& canvas,
         const int pressedFillColor = parseColorOrDefault(getStringProperty(widget, "pressedFillColor", {}), blendColor(style.fillColor, style.accentColor, 0.18f));
         const int stateFill = pressedState ? pressedFillColor : normalFillColor;
         const auto palette = baselinePalette(style, stateFill);
-        visual_style::drawBevel(canvas, baselineRect(bounds), palette, pressedState, false, enabled);
+        auto buttonState = visualState;
+        buttonState.pressed = pressedState;
+        visual_style::drawBevel(canvas, baselineRect(bounds), palette, buttonState);
         if (drawText && !normalText.empty()) {
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.text(pressedState ? pressedText : normalText, widgetFont, visage::Font::kCenter,
@@ -1293,12 +1302,8 @@ void drawWidget(visage::Canvas& canvas,
     }
     case model::WidgetType::TextBox: {
         const bool enabled = widgetIsEnabled(widget);
-        const bool readOnly = widget.getBoolProperty("readOnly", false);
         auto palette = baselinePalette(style, style.fillColor);
-        if (readOnly) {
-            palette.recessedFill = visual_style::blend(palette.recessedFill, palette.disabled, 0.28f);
-        }
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
         if (drawText) {
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.text(getStringProperty(widget, "text", ""), widgetFont, visage::Font::kTopLeft,
@@ -1310,17 +1315,18 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::ComboBox: {
         const bool enabled = widgetIsEnabled(widget);
         const auto items = model::splitItems(getStringProperty(widget, "items", {}));
-        const int selectedIndex = model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+        const int selectedIndex = designerCanvas.previewSelectedIndex(widget,
+            model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0)));
         const std::string selectedText = model::getSelectedItemText(items, selectedIndex);
         const float arrowWidth = std::min(26.0f, std::max(20.0f, bounds.width * 0.18f));
         auto palette = baselinePalette(style, style.fillColor);
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
         const visual_style::Rect arrowBounds{
             bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height
         };
         auto arrowPalette = palette;
         arrowPalette.fill = blendColor(style.panelColor, style.fillColor, 0.22f);
-        visual_style::drawBevel(canvas, arrowBounds, arrowPalette, false, false, enabled);
+        visual_style::drawBevel(canvas, arrowBounds, arrowPalette, visualState);
         canvas.setColor(enabled ? palette.text : palette.disabled);
         const float arrowCenterX = arrowBounds.x + arrowBounds.width * 0.5f;
         const float arrowCenterY = arrowBounds.y + arrowBounds.height * 0.5f;
@@ -1344,12 +1350,13 @@ void drawWidget(visage::Canvas& canvas,
         const bool enabled = widgetIsEnabled(widget);
         const auto palette = baselinePalette(style, style.fillColor);
         const auto items = model::splitItems(getStringProperty(widget, "items", {}));
-        const int selectedIndex = model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
+        const int selectedIndex = designerCanvas.previewSelectedIndex(widget,
+            model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0)));
         const float rowHeight = std::max(18.0f, fontSize * 1.5f);
         const float listTop = bounds.y + 4.0f;
         const float visibleHeight = std::max(0.0f, bounds.height - 8.0f);
         const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
         float rowTop = listTop;
         for (std::size_t index = 0; index < std::min<std::size_t>(visibleCount, items.size()); ++index) {
             const bool selected = static_cast<int>(index) == selectedIndex;
@@ -1549,13 +1556,15 @@ void drawWidget(visage::Canvas& canvas,
     }
     case model::WidgetType::CheckBox: {
         const bool enabled = widgetIsEnabled(widget);
-        const bool checked = getBoolProperty(widget, "checked", false);
+        const bool checked = visualState.checkedOrSelected;
         const float boxSize = 18.0f;
         const float squareX = bounds.x + 6.0f;
         const float squareY = bounds.y + (bounds.height - boxSize) * 0.5f;
         const float textX = squareX + boxSize + 12.0f;
         const auto palette = baselinePalette(style, style.fillColor);
-        visual_style::drawRecessed(canvas, { squareX, squareY, boxSize, boxSize }, palette, false, enabled);
+        auto indicatorState = visualState;
+        indicatorState.checkedOrSelected = checked;
+        visual_style::drawRecessed(canvas, { squareX, squareY, boxSize, boxSize }, palette, indicatorState);
         if (checked) {
             canvas.setColor(enabled ? style.accentColor : visual_style::blend(style.accentColor, style.disabledColor, 0.62f));
             canvas.fill(squareX + 4.0f, squareY + 4.0f, 10.0f, 10.0f);
@@ -1575,7 +1584,7 @@ void drawWidget(visage::Canvas& canvas,
     }
     case model::WidgetType::RadioButton: {
         const bool enabled = widgetIsEnabled(widget);
-        const bool selected = getBoolProperty(widget, "selected", false);
+        const bool selected = visualState.checkedOrSelected;
         const auto palette = baselinePalette(style, style.fillColor);
         const float boxSize = 18.0f;
         const float outerX = bounds.x + 6.0f;
@@ -1594,6 +1603,9 @@ void drawWidget(visage::Canvas& canvas,
         if (selected) {
             fillCircleApprox(canvas, centerX, centerY, 4.0f,
                 enabled ? style.accentColor : visual_style::blend(style.accentColor, style.disabledColor, 0.62f));
+        }
+        if (visualState.focused && enabled) {
+            visual_style::drawFocus(canvas, baselineRect(bounds), palette);
         }
         if (drawText) {
             const std::string text = runtimeTextOrEditorLabel(widget, "text", showEditorDecorations);
@@ -1615,13 +1627,15 @@ void drawWidget(visage::Canvas& canvas,
         const float handleCenterX = trackLeft + trackWidth * normalized;
         const float handleX = std::clamp(handleCenterX - 6.0f, trackLeft - 6.0f, trackLeft + trackWidth - 6.0f);
         const auto palette = baselinePalette(style, style.fillColor);
-        visual_style::drawRecessed(canvas, { trackLeft, trackY, trackWidth, 6.0f }, palette, false, enabled);
+        auto trackState = visualState;
+        trackState.focused = false;
+        visual_style::drawRecessed(canvas, { trackLeft, trackY, trackWidth, 6.0f }, palette, trackState);
         const visual_style::Rect thumb{
             handleX, std::floor(bounds.y + bounds.height * 0.5f - 9.0f), 12.0f, 18.0f
         };
         auto thumbPalette = palette;
         thumbPalette.fill = enabled ? style.accentColor : visual_style::blend(style.accentColor, style.disabledColor, 0.62f);
-        visual_style::drawBevel(canvas, thumb, thumbPalette, false, false, enabled);
+        visual_style::drawBevel(canvas, thumb, thumbPalette, visualState);
         const std::string editorLabel = editorOnlyLabel(widget, showEditorDecorations);
         if (drawText && !editorLabel.empty()) {
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
@@ -1641,7 +1655,9 @@ void drawWidget(visage::Canvas& canvas,
         const float normalized = std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
         const float thumbFactor = std::clamp(pageSize / (maximum - minimum + pageSize), 0.18f, 0.55f);
         const float arrowSize = vertical ? std::min(bounds.width, 20.0f) : std::min(bounds.height, 20.0f);
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        auto trackState = visualState;
+        trackState.focused = false;
+        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, trackState);
         canvas.setColor(style.borderColor);
         if (vertical) {
             const float trackTop = bounds.y + arrowSize;
@@ -1652,7 +1668,7 @@ void drawWidget(visage::Canvas& canvas,
             visual_style::drawBevel(canvas, { bounds.x, bounds.y + bounds.height - arrowSize, bounds.width, arrowSize }, palette, false, false, enabled);
             auto thumbPalette = palette;
             thumbPalette.fill = style.accentColor;
-            visual_style::drawBevel(canvas, { bounds.x + 4.0f, thumbY, std::max(0.0f, bounds.width - 8.0f), thumbHeight }, thumbPalette, false, false, enabled);
+            visual_style::drawBevel(canvas, { bounds.x + 4.0f, thumbY, std::max(0.0f, bounds.width - 8.0f), thumbHeight }, thumbPalette, visualState);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.fill(bounds.x + bounds.width * 0.5f - 3.0f, bounds.y + 6.0f, 6.0f, 3.0f);
             canvas.fill(bounds.x + bounds.width * 0.5f - 3.0f, bounds.y + bounds.height - 9.0f, 6.0f, 3.0f);
@@ -1666,7 +1682,7 @@ void drawWidget(visage::Canvas& canvas,
             visual_style::drawBevel(canvas, { bounds.x + bounds.width - arrowSize, bounds.y, arrowSize, bounds.height }, palette, false, false, enabled);
             auto thumbPalette = palette;
             thumbPalette.fill = style.accentColor;
-            visual_style::drawBevel(canvas, { thumbX, bounds.y + 4.0f, thumbWidth, std::max(0.0f, bounds.height - 8.0f) }, thumbPalette, false, false, enabled);
+            visual_style::drawBevel(canvas, { thumbX, bounds.y + 4.0f, thumbWidth, std::max(0.0f, bounds.height - 8.0f) }, thumbPalette, visualState);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.fill(bounds.x + 6.0f, bounds.y + bounds.height * 0.5f - 3.0f, 3.0f, 6.0f);
             canvas.fill(bounds.x + bounds.width - 9.0f, bounds.y + bounds.height * 0.5f - 3.0f, 3.0f, 6.0f);
@@ -1773,7 +1789,7 @@ void drawWidget(visage::Canvas& canvas,
         if (!isChildVisibleInParent(widget, child)) {
             continue;
         }
-        drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
+        drawWidget(canvas, font, drawText, document, designerCanvas, imageCache, simplifySelectedImages, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
             scale, selectedWidgetId, showGrid, showMinorGrid, gridSize, majorGridSize, showEditorDecorations);
     }
 
@@ -1816,7 +1832,158 @@ void DesignerCanvas::setBounds(float x, float y, float width, float height)
 
 void DesignerCanvas::setMode(Mode mode)
 {
+    if (mode_ == mode) {
+        return;
+    }
+    clearPreviewInteraction();
     mode_ = mode;
+}
+
+bool DesignerCanvas::updatePreviewHover(const model::ProjectDocument& document, float x, float y)
+{
+    if (mode_ != Mode::Preview) {
+        return false;
+    }
+    const auto hit = hitTestWidgetId(document, x, y);
+    const std::string nextId = hit.has_value() && !document.isRootWidgetId(*hit) ? *hit : std::string{};
+    if (previewHoveredWidgetId_ == nextId) {
+        return false;
+    }
+    previewHoveredWidgetId_ = nextId;
+    return true;
+}
+
+bool DesignerCanvas::beginPreviewInteraction(const model::ProjectDocument& document, float x, float y)
+{
+    if (mode_ != Mode::Preview) {
+        return false;
+    }
+    const auto hit = hitTestWidgetId(document, x, y);
+    const model::WidgetNode* widget = hit.has_value() ? document.findWidgetById(*hit) : nullptr;
+    const std::string nextId = widget != nullptr
+            && !document.isRootWidgetId(widget->id)
+            && widget->getBoolProperty("enabled", true)
+        ? widget->id
+        : std::string{};
+    const bool changed = previewPressedWidgetId_ != nextId
+        || previewFocusedWidgetId_ != nextId
+        || previewHoveredWidgetId_ != nextId;
+    previewPressedWidgetId_ = nextId;
+    previewFocusedWidgetId_ = nextId;
+    previewHoveredWidgetId_ = nextId;
+    return changed;
+}
+
+bool DesignerCanvas::endPreviewInteraction(const model::ProjectDocument& document, float x, float y)
+{
+    if (mode_ != Mode::Preview) {
+        return false;
+    }
+
+    const std::string pressedId = previewPressedWidgetId_;
+    previewPressedWidgetId_.clear();
+    const auto hit = hitTestWidgetId(document, x, y);
+    if (pressedId.empty() || !hit.has_value() || *hit != pressedId) {
+        return !pressedId.empty();
+    }
+
+    const model::WidgetNode* widget = document.findWidgetById(pressedId);
+    if (widget == nullptr || !widget->getBoolProperty("enabled", true)) {
+        return true;
+    }
+
+    switch (widget->type) {
+    case model::WidgetType::Button:
+        if (widget->getBoolProperty("toggleMode", false)) {
+            const bool current = previewChecked_.contains(widget->id)
+                ? previewChecked_.at(widget->id)
+                : widget->getBoolProperty("checked", false);
+            previewChecked_[widget->id] = !current;
+        }
+        break;
+    case model::WidgetType::CheckBox: {
+        const bool current = previewChecked_.contains(widget->id)
+            ? previewChecked_.at(widget->id)
+            : widget->getBoolProperty("checked", false);
+        previewChecked_[widget->id] = !current;
+        break;
+    }
+    case model::WidgetType::RadioButton: {
+        const std::string group = widget->getStringProperty("group", "default");
+        const auto selectGroup = [&](const auto& self, const model::WidgetNode& node) -> void {
+            if (node.type == model::WidgetType::RadioButton
+                && node.getStringProperty("group", "default") == group) {
+                previewSelected_[node.id] = node.id == widget->id;
+            }
+            for (const auto& child : node.children) {
+                self(self, child);
+            }
+        };
+        selectGroup(selectGroup, document.root);
+        break;
+    }
+    case model::WidgetType::TabControl:
+        if (const auto tabIndex = hitTestTabHeader(document, widget->id, x, y)) {
+            previewSelectedTab_[widget->id] = *tabIndex;
+        }
+        break;
+    case model::WidgetType::ComboBox:
+    case model::WidgetType::ListBox: {
+        const auto items = model::splitItems(widget->getStringProperty("items", {}));
+        if (!items.empty()) {
+            const int current = previewSelectedIndex(*widget,
+                model::sanitizeSelectedIndex(items, widget->getIntProperty("selectedIndex", 0)));
+            previewSelectedIndex_[widget->id] = (current + 1) % static_cast<int>(items.size());
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    return true;
+}
+
+void DesignerCanvas::clearPreviewInteraction()
+{
+    previewHoveredWidgetId_.clear();
+    previewPressedWidgetId_.clear();
+    previewFocusedWidgetId_.clear();
+    previewChecked_.clear();
+    previewSelected_.clear();
+    previewSelectedIndex_.clear();
+    previewSelectedTab_.clear();
+}
+
+visual_style::State DesignerCanvas::resolvedVisualState(const model::WidgetNode& widget) const
+{
+    visual_style::State state;
+    state.enabled = widget.getBoolProperty("enabled", true);
+    state.readOnly = widget.getBoolProperty("readOnly", false);
+    state.hovered = mode_ == Mode::Preview && previewHoveredWidgetId_ == widget.id;
+    state.pressed = mode_ == Mode::Preview && previewPressedWidgetId_ == widget.id;
+    state.focused = mode_ == Mode::Preview && previewFocusedWidgetId_ == widget.id;
+    const bool checked = mode_ == Mode::Preview && previewChecked_.contains(widget.id)
+        ? previewChecked_.at(widget.id)
+        : widget.getBoolProperty("checked", false);
+    const bool selected = mode_ == Mode::Preview && previewSelected_.contains(widget.id)
+        ? previewSelected_.at(widget.id)
+        : widget.getBoolProperty("selected", false);
+    state.checkedOrSelected = checked || selected;
+    state.active = state.checkedOrSelected;
+    return state;
+}
+
+int DesignerCanvas::previewSelectedIndex(const model::WidgetNode& widget, int fallback) const
+{
+    const auto found = previewSelectedIndex_.find(widget.id);
+    return mode_ == Mode::Preview && found != previewSelectedIndex_.end() ? found->second : fallback;
+}
+
+int DesignerCanvas::previewSelectedTab(const model::WidgetNode& widget, int fallback) const
+{
+    const auto found = previewSelectedTab_.find(widget.id);
+    return mode_ == Mode::Preview && found != previewSelectedTab_.end() ? found->second : fallback;
 }
 
 void DesignerCanvas::setShowGrid(bool showGrid)
@@ -2253,7 +2420,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     canvas.saveState();
     canvas.trimClampBounds(previewLayout.preview.x, previewLayout.preview.y, previewLayout.preview.width, previewLayout.preview.height);
 
-    drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, document.root, previewLayout.form.x, previewLayout.form.y,
+    drawWidget(canvas, font, drawText, document, *this, imageCache, simplifySelectedImages, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
         showEditorDecorations && showGrid_, showMinorGrid_, gridSize_, majorGridSize_, showEditorDecorations);
 

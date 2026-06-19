@@ -26,6 +26,41 @@ struct Palette {
     int recessedFill = 0xff202630;
 };
 
+enum class BaseState {
+    Normal,
+    Hovered,
+    CheckedOrSelected,
+    Pressed,
+    Disabled
+};
+
+struct State {
+    bool enabled = true;
+    bool hovered = false;
+    bool pressed = false;
+    bool focused = false;
+    bool checkedOrSelected = false;
+    bool active = false;
+    bool readOnly = false;
+};
+
+inline BaseState resolveBaseState(const State& state)
+{
+    if (!state.enabled) {
+        return BaseState::Disabled;
+    }
+    if (state.pressed) {
+        return BaseState::Pressed;
+    }
+    if (state.checkedOrSelected || state.active) {
+        return BaseState::CheckedOrSelected;
+    }
+    if (state.hovered) {
+        return BaseState::Hovered;
+    }
+    return BaseState::Normal;
+}
+
 inline int blend(int first, int second, float amount)
 {
     const auto channel = [amount](int a, int b) {
@@ -98,6 +133,24 @@ inline void drawBevel(visage::Canvas& canvas, const Rect& rect, const Palette& p
     canvas.fill(rect.x + rect.width - 2.0f, rect.y + 1.0f, 1.0f, std::max(0.0f, rect.height - 2.0f));
 }
 
+inline void drawBevel(visage::Canvas& canvas, const Rect& rect, const Palette& palette, const State& state)
+{
+    const BaseState baseState = resolveBaseState(state);
+    Palette resolvedPalette = palette;
+    if (baseState == BaseState::CheckedOrSelected) {
+        resolvedPalette.fill = blend(palette.fill, palette.accent, 0.18f);
+        resolvedPalette.hoverFill = blend(resolvedPalette.fill, palette.accent, 0.12f);
+        resolvedPalette.pressedFill = blend(resolvedPalette.fill, 0xff000000, 0.20f);
+    }
+    drawBevel(canvas, rect, resolvedPalette,
+        baseState == BaseState::Pressed,
+        baseState == BaseState::Hovered,
+        baseState != BaseState::Disabled);
+    if (state.focused && state.enabled) {
+        drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.accent);
+    }
+}
+
 inline void drawRecessed(visage::Canvas& canvas, const Rect& rect, const Palette& palette,
     bool focused = false, bool enabled = true)
 {
@@ -110,6 +163,21 @@ inline void drawRecessed(visage::Canvas& canvas, const Rect& rect, const Palette
         canvas.setColor(palette.highlight);
         canvas.fill(rect.x + 1.0f, rect.y + rect.height - 2.0f, std::max(0.0f, rect.width - 2.0f), 1.0f);
         canvas.fill(rect.x + rect.width - 2.0f, rect.y + 1.0f, 1.0f, std::max(0.0f, rect.height - 2.0f));
+    }
+}
+
+inline void drawRecessed(visage::Canvas& canvas, const Rect& rect, const Palette& palette, const State& state)
+{
+    Palette resolvedPalette = palette;
+    if (state.readOnly) {
+        resolvedPalette.recessedFill = blend(resolvedPalette.recessedFill, resolvedPalette.disabled, 0.28f);
+    }
+    if (state.checkedOrSelected || state.active) {
+        resolvedPalette.recessedFill = blend(resolvedPalette.recessedFill, resolvedPalette.accent, 0.14f);
+    }
+    drawRecessed(canvas, rect, resolvedPalette, false, state.enabled);
+    if (state.focused && state.enabled) {
+        drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.accent);
     }
 }
 

@@ -3149,7 +3149,8 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (isPreviewMode()) {
-        setOperationStatus("Preview Mode is read-only.");
+        (void)designerCanvas_.beginPreviewInteraction(document_, e.position.x, e.position.y);
+        setOperationStatus("Preview interaction is temporary and will not modify the project.");
         redraw();
         return;
     }
@@ -3453,8 +3454,9 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
     if (isPreviewMode()) {
         projectTree_.clearHover();
         hoverHint_.clear();
+        const bool previewHoverChanged = designerCanvas_.updatePreviewHover(document_, e.position.x, e.position.y);
         updateEditorCursor(e.position.x, e.position.y);
-        if (splitterHoverChanged) {
+        if (splitterHoverChanged || previewHoverChanged) {
             redraw();
         }
         return;
@@ -3526,6 +3528,9 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
     }
 
     if (isPreviewMode()) {
+        if (designerCanvas_.updatePreviewHover(document_, e.position.x, e.position.y)) {
+            redraw();
+        }
         return;
     }
 
@@ -3737,7 +3742,9 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         (void)widgetPalette_.mouseUp();
         (void)propertyInspector_.mouseUp();
         (void)projectTree_.mouseUp();
+        (void)designerCanvas_.endPreviewInteraction(document_, e.position.x, e.position.y);
         clearCanvasInteraction();
+        redraw();
         return;
     }
 
@@ -4171,6 +4178,9 @@ void MainWindow::mouseExit(const visage::MouseEvent&)
 {
     canvasPan_.spaceDown = false;
     endCanvasPan();
+    if (isPreviewMode() && designerCanvas_.updatePreviewHover(document_, -1.0f, -1.0f)) {
+        redraw();
+    }
 }
 
 void MainWindow::focusChanged(bool isFocused, bool)

@@ -14,9 +14,13 @@ void Splitter::draw(visage::Canvas& canvas) const
 
     const auto palette = visual_style::makePalette(
         0xff242b36, 0xff566174, 0xffeef2f8, 0xff72a7ff, 0xff6c7788);
+    const Bounds feedback = hovered_ || dragging_ ? hitBounds() : divider;
+    visual_style::State state;
+    state.hovered = hovered_;
+    state.pressed = dragging_;
     visual_style::drawBevel(canvas,
-        { divider.x, divider.y, divider.width, divider.height },
-        palette, dragging_, hovered_ || dragging_);
+        { feedback.x, feedback.y, feedback.width, feedback.height },
+        palette, state);
 
     canvas.setColor(dragging_ ? palette.accent : (hovered_ ? palette.highlight : palette.border));
     if (orientation_ == Orientation::Vertical) {

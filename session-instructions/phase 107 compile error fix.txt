@@ -1,0 +1,120 @@
+Continue VisiForm Phase 107. Do not create a new phase and do not change version 1.0.13.
+
+The build fails in DesignerCanvas.cpp near line 1934 with:
+
+C2664:
+DesignerCanvas::previewSelectedIndex(
+    const visiform::model::WidgetNode&,
+    int
+) const
+
+cannot convert argument 1 from:
+
+const visiform::model::WidgetNode*
+
+to:
+
+const visiform::model::WidgetNode&
+
+Keep this fix narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 107 plan and the directly relevant section of DesignerCanvas.cpp
+- inspect the declaration, definition, and call sites of previewSelectedIndex
+- do not refactor unrelated Preview Mode or widget-state code
+- do not commit or push
+- rebuild only after the compile fix is complete
+
+Tasks
+=====
+
+1. Inspect the failing call
+---------------------------
+
+Determine:
+
+- which variable is being passed as argument 1
+- whether it is nullable
+- whether previewSelectedIndex logically requires a valid WidgetNode reference
+- whether nearby callers pass references or pointers
+
+2. Fix the type mismatch correctly
+----------------------------------
+
+Preferred solution when the pointer may be null:
+
+- check the pointer before calling
+- dereference it only when valid
+
+Conceptually:
+
+if (widgetNode != nullptr)
+    previewSelectedIndex(*widgetNode, index);
+
+Use the actual existing variable names and control flow.
+
+Do not add an unsafe dereference.
+
+Do not create a dummy WidgetNode merely to satisfy the signature.
+
+3. Preserve one clear API contract
+----------------------------------
+
+Keep previewSelectedIndex taking a reference if:
+
+- the function requires a valid node
+- callers can cleanly guard null pointers
+
+Change it to accept a pointer only if:
+
+- null is a meaningful and expected input
+- multiple call sites already use nullable pointers
+- the function handles null explicitly
+
+Avoid changing the signature just to silence one compiler error.
+
+4. Check directly related call sites
+------------------------------------
+
+Search only for previewSelectedIndex call sites.
+
+Confirm:
+
+- all calls match the final signature
+- no null pointer can be dereferenced
+- Preview Mode state lookup still uses the correct widget node
+- internal widget names remain hidden
+- temporary preview state remains model-independent
+
+5. Validation
+=============
+
+After the fix:
+
+1. Build the normal Windows Debug configuration.
+2. Confirm C2664 is resolved.
+3. Check for follow-on compiler errors.
+4. Launch VisiForm manually.
+5. Enter Preview Mode.
+6. Test representative widgets with hover, pressed, checked, selected, and disabled states.
+7. Confirm no crash occurs when:
+   - no widget is selected
+   - a widget is deleted
+   - the project is replaced
+   - Preview Mode is entered or exited repeatedly
+8. Confirm preview-only state still does not modify the project model.
+
+Update the existing Phase 107 plan with:
+
+- compile-error root cause
+- whether the pointer was guarded and dereferenced or the API was intentionally changed
+- files changed
+- build result
+- manual validation actually performed
+- remaining issues
+
+Do not create Phase 108.
+Do not change version 1.0.13.
+Do not commit or push.

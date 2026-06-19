@@ -1,14 +1,14 @@
 #pragma once
 
-#pragma once
-
 #include "model/ProjectDocument.h"
+#include "ui/VisualStyleBaseline.h"
 
 #include <visage/graphics.h>
 
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace visiform::ui {
@@ -68,6 +68,13 @@ public:
 
     void setBounds(float x, float y, float width, float height);
     void setMode(Mode mode);
+    bool updatePreviewHover(const model::ProjectDocument& document, float x, float y);
+    bool beginPreviewInteraction(const model::ProjectDocument& document, float x, float y);
+    bool endPreviewInteraction(const model::ProjectDocument& document, float x, float y);
+    void clearPreviewInteraction();
+    [[nodiscard]] visual_style::State resolvedVisualState(const model::WidgetNode& widget) const;
+    [[nodiscard]] int previewSelectedIndex(const model::WidgetNode& widget, int fallback) const;
+    [[nodiscard]] int previewSelectedTab(const model::WidgetNode& widget, int fallback) const;
     void setShowGrid(bool showGrid);
     void setSnapToGrid(bool snapToGrid);
     void setGridSize(int gridSize);
@@ -129,6 +136,13 @@ private:
     float panY_ = 0.0f;
     float smallWidgetHitPadding_ = 4.0f;
     float minimumWidgetSize_ = 20.0f;
+    std::string previewHoveredWidgetId_{};
+    std::string previewPressedWidgetId_{};
+    std::string previewFocusedWidgetId_{};
+    std::unordered_map<std::string, bool> previewChecked_{};
+    std::unordered_map<std::string, bool> previewSelected_{};
+    std::unordered_map<std::string, int> previewSelectedIndex_{};
+    std::unordered_map<std::string, int> previewSelectedTab_{};
 };
 
 } // namespace visiform::ui

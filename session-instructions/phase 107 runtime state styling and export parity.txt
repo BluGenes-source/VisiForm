@@ -1,0 +1,406 @@
+Implement VisiForm Phase 107: Runtime State Styling and Export Parity.
+
+Phases 105 and 106 are complete and pushed.
+
+Use:
+
+- Phase: 107
+- Version: 1.0.13
+- Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+- `AGENTS.md`
+- `docs/project_status.md`
+- the Phase 106 plan
+- shared styling helpers introduced in Phases 105–106
+- directly related widget state rendering
+- Preview Mode rendering
+- generated runtime rendering
+- version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_107_runtime_state_export_parity_plan.md`
+
+Before implementation:
+
+- update authoritative version declarations to `1.0.13`
+- record the previous and new versions
+- update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not create a theme editor.
+Do not redesign widget behavior.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Refine the shared runtime styling so widget interaction states are visually consistent and Preview Mode more closely matches generated runtime output.
+
+Focus on:
+
+- normal
+- hover
+- pressed
+- focused
+- checked
+- selected
+- disabled
+- active/inactive
+- read-only where already supported
+
+Do not add new widget behavior merely to demonstrate styling.
+
+## Widget scope
+
+Verify and refine state styling for the widgets covered by Phases 105–106:
+
+- Button
+- Text Box
+- Check Box
+- Radio Button
+- Combo Box
+- List Box
+- Slider
+- Scroll Bar
+- Progress Bar
+- Color Picker
+- Splitter
+- Frame
+- Group Box
+- Panel
+- Tab Control
+- Status Bar
+- Menu Bar
+- Modal Dialog
+
+Only modify widgets with confirmed state inconsistencies or missing parity.
+
+## Shared state policy
+
+Create or refine one shared state-resolution path.
+
+Prefer a compact state description that represents:
+
+- enabled
+- hovered
+- pressed
+- focused
+- checked or selected
+- active
+- read-only where relevant
+
+Avoid independent priority rules in every widget.
+
+Define a predictable visual priority.
+
+Suggested priority:
+
+1. disabled
+2. pressed
+3. checked or selected
+4. hovered
+5. focused overlay
+6. normal
+
+Focus may be rendered as an additional outline rather than replacing the base state.
+
+Document the final priority order.
+
+## State consistency
+
+Use shared style primitives for equivalent states.
+
+Examples:
+
+- disabled controls should use consistent reduced contrast
+- hover should use consistent modest emphasis
+- pressed controls should appear recessed
+- selected or checked controls should remain clearly distinguishable
+- focus indication should be visible but not obscure text or borders
+- active tabs should connect visually to their page
+- inactive tabs should remain readable
+- splitter hover should match its actual drag area
+
+Do not make all controls visually identical. Preserve widget-specific structure.
+
+## Button
+
+Verify:
+
+- normal raised state
+- hover emphasis
+- pressed recessed state
+- focus indication
+- disabled appearance
+- text remains centered in every state
+
+Ensure pressed geometry does not change saved bounds.
+
+## Text Box
+
+Verify:
+
+- normal recessed field
+- focused border
+- hover behavior if supported
+- disabled state
+- read-only distinction if already supported
+- selection and caret remain readable
+
+Do not alter editing behavior.
+
+## Check Box and Radio Button
+
+Verify:
+
+- unchecked normal
+- checked state
+- hover
+- pressed
+- focused
+- disabled
+
+The mark and label must remain readable.
+
+## Combo Box
+
+Verify:
+
+- field and arrow-button states are coordinated
+- arrow hover and press affect only the correct region
+- focus indication covers the control appropriately
+- disabled state is consistent
+- dropdown items remain readable
+
+Do not change dropdown logic.
+
+## List Box
+
+Verify:
+
+- selected row
+- hovered row where supported
+- focused control
+- disabled control
+- text contrast
+- scrollbar consistency
+
+Selected and hovered states must not become visually indistinguishable.
+
+## Slider and Scroll Bar
+
+Verify:
+
+- track
+- thumb normal
+- thumb hover
+- thumb pressed
+- focus
+- disabled
+
+The thumb must remain easy to locate at all zoom levels.
+
+Do not alter values or drag behavior.
+
+## Progress Bar
+
+Verify:
+
+- empty
+- partial
+- full
+- disabled
+
+No hover or pressed styling is required unless already meaningful.
+
+## Tabs, menus, and status areas
+
+Verify:
+
+- active tab
+- inactive tab
+- hovered tab
+- pressed tab
+- disabled tab
+- menu hover
+- menu active/open state
+- disabled menu items
+- status bar separation and readability
+
+Do not redesign menu interaction.
+
+## Preview Mode
+
+Preview Mode should use runtime-like state rendering.
+
+Requirements:
+
+- no editor-only labels
+- no selection handles
+- no resize arcs
+- no guides
+- temporary interactions may display hover, pressed, checked, or selected state
+- temporary state must not modify the project model
+- leaving Preview Mode discards preview-only state
+
+Do not add generated event-handler execution.
+
+## Generated output parity
+
+Compare the styled widgets in:
+
+- Design Mode
+- Preview Mode
+- generated runtime application
+
+Prioritize fixing confirmed differences in:
+
+- colors
+- border widths
+- highlight/shadow direction
+- corner radius
+- state transitions
+- padding
+- text alignment
+- disabled-state contrast
+- focus indication
+
+Reuse shared constants or generated equivalents where practical.
+
+Do not duplicate large style tables in generated code if a smaller shared helper is appropriate.
+
+Preserve generated-code readability and `USER CODE` regions.
+
+## Parity policy
+
+Exact pixel parity is not required where the designer and generated application use different rendering infrastructure.
+
+Required goal:
+
+- same visual intent
+- same state hierarchy
+- similar spacing and dimensions
+- consistent raised/recessed direction
+- no obvious fallback to old styling
+
+Record remaining differences rather than hiding them.
+
+## DPI and zoom
+
+Verify:
+
+- borders remain crisp
+- focus outlines remain visible
+- shadow/highlight edges do not blur excessively
+- state styling remains readable at supported zoom levels
+- generated runtime behaves correctly at normal DPI and available scaled DPI testing
+
+Avoid fixed pixel values where existing DPI helpers should be used.
+
+## Internal names
+
+Preserve the Phase 105 rule:
+
+- internal names are editor metadata
+- no internal names in Preview Mode
+- no internal names as runtime captions
+- only explicit runtime text properties are rendered
+
+## Scope boundaries
+
+Do not add:
+
+- theme selection
+- light theme
+- custom per-widget colors
+- animation system
+- transition timing editor
+- gradients
+- glow
+- user-defined shadows
+- style-property serialization
+- full skinning system
+
+Record those as future work.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.13`.
+4. Create a representative form containing the in-scope widgets.
+5. Inspect normal states.
+6. Test hover states.
+7. Test pressed states.
+8. Test focus states.
+9. Test checked and selected states.
+10. Test disabled states.
+11. Test read-only state where supported.
+12. Confirm text remains readable.
+13. Confirm selection overlays remain clear in Design Mode.
+14. Enter Preview Mode.
+15. Confirm runtime states work without modifying the model.
+16. Exit Preview Mode and confirm temporary state is discarded.
+17. Export the representative project.
+18. Build or inspect generated output through the approved workflow.
+19. Compare Preview Mode and generated runtime.
+20. Record and fix the largest confirmed parity gaps.
+21. Test several zoom levels.
+22. Test available DPI scaling.
+23. Confirm save/reload and autosave remain unchanged.
+
+Do not claim runtime, DPI, or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 107 plan with:
+
+- previous and new version
+- shared state-resolution design
+- visual priority order
+- widgets corrected
+- Preview Mode behavior
+- generated-output parity changes
+- remaining parity gaps
+- DPI and zoom findings
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep it concise.
+
+## Completion report
+
+Report:
+
+- Phase 107 plan path
+- version change to `1.0.13`
+- state priority rules
+- widgets refined
+- Preview Mode state behavior
+- generated-output parity improvements
+- known remaining differences
+- files changed
+- build result
+- manual validation actually performed
+- remaining TODOs
+- final Git status
+
+Do not commit or push unless explicitly requested.
