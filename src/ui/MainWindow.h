@@ -113,6 +113,8 @@ private:
         ShowResourceManager,
         ShowExportDependencies,
         FitText,
+        FitWidthToParent,
+        FitHeightToParent,
         CopyWidgets,
         PasteWidgets,
         DeleteWidget,
@@ -454,6 +456,7 @@ private:
     [[nodiscard]] model::WidgetNode* selectedNonRootWidget();
     bool requireSelectedNonRootWidgets(std::size_t minimumCount, std::vector<model::WidgetNode*>& selectedWidgets);
     void fitSelectedWidgetToText();
+    void fitSelectedWidgetsToParent(bool fitWidth);
     void copySelectedWidgets();
     void pasteWidgets();
     void toggleMultiSelectMode();

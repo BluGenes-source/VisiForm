@@ -1,0 +1,245 @@
+Continue VisiForm Phase 103. Do not create a new phase and do not change version 1.0.9.
+
+Phase 103 is not pushed yet. Add single-widget parent alignment as a focused cleanup pass.
+
+Rules:
+
+- no subagents
+- keep exploration targeted
+- read only the active Phase 103 plan and files directly related to:
+  - Layout menu enablement
+  - alignment commands
+  - parent content bounds
+  - widget geometry
+  - sizer restrictions
+  - undo/redo
+- do not refactor unrelated layout systems
+- build once after implementation
+- do not commit or push
+
+## Goal
+
+When exactly one compatible widget is selected, allow these existing commands to align it within its direct parent:
+
+- Align Left
+- Align Top
+- Align Right
+- Align Bottom
+- Center Horizontally
+- Center Vertically
+
+This behavior must coexist with the existing multi-selection alignment behavior.
+
+## Selection semantics
+
+### One selected widget
+
+Use the selected widget’s direct parent content bounds as the alignment reference.
+
+### Two or more selected widgets
+
+Preserve the current Phase 100 behavior:
+
+- use the primary selected widget as the reference
+- align compatible sibling widgets to that reference
+- do not change the established multi-selection semantics
+
+Do not create separate duplicate menu commands.
+
+## Single-widget alignment behavior
+
+Use the direct parent’s usable child-content rectangle.
+
+### Align Left
+
+- move only the widget’s X position
+- align its left edge to the parent content-left edge
+- preserve width, height, and Y
+
+### Align Right
+
+- move only X
+- align its right edge to the parent content-right edge
+- preserve width, height, and Y
+
+### Align Top
+
+- move only Y
+- align its top edge to the parent content-top edge
+- preserve width, height, and X
+
+### Align Bottom
+
+- move only Y
+- align its bottom edge to the parent content-bottom edge
+- preserve width, height, and X
+
+### Center Horizontally
+
+- move only X
+- center the widget horizontally inside the parent content area
+- preserve width, height, and Y
+
+### Center Vertically
+
+- move only Y
+- center the widget vertically inside the parent content area
+- preserve width, height, and X
+
+Use model-space, parent-local coordinates.
+
+Do not resize the widget.
+
+## Parent bounds
+
+Reuse the Phase 103 parent-content-bound helper used by:
+
+- Fit Width to Parent
+- Fit Height to Parent
+- safe widget placement
+
+Account for:
+
+- parent borders
+- padding
+- Frame or Group Box captions
+- tab-page content area
+- container insets
+- other existing usable-content offsets
+
+Do not align to the outer application window or Designer Canvas viewport.
+
+## Oversized widgets
+
+If the selected widget is larger than the parent content area on the relevant axis:
+
+- use a deterministic safe position
+- prefer aligning to the starting content edge
+- do not create negative or invalid coordinates
+- do not resize it automatically
+
+Document this rule briefly in the Phase 103 plan.
+
+## Sizer-managed widgets
+
+If the selected widget’s position is controlled by a Sizer:
+
+- disable incompatible alignment commands
+- do not overwrite sizer-owned geometry
+- do not detach or reparent the widget
+- do not silently break layout ownership
+
+Reuse the same compatibility checks as other Phase 100–103 layout commands.
+
+## Menu enablement
+
+Update Layout menu state so alignment commands are enabled when:
+
+- exactly one valid free-position widget is selected, or
+- multiple compatible sibling widgets are selected under existing rules
+
+Disable them when:
+
+- no widget is selected
+- the root project node is selected
+- the top-level form itself cannot be aligned to a parent
+- geometry is controlled incompatibly by a Sizer
+- Preview Mode is active
+- the operation is otherwise invalid
+
+For a single selected widget, commands that would be no-ops may remain enabled if that matches existing menu behavior, but execution must not create an undo entry.
+
+## Undo and redo
+
+Each successful single-widget alignment must:
+
+- create one undo step
+- restore the prior position on undo
+- reapply the aligned position on redo
+- preserve selection
+- update the Property Inspector
+- avoid dirtying the project for a no-op
+
+Reuse the existing geometry command system.
+
+## Preserve existing behavior
+
+Do not regress:
+
+- multi-selection alignment
+- distribution
+- Same Width and Same Height modes
+- Fit Width to Parent
+- Fit Height to Parent
+- Fit Text
+- Bring Forward and Send Backward
+- safe widget placement
+- Project Tree synchronization
+- zoom and pan
+- Preview Mode
+- autosave and recovery
+- save and reload
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Select one widget inside the top-level form.
+4. Test Align Left, Right, Top, and Bottom.
+5. Confirm only position changes.
+6. Test Center Horizontally and Center Vertically.
+7. Confirm size remains unchanged.
+8. Test undo and redo for every command.
+9. Repeat inside:
+   - Panel
+   - Frame
+   - Group Box
+   - tab page
+10. Confirm borders, captions, and padding are respected.
+11. Test a widget larger than its parent on one axis.
+12. Confirm no invalid coordinates result.
+13. Confirm commands are disabled for sizer-managed widgets.
+14. Select multiple widgets and confirm the existing primary-reference behavior remains unchanged.
+15. Confirm Preview Mode disables alignment commands.
+16. Save and reload, then confirm aligned positions persist.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the existing Phase 103 plan with:
+
+- single-selection alignment semantics
+- multi-selection behavior retained
+- parent-content-bound reuse
+- oversized-widget rule
+- sizer restrictions
+- menu enablement
+- undo/redo behavior
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Update `docs/project_status.md` only after Phase 103 is fully validated.
+
+## Completion report
+
+Report:
+
+- single-widget alignment behavior
+- direct-parent bounds used
+- multi-selection behavior preserved
+- sizer restrictions
+- undo/redo result
+- files changed
+- build result
+- manual validation actually performed
+- remaining issues
+- final Git status
+
+Do not create Phase 104.
+Do not change version 1.0.9.
+Do not commit or push.

@@ -1,0 +1,369 @@
+Implement VisiForm Phase 103: Parent Fit Commands and Widget Placement Correction.
+
+Phase 102 is complete and pushed.
+
+Use:
+
+* Phase: 103
+* Version: 1.0.9
+* Subagents: none
+
+Keep token usage minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 102 plan
+* the Phase 101 placement findings, only where directly relevant
+* files directly related to:
+
+  * Layout menu commands
+  * selected-widget geometry
+  * parent content bounds
+  * container and sizer ownership
+  * widget creation and initial placement
+  * canvas model/view conversion
+  * undo/redo
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_103_parent_fit_and_widget_placement_plan.md`
+
+Before implementation:
+
+* update all authoritative VisiForm version declarations to `1.0.9`
+* record the previous version and `1.0.9` in the phase plan
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not refactor unrelated canvas or layout systems.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal 1: Add Fit Width to Parent
+
+Add a visible Layout menu command:
+
+`Fit Width to Parent`
+
+This command applies to compatible selected widgets.
+
+Required behavior:
+
+* set the widget width to the usable width of its direct parent
+* constrain the widget within the parent’s left and right content edges
+* change width only
+* preserve the widget’s existing height
+* preserve vertical position
+* set or clamp horizontal position as needed to fit within the parent
+* use model-space geometry
+* create one undoable command
+* create no undo entry for a no-op
+
+The resulting geometry should conceptually be:
+
+* `x = parent content-left inset`
+* `width = parent usable content width`
+
+Do not use application-window or canvas viewport width.
+
+## Goal 2: Add Fit Height to Parent
+
+Add a visible Layout menu command:
+
+`Fit Height to Parent`
+
+Required behavior:
+
+* set the widget height to the usable height of its direct parent
+* constrain the widget within the parent’s top and bottom content edges
+* change height only
+* preserve the widget’s existing width
+* preserve horizontal position
+* set or clamp vertical position as needed to fit within the parent
+* use model-space geometry
+* create one undoable command
+* create no undo entry for a no-op
+
+The resulting geometry should conceptually be:
+
+* `y = parent content-top inset`
+* `height = parent usable content height`
+
+Do not use application-window or canvas viewport height.
+
+## Parent-content bounds
+
+Use the direct parent’s usable child-content area, not merely its outer visual rectangle.
+
+Account for existing parent characteristics where available:
+
+* borders
+* title/header areas
+* content padding
+* frame or group-box captions
+* tab-page content area
+* container insets
+* scrollable content bounds
+* layout-controlled regions
+
+Use existing model or widget metadata for content bounds when possible.
+
+Avoid hard-coding special offsets in the menu command.
+
+Prefer one shared helper that returns parent-local child-content bounds.
+
+## Supported parents
+
+Verify behavior for widgets directly inside:
+
+* top-level form
+* Panel
+* Frame
+* Group Box
+* tab page
+* other existing free-position containers
+
+The command must use the selected widget’s direct parent.
+
+Do not fit a widget to a grandparent merely because the direct parent has a similar visual size.
+
+## Sizer-managed widgets
+
+For widgets whose geometry is controlled by a Sizer:
+
+* do not directly overwrite sizer-owned geometry
+* disable Fit Width or Fit Height when the operation is incompatible
+* use existing layout metadata only if there is already a safe mapping
+* do not detach or reparent the widget
+* do not silently break the sizer layout
+
+Document the chosen rule in the phase plan.
+
+## Selection behavior
+
+For the base implementation:
+
+* allow the command for one or more compatible selected widgets
+* each selected widget fits to its own direct parent
+* mixed-parent selections are acceptable only if each item can be processed independently and predictably
+* skip or disable incompatible selections rather than partially corrupting layout
+* preserve selection after execution
+
+If the existing command system cannot safely support mixed parents, require compatible same-parent selection and document that restriction.
+
+## Command enablement
+
+Update the Layout menu state dynamically.
+
+Enable Fit Width to Parent or Fit Height to Parent only when:
+
+* at least one widget is selected
+* the selected item has a valid parent content area
+* the affected dimension is not controlled incompatibly by a sizer
+* Preview Mode is not active
+* the operation is valid for the widget type
+
+Do not enable a command that will do nothing or produce invalid geometry.
+
+Keep existing `Fit Text` behavior separate.
+
+## Undo and redo
+
+Each successful command invocation must produce one undo step.
+
+Requirements:
+
+* undo restores original position and dimensions
+* redo reapplies the complete operation
+* multiple selected widgets are included in the same command
+* no-op or rejected operations create no undo entry
+* Project Tree and Property Inspector remain synchronized
+
+Reuse the existing command system.
+
+## Goal 3: Fix new-widget placement permanently
+
+New widgets still appear partially outside the form at startup and after creating a new project.
+
+The prior placement changes did not reach the actual active creation path.
+
+Trace all live widget-creation paths:
+
+* startup default project
+* New Project
+* palette click-to-create
+* palette drag/drop
+* default Button insertion
+* any fallback creation command
+
+Determine which path still assigns invalid coordinates.
+
+## Placement root-cause requirements
+
+Confirm and record:
+
+* the default form’s model bounds
+* the parent content bounds
+* requested widget position
+* widget default size
+* final stored model position
+* whether the active path bypasses the safe-placement helper
+* whether coordinates are parent-local, form-local, canvas-view, or screen coordinates
+* whether the form origin or canvas padding is incorrectly applied
+* whether placement happens before valid parent dimensions exist
+
+Do not assume the earlier diagnosis was correct.
+
+Trace the actual runtime path now used.
+
+## Correct placement behavior
+
+Every newly created widget must be fully inside its intended parent where possible.
+
+For default startup and New Project widgets:
+
+* establish the parent/form dimensions first
+* use a modest inset inside the direct parent’s content area
+* store parent-local model coordinates
+* ensure the full widget rectangle is within parent content bounds
+* produce the same valid result at startup and through New Project
+
+For palette click-to-create:
+
+* choose a valid default position inside the active target parent
+* use parent-local model coordinates
+* clamp the full widget rectangle inside parent content bounds
+
+For drag/drop:
+
+* convert pointer coordinates from view space to model space
+* then convert to the selected parent’s local coordinate system
+* clamp only when necessary
+* preserve the intended drop location as closely as possible
+
+Do not fix the problem only in drawing.
+Do not offset the visual rectangle while leaving invalid stored coordinates.
+
+## Shared geometry helpers
+
+Prefer small shared helpers for:
+
+* obtaining a parent’s usable child-content bounds
+* converting a point into parent-local model coordinates
+* fitting a widget rectangle inside parent bounds
+* fitting width only
+* fitting height only
+
+Reuse these helpers for both:
+
+* Fit Width/Fit Height commands
+* new-widget safe placement
+
+Do not duplicate slightly different parent-bound calculations across creation paths.
+
+## Preserve existing behavior
+
+Do not regress:
+
+* Fit Text
+* Phase 100 alignment and distribution
+* Phase 101 Same Width/Height modes
+* multi-selection
+* undo/redo
+* Project Tree hierarchy
+* parent/child ownership
+* zoom and pan
+* Preview Mode
+* autosave and recovery
+* save/reload
+* generated output
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.9`.
+4. Select a widget inside the top-level form.
+5. Run Fit Width to Parent.
+6. Confirm width changes and height does not.
+7. Undo and redo.
+8. Run Fit Height to Parent.
+9. Confirm height changes and width does not.
+10. Undo and redo.
+11. Repeat inside Panel, Frame, Group Box, and tab page.
+12. Confirm parent borders, captions, and padding are respected.
+13. Confirm commands are disabled for incompatible sizer-managed widgets.
+14. Test multiple compatible selected widgets.
+15. Confirm each widget uses the correct direct parent.
+16. Launch VisiForm with its default project.
+17. Confirm the default Button is fully inside the form.
+18. Create a new project.
+19. Confirm its default Button is fully inside the form.
+20. Repeat New Project several times.
+21. Add widgets from the palette at 100% zoom.
+22. Repeat while zoomed and panned.
+23. Drag/drop near all parent edges.
+24. Add widgets inside supported nested containers.
+25. Confirm complete widget bounds remain inside the intended parent.
+26. Confirm stored positions are valid parent-local model coordinates.
+27. Save and reload.
+28. Confirm fitted dimensions and widget positions persist.
+29. Confirm autosave still works and does not interfere with the commands.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 103 plan with:
+
+* previous and new version
+* Fit Width behavior
+* Fit Height behavior
+* parent-content-bound calculation
+* supported parent types
+* sizer restrictions
+* command enablement
+* undo/redo integration
+* confirmed new-widget placement root cause
+* shared geometry helper design
+* files changed
+* build result
+* manual validation actually performed
+* known limitations
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep the update concise.
+
+## Completion report
+
+Report:
+
+* Phase 103 plan path
+* version change to `1.0.9`
+* Fit Width command behavior
+* Fit Height command behavior
+* parent-content-bound handling
+* sizer restrictions
+* exact widget-placement root cause
+* placement fix and shared helpers
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

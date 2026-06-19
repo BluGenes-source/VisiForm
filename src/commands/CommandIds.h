@@ -30,6 +30,8 @@ inline constexpr std::string_view kViewZoomReset = "view.zoomReset";
 inline constexpr std::string_view kViewZoomFit = "view.zoomFit";
 
 inline constexpr std::string_view kLayoutFitText = "layout.fitText";
+inline constexpr std::string_view kLayoutFitWidthToParent = "layout.fitWidthToParent";
+inline constexpr std::string_view kLayoutFitHeightToParent = "layout.fitHeightToParent";
 inline constexpr std::string_view kLayoutAlignLeft = "layout.alignLeft";
 inline constexpr std::string_view kLayoutAlignTop = "layout.alignTop";
 inline constexpr std::string_view kLayoutAlignRight = "layout.alignRight";

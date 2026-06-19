@@ -534,6 +534,10 @@ bool ProjectDocument::addChildToParent(const std::string& parentId, WidgetNode w
         if (root.type == WidgetType::Sizer) {
             applyDefaultSizerItemLayout(widget);
         }
+        else if (widget.dockMode() == DockMode::None
+            && !(root.type == WidgetType::TabControl && widget.type == WidgetType::TabPage)) {
+            widget.bounds = clampWidgetBoundsToParent(LayoutEngine::clientBoundsForParent(root), widget.bounds);
+        }
         return addChildToRoot(std::move(widget));
     }
 
@@ -543,6 +547,10 @@ bool ProjectDocument::addChildToParent(const std::string& parentId, WidgetNode w
         }
         if (parent->type == WidgetType::Sizer) {
             applyDefaultSizerItemLayout(widget);
+        }
+        else if (widget.dockMode() == DockMode::None
+            && !(parent->type == WidgetType::TabControl && widget.type == WidgetType::TabPage)) {
+            widget.bounds = clampWidgetBoundsToParent(LayoutEngine::clientBoundsForParent(*parent), widget.bounds);
         }
         parent->appendChild(std::move(widget));
         applyDockLayout();

@@ -954,7 +954,43 @@ bool isGeometryManagedByParent(const model::ProjectDocument& document, const mod
 {
     const auto* parent = document.findParentOf(widget.id);
     return (parent != nullptr && parent->type == model::WidgetType::Sizer)
+        || (parent != nullptr && parent->type == model::WidgetType::TabControl && widget.type == model::WidgetType::TabPage)
         || widget.dockMode() != model::DockMode::None;
+}
+
+bool canFitSelectionToParent(const model::ProjectDocument& document, bool fitWidth)
+{
+    const auto widgets = selectedNonRootWidgets(document);
+    if (widgets.empty()) {
+        return false;
+    }
+
+    bool wouldChange = false;
+    for (const auto* widget : widgets) {
+        const auto* parent = widget == nullptr ? nullptr : document.findParentOf(widget->id);
+        if (widget == nullptr || parent == nullptr || isGeometryManagedByParent(document, *widget)) {
+            return false;
+        }
+
+        const model::Rect clientBounds = model::LayoutEngine::clientBoundsForParent(*parent);
+        const WidgetSizeMetrics metrics = getWidgetSizeMetrics(widget->type);
+        if (!clientBounds.isValid()
+            || (fitWidth && clientBounds.width < metrics.minWidth)
+            || (!fitWidth && clientBounds.height < metrics.minHeight)) {
+            return false;
+        }
+
+        const model::Rect fitted = fitWidth
+            ? model::fitWidgetWidthToParent(clientBounds, widget->bounds)
+            : model::fitWidgetHeightToParent(clientBounds, widget->bounds);
+        wouldChange = wouldChange
+            || fitted.x != widget->bounds.x
+            || fitted.y != widget->bounds.y
+            || fitted.width != widget->bounds.width
+            || fitted.height != widget->bounds.height;
+    }
+
+    return wouldChange;
 }
 
 bool hasCompatibleGeometrySelection(const model::ProjectDocument& document, std::size_t minimumCount)
@@ -979,6 +1015,25 @@ bool hasCompatibleGeometrySelection(const model::ProjectDocument& document, std:
             && document.findParentOf(widget->id) == sharedParent
             && !isGeometryManagedByParent(document, *widget);
     });
+}
+
+bool canAlignSelection(const model::ProjectDocument& document)
+{
+    const auto widgets = selectedNonRootWidgets(document);
+    if (widgets.size() != 1) {
+        return hasCompatibleGeometrySelection(document, 2);
+    }
+
+    if (document.selectedWidgets().size() != 1) {
+        return false;
+    }
+
+    const auto* widget = widgets.front();
+    const auto* parent = widget == nullptr ? nullptr : document.findParentOf(widget->id);
+    return widget != nullptr
+        && parent != nullptr
+        && !isGeometryManagedByParent(document, *widget)
+        && model::LayoutEngine::clientBoundsForParent(*parent).isValid();
 }
 
 bool supportsFitText(model::WidgetType type)
@@ -1072,17 +1127,7 @@ model::Rect clampBoundsToParentClient(const model::ProjectDocument& document, co
         return bounds;
     }
 
-    const model::Rect clientBounds = model::LayoutEngine::clientBoundsForParent(*parent);
-    const float maxX = clientBounds.x + std::max(0.0f, clientBounds.width - bounds.width);
-    const float maxY = clientBounds.y + std::max(0.0f, clientBounds.height - bounds.height);
-
-    bounds.x = maxX <= clientBounds.x
-        ? clientBounds.x
-        : std::clamp(bounds.x, clientBounds.x, maxX);
-    bounds.y = maxY <= clientBounds.y
-        ? clientBounds.y
-        : std::clamp(bounds.y, clientBounds.y, maxY);
-    return bounds;
+    return model::clampWidgetBoundsToParent(model::LayoutEngine::clientBoundsForParent(*parent), bounds);
 }
 
 bool isDirectSizerChild(const model::ProjectDocument& document, const std::string& widgetId)
@@ -3813,7 +3858,13 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
                 if (auto* movedWidget = afterDocument.findWidgetById(widgetId)) {
                     movedWidget->bounds = finalBounds;
                 }
-                const model::Rect reparentedBounds = boundsRelativeToParent(afterDocument, dropParentId, finalAbsoluteBounds);
+                model::Rect reparentedBounds = boundsRelativeToParent(afterDocument, dropParentId, finalAbsoluteBounds);
+                if (const auto* dropParent = afterDocument.findWidgetById(dropParentId);
+                    dropParent != nullptr && dropParent->type != model::WidgetType::Sizer) {
+                    reparentedBounds = model::clampWidgetBoundsToParent(
+                        model::LayoutEngine::clientBoundsForParent(*dropParent),
+                        reparentedBounds);
+                }
                 if (afterDocument.reparentWidget(widgetId, dropParentId, reparentedBounds)) {
                     document_ = beforeDocument;
                     undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
@@ -4931,13 +4982,38 @@ void MainWindow::pasteWidgets()
 
 void MainWindow::alignSelectedLeft()
 {
-    if (!hasCompatibleGeometrySelection(document_, 2)) {
-        setOperationStatus("Align requires at least two non-sizer siblings");
+    if (!canAlignSelection(document_)) {
+        setOperationStatus("Align Left is unavailable for this selection");
         redraw();
         return;
     }
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() == 1) {
+        auto* selected = selectedWidgets.front();
+        const auto* parent = document_.findParentOf(selected->id);
+        const model::Rect aligned = model::alignWidgetHorizontallyToParent(
+            model::LayoutEngine::clientBoundsForParent(*parent),
+            selected->bounds,
+            model::ParentAlignment::Start);
+        if (!applyUndoableDocumentChange("Align left to parent", [selected, aligned]() {
+                if (selected->bounds.x == aligned.x) {
+                    return false;
+                }
+                selected->bounds.x = aligned.x;
+                return true;
+            })) {
+            setOperationStatus("Align left: already aligned");
+            redraw();
+            return;
+        }
+
+        setOperationStatus("Aligned left within parent");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
     const auto* primary = document_.selectedWidget();
     const float targetX = primary->bounds.x;
     const std::string primaryId = primary->id;
@@ -4964,13 +5040,38 @@ void MainWindow::alignSelectedLeft()
 
 void MainWindow::alignSelectedTop()
 {
-    if (!hasCompatibleGeometrySelection(document_, 2)) {
-        setOperationStatus("Align requires at least two non-sizer siblings");
+    if (!canAlignSelection(document_)) {
+        setOperationStatus("Align Top is unavailable for this selection");
         redraw();
         return;
     }
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() == 1) {
+        auto* selected = selectedWidgets.front();
+        const auto* parent = document_.findParentOf(selected->id);
+        const model::Rect aligned = model::alignWidgetVerticallyToParent(
+            model::LayoutEngine::clientBoundsForParent(*parent),
+            selected->bounds,
+            model::ParentAlignment::Start);
+        if (!applyUndoableDocumentChange("Align top to parent", [selected, aligned]() {
+                if (selected->bounds.y == aligned.y) {
+                    return false;
+                }
+                selected->bounds.y = aligned.y;
+                return true;
+            })) {
+            setOperationStatus("Align top: already aligned");
+            redraw();
+            return;
+        }
+
+        setOperationStatus("Aligned top within parent");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
     const auto* primary = document_.selectedWidget();
     const float targetY = primary->bounds.y;
     const std::string primaryId = primary->id;
@@ -4997,13 +5098,38 @@ void MainWindow::alignSelectedTop()
 
 void MainWindow::alignSelectedRight()
 {
-    if (!hasCompatibleGeometrySelection(document_, 2)) {
-        setOperationStatus("Align requires at least two non-sizer siblings");
+    if (!canAlignSelection(document_)) {
+        setOperationStatus("Align Right is unavailable for this selection");
         redraw();
         return;
     }
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() == 1) {
+        auto* selected = selectedWidgets.front();
+        const auto* parent = document_.findParentOf(selected->id);
+        const model::Rect aligned = model::alignWidgetHorizontallyToParent(
+            model::LayoutEngine::clientBoundsForParent(*parent),
+            selected->bounds,
+            model::ParentAlignment::End);
+        if (!applyUndoableDocumentChange("Align right to parent", [selected, aligned]() {
+                if (selected->bounds.x == aligned.x) {
+                    return false;
+                }
+                selected->bounds.x = aligned.x;
+                return true;
+            })) {
+            setOperationStatus("Align right: already aligned");
+            redraw();
+            return;
+        }
+
+        setOperationStatus("Aligned right within parent");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
     const auto* primary = document_.selectedWidget();
     const float targetRight = primary->bounds.x + primary->bounds.width;
     const std::string primaryId = primary->id;
@@ -5034,13 +5160,38 @@ void MainWindow::alignSelectedRight()
 
 void MainWindow::alignSelectedBottom()
 {
-    if (!hasCompatibleGeometrySelection(document_, 2)) {
-        setOperationStatus("Align requires at least two non-sizer siblings");
+    if (!canAlignSelection(document_)) {
+        setOperationStatus("Align Bottom is unavailable for this selection");
         redraw();
         return;
     }
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() == 1) {
+        auto* selected = selectedWidgets.front();
+        const auto* parent = document_.findParentOf(selected->id);
+        const model::Rect aligned = model::alignWidgetVerticallyToParent(
+            model::LayoutEngine::clientBoundsForParent(*parent),
+            selected->bounds,
+            model::ParentAlignment::End);
+        if (!applyUndoableDocumentChange("Align bottom to parent", [selected, aligned]() {
+                if (selected->bounds.y == aligned.y) {
+                    return false;
+                }
+                selected->bounds.y = aligned.y;
+                return true;
+            })) {
+            setOperationStatus("Align bottom: already aligned");
+            redraw();
+            return;
+        }
+
+        setOperationStatus("Aligned bottom within parent");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
     const auto* primary = document_.selectedWidget();
     const float targetBottom = primary->bounds.y + primary->bounds.height;
     const std::string primaryId = primary->id;
@@ -5071,13 +5222,38 @@ void MainWindow::alignSelectedBottom()
 
 void MainWindow::centerSelectedHorizontally()
 {
-    if (!hasCompatibleGeometrySelection(document_, 2)) {
-        setOperationStatus("Align requires at least two non-sizer siblings");
+    if (!canAlignSelection(document_)) {
+        setOperationStatus("Center Horizontally is unavailable for this selection");
         redraw();
         return;
     }
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() == 1) {
+        auto* selected = selectedWidgets.front();
+        const auto* parent = document_.findParentOf(selected->id);
+        const model::Rect aligned = model::alignWidgetHorizontallyToParent(
+            model::LayoutEngine::clientBoundsForParent(*parent),
+            selected->bounds,
+            model::ParentAlignment::Center);
+        if (!applyUndoableDocumentChange("Center horizontally in parent", [selected, aligned]() {
+                if (selected->bounds.x == aligned.x) {
+                    return false;
+                }
+                selected->bounds.x = aligned.x;
+                return true;
+            })) {
+            setOperationStatus("Center horizontally: already aligned");
+            redraw();
+            return;
+        }
+
+        setOperationStatus("Centered horizontally within parent");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
     const auto* primary = document_.selectedWidget();
     const float centerX = primary->bounds.x + primary->bounds.width * 0.5f;
     const std::string primaryId = primary->id;
@@ -5108,13 +5284,38 @@ void MainWindow::centerSelectedHorizontally()
 
 void MainWindow::centerSelectedVertically()
 {
-    if (!hasCompatibleGeometrySelection(document_, 2)) {
-        setOperationStatus("Align requires at least two non-sizer siblings");
+    if (!canAlignSelection(document_)) {
+        setOperationStatus("Center Vertically is unavailable for this selection");
         redraw();
         return;
     }
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
+    if (selectedWidgets.size() == 1) {
+        auto* selected = selectedWidgets.front();
+        const auto* parent = document_.findParentOf(selected->id);
+        const model::Rect aligned = model::alignWidgetVerticallyToParent(
+            model::LayoutEngine::clientBoundsForParent(*parent),
+            selected->bounds,
+            model::ParentAlignment::Center);
+        if (!applyUndoableDocumentChange("Center vertically in parent", [selected, aligned]() {
+                if (selected->bounds.y == aligned.y) {
+                    return false;
+                }
+                selected->bounds.y = aligned.y;
+                return true;
+            })) {
+            setOperationStatus("Center vertically: already aligned");
+            redraw();
+            return;
+        }
+
+        setOperationStatus("Centered vertically within parent");
+        updatePropertyEditorBounds();
+        redraw();
+        return;
+    }
+
     const auto* primary = document_.selectedWidget();
     const float centerY = primary->bounds.y + primary->bounds.height * 0.5f;
     const std::string primaryId = primary->id;
@@ -5245,6 +5446,51 @@ void MainWindow::makeSelectedSameHeight(SizeMatchMode mode)
     }
 
     setOperationStatus("Matched " + referenceLabel + " height: " + std::to_string(selectedCount) + " widgets");
+    updatePropertyEditorBounds();
+    redraw();
+}
+
+void MainWindow::fitSelectedWidgetsToParent(bool fitWidth)
+{
+    if (!canFitSelectionToParent(document_, fitWidth)) {
+        setOperationStatus(fitWidth
+            ? "Fit Width to Parent is unavailable for this selection"
+            : "Fit Height to Parent is unavailable for this selection");
+        redraw();
+        return;
+    }
+
+    auto selectedWidgets = selectedNonRootWidgets(document_);
+    const std::size_t selectedCount = selectedWidgets.size();
+    const std::string description = fitWidth ? "Fit width to parent" : "Fit height to parent";
+    if (!applyUndoableDocumentChange(description, [this, &selectedWidgets, fitWidth]() {
+            bool changed = false;
+            for (auto* selected : selectedWidgets) {
+                const auto* parent = document_.findParentOf(selected->id);
+                if (parent == nullptr) {
+                    continue;
+                }
+
+                const model::Rect clientBounds = model::LayoutEngine::clientBoundsForParent(*parent);
+                const model::Rect fitted = fitWidth
+                    ? model::fitWidgetWidthToParent(clientBounds, selected->bounds)
+                    : model::fitWidgetHeightToParent(clientBounds, selected->bounds);
+                if (fitted.x != selected->bounds.x
+                    || fitted.y != selected->bounds.y
+                    || fitted.width != selected->bounds.width
+                    || fitted.height != selected->bounds.height) {
+                    selected->bounds = fitted;
+                    changed = true;
+                }
+            }
+            return changed;
+        })) {
+        setOperationStatus(description + ": already fitted");
+        redraw();
+        return;
+    }
+
+    setOperationStatus(description + ": " + std::to_string(selectedCount) + " widget(s)");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -6206,6 +6452,10 @@ std::string_view MainWindow::commandRegistryId(CommandId command)
         return kProjectExportDependencies;
     case CommandId::FitText:
         return kLayoutFitText;
+    case CommandId::FitWidthToParent:
+        return kLayoutFitWidthToParent;
+    case CommandId::FitHeightToParent:
+        return kLayoutFitHeightToParent;
     case CommandId::CopyWidgets:
         return kEditCopy;
     case CommandId::PasteWidgets:
@@ -6343,6 +6593,12 @@ MainWindow::CommandId MainWindow::commandFromRegistryId(std::string_view registr
     }
     if (registryId == kLayoutFitText) {
         return CommandId::FitText;
+    }
+    if (registryId == kLayoutFitWidthToParent) {
+        return CommandId::FitWidthToParent;
+    }
+    if (registryId == kLayoutFitHeightToParent) {
+        return CommandId::FitHeightToParent;
     }
     if (registryId == kLayoutAlignLeft) {
         return CommandId::AlignLeft;
@@ -6516,6 +6772,10 @@ std::string MainWindow::commandHintText(CommandId command) const
             return "Show where export dependency settings are edited" + shortcutSuffix;
         case CommandId::FitText:
             return "Fit the selected widget to its text" + shortcutSuffix;
+        case CommandId::FitWidthToParent:
+            return "Fit selected widget widths to their direct parent content areas" + shortcutSuffix;
+        case CommandId::FitHeightToParent:
+            return "Fit selected widget heights to their direct parent content areas" + shortcutSuffix;
         case CommandId::CopyWidgets:
             return "Copy selected widgets" + shortcutSuffix;
         case CommandId::PasteWidgets:
@@ -6527,17 +6787,17 @@ std::string MainWindow::commandHintText(CommandId command) const
         case CommandId::ToggleMultiSelect:
             return "Toggle multi-select mode" + shortcutSuffix;
         case CommandId::AlignLeft:
-            return "Align selected widgets to the primary widget's left edge" + shortcutSuffix;
+            return "Align one widget to its parent content-left edge or multiple widgets to the primary widget" + shortcutSuffix;
         case CommandId::AlignTop:
-            return "Align selected widgets to the primary widget's top edge" + shortcutSuffix;
+            return "Align one widget to its parent content-top edge or multiple widgets to the primary widget" + shortcutSuffix;
         case CommandId::AlignRight:
-            return "Align selected widgets to the primary widget's right edge" + shortcutSuffix;
+            return "Align one widget to its parent content-right edge or multiple widgets to the primary widget" + shortcutSuffix;
         case CommandId::AlignBottom:
-            return "Align selected widgets to the primary widget's bottom edge" + shortcutSuffix;
+            return "Align one widget to its parent content-bottom edge or multiple widgets to the primary widget" + shortcutSuffix;
         case CommandId::CenterHorizontally:
-            return "Align selected widget centers to the primary widget horizontally" + shortcutSuffix;
+            return "Center one widget horizontally in its parent or align multiple centers to the primary widget" + shortcutSuffix;
         case CommandId::CenterVertically:
-            return "Align selected widget centers to the primary widget vertically" + shortcutSuffix;
+            return "Center one widget vertically in its parent or align multiple centers to the primary widget" + shortcutSuffix;
         case CommandId::SameWidth:
             return "Match selected widget widths to the primary widget" + shortcutSuffix;
         case CommandId::SameWidthSmallest:
@@ -6624,6 +6884,8 @@ bool MainWindow::isCommandEnabled(CommandId command) const
         case CommandId::ToggleGrid:
         case CommandId::ToggleSnap:
         case CommandId::FitText:
+        case CommandId::FitWidthToParent:
+        case CommandId::FitHeightToParent:
         case CommandId::ShowProjectSettings:
         case CommandId::ShowResourceManager:
             return false;
@@ -6645,6 +6907,10 @@ bool MainWindow::isCommandEnabled(CommandId command) const
         return hasNonRootSelection;
     case CommandId::FitText:
         return canFitText;
+    case CommandId::FitWidthToParent:
+        return canFitSelectionToParent(document_, true);
+    case CommandId::FitHeightToParent:
+        return canFitSelectionToParent(document_, false);
     case CommandId::BringForward:
         return canReorderPrimaryWidget(document_, true);
     case CommandId::SendBackward:
@@ -6655,6 +6921,7 @@ bool MainWindow::isCommandEnabled(CommandId command) const
     case CommandId::AlignBottom:
     case CommandId::CenterHorizontally:
     case CommandId::CenterVertically:
+        return canAlignSelection(document_);
     case CommandId::SameWidth:
     case CommandId::SameWidthSmallest:
     case CommandId::SameWidthLargest:
@@ -6802,6 +7069,8 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     addCommand(layoutMenu, CommandId::BringForward, "Bring Forward");
     addCommand(layoutMenu, CommandId::SendBackward, "Send Backward");
     addSeparator(layoutMenu);
+    addCommand(layoutMenu, CommandId::FitWidthToParent, "Fit Width to Parent");
+    addCommand(layoutMenu, CommandId::FitHeightToParent, "Fit Height to Parent");
     addCommand(layoutMenu, CommandId::FitText, "Fit Text");
     result.push_back(std::move(layoutMenu));
 
@@ -7363,6 +7632,12 @@ bool MainWindow::executeCommand(CommandId command)
         return true;
     case CommandId::FitText:
         fitSelectedWidgetToText();
+        return true;
+    case CommandId::FitWidthToParent:
+        fitSelectedWidgetsToParent(true);
+        return true;
+    case CommandId::FitHeightToParent:
+        fitSelectedWidgetsToParent(false);
         return true;
     case CommandId::CopyWidgets:
         copySelectedWidgets();

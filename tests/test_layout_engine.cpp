@@ -126,6 +126,113 @@ TEST_CASE("Safe widget placement preserves valid size when the parent is too sma
     REQUIRE(placed.height == Catch::Approx(50.0f));
 }
 
+TEST_CASE("Parent fit changes only the requested dimension")
+{
+    const visiform::model::Rect parentBounds{ 12.0f, 28.0f, 240.0f, 160.0f };
+    const visiform::model::Rect original{ 300.0f, 220.0f, 80.0f, 40.0f };
+
+    const auto fitWidth = visiform::model::fitWidgetWidthToParent(parentBounds, original);
+    REQUIRE(fitWidth.x == Catch::Approx(12.0f));
+    REQUIRE(fitWidth.y == Catch::Approx(220.0f));
+    REQUIRE(fitWidth.width == Catch::Approx(240.0f));
+    REQUIRE(fitWidth.height == Catch::Approx(40.0f));
+
+    const auto fitHeight = visiform::model::fitWidgetHeightToParent(parentBounds, original);
+    REQUIRE(fitHeight.x == Catch::Approx(300.0f));
+    REQUIRE(fitHeight.y == Catch::Approx(28.0f));
+    REQUIRE(fitHeight.width == Catch::Approx(80.0f));
+    REQUIRE(fitHeight.height == Catch::Approx(160.0f));
+}
+
+TEST_CASE("Parent alignment changes only the requested position axis")
+{
+    const visiform::model::Rect parentBounds{ 12.0f, 28.0f, 240.0f, 160.0f };
+    const visiform::model::Rect original{ 300.0f, 220.0f, 80.0f, 40.0f };
+
+    const auto left = visiform::model::alignWidgetHorizontallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::Start);
+    REQUIRE(left.x == Catch::Approx(12.0f));
+    REQUIRE(left.y == Catch::Approx(220.0f));
+    REQUIRE(left.width == Catch::Approx(80.0f));
+    REQUIRE(left.height == Catch::Approx(40.0f));
+
+    const auto right = visiform::model::alignWidgetHorizontallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::End);
+    REQUIRE(right.x == Catch::Approx(172.0f));
+    REQUIRE(right.y == Catch::Approx(220.0f));
+
+    const auto horizontalCenter = visiform::model::alignWidgetHorizontallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::Center);
+    REQUIRE(horizontalCenter.x == Catch::Approx(92.0f));
+    REQUIRE(horizontalCenter.y == Catch::Approx(220.0f));
+
+    const auto top = visiform::model::alignWidgetVerticallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::Start);
+    REQUIRE(top.x == Catch::Approx(300.0f));
+    REQUIRE(top.y == Catch::Approx(28.0f));
+    REQUIRE(top.width == Catch::Approx(80.0f));
+    REQUIRE(top.height == Catch::Approx(40.0f));
+
+    const auto bottom = visiform::model::alignWidgetVerticallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::End);
+    REQUIRE(bottom.x == Catch::Approx(300.0f));
+    REQUIRE(bottom.y == Catch::Approx(148.0f));
+
+    const auto verticalCenter = visiform::model::alignWidgetVerticallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::Center);
+    REQUIRE(verticalCenter.x == Catch::Approx(300.0f));
+    REQUIRE(verticalCenter.y == Catch::Approx(88.0f));
+}
+
+TEST_CASE("Oversized parent alignment uses the starting content edge")
+{
+    const visiform::model::Rect parentBounds{ 12.0f, 28.0f, 60.0f, 30.0f };
+    const visiform::model::Rect original{ 300.0f, 220.0f, 80.0f, 40.0f };
+
+    const auto horizontal = visiform::model::alignWidgetHorizontallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::End);
+    REQUIRE(horizontal.x == Catch::Approx(12.0f));
+    REQUIRE(horizontal.y == Catch::Approx(220.0f));
+    REQUIRE(horizontal.width == Catch::Approx(80.0f));
+
+    const auto vertical = visiform::model::alignWidgetVerticallyToParent(
+        parentBounds, original, visiform::model::ParentAlignment::Center);
+    REQUIRE(vertical.x == Catch::Approx(300.0f));
+    REQUIRE(vertical.y == Catch::Approx(28.0f));
+    REQUIRE(vertical.height == Catch::Approx(40.0f));
+}
+
+TEST_CASE("Complete widget bounds clamp to parent content edges")
+{
+    const auto clamped = visiform::model::clampWidgetBoundsToParent(
+        { 10.0f, 20.0f, 200.0f, 100.0f },
+        { 180.0f, 105.0f, 60.0f, 30.0f });
+
+    REQUIRE(clamped.x == Catch::Approx(150.0f));
+    REQUIRE(clamped.y == Catch::Approx(90.0f));
+    REQUIRE(clamped.width == Catch::Approx(60.0f));
+    REQUIRE(clamped.height == Catch::Approx(30.0f));
+}
+
+TEST_CASE("Adding a free-position widget enforces direct parent content bounds")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    auto panel = WidgetRegistry::instance().createDefaultWidget(WidgetType::Panel, "panel_1");
+    panel.bounds = { 100.0f, 100.0f, 200.0f, 150.0f };
+    REQUIRE(document.addChildToParent(document.root.id, panel));
+
+    auto button = WidgetRegistry::instance().createDefaultWidget(WidgetType::Button, "button_nested");
+    button.bounds = { 190.0f, 140.0f, 80.0f, 40.0f };
+    REQUIRE(document.addChildToParent("panel_1", button));
+
+    const auto* added = document.findWidgetById("button_nested");
+    REQUIRE(added != nullptr);
+    REQUIRE(added->bounds.x == Catch::Approx(120.0f));
+    REQUIRE(added->bounds.y == Catch::Approx(110.0f));
+    REQUIRE(added->bounds.width == Catch::Approx(80.0f));
+    REQUIRE(added->bounds.height == Catch::Approx(40.0f));
+}
+
 TEST_CASE("Default project button begins inside the form in model space")
 {
     const ProjectDocument document = ProjectDocument::createDefault();

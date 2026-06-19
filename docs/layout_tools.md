@@ -27,6 +27,18 @@ Dragging a widget close to a `Sizer` can snap-connect it into that sizer when th
 
 Geometry layout commands are disabled for direct children of a `Sizer`; sizer-owned dimensions must be changed through sizer-item properties or the existing sizer resize interaction.
 
+## Fit to parent
+
+The Layout menu includes `Fit Width to Parent` and `Fit Height to Parent`.
+
+- each selected widget uses its own direct parent's child-content bounds
+- width fitting changes `x` and `width` while preserving `y` and `height`
+- height fitting changes `y` and `height` while preserving `x` and `width`
+- form title areas, Frame and GroupBox insets, TabPage bounds, Panel bounds, and Sizer padding come from the shared model layout calculation
+- compatible mixed-parent selections are processed in one undo step
+- direct Sizer children, dock-managed widgets, and layout-owned TabPages are protected
+- commands are disabled in Preview Mode and when the complete selection is incompatible or already fitted
+
 ## Box select
 
 You can drag a marquee rectangle across the designer canvas to select widgets.
@@ -124,65 +136,74 @@ Toolbar and palette entries now surface short status-bar hints on hover to make 
 
 ## Align Left
 
-Aligns selected sibling widgets to the primary widget's left edge.
+With one selected widget, aligns its left edge to its direct parent's usable content-left edge.
+With multiple selected widgets, aligns compatible siblings to the primary widget's left edge.
 
 Current behavior:
 
-- requires at least two selected widgets with the same direct parent
-- the primary widget stays unchanged
+- single selection changes only x and preserves y and size
+- multi-selection requires compatible siblings with the same direct parent, and the primary widget stays unchanged
 - y, width, and height stay unchanged
-- cross-parent, sizer-managed, and dock-managed selections are disabled
+- root, cross-parent multi-selection, sizer-managed, dock-managed, layout-owned TabPage, and Preview Mode operations are disabled
 
 ## Align Top
 
-Aligns selected sibling widgets to the primary widget's top edge.
+With one selected widget, aligns its top edge to its direct parent's usable content-top edge.
+With multiple selected widgets, aligns compatible siblings to the primary widget's top edge.
 
 Current behavior:
 
-- requires at least two selected widgets with the same direct parent
-- the primary widget stays unchanged
+- single selection changes only y and preserves x and size
+- multi-selection requires compatible siblings with the same direct parent, and the primary widget stays unchanged
 - x, width, and height stay unchanged
-- cross-parent, sizer-managed, and dock-managed selections are disabled
 
 ## Align Right
 
-Aligns selected sibling widgets to the primary widget's right edge.
+With one selected widget, aligns its right edge to its direct parent's usable content-right edge.
+With multiple selected widgets, aligns compatible siblings to the primary widget's right edge.
 
 Current behavior:
 
-- requires at least two selected widgets with the same direct parent
-- the primary widget stays unchanged
-- widget sizes stay unchanged
+- single selection changes only x
+- multi-selection retains the primary widget as the unchanged reference
+- size and y stay unchanged
 
 ## Align Bottom
 
-Aligns selected sibling widgets to the primary widget's bottom edge.
+With one selected widget, aligns its bottom edge to its direct parent's usable content-bottom edge.
+With multiple selected widgets, aligns compatible siblings to the primary widget's bottom edge.
 
 Current behavior:
 
-- requires at least two selected widgets with the same direct parent
-- the primary widget stays unchanged
-- widget sizes stay unchanged
+- single selection changes only y
+- multi-selection retains the primary widget as the unchanged reference
+- size and x stay unchanged
 
 ## Center Horizontally
 
-Aligns selected sibling widget centers to the primary widget horizontally.
+With one selected widget, centers it horizontally in its direct parent's usable content area.
+With multiple selected widgets, aligns compatible sibling centers to the primary widget horizontally.
 
 Current behavior:
 
-- requires at least two selected widgets with the same direct parent
-- the primary widget stays unchanged
-- widget sizes stay unchanged
+- single selection changes only x
+- multi-selection retains the primary widget as the unchanged reference
+- size and y stay unchanged
 
 ## Center Vertically
 
-Aligns selected sibling widget centers to the primary widget vertically.
+With one selected widget, centers it vertically in its direct parent's usable content area.
+With multiple selected widgets, aligns compatible sibling centers to the primary widget vertically.
 
 Current behavior:
 
-- requires at least two selected widgets with the same direct parent
-- the primary widget stays unchanged
-- widget sizes stay unchanged
+- single selection changes only y
+- multi-selection retains the primary widget as the unchanged reference
+- size and x stay unchanged
+
+For all single-widget alignment commands, parent content bounds include existing border, padding, caption, tab-page, and container insets.
+If the widget is larger than the parent content area on the affected axis, VisiForm places it at the starting content edge without resizing it.
+Successful alignment creates one undo step; an already-aligned no-op creates no undo history.
 
 ## Same Width
 
