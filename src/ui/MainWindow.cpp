@@ -3425,8 +3425,17 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
 void MainWindow::mouseMove(const visage::MouseEvent& e)
 {
+    const bool projectSplitterHoverChanged = projectTreeCanvasSplitter_.setHovered(
+        layout_.showProjectTree && projectTreeCanvasSplitter_.isPointOverDivider(e.position.x, e.position.y));
+    const bool inspectorSplitterHoverChanged = canvasInspectorSplitter_.setHovered(
+        canvasInspectorSplitter_.isPointOverDivider(e.position.x, e.position.y));
+    const bool splitterHoverChanged = projectSplitterHoverChanged || inspectorSplitterHoverChanged;
+
     if (isEditorModalVisible()) {
         projectTree_.clearHover();
+        if (splitterHoverChanged) {
+            redraw();
+        }
         return;
     }
 
@@ -3445,6 +3454,9 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
         projectTree_.clearHover();
         hoverHint_.clear();
         updateEditorCursor(e.position.x, e.position.y);
+        if (splitterHoverChanged) {
+            redraw();
+        }
         return;
     }
 
@@ -3460,7 +3472,7 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
     }
     updateEditorCursor(e.position.x, e.position.y);
     updateHoverHint(e.position.x, e.position.y);
-    if (hoverChanged) {
+    if (hoverChanged || splitterHoverChanged) {
         redraw();
     }
 }

@@ -180,6 +180,13 @@ public:
         return dragging_;
     }
 
+    [[nodiscard]] bool setHovered(bool hovered)
+    {
+        const bool changed = hovered_ != hovered;
+        hovered_ = hovered;
+        return changed;
+    }
+
     [[nodiscard]] bool mouseDown(float x, float y)
     {
         if (!isPointOverDivider(x, y)) {
@@ -274,6 +281,7 @@ private:
     float splitPosition_ = 0.0f;
     float dragPointerOffset_ = 0.0f;
     bool dragging_ = false;
+    bool hovered_ = false;
 };
 
 } // namespace visiform::ui

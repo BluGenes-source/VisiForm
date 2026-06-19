@@ -1,0 +1,289 @@
+Continue VisiForm Phase 105. Do not create a new phase and do not change version 1.0.11.
+
+The runtime styling baseline is working, but Preview Mode displays an internal widget name such as `slider1`.
+
+Before fixing Slider alone, establish and enforce one consistent editor-label policy for all supported widgets.
+
+Keep this pass focused and token-efficient.
+
+## Rules
+
+* Do not use subagents.
+* Read only:
+
+  * the active Phase 105 plan
+  * shared Designer Canvas widget rendering
+  * Design/Preview mode conditions
+  * directly related widget preview renderers
+  * generated widget rendering where internal names may become visible
+* Use targeted searches for internal-name drawing.
+* Do not perform a general repository audit.
+* Do not redesign widget properties.
+* Build once after the focused changes are complete.
+* Do not commit or push.
+
+## Required label policy
+
+Internal widget names are editor metadata.
+
+Examples:
+
+* `button1`
+* `slider1`
+* `textBox1`
+* `checkBox1`
+* `comboBox1`
+
+They may be used for:
+
+* Project Tree labels
+* Property Inspector Name fields
+* generated variable or member identifiers
+* optional Design Mode identification aids
+
+They must not be rendered as visible runtime content in:
+
+* Preview Mode
+* exported applications
+
+Only explicit user-facing properties may appear at runtime.
+
+Examples include:
+
+* Button Text
+* Label Text
+* Check Box caption
+* Combo Box selected value
+* Text Box text or placeholder
+* Group Box caption
+* Frame title
+* Window title
+* explicit Slider value text, only if such a property exists
+
+Do not infer runtime text from the widget Name property.
+
+## Goal 1: Locate internal-name rendering paths
+
+Use targeted searches for code that draws or assigns:
+
+* widget `name`
+* internal identifiers
+* default generated names
+* editor identification text
+
+Inspect only the directly relevant rendering paths.
+
+Determine whether internal names are being drawn by:
+
+* a shared Designer Canvas label function
+* individual widget renderers
+* fallback rendering for widgets without Text properties
+* Preview Mode rendering
+* generated output
+
+Record the confirmed sources in the Phase 105 plan.
+
+## Goal 2: Centralize editor-only label behavior
+
+Prefer one shared rule or helper such as:
+
+* `shouldDrawEditorLabel()`
+* `isEditorOnlyLabelVisible()`
+* equivalent existing mode-aware logic
+
+The rule should clearly distinguish:
+
+* Design Mode editor aids
+* Preview/runtime-visible content
+
+Avoid adding separate mode checks independently to every widget unless the architecture requires it.
+
+Design Mode may continue to show internal labels when useful.
+
+Preview Mode must suppress all editor-only identification labels.
+
+Editor labels must not affect:
+
+* widget bounds
+* hit testing
+* layout
+* saved geometry
+* generated output
+
+## Goal 3: Verify all current widget types
+
+Check the registered widget types through the shared rendering paths.
+
+At minimum, verify:
+
+* Button
+* Label
+* Text Box
+* Check Box
+* Radio Button
+* Combo Box
+* List Box
+* Slider
+* Scroll Bar
+* Progress Bar
+* Color Picker
+* Image
+* Panel
+* Frame
+* Group Box
+* Sizer
+* Spacer
+* Tab Control and tab pages
+* Status Bar
+* Menu Bar
+* Modal Dialog
+* any other currently registered palette widgets
+
+Do not rewrite every renderer.
+
+Only change widgets or shared paths that incorrectly expose internal names.
+
+## Goal 4: Preserve legitimate runtime text
+
+Do not hide actual user-facing text.
+
+Examples:
+
+* `Button` on a Button must remain visible.
+* `CheckBox` caption must remain visible.
+* Combo Box content such as `Apple` must remain visible.
+* Frame or Group Box titles must remain visible.
+* Label widgets must continue to render their Text property.
+* Text Box content must remain visible.
+* Window titles must remain visible where appropriate.
+
+Use the correct explicit property for each widget.
+
+Do not substitute the internal Name when a user-facing property is empty.
+
+An empty user-facing Text or Caption property should normally render no text.
+
+## Goal 5: Slider-specific correction
+
+For Slider:
+
+* hide `slider1` or any internal name in Preview Mode
+* keep the track and thumb visible
+* display value text only if an explicit runtime property enables it
+* do not add an automatic caption
+* allow a separate Label widget to provide a visible caption
+
+Design Mode may keep an editor-only identification label if that is the established canvas behavior.
+
+## Goal 6: Generated output
+
+Inspect the directly relevant generated rendering paths.
+
+Confirm that:
+
+* internal Name is used as a code identifier only
+* generated controls do not use Name as visible text
+* user-facing Text, Caption, Label, Value, or Title properties are used instead
+* widgets with no runtime text property render no automatic name
+
+Fix only confirmed violations.
+
+Do not change `.vfb.json` format.
+
+Do not rename generated identifiers.
+
+Preserve `USER CODE` regions.
+
+## Goal 7: Add a reusable invariant
+
+Where practical, add a focused test or assertion covering this rule:
+
+* changing a widget Name must not change runtime-visible text
+* Preview Mode must not show internal names
+* export must not emit internal names as control captions
+
+Use existing test infrastructure only.
+
+Do not add a new test framework.
+
+## Preserve existing behavior
+
+Do not regress:
+
+* Phase 105 styling
+* hover, pressed, checked, focused, and disabled states
+* Design Mode selection overlays
+* resize handles and corner arcs
+* Preview Mode interaction rules
+* Project Tree names
+* Property Inspector Name editing
+* generated variable/member naming
+* save/reload
+* autosave and recovery
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.11`.
+4. Create a sample form containing representative widgets.
+5. Give widgets obvious internal names such as:
+
+   * `internalButtonName`
+   * `internalSliderName`
+   * `internalTextBoxName`
+6. Assign different user-facing text where supported.
+7. In Design Mode, confirm editor labels behave as intended.
+8. Enter Preview Mode.
+9. Confirm no internal widget names are visible.
+10. Confirm legitimate user-facing text remains visible.
+11. Confirm Slider displays no automatic internal-name caption.
+12. Confirm widgets with empty Text or Caption properties do not fall back to Name.
+13. Return to Design Mode and confirm editor aids return if intended.
+14. Export the representative project.
+15. Inspect or build the generated output through the approved workflow.
+16. Confirm internal names are used only as identifiers.
+17. Confirm generated controls display only explicit runtime text.
+18. Confirm save/reload behavior is unchanged.
+
+Do not claim runtime or generated-output validation unless it was actually performed.
+
+## Documentation
+
+Update the existing Phase 105 plan with:
+
+* internal-name versus runtime-text policy
+* shared editor-label mechanism
+* widget types checked
+* confirmed violations fixed
+* Slider behavior
+* generated-output findings
+* tests added or validation performed
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md` only after the cleanup is validated.
+
+## Completion report
+
+Report:
+
+* source of the internal-name rendering
+* centralized mode-aware policy
+* widgets affected
+* legitimate runtime text preserved
+* Slider correction
+* generated-output verification
+* tests or manual checks performed
+* files changed
+* build result
+* remaining issues
+* final Git status
+
+Do not create Phase 106.
+Do not change version 1.0.11.
+Do not commit or push.

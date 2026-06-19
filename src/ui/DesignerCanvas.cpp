@@ -6,6 +6,7 @@
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
 #include "ui/WidgetMetrics.h"
+#include "ui/VisualStyleBaseline.h"
 #include "ui/resources/ImageResourceCache.h"
 
 #include <algorithm>
@@ -404,6 +405,29 @@ std::string getDisplayTextOrFallback(const model::WidgetNode& widget, const std:
     return value.empty() ? fallback : value;
 }
 
+bool shouldDrawEditorLabel(bool showEditorDecorations)
+{
+    return showEditorDecorations;
+}
+
+std::string runtimeTextOrEditorLabel(
+    const model::WidgetNode& widget,
+    const std::string& propertyKey,
+    bool showEditorDecorations)
+{
+    const std::string runtimeText = getStringProperty(widget, propertyKey, {});
+    if (!runtimeText.empty()) {
+        return runtimeText;
+    }
+
+    return shouldDrawEditorLabel(showEditorDecorations) ? widgetLabel(widget) : std::string{};
+}
+
+std::string editorOnlyLabel(const model::WidgetNode& widget, bool showEditorDecorations)
+{
+    return shouldDrawEditorLabel(showEditorDecorations) ? widgetLabel(widget) : std::string{};
+}
+
 bool getBoolProperty(const model::WidgetNode& widget, const std::string& key, bool defaultValue)
 {
     return widget.getBoolProperty(key, defaultValue);
@@ -659,6 +683,21 @@ struct ResizeHandleGeometry {
     PanelRect visualBounds{};
     PanelRect hitBounds{};
 };
+
+visual_style::Palette baselinePalette(const ResolvedWidgetStyle& style, int fillColor)
+{
+    return visual_style::makePalette(fillColor, style.borderColor, style.textColor, style.accentColor, style.disabledColor);
+}
+
+visual_style::Rect baselineRect(const PanelRect& bounds)
+{
+    return { bounds.x, bounds.y, bounds.width, bounds.height };
+}
+
+bool widgetIsEnabled(const model::WidgetNode& widget)
+{
+    return widget.getBoolProperty("enabled", true) && !widget.getBoolProperty("disabled", false);
+}
 
 ResizeHandleGeometry resizeHandleGeometry(const PanelRect& bounds, DesignerCanvas::HitRegion region)
 {
@@ -936,9 +975,12 @@ void drawWidget(visage::Canvas& canvas,
         canvas.fill(bounds.x, bounds.y, bounds.width, std::min(kTitleBarHeight, bounds.height));
 
         if (drawText) {
-            canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), widgetFont, visage::Font::kTopLeft,
-                bounds.x + 10.0f, bounds.y + 4.0f, std::max(0.0f, bounds.width - 20.0f), 22.0f);
+            const std::string title = runtimeTextOrEditorLabel(widget, "title", showEditorDecorations);
+            if (!title.empty()) {
+                canvas.setColor(style.textColor);
+                canvas.text(title, widgetFont, visage::Font::kTopLeft,
+                    bounds.x + 10.0f, bounds.y + 4.0f, std::max(0.0f, bounds.width - 20.0f), 22.0f);
+            }
         }
         break;
     }
@@ -966,7 +1008,7 @@ void drawWidget(visage::Canvas& canvas,
             }
             itemLeft += itemWidth + 4.0f;
         }
-        if (items.empty() && drawText) {
+        if (items.empty() && drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(style.textColor);
             canvas.text("<empty>", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
         }
@@ -995,7 +1037,7 @@ void drawWidget(visage::Canvas& canvas,
             }
             itemLeft += itemWidth + 6.0f;
         }
-        if (items.empty() && drawText) {
+        if (items.empty() && drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(style.textColor);
             canvas.text("<empty>", widgetFont, visage::Font::kCenter, bounds.x, bounds.y, bounds.width, bounds.height);
         }
@@ -1015,7 +1057,7 @@ void drawWidget(visage::Canvas& canvas,
             const float fw = fieldWidth;
             if (drawText) {
                 const std::string key = std::string("text") + std::to_string(i);
-                const std::string text = getDisplayTextOrFallback(widget, key, i == 0 ? "Ready" : "");
+                const std::string text = getStringProperty(widget, key, {});
                 canvas.setColor(style.textColor);
                 canvas.text(text, widgetFont, visage::Font::kTopLeft,
                     fx + fieldInset, textTop, std::max(0.0f, fw - fieldInset * 2.0f), textHeight);
@@ -1056,8 +1098,8 @@ void drawWidget(visage::Canvas& canvas,
         drawBorder(canvas, { swatchX, swatchY, swatchSize, swatchSize }, style.borderColor, style.borderThickness);
         if (drawText) {
             canvas.setColor(style.textColor);
-            const std::string label = showText ? getDisplayTextOrFallback(widget, "text", "Color") : colorValue;
-            const std::string text = showText ? label + "  " + colorValue : colorValue;
+            const std::string label = showText ? getStringProperty(widget, "text", {}) : std::string{};
+            const std::string text = showText && !label.empty() ? label + "  " + colorValue : colorValue;
             canvas.text(text, font, visage::Font::kTopLeft,
                 textX, bounds.y + bounds.height * 0.5f - 10.0f,
                 std::max(0.0f, bounds.width - (textX - bounds.x) - 8.0f), std::max(0.0f, bounds.height - 8.0f));
@@ -1112,22 +1154,27 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::Frame:
         drawRoundedBox(canvas, bounds, style);
         if (drawText) {
-            canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "title", widgetLabel(widget)), widgetFont, visage::Font::kTopLeft,
-                bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 16.0f), 20.0f);
+            const std::string title = runtimeTextOrEditorLabel(widget, "title", showEditorDecorations);
+            if (!title.empty()) {
+                canvas.setColor(style.textColor);
+                canvas.text(title, widgetFont, visage::Font::kTopLeft,
+                    bounds.x + 8.0f, bounds.y + 6.0f, std::max(0.0f, bounds.width - 16.0f), 20.0f);
+            }
         }
         break;
     case model::WidgetType::GroupBox: {
         const PanelRect contentBounds{ bounds.x, bounds.y + 10.0f, bounds.width, std::max(0.0f, bounds.height - 10.0f) };
         drawRoundedBox(canvas, contentBounds, style);
         if (drawText) {
-            const std::string title = getStringProperty(widget, "title", "Group");
-            const float titleWidth = std::min(bounds.width - 20.0f, std::max(48.0f, estimateDesignerTextWidth(title, fontSize)));
-            canvas.setColor(style.fillColor);
-            canvas.fill(bounds.x + 12.0f, bounds.y, titleWidth + 12.0f, 20.0f);
-            canvas.setColor(style.textColor);
-            canvas.text(title, widgetFont, visage::Font::kTopLeft,
-                bounds.x + 18.0f, bounds.y + 1.0f, std::max(0.0f, bounds.width - 28.0f), 18.0f);
+            const std::string title = runtimeTextOrEditorLabel(widget, "title", showEditorDecorations);
+            if (!title.empty()) {
+                const float titleWidth = std::min(bounds.width - 20.0f, std::max(48.0f, estimateDesignerTextWidth(title, fontSize)));
+                canvas.setColor(style.fillColor);
+                canvas.fill(bounds.x + 12.0f, bounds.y, titleWidth + 12.0f, 20.0f);
+                canvas.setColor(style.textColor);
+                canvas.text(title, widgetFont, visage::Font::kTopLeft,
+                    bounds.x + 18.0f, bounds.y + 1.0f, std::max(0.0f, bounds.width - 28.0f), 18.0f);
+            }
         }
         break;
     }
@@ -1136,7 +1183,7 @@ void drawWidget(visage::Canvas& canvas,
         break;
     case model::WidgetType::Sizer:
         drawRoundedBox(canvas, bounds, style.fillColor, blendColor(style.borderColor, style.fillColor, 0.25f), style.borderThickness, style.cornerRadius);
-        if (drawText) {
+        if (drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             const std::string label = std::string(model::toString(model::parseSizerOrientation(widget))) + " Sizer";
             canvas.setColor(blendColor(style.textColor, style.fillColor, 0.35f));
             canvas.text(label, widgetFont, widget.children.empty() ? visage::Font::kCenter : visage::Font::kTopLeft,
@@ -1176,60 +1223,85 @@ void drawWidget(visage::Canvas& canvas,
         break;
     case model::WidgetType::Label:
         if (drawText) {
-            canvas.setColor(style.textColor);
-            canvas.text(getDisplayTextOrFallback(widget, "text", "Label"), widgetFont, visage::Font::kTopLeft,
-                bounds.x + 6.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
-                std::max(0.0f, bounds.width - 12.0f), std::max(0.0f, bounds.height - 8.0f));
+            const std::string text = runtimeTextOrEditorLabel(widget, "text", showEditorDecorations);
+            if (!text.empty()) {
+                canvas.setColor(style.textColor);
+                canvas.text(text, widgetFont, visage::Font::kTopLeft,
+                    bounds.x + 6.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
+                    std::max(0.0f, bounds.width - 12.0f), std::max(0.0f, bounds.height - 8.0f));
+            }
         }
         break;
     case model::WidgetType::Button:
     {
         const bool pressedState = widget.getBoolProperty("toggleMode", false) && widget.getBoolProperty("checked", false);
+        const bool enabled = widgetIsEnabled(widget);
         const std::string text = getStringProperty(widget, "text", {});
         const std::string configuredNormalText = getStringProperty(widget, "normalText", {});
         const std::string configuredPressedText = getStringProperty(widget, "pressedText", {});
         const std::string normalText = !configuredNormalText.empty()
             ? configuredNormalText
-            : (!text.empty() ? text : std::string{ "Button" });
+            : (!text.empty() ? text : editorOnlyLabel(widget, showEditorDecorations));
         const std::string pressedText = !configuredPressedText.empty() ? configuredPressedText : normalText;
         const int normalFillColor = parseColorOrDefault(getStringProperty(widget, "normalFillColor", {}), style.fillColor);
         const int pressedFillColor = parseColorOrDefault(getStringProperty(widget, "pressedFillColor", {}), blendColor(style.fillColor, style.accentColor, 0.18f));
-        const float radius = std::clamp(style.cornerRadius, 0.0f, std::min(bounds.width, bounds.height) * 0.5f);
-        canvas.setColor(pressedState ? pressedFillColor : normalFillColor);
-        fillRoundedRect(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, pressedState ? pressedFillColor : normalFillColor);
-        drawRoundedRectBorder(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, style.borderColor, style.borderThickness, pressedState ? pressedFillColor : normalFillColor);
-        if (drawText) {
-            canvas.setColor(style.textColor);
+        const int stateFill = pressedState ? pressedFillColor : normalFillColor;
+        const auto palette = baselinePalette(style, stateFill);
+        visual_style::drawBevel(canvas, baselineRect(bounds), palette, pressedState, false, enabled);
+        if (drawText && !normalText.empty()) {
+            canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.text(pressedState ? pressedText : normalText, widgetFont, visage::Font::kCenter,
-                bounds.x, bounds.y, bounds.width, bounds.height);
+                bounds.x + (pressedState ? 1.0f : 0.0f), bounds.y + (pressedState ? 1.0f : 0.0f),
+                bounds.width, bounds.height);
         }
         break;
     }
-    case model::WidgetType::TextBox:
-        drawRoundedBox(canvas, bounds, style);
+    case model::WidgetType::TextBox: {
+        const bool enabled = widgetIsEnabled(widget);
+        const bool readOnly = widget.getBoolProperty("readOnly", false);
+        auto palette = baselinePalette(style, style.fillColor);
+        if (readOnly) {
+            palette.recessedFill = visual_style::blend(palette.recessedFill, palette.disabled, 0.28f);
+        }
+        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
         if (drawText) {
-            canvas.setColor(style.textColor);
+            canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.text(getStringProperty(widget, "text", ""), widgetFont, visage::Font::kTopLeft,
-                bounds.x + 8.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
-                std::max(0.0f, bounds.width - 16.0f), std::max(0.0f, bounds.height - 8.0f));
+                bounds.x + 9.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
+                std::max(0.0f, bounds.width - 18.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
+    }
     case model::WidgetType::ComboBox: {
+        const bool enabled = widgetIsEnabled(widget);
         const auto items = model::splitItems(getStringProperty(widget, "items", {}));
         const int selectedIndex = model::sanitizeSelectedIndex(items, widget.getIntProperty("selectedIndex", items.empty() ? -1 : 0));
         const std::string selectedText = model::getSelectedItemText(items, selectedIndex);
         const float arrowWidth = std::min(26.0f, std::max(20.0f, bounds.width * 0.18f));
-        drawRoundedBox(canvas, bounds, style);
-        canvas.setColor(blendColor(style.panelColor, style.fillColor, 0.22f));
-        canvas.fill(bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height);
-        drawBorder(canvas, { bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height }, style.borderColor, style.borderThickness);
-        canvas.setColor(style.borderColor);
-        canvas.fill(bounds.x + bounds.width - arrowWidth * 0.5f - 4.0f, bounds.y + bounds.height * 0.5f - 1.0f, 8.0f, 2.0f);
+        auto palette = baselinePalette(style, style.fillColor);
+        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        const visual_style::Rect arrowBounds{
+            bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height
+        };
+        auto arrowPalette = palette;
+        arrowPalette.fill = blendColor(style.panelColor, style.fillColor, 0.22f);
+        visual_style::drawBevel(canvas, arrowBounds, arrowPalette, false, false, enabled);
+        canvas.setColor(enabled ? palette.text : palette.disabled);
+        const float arrowCenterX = arrowBounds.x + arrowBounds.width * 0.5f;
+        const float arrowCenterY = arrowBounds.y + arrowBounds.height * 0.5f;
+        canvas.fill(arrowCenterX - 4.0f, arrowCenterY - 1.0f, 8.0f, 1.0f);
+        canvas.fill(arrowCenterX - 3.0f, arrowCenterY, 6.0f, 1.0f);
+        canvas.fill(arrowCenterX - 2.0f, arrowCenterY + 1.0f, 4.0f, 1.0f);
         if (drawText) {
-            canvas.setColor(style.textColor);
-            canvas.text(selectedText.empty() ? std::string{ "<empty>" } : selectedText, widgetFont, visage::Font::kTopLeft,
-                bounds.x + 8.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
-                std::max(0.0f, bounds.width - arrowWidth - 14.0f), std::max(0.0f, bounds.height - 8.0f));
+            canvas.setColor(visual_style::stateTextColor(palette, enabled));
+            const std::string displayText = selectedText.empty() && shouldDrawEditorLabel(showEditorDecorations)
+                ? std::string{ "<empty>" }
+                : selectedText;
+            if (!displayText.empty()) {
+                canvas.text(displayText, widgetFont, visage::Font::kTopLeft,
+                    bounds.x + 8.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
+                    std::max(0.0f, bounds.width - arrowWidth - 14.0f), std::max(0.0f, bounds.height - 8.0f));
+            }
         }
         break;
     }
@@ -1260,7 +1332,7 @@ void drawWidget(visage::Canvas& canvas,
             canvas.setColor(style.accentColor);
             canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 10.0f, 4.0f, std::max(16.0f, bounds.height * 0.22f));
         }
-        if (items.empty() && drawText) {
+        if (items.empty() && drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(style.textColor);
             canvas.text("<empty>", widgetFont, visage::Font::kCenter,
                 bounds.x, bounds.y, bounds.width, bounds.height);
@@ -1310,7 +1382,7 @@ void drawWidget(visage::Canvas& canvas,
             if (showHeader && drawText && columnIndex < columns.size()) {
                 const std::string& headerText = columns[columnIndex];
                 canvas.setColor(style.textColor);
-                canvas.text(headerText.empty() ? std::string{ "<empty>" } : headerText, widgetFont, visage::Font::kTopLeft,
+                canvas.text(headerText, widgetFont, visage::Font::kTopLeft,
                     columnX + 6.0f, contentY + std::max(3.0f, (headerHeight - fontSize * 1.3f) * 0.35f),
                     std::max(0.0f, columnWidth - 12.0f), std::max(0.0f, headerHeight - 6.0f));
             }
@@ -1350,12 +1422,12 @@ void drawWidget(visage::Canvas& canvas,
             canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 10.0f, 4.0f, std::max(16.0f, bounds.height * 0.22f));
         }
 
-        if (columns.empty() && drawText) {
+        if (columns.empty() && drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(style.textColor);
             canvas.text("<no columns>", widgetFont, visage::Font::kCenter,
                 bounds.x, bounds.y, bounds.width, bounds.height);
         }
-        else if (rows.empty() && drawText) {
+        else if (rows.empty() && drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(style.textColor);
             canvas.text("<no rows>", widgetFont, visage::Font::kCenter,
                 bounds.x, bounds.y + headerHeight, bounds.width, std::max(0.0f, bounds.height - headerHeight));
@@ -1429,7 +1501,7 @@ void drawWidget(visage::Canvas& canvas,
             canvas.fill(bounds.x + bounds.width - 8.0f, bounds.y + 10.0f, 4.0f, std::max(16.0f, bounds.height * 0.22f));
         }
 
-        if (visibleNodes.empty() && drawText) {
+        if (visibleNodes.empty() && drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(style.textColor);
             canvas.text("<empty>", widgetFont, visage::Font::kCenter,
                 bounds.x, bounds.y, bounds.width, bounds.height);
@@ -1437,22 +1509,28 @@ void drawWidget(visage::Canvas& canvas,
         break;
     }
     case model::WidgetType::CheckBox: {
+        const bool enabled = widgetIsEnabled(widget);
+        const bool checked = getBoolProperty(widget, "checked", false);
         const float boxSize = 18.0f;
         const float squareX = bounds.x + 6.0f;
         const float squareY = bounds.y + (bounds.height - boxSize) * 0.5f;
         const float textX = squareX + boxSize + 12.0f;
-        canvas.setColor(style.fillColor);
-        canvas.fill(squareX, squareY, boxSize, boxSize);
-        drawBorder(canvas, { squareX, squareY, boxSize, boxSize }, style.borderColor, style.borderThickness);
-        if (getBoolProperty(widget, "checked", false)) {
-            canvas.setColor(style.accentColor);
+        const auto palette = baselinePalette(style, style.fillColor);
+        visual_style::drawRecessed(canvas, { squareX, squareY, boxSize, boxSize }, palette, false, enabled);
+        if (checked) {
+            canvas.setColor(enabled ? style.accentColor : visual_style::blend(style.accentColor, style.disabledColor, 0.62f));
             canvas.fill(squareX + 4.0f, squareY + 4.0f, 10.0f, 10.0f);
+            canvas.setColor(palette.highlight);
+            canvas.fill(squareX + 5.0f, squareY + 5.0f, 8.0f, 1.0f);
         }
         if (drawText) {
-            canvas.setColor(style.textColor);
-            canvas.text(getDisplayTextOrFallback(widget, "text", "CheckBox"), widgetFont, visage::Font::kTopLeft,
-                textX, centeredTextTop(bounds.y, bounds.height, fontSize),
-                std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+            const std::string text = runtimeTextOrEditorLabel(widget, "text", showEditorDecorations);
+            if (!text.empty()) {
+                canvas.setColor(visual_style::stateTextColor(palette, enabled));
+                canvas.text(text, widgetFont, visage::Font::kTopLeft,
+                    textX, centeredTextTop(bounds.y, bounds.height, fontSize),
+                    std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+            }
         }
         break;
     }
@@ -1470,28 +1548,36 @@ void drawWidget(visage::Canvas& canvas,
             fillCircleApprox(canvas, centerX, centerY, 4.0f, style.accentColor);
         }
         if (drawText) {
-            canvas.setColor(style.textColor);
-            canvas.text(getDisplayTextOrFallback(widget, "text", "Radio Button"), widgetFont, visage::Font::kTopLeft,
-                textX, centeredTextTop(bounds.y, bounds.height, fontSize),
-                std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+            const std::string text = runtimeTextOrEditorLabel(widget, "text", showEditorDecorations);
+            if (!text.empty()) {
+                canvas.setColor(style.textColor);
+                canvas.text(text, widgetFont, visage::Font::kTopLeft,
+                    textX, centeredTextTop(bounds.y, bounds.height, fontSize),
+                    std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+            }
         }
         break;
     }
     case model::WidgetType::Slider: {
+        const bool enabled = widgetIsEnabled(widget);
         const float normalized = normalizedSliderValue(widget);
-        const float trackY = bounds.y + bounds.height * 0.5f - 2.0f;
+        const float trackY = std::floor(bounds.y + bounds.height * 0.5f - 3.0f);
         const float trackLeft = bounds.x + 8.0f;
         const float trackWidth = std::max(0.0f, bounds.width - 16.0f);
         const float handleCenterX = trackLeft + trackWidth * normalized;
         const float handleX = std::clamp(handleCenterX - 6.0f, trackLeft - 6.0f, trackLeft + trackWidth - 6.0f);
-        canvas.setColor(style.borderColor);
-        canvas.fill(trackLeft, trackY, trackWidth, 4.0f);
-        canvas.setColor(style.accentColor);
-        canvas.fill(handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f);
-        drawBorder(canvas, { handleX, bounds.y + bounds.height * 0.5f - 8.0f, 12.0f, 16.0f }, style.borderColor, style.borderThickness);
-        if (drawText) {
-            canvas.setColor(style.textColor);
-            canvas.text(getStringProperty(widget, "text", widgetLabel(widget)), widgetFont, visage::Font::kTopLeft,
+        const auto palette = baselinePalette(style, style.fillColor);
+        visual_style::drawRecessed(canvas, { trackLeft, trackY, trackWidth, 6.0f }, palette, false, enabled);
+        const visual_style::Rect thumb{
+            handleX, std::floor(bounds.y + bounds.height * 0.5f - 9.0f), 12.0f, 18.0f
+        };
+        auto thumbPalette = palette;
+        thumbPalette.fill = enabled ? style.accentColor : visual_style::blend(style.accentColor, style.disabledColor, 0.62f);
+        visual_style::drawBevel(canvas, thumb, thumbPalette, false, false, enabled);
+        const std::string editorLabel = editorOnlyLabel(widget, showEditorDecorations);
+        if (drawText && !editorLabel.empty()) {
+            canvas.setColor(visual_style::stateTextColor(palette, enabled));
+            canvas.text(editorLabel, widgetFont, visage::Font::kTopLeft,
                 bounds.x, bounds.y - 18.0f, bounds.width, 16.0f);
         }
         break;
@@ -1621,7 +1707,7 @@ void drawWidget(visage::Canvas& canvas,
         }
 
         drawBorder(canvas, bounds, borderColor, style.borderThickness);
-        if (drawText && !drewImage) {
+        if (drawText && !drewImage && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(borderColor == style.borderColor ? style.textColor : borderColor);
             canvas.text(placeholderText, widgetFont, visage::Font::kCenter,
                 bounds.x + 6.0f, bounds.y, std::max(0.0f, bounds.width - 12.0f), bounds.height);
@@ -1632,7 +1718,7 @@ void drawWidget(visage::Canvas& canvas,
         canvas.setColor(blendColor(style.fillColor, style.panelColor, 0.45f));
         canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
         drawBorder(canvas, bounds, blendColor(style.borderColor, style.accentColor, 0.45f), 1.0f);
-        if (drawText) {
+        if (drawText && shouldDrawEditorLabel(showEditorDecorations)) {
             canvas.setColor(style.textColor);
             const std::string label = model::parseSpacerKind(widget) == model::SpacerKind::Stretch ? "Stretch Spacer" : "Fixed Spacer";
             canvas.text(label, widgetFont, visage::Font::kCenter, bounds.x + 4.0f, bounds.y, std::max(0.0f, bounds.width - 8.0f), bounds.height);

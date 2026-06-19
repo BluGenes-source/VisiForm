@@ -1,0 +1,329 @@
+Implement VisiForm Phase 105: Runtime Visual Styling Baseline.
+
+Phase 104 is complete and pushed.
+
+Use:
+
+* Phase: 105
+* Version: 1.0.11
+* Subagents: none
+
+Keep token use minimal and limit this to a reusable baseline, not a full theme system.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 104 plan
+* files directly related to:
+
+  * widget rendering
+  * shared colors, borders, shadows, and state styles
+  * Preview Mode rendering
+  * exported widget rendering, only where directly relevant
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_105_runtime_visual_styling_baseline_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.11`
+* record the previous version and `1.0.11`
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not build a theme editor.
+Do not refactor unrelated widget behavior.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Create a small reusable visual-style baseline for common widgets so they look more dimensional and polished in:
+
+* Design Mode
+* Preview Mode
+* exported runtime output where the same rendering path or generator support already exists
+
+The goal is consistent reusable styling, not one-off hard-coded effects.
+
+## Initial widget scope
+
+Apply the baseline only to:
+
+* Button
+* Text Box
+* Check Box
+* Combo Box
+* Slider
+* Splitter
+
+Do not expand to every widget in this phase.
+
+## Shared style primitives
+
+Introduce or reuse shared values/helpers for:
+
+* background fill
+* border color
+* border width
+* corner radius
+* highlight edge
+* shadow edge
+* hover state
+* pressed state
+* checked state
+* disabled state
+* focus indication
+* splitter raised/recessed appearance
+
+Prefer one compact style structure or helper layer.
+
+Do not duplicate slightly different color and shadow logic in each widget.
+
+## Visual direction
+
+Use a restrained 2D beveled style.
+
+### Button
+
+Add:
+
+* subtle raised appearance in normal state
+* top/left highlight
+* bottom/right shadow
+* pressed state that appears slightly recessed
+* hover state with modest emphasis
+* disabled state with reduced contrast
+* readable centered text
+
+Do not add large drop shadows or glossy effects.
+
+### Text Box
+
+Add:
+
+* subtle recessed border
+* clear editable interior
+* visible focus state
+* disabled/read-only distinction where already supported
+* consistent padding
+
+Do not change text-edit behavior.
+
+### Check Box
+
+Add:
+
+* consistent box border
+* hover and pressed feedback
+* clear checked state
+* disabled state
+* readable label spacing
+
+Do not change stored checked behavior.
+
+### Combo Box
+
+Add:
+
+* consistent field styling
+* separated arrow-button area
+* raised or recessed arrow-button treatment
+* hover/pressed feedback
+* readable text and padding
+
+Do not change dropdown behavior.
+
+### Slider
+
+Add:
+
+* clearer track
+* subtle recessed track treatment
+* raised thumb
+* hover/pressed thumb feedback
+* disabled state
+
+Do not change slider values or interaction.
+
+### Splitter
+
+Add:
+
+* subtle raised or recessed line
+* highlight on one side
+* shadow on the opposite side
+* hover feedback if existing interaction supports it
+* visible but compact drag affordance
+
+Do not increase splitter thickness excessively.
+
+## Rendering consistency
+
+Use the same style values wherever practical across:
+
+* designer widget rendering
+* Preview Mode
+* generated runtime rendering
+
+If exported widgets use a different implementation path, update only the directly relevant generator/style path needed for these six widgets.
+
+Do not claim exact runtime parity where the architecture does not yet support it.
+
+Document any remaining differences.
+
+## State handling
+
+Use existing widget state sources.
+
+Support where already available:
+
+* normal
+* hover
+* pressed
+* focused
+* checked
+* disabled
+
+Do not invent duplicate state machines.
+
+Preview Mode may allow temporary visual interaction, but must not modify the project model.
+
+Design Mode selection overlays must remain visually distinct from widget styling.
+
+## Selection and resize overlays
+
+Preserve editor-only overlays:
+
+* selection outline
+* resize handles
+* resize corner arcs
+* guides
+* hover affordances
+
+The new widget styling must not obscure:
+
+* selected boundaries
+* handles
+* resize arcs
+* text
+* focus indicators
+
+Preview Mode must continue to hide editor-only decorations.
+
+## Color and DPI handling
+
+Requirements:
+
+* reuse existing application colors where practical
+* avoid scattered literal color values
+* preserve readable contrast
+* scale border and shadow geometry safely with DPI
+* avoid blurry half-pixel lines where possible
+* keep styling usable at different zoom levels
+
+Do not introduce a full user-configurable theme system.
+
+## Export behavior
+
+For generated output:
+
+* reuse shared style constants where architecture allows
+* keep generated code readable
+* preserve existing user-code regions
+* do not break projects that do not use new style properties
+* do not change `.vfb.json` unless new persisted properties are truly required
+
+For this base phase, prefer fixed application style defaults over adding many new serialized properties.
+
+## Scope boundaries
+
+Do not add:
+
+* theme editor
+* skin files
+* custom style inspector
+* gradients
+* animations
+* glow effects
+* per-widget shadow controls
+* arbitrary border editors
+* dark/light theme switching
+* runtime CSS-like styling
+* full visual parity for all widgets
+
+Record those as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.11`.
+4. Inspect each supported widget in Design Mode.
+5. Enter Preview Mode and inspect the same widgets.
+6. Verify normal, hover, pressed, checked, focused, and disabled states where available.
+7. Confirm text remains readable.
+8. Confirm selection outlines and resize handles remain clear.
+9. Confirm resize arcs remain visible.
+10. Confirm splitter remains easy to drag.
+11. Test at several zoom levels.
+12. Test normal and maximized window layouts.
+13. Export a project containing all six widget types.
+14. Build or inspect generated output through the approved workflow.
+15. Compare designer, preview, and exported appearance.
+16. Record any remaining parity gaps.
+17. Confirm save/reload behavior is unchanged.
+18. Confirm autosave and recovery remain functional.
+
+Do not claim runtime or generated-output validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 105 plan with:
+
+* previous and new version
+* shared style primitives
+* widgets updated
+* state mappings
+* DPI and zoom behavior
+* designer/preview/export consistency
+* known parity gaps
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep the update concise.
+
+## Completion report
+
+Report:
+
+* Phase 105 plan path
+* version change to `1.0.11`
+* shared visual-style architecture
+* widgets updated
+* supported visual states
+* splitter styling
+* designer/preview/export parity
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

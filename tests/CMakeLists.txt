@@ -7,7 +7,9 @@ add_executable(VisiFormTests
     test_box_sizer_layout.cpp
     test_layout_engine.cpp
     test_project_validation.cpp
+    test_generated_runtime_labels.cpp
     test_splitter.cpp
+    ${CMAKE_SOURCE_DIR}/src/generator/VisageCppEmitter.cpp
     ${CMAKE_SOURCE_DIR}/src/model/ProjectDocument.cpp
     ${CMAKE_SOURCE_DIR}/src/model/FormNode.cpp
     ${CMAKE_SOURCE_DIR}/src/model/BoxSizerLayout.cpp
