@@ -4,6 +4,7 @@
 
 #include "model/BoxSizerLayout.h"
 #include "model/LayoutEngine.h"
+#include "model/WidgetPlacement.h"
 #include "model/WidgetRegistry.h"
 #include "utils/IdGenerator.h"
 
@@ -259,7 +260,13 @@ ProjectDocument ProjectDocument::createDefault()
 
     WidgetNode helloButton = WidgetRegistry::instance().createDefaultWidget(WidgetType::Button, "button_hello");
     helloButton.name = "helloButton";
-    helloButton.bounds = Rect{ 40.0f, 40.0f, 160.0f, 40.0f };
+    helloButton.bounds = safeWidgetPlacement(
+        LayoutEngine::clientBoundsForParent(document.root),
+        helloButton.bounds.width,
+        helloButton.bounds.height,
+        40.0f,
+        40.0f,
+        20.0f);
     helloButton.setProperty("text", "Click Me");
     document.root.appendChild(std::move(helloButton));
     document.applyDockLayout();

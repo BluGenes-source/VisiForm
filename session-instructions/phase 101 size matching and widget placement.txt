@@ -1,0 +1,298 @@
+Implement VisiForm Phase 101: Size Matching Options and Safe Widget Placement.
+
+Phase 100 is complete and pushed.
+
+Use:
+
+* Phase: 101
+* Version: 1.0.7
+* Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 100 plan
+* files directly related to:
+
+  * Same Width and Same Height commands
+  * multi-selection geometry
+  * Layout menu construction
+  * undo/redo
+  * new-project initialization
+  * initial widget placement
+  * palette widget creation
+  * canvas viewport transforms
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_101_size_matching_safe_placement_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.7`
+* record the previous version and `1.0.7`
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not refactor unrelated layout or canvas systems.
+Build once after implementation unless fixing a build error requires another pass.
+
+## Goal 1: Expand Same Width and Same Height
+
+Refine the existing sizing commands so selected widgets can match:
+
+* the primary selected widget
+* the smallest selected widget
+* the largest selected widget
+
+Use visible menu commands rather than requiring an undocumented modifier key.
+
+Preferred menu structure:
+
+* Same Width
+
+  * Match Primary
+  * Match Smallest
+  * Match Largest
+* Same Height
+
+  * Match Primary
+  * Match Smallest
+  * Match Largest
+
+If the current menu system cannot support submenus cleanly, use clearly named separate commands.
+
+Do not remove the existing primary-widget behavior.
+
+## Size reference rules
+
+### Match Primary
+
+Use the existing primary selected widget as the reference.
+
+### Match Smallest
+
+* Same Width: use the smallest width among compatible selected widgets.
+* Same Height: use the smallest height among compatible selected widgets.
+
+### Match Largest
+
+* Same Width: use the largest width among compatible selected widgets.
+* Same Height: use the largest height among compatible selected widgets.
+
+Requirements:
+
+* reference calculation uses model-space dimensions
+* all compatible selected widgets receive the reference dimension
+* preserve positions unless resizing constraints require otherwise
+* do not change the unaffected dimension
+* respect minimum sizes
+* respect fixed-size widgets
+* protect sizer-managed dimensions
+* require at least two compatible sibling widgets
+* disable commands for incompatible cross-parent selections
+* no-op operations must not create undo entries
+
+## Optional modifier behavior
+
+Do not make modifier keys the only way to access these commands.
+
+A modifier shortcut may be added only if it fits the existing command system cleanly and remains documented.
+
+Do not add hidden Ctrl-click behavior directly to menu items without visible command equivalents.
+
+## Undo and redo
+
+Each sizing action must create one undoable command.
+
+Requirements:
+
+* one action creates one undo step
+* undo restores all original dimensions
+* redo reapplies the selected sizing mode
+* selection remains stable
+* no-op commands do not dirty the project
+
+Reuse the existing Phase 100 command path.
+
+## Goal 2: Fix initial default-widget placement
+
+When VisiForm starts or creates a new project, the default Button can appear partially outside the form or canvas.
+
+Trace the initial placement path and determine whether it uses:
+
+* stale canvas dimensions
+* viewport coordinates instead of model coordinates
+* form bounds before layout completes
+* zoom or pan offsets incorrectly
+* hard-coded placement values
+* incorrect centering calculations
+
+Fix the root cause.
+
+Requirements:
+
+* the default widget must be fully inside the top-level form
+* placement must use form/model bounds, not application-window coordinates
+* placement must work at any zoom or pan state
+* placement must remain correct after window resizing
+* opening VisiForm must show a valid initial project
+* creating a new project must produce the same valid placement
+
+Do not merely clamp the rendered rectangle while leaving incorrect model coordinates.
+
+## Goal 3: Fix placement of newly created widgets
+
+Widgets created from the top palette can also appear partially outside the form.
+
+Ensure newly created widgets are placed fully inside their intended parent.
+
+For click-to-create behavior:
+
+* choose a safe default position inside the active form or container
+* include a modest inset from the parent edges
+* account for the new widget’s default size
+* clamp the complete widget bounds inside the parent
+* convert view coordinates to model coordinates when zoom or pan is active
+
+For drag/drop creation:
+
+* use the drop point in model space
+* clamp only when necessary to keep the widget inside the valid parent
+* preserve correct container targeting
+* do not incorrectly reparent due to visual overlap
+
+If the widget is larger than the available parent area, place it at the parent inset and preserve its valid minimum/default size rather than producing invalid negative coordinates.
+
+## Shared placement helper
+
+Prefer one small shared helper for safe initial placement.
+
+It should accept:
+
+* parent model bounds
+* desired widget size
+* preferred model-space position
+* edge inset
+
+It should return a position that keeps the complete widget inside the parent where possible.
+
+Use it for:
+
+* initial default widgets
+* new-project widgets
+* palette click-to-create
+* other directly related creation paths
+
+Do not replace explicit user drag positioning unnecessarily.
+
+## Coordinate integrity
+
+All placement calculations must use model-space coordinates.
+
+Account for:
+
+* canvas zoom
+* canvas pan
+* form origin
+* nested container origin
+* border or content inset where relevant
+
+Do not save viewport coordinates into widget geometry.
+
+## Preserve existing behavior
+
+Do not regress:
+
+* Phase 100 alignment and distribution commands
+* primary-selection rules
+* multi-selection
+* undo/redo
+* Project Tree updates
+* container parenting
+* sizer insertion
+* zoom and pan
+* Preview Mode
+* save/reload
+* generated output
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.7`.
+4. Select widgets with different widths.
+5. Test Same Width → Match Primary.
+6. Test Same Width → Match Smallest.
+7. Test Same Width → Match Largest.
+8. Repeat for Same Height.
+9. Verify undo and redo for each mode.
+10. Confirm no-op actions create no undo entry.
+11. Confirm incompatible and sizer-managed selections are disabled or protected.
+12. Launch VisiForm with its default project.
+13. Confirm the default Button is fully inside the form.
+14. Create a new project.
+15. Confirm its initial widget is fully inside the form.
+16. Create widgets from the palette at 100% zoom.
+17. Repeat while zoomed and panned.
+18. Create widgets inside Panel, Frame, Group Box, and tab-page containers.
+19. Confirm complete widget bounds remain inside the intended parent.
+20. Test drag/drop near each parent edge.
+21. Confirm Project Tree parenting remains correct.
+22. Save and reload.
+23. Confirm widget positions and sizes persist correctly.
+
+Do not claim manual runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 101 plan with:
+
+* previous and new version
+* sizing command structure
+* primary, smallest, and largest reference rules
+* undo/redo behavior
+* root cause of invalid initial placement
+* shared placement calculation
+* zoom/pan coordinate handling
+* files changed
+* build result
+* manual validation performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has a current-progress section. Keep the change concise.
+
+## Completion report
+
+Report:
+
+* Phase 101 plan path
+* version change to `1.0.7`
+* new size-matching options
+* menu structure
+* undo/redo integration
+* initial-placement root cause
+* safe-placement solution
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

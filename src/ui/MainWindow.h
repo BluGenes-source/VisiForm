@@ -124,7 +124,11 @@ private:
         CenterHorizontally,
         CenterVertically,
         SameWidth,
+        SameWidthSmallest,
+        SameWidthLargest,
         SameHeight,
+        SameHeightSmallest,
+        SameHeightLargest,
         DistributeHorizontally,
         DistributeVertically,
         ToggleSmartGuides,
@@ -470,8 +474,13 @@ private:
     void alignSelectedBottom();
     void centerSelectedHorizontally();
     void centerSelectedVertically();
-    void makeSelectedSameWidth();
-    void makeSelectedSameHeight();
+    enum class SizeMatchMode {
+        Primary,
+        Smallest,
+        Largest
+    };
+    void makeSelectedSameWidth(SizeMatchMode mode);
+    void makeSelectedSameHeight(SizeMatchMode mode);
     void distributeSelectedHorizontally();
     void distributeSelectedVertically();
     void nudgeSelectedWidgets(float dx, float dy);

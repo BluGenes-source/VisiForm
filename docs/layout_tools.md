@@ -186,25 +186,41 @@ Current behavior:
 
 ## Same Width
 
-Matches selected sibling widget widths to the primary widget.
+The Layout menu exposes:
+
+- `Same Width: Match Primary`
+- `Same Width: Match Smallest`
+- `Same Width: Match Largest`
 
 Current behavior:
 
 - requires at least two compatible selected widgets
-- the primary widget stays unchanged
+- calculates the reference from model-space widths
+- Primary uses the current primary selected widget
+- Smallest and Largest use the corresponding selected width
+- raises the shared target when necessary to satisfy every selected widget's minimum width
 - positions stay unchanged
-- widget-specific minimum width is enforced
+- heights stay unchanged
+- direct Sizer children, dock-managed widgets, and cross-parent selections are protected
 
 ## Same Height
 
-Matches selected sibling widget heights to the primary widget.
+The Layout menu exposes:
+
+- `Same Height: Match Primary`
+- `Same Height: Match Smallest`
+- `Same Height: Match Largest`
 
 Current behavior:
 
 - requires at least two compatible selected widgets
-- the primary widget stays unchanged
+- calculates the reference from model-space heights
+- Primary uses the current primary selected widget
+- Smallest and Largest use the corresponding selected height
+- raises the shared target when necessary to satisfy every selected widget's minimum height
 - positions stay unchanged
-- widget-specific minimum height is enforced
+- widths stay unchanged
+- direct Sizer children, dock-managed widgets, and cross-parent selections are protected
 
 ## Distribute Horizontally
 

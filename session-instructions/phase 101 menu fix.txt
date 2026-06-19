@@ -1,0 +1,210 @@
+Continue VisiForm Phase 101. Do not create a new phase and do not change version 1.0.7.
+
+Phase 101 is not complete yet.
+
+Current issues:
+
+1. The new Same Width and Same Height menu labels are clipped, making the commands unreadable.
+2. The default Button still starts partially outside the form.
+3. Creating a new project produces the same partially off-form default Button.
+4. The size-matching commands appear to work, but full validation is blocked by the unreadable menu.
+
+Keep this pass narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 101 plan and files directly related to:
+  - Layout menu sizing and text rendering
+  - command labels and shortcuts
+  - initial project creation
+  - default widget placement
+  - safe placement helper
+  - canvas/model coordinate conversion
+- do not perform a repository-wide audit
+- do not refactor unrelated menu or canvas systems
+- build once after both fixes are complete
+- do not commit or push
+
+## Goal 1: Fix Layout menu text formatting
+
+The Layout menu width is too narrow for the new command labels.
+
+Observed labels include:
+
+- Same Width: Match Primary
+- Same Width: Match Smallest
+- Same Width: Match Largest
+- Same Height: Match Primary
+- Same Height: Match Smallest
+- Same Height: Match Largest
+
+Required behavior:
+
+- all command text is fully readable
+- shortcut text remains aligned in a separate right-side column
+- command labels and shortcuts do not overlap
+- menu width is based on actual rendered text metrics
+- menu width accounts for:
+  - longest command label
+  - shortcut column
+  - left and right padding
+  - submenu indicator if used
+  - icon/checkmark area if used
+- menu height and row spacing remain consistent
+- disabled text remains readable
+- menu does not become unnecessarily wide
+
+Use actual font metrics.
+
+Do not use a fixed width that only fits the current screenshot.
+
+If the menu system supports submenus cleanly, the preferred structure remains:
+
+- Same Width
+  - Match Primary
+  - Match Smallest
+  - Match Largest
+- Same Height
+  - Match Primary
+  - Match Smallest
+  - Match Largest
+
+If submenus are already implemented and working, preserve them.
+
+If the current menu system is using flat commands, keep the existing structure for this pass and correct the width calculation rather than redesigning the menu.
+
+## Goal 2: Re-investigate default widget placement
+
+The previous safe-placement fix did not correct the startup and New Project cases.
+
+Trace the actual creation path for:
+
+- application startup default project
+- File → New or New toolbar command
+- any shared new-project initializer
+- default Button creation
+
+Confirm:
+
+- the parent form bounds at the time placement is calculated
+- the default Button model coordinates
+- the default Button size
+- whether form layout dimensions are final yet
+- whether the placement code runs before the form or canvas has valid dimensions
+- whether model coordinates are confused with canvas/view coordinates
+- whether old hard-coded coordinates bypass the new safe-placement helper
+
+Record the exact root cause in the Phase 101 plan.
+
+## Goal 3: Fix startup and New Project placement at the model source
+
+The default Button must be fully inside the top-level form immediately after project creation.
+
+Requirements:
+
+- use form-local model coordinates
+- do not use canvas viewport coordinates
+- do not depend on zoom, pan, splitter positions, or window size
+- do not place using form bounds that are still zero or uninitialized
+- ensure the default form size is established before calculating child placement
+- use the shared safe-placement helper where appropriate
+- remove or replace any old hard-coded placement path that bypasses the helper
+- do not merely clamp drawing while leaving invalid model coordinates
+
+Preferred behavior:
+
+- use a modest inset from the form’s top-left content area
+- place the complete default Button inside the form
+- produce identical valid results at startup and through New Project
+
+## Placement validation details
+
+Log or inspect the actual resulting values for:
+
+- form x, y, width, height
+- Button x, y, width, height
+- selected parent ID/type
+- requested placement
+- final clamped placement
+
+Remove temporary debug output before completion unless it follows existing logging conventions.
+
+## Preserve existing Phase 101 behavior
+
+Do not regress:
+
+- Same Width → Match Primary
+- Same Width → Match Smallest
+- Same Width → Match Largest
+- Same Height → Match Primary
+- Same Height → Match Smallest
+- Same Height → Match Largest
+- undo and redo
+- multi-selection
+- container compatibility checks
+- sizer restrictions
+- Project Tree updates
+- zoom and pan
+- Preview Mode
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Open the Layout menu.
+4. Confirm every command label is fully readable.
+5. Confirm shortcut text does not overlap command text.
+6. Confirm disabled commands remain legible.
+7. Test all six size-matching commands.
+8. Confirm undo and redo for each command.
+9. Close and relaunch VisiForm.
+10. Confirm the startup default Button is fully inside the form.
+11. Create a new project.
+12. Confirm the New Project default Button is fully inside the form.
+13. Repeat New Project several times.
+14. Confirm placement is consistent.
+15. Test after changing zoom and pan.
+16. Confirm startup and New Project placement do not depend on viewport state.
+17. Confirm saved widget coordinates are valid model coordinates.
+18. Save and reload the project.
+19. Confirm the Button remains in the same valid position.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the existing Phase 101 plan with:
+
+- menu clipping root cause
+- final menu width calculation
+- startup placement root cause
+- New Project placement root cause
+- actual model-coordinate fix
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Update `docs/project_status.md` only after Phase 101 is fully working.
+
+## Completion report
+
+Report:
+
+- menu text-sizing fix
+- whether submenus or flat commands are used
+- exact startup-placement root cause
+- exact New Project placement root cause
+- resulting form and Button model coordinates
+- files changed
+- build result
+- manual validation actually performed
+- remaining issues
+- final Git status
+
+Do not create Phase 102.
+Do not change version 1.0.7.
+Do not commit or push.

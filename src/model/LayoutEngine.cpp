@@ -11,6 +11,7 @@ namespace {
 
 constexpr float kTabControlPageInset = 6.0f;
 constexpr float kTabControlHeaderHeight = 30.0f;
+constexpr float kFormWindowTitleBarHeight = 28.0f;
 constexpr float kFrameHorizontalPadding = 12.0f;
 constexpr float kFrameTopPadding = 28.0f;
 constexpr float kFrameBottomPadding = 12.0f;
@@ -262,6 +263,12 @@ Rect LayoutEngine::clientBoundsForParent(const WidgetNode& parent)
         };
     }
     case WidgetType::FormWindow:
+        return {
+            0.0f,
+            std::min(kFormWindowTitleBarHeight, parent.bounds.height),
+            std::max(kMinimumClientSize, parent.bounds.width),
+            std::max(kMinimumClientSize, parent.bounds.height - kFormWindowTitleBarHeight)
+        };
     case WidgetType::Panel:
     case WidgetType::TabPage:
     default:

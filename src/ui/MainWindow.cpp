@@ -8,6 +8,7 @@
 #include "model/LayoutEngine.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
+#include "model/WidgetPlacement.h"
 #include "model/WidgetRegistry.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
@@ -71,13 +72,13 @@ constexpr float kMenuBarButtonSpacing = 4.0f;
 constexpr float kMenuBarDropdownMinWidth = 220.0f;
 constexpr float kMenuBarItemHeight = 28.0f;
 constexpr float kMenuBarSeparatorHeight = 10.0f;
-constexpr float kNewWidgetStartX = 40.0f;
-constexpr float kNewWidgetStartY = 40.0f;
+constexpr float kMenuItemLeftPadding = 8.0f;
+constexpr float kMenuItemCheckAreaWidth = 16.0f;
+constexpr float kMenuItemLabelShortcutGap = 18.0f;
+constexpr float kMenuItemRightPadding = 14.0f;
 constexpr float kNewWidgetSpacing = 12.0f;
 constexpr float kLayoutMargin = 20.0f;
 constexpr float kSizerDropSnapThreshold = 12.0f;
-constexpr float kGroupBoxChildStartX = 20.0f;
-constexpr float kGroupBoxChildStartY = 36.0f;
 constexpr float kGroupBoxChildOffsetStep = 16.0f;
 constexpr float kGroupBoxContentTopInset = 20.0f;
 constexpr float kTabControlPageInset = 6.0f;
@@ -1681,6 +1682,19 @@ std::filesystem::path suggestedProjectPath(const model::ProjectDocument& documen
     return std::filesystem::path{ projectName + std::string{ model::ProjectDocument::projectFileExtension() } };
 }
 
+float measuredMenuTextWidth(const visage::Font& font, bool canMeasureText, const std::string& text)
+{
+    if (text.empty()) {
+        return 0.0f;
+    }
+    if (!canMeasureText) {
+        return static_cast<float>(text.size()) * 8.0f;
+    }
+
+    const std::u32string utf32 = visage::String::convertUtf8ToUtf32<std::u32string>(text);
+    return font.stringWidth(utf32);
+}
+
 } // namespace
 
 MainWindow::MainWindow()
@@ -2168,6 +2182,16 @@ void MainWindow::applyWizardTemplate(model::ProjectDocument& document, const std
         model::WidgetNode widget = model::WidgetRegistry::instance().createDefaultWidget(type, id);
         widget.bounds = bounds;
         configure(widget);
+        if (widget.dockMode() == model::DockMode::None) {
+            const WidgetSizeMetrics metrics = getWidgetSizeMetrics(type);
+            widget.bounds = model::safeWidgetPlacement(
+                model::LayoutEngine::clientBoundsForParent(document.root),
+                std::max(widget.bounds.width, metrics.minWidth),
+                std::max(widget.bounds.height, metrics.minHeight),
+                widget.bounds.x,
+                widget.bounds.y,
+                kLayoutMargin);
+        }
         document.root.children.push_back(std::move(widget));
     };
 
@@ -4307,52 +4331,55 @@ model::Rect MainWindow::nextDefaultWidgetBounds(model::WidgetType type, const st
     const float width = metrics.defaultWidth;
     const float height = metrics.defaultHeight;
 
-    if (!parentId.empty() && parentId != document_.root.id) {
-        const model::WidgetNode* parent = document_.findWidgetById(parentId);
-        if (parent != nullptr && parent->type == model::WidgetType::GroupBox) {
-            const float maxWidth = std::max(metrics.minWidth, parent->bounds.width - kLayoutMargin * 2.0f);
-            const float maxHeight = std::max(metrics.minHeight, parent->bounds.height - kGroupBoxChildStartY - kLayoutMargin);
-            const float clampedWidth = std::min(width, maxWidth);
-            const float clampedHeight = std::min(height, maxHeight);
-            const float staggerOffset = static_cast<float>(parent->children.size()) * kGroupBoxChildOffsetStep;
-            const float maxX = std::max(kGroupBoxChildStartX, parent->bounds.width - clampedWidth - kLayoutMargin);
-            const float maxY = std::max(kGroupBoxChildStartY, parent->bounds.height - clampedHeight - kLayoutMargin);
-            return {
-                std::min(kGroupBoxChildStartX + staggerOffset, maxX),
-                std::min(kGroupBoxChildStartY + staggerOffset, maxY),
-                clampedWidth,
-                clampedHeight
-            };
-        }
-
-        if (parent != nullptr && parent->type == model::WidgetType::TabPage) {
-            const float maxWidth = std::max(metrics.minWidth, parent->bounds.width - kLayoutMargin * 2.0f);
-            const float maxHeight = std::max(metrics.minHeight, parent->bounds.height - kLayoutMargin * 2.0f);
-            const float clampedWidth = std::min(width, maxWidth);
-            const float clampedHeight = std::min(height, maxHeight);
-            const float staggerOffset = static_cast<float>(parent->children.size()) * kTabPageChildOffsetStep;
-            const float maxX = std::max(kTabPageChildStartX, parent->bounds.width - clampedWidth - kLayoutMargin);
-            const float maxY = std::max(kTabPageChildStartY, parent->bounds.height - clampedHeight - kLayoutMargin);
-            return {
-                std::min(kTabPageChildStartX + staggerOffset, maxX),
-                std::min(kTabPageChildStartY + staggerOffset, maxY),
-                clampedWidth,
-                clampedHeight
-            };
-        }
+    const model::WidgetNode* parent = parentId.empty()
+        ? &document_.root
+        : document_.findWidgetById(parentId);
+    if (parent == nullptr) {
+        parent = &document_.root;
     }
 
-    float nextY = kNewWidgetStartY;
-    for (const auto& child : document_.root.children) {
+    const model::Rect clientBounds = model::LayoutEngine::clientBoundsForParent(*parent);
+    float preferredX = clientBounds.x + kLayoutMargin;
+    float preferredY = clientBounds.y + kLayoutMargin;
+    float staggerStep = kNewWidgetSpacing;
+    if (parent->type == model::WidgetType::GroupBox) {
+        preferredX = clientBounds.x + 4.0f;
+        preferredY = clientBounds.y + 4.0f;
+        staggerStep = kGroupBoxChildOffsetStep;
+    }
+    else if (parent->type == model::WidgetType::TabPage) {
+        preferredX = clientBounds.x + kTabPageChildStartX;
+        preferredY = clientBounds.y + kTabPageChildStartY;
+        staggerStep = kTabPageChildOffsetStep;
+    }
+
+    float nextY = preferredY;
+    for (const auto& child : parent->children) {
         nextY = std::max(nextY, child.bounds.y + child.bounds.height + kNewWidgetSpacing);
     }
-
-    const float maxY = std::max(kNewWidgetStartY, document_.root.bounds.height - height - kNewWidgetStartY);
-    if (nextY > maxY) {
-        nextY = kNewWidgetStartY;
+    if (parent->type == model::WidgetType::GroupBox || parent->type == model::WidgetType::TabPage) {
+        const float staggerOffset = static_cast<float>(parent->children.size()) * staggerStep;
+        preferredX += staggerOffset;
+        nextY = preferredY + staggerOffset;
     }
 
-    return { kNewWidgetStartX, nextY, width, height };
+    const model::Rect placed = model::safeWidgetPlacement(
+        clientBounds,
+        width,
+        height,
+        preferredX,
+        nextY,
+        kLayoutMargin);
+    if (nextY != placed.y && parent->type != model::WidgetType::GroupBox && parent->type != model::WidgetType::TabPage) {
+        return model::safeWidgetPlacement(
+            clientBounds,
+            width,
+            height,
+            preferredX,
+            preferredY,
+            kLayoutMargin);
+    }
+    return placed;
 }
 
 bool MainWindow::enforceMinimumBoundsRecursive(model::WidgetNode& widget)
@@ -4852,7 +4879,7 @@ void MainWindow::centerSelectedVertically()
     redraw();
 }
 
-void MainWindow::makeSelectedSameWidth()
+void MainWindow::makeSelectedSameWidth(SizeMatchMode mode)
 {
     if (!hasCompatibleGeometrySelection(document_, 2)) {
         setOperationStatus("Same Width requires at least two non-sizer siblings");
@@ -4862,15 +4889,30 @@ void MainWindow::makeSelectedSameWidth()
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
     const auto* primary = document_.selectedWidget();
-    const float referenceWidth = primary->bounds.width;
-    const std::string primaryId = primary->id;
+    float referenceWidth = primary->bounds.width;
+    if (mode == SizeMatchMode::Smallest) {
+        referenceWidth = (*std::min_element(selectedWidgets.begin(), selectedWidgets.end(),
+            [](const model::WidgetNode* left, const model::WidgetNode* right) {
+                return left->bounds.width < right->bounds.width;
+            }))->bounds.width;
+    }
+    else if (mode == SizeMatchMode::Largest) {
+        referenceWidth = (*std::max_element(selectedWidgets.begin(), selectedWidgets.end(),
+            [](const model::WidgetNode* left, const model::WidgetNode* right) {
+                return left->bounds.width < right->bounds.width;
+            }))->bounds.width;
+    }
+
+    const std::string referenceLabel = mode == SizeMatchMode::Primary
+        ? "primary"
+        : mode == SizeMatchMode::Smallest ? "smallest" : "largest";
+    for (const auto* selected : selectedWidgets) {
+        referenceWidth = std::max(referenceWidth, getWidgetSizeMetrics(selected->type).minWidth);
+    }
     const std::size_t selectedCount = selectedWidgets.size();
-    if (!applyUndoableDocumentChange("Match width", [&selectedWidgets, referenceWidth, &primaryId]() {
+    if (!applyUndoableDocumentChange("Match width to " + referenceLabel, [&selectedWidgets, referenceWidth]() {
             bool changed = false;
             for (auto* selected : selectedWidgets) {
-                if (selected->id == primaryId) {
-                    continue;
-                }
                 const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
                 const float targetWidth = std::max(metrics.minWidth, referenceWidth);
                 if (selected->bounds.width != targetWidth) {
@@ -4885,12 +4927,12 @@ void MainWindow::makeSelectedSameWidth()
         return;
     }
 
-    setOperationStatus("Matched primary width: " + std::to_string(selectedCount) + " widgets");
+    setOperationStatus("Matched " + referenceLabel + " width: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
 
-void MainWindow::makeSelectedSameHeight()
+void MainWindow::makeSelectedSameHeight(SizeMatchMode mode)
 {
     if (!hasCompatibleGeometrySelection(document_, 2)) {
         setOperationStatus("Same Height requires at least two non-sizer siblings");
@@ -4900,15 +4942,30 @@ void MainWindow::makeSelectedSameHeight()
 
     auto selectedWidgets = selectedNonRootWidgets(document_);
     const auto* primary = document_.selectedWidget();
-    const float referenceHeight = primary->bounds.height;
-    const std::string primaryId = primary->id;
+    float referenceHeight = primary->bounds.height;
+    if (mode == SizeMatchMode::Smallest) {
+        referenceHeight = (*std::min_element(selectedWidgets.begin(), selectedWidgets.end(),
+            [](const model::WidgetNode* left, const model::WidgetNode* right) {
+                return left->bounds.height < right->bounds.height;
+            }))->bounds.height;
+    }
+    else if (mode == SizeMatchMode::Largest) {
+        referenceHeight = (*std::max_element(selectedWidgets.begin(), selectedWidgets.end(),
+            [](const model::WidgetNode* left, const model::WidgetNode* right) {
+                return left->bounds.height < right->bounds.height;
+            }))->bounds.height;
+    }
+
+    const std::string referenceLabel = mode == SizeMatchMode::Primary
+        ? "primary"
+        : mode == SizeMatchMode::Smallest ? "smallest" : "largest";
+    for (const auto* selected : selectedWidgets) {
+        referenceHeight = std::max(referenceHeight, getWidgetSizeMetrics(selected->type).minHeight);
+    }
     const std::size_t selectedCount = selectedWidgets.size();
-    if (!applyUndoableDocumentChange("Match height", [&selectedWidgets, referenceHeight, &primaryId]() {
+    if (!applyUndoableDocumentChange("Match height to " + referenceLabel, [&selectedWidgets, referenceHeight]() {
             bool changed = false;
             for (auto* selected : selectedWidgets) {
-                if (selected->id == primaryId) {
-                    continue;
-                }
                 const WidgetSizeMetrics metrics = getWidgetSizeMetrics(selected->type);
                 const float targetHeight = std::max(metrics.minHeight, referenceHeight);
                 if (selected->bounds.height != targetHeight) {
@@ -4923,7 +4980,7 @@ void MainWindow::makeSelectedSameHeight()
         return;
     }
 
-    setOperationStatus("Matched primary height: " + std::to_string(selectedCount) + " widgets");
+    setOperationStatus("Matched " + referenceLabel + " height: " + std::to_string(selectedCount) + " widgets");
     updatePropertyEditorBounds();
     redraw();
 }
@@ -5909,8 +5966,16 @@ std::string_view MainWindow::commandRegistryId(CommandId command)
         return kLayoutCenterVertical;
     case CommandId::SameWidth:
         return kLayoutSameWidth;
+    case CommandId::SameWidthSmallest:
+        return kLayoutSameWidthSmallest;
+    case CommandId::SameWidthLargest:
+        return kLayoutSameWidthLargest;
     case CommandId::SameHeight:
         return kLayoutSameHeight;
+    case CommandId::SameHeightSmallest:
+        return kLayoutSameHeightSmallest;
+    case CommandId::SameHeightLargest:
+        return kLayoutSameHeightLargest;
     case CommandId::DistributeHorizontally:
         return kLayoutDistributeHorizontal;
     case CommandId::DistributeVertically:
@@ -6036,8 +6101,20 @@ MainWindow::CommandId MainWindow::commandFromRegistryId(std::string_view registr
     if (registryId == kLayoutSameWidth) {
         return CommandId::SameWidth;
     }
+    if (registryId == kLayoutSameWidthSmallest) {
+        return CommandId::SameWidthSmallest;
+    }
+    if (registryId == kLayoutSameWidthLargest) {
+        return CommandId::SameWidthLargest;
+    }
     if (registryId == kLayoutSameHeight) {
         return CommandId::SameHeight;
+    }
+    if (registryId == kLayoutSameHeightSmallest) {
+        return CommandId::SameHeightSmallest;
+    }
+    if (registryId == kLayoutSameHeightLargest) {
+        return CommandId::SameHeightLargest;
     }
     if (registryId == kLayoutDistributeHorizontal) {
         return CommandId::DistributeHorizontally;
@@ -6199,8 +6276,16 @@ std::string MainWindow::commandHintText(CommandId command) const
             return "Align selected widget centers to the primary widget vertically" + shortcutSuffix;
         case CommandId::SameWidth:
             return "Match selected widget widths to the primary widget" + shortcutSuffix;
+        case CommandId::SameWidthSmallest:
+            return "Match selected widget widths to the smallest selected width" + shortcutSuffix;
+        case CommandId::SameWidthLargest:
+            return "Match selected widget widths to the largest selected width" + shortcutSuffix;
         case CommandId::SameHeight:
             return "Match selected widget heights to the primary widget" + shortcutSuffix;
+        case CommandId::SameHeightSmallest:
+            return "Match selected widget heights to the smallest selected height" + shortcutSuffix;
+        case CommandId::SameHeightLargest:
+            return "Match selected widget heights to the largest selected height" + shortcutSuffix;
         case CommandId::DistributeHorizontally:
             return "Distribute selected widgets with equal horizontal gaps" + shortcutSuffix;
         case CommandId::DistributeVertically:
@@ -6262,7 +6347,11 @@ bool MainWindow::isCommandEnabled(CommandId command) const
         case CommandId::CenterHorizontally:
         case CommandId::CenterVertically:
         case CommandId::SameWidth:
+        case CommandId::SameWidthSmallest:
+        case CommandId::SameWidthLargest:
         case CommandId::SameHeight:
+        case CommandId::SameHeightSmallest:
+        case CommandId::SameHeightLargest:
         case CommandId::DistributeHorizontally:
         case CommandId::DistributeVertically:
         case CommandId::ToggleSmartGuides:
@@ -6303,7 +6392,11 @@ bool MainWindow::isCommandEnabled(CommandId command) const
     case CommandId::CenterHorizontally:
     case CommandId::CenterVertically:
     case CommandId::SameWidth:
+    case CommandId::SameWidthSmallest:
+    case CommandId::SameWidthLargest:
     case CommandId::SameHeight:
+    case CommandId::SameHeightSmallest:
+    case CommandId::SameHeightLargest:
         return hasCompatibleGeometrySelection(document_, 2);
     case CommandId::DistributeHorizontally:
     case CommandId::DistributeVertically:
@@ -6434,8 +6527,12 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     addCommand(layoutMenu, CommandId::AlignBottom, "Align Bottom");
     addCommand(layoutMenu, CommandId::CenterHorizontally, "Center Horizontally");
     addCommand(layoutMenu, CommandId::CenterVertically, "Center Vertically");
-    addCommand(layoutMenu, CommandId::SameWidth, "Same Width");
-    addCommand(layoutMenu, CommandId::SameHeight, "Same Height");
+    addCommand(layoutMenu, CommandId::SameWidth, "Same Width: Match Primary");
+    addCommand(layoutMenu, CommandId::SameWidthSmallest, "Same Width: Match Smallest");
+    addCommand(layoutMenu, CommandId::SameWidthLargest, "Same Width: Match Largest");
+    addCommand(layoutMenu, CommandId::SameHeight, "Same Height: Match Primary");
+    addCommand(layoutMenu, CommandId::SameHeightSmallest, "Same Height: Match Smallest");
+    addCommand(layoutMenu, CommandId::SameHeightLargest, "Same Height: Match Largest");
     addCommand(layoutMenu, CommandId::DistributeHorizontally, "Distribute Horizontally");
     addCommand(layoutMenu, CommandId::DistributeVertically, "Distribute Vertically");
     addCommand(layoutMenu, CommandId::BringForward, "Bring Forward");
@@ -6511,7 +6608,8 @@ MainWindow::PanelBounds MainWindow::menuDropdownBounds(int menuIndex) const
         return {};
     }
 
-    float longestTextWidth = 0.0f;
+    float longestLabelWidth = 0.0f;
+    float longestShortcutWidth = 0.0f;
     float dropdownHeight = 8.0f;
     for (const auto& item : allMenus[menuIndex].items) {
         if (item.separator) {
@@ -6519,14 +6617,24 @@ MainWindow::PanelBounds MainWindow::menuDropdownBounds(int menuIndex) const
             continue;
         }
 
-        const float itemWidthEstimate = static_cast<float>(item.label.size() + item.shortcut.size()) * 7.6f;
-        longestTextWidth = std::max(longestTextWidth, itemWidthEstimate);
+        longestLabelWidth = std::max(longestLabelWidth,
+            measuredMenuTextWidth(labelFont_, canDrawText(), item.label));
+        longestShortcutWidth = std::max(longestShortcutWidth,
+            measuredMenuTextWidth(labelFont_, canDrawText(), item.shortcut));
         dropdownHeight += kMenuBarItemHeight;
     }
     dropdownHeight += 8.0f;
 
+    const float shortcutColumnWidth = longestShortcutWidth > 0.0f
+        ? kMenuItemLabelShortcutGap + longestShortcutWidth
+        : 0.0f;
+    const float requiredWidth = kMenuItemLeftPadding
+        + kMenuItemCheckAreaWidth
+        + longestLabelWidth
+        + shortcutColumnWidth
+        + kMenuItemRightPadding;
     const float dropdownWidth = std::min(width() - 16.0f,
-        std::max(kMenuBarDropdownMinWidth, 54.0f + longestTextWidth));
+        std::max(kMenuBarDropdownMinWidth, requiredWidth));
     const float maxX = std::max(8.0f, width() - dropdownWidth - 8.0f);
     const float dropdownX = std::clamp(buttons[menuIndex].bounds.x, 8.0f, maxX);
 
@@ -6619,13 +6727,20 @@ void MainWindow::drawMenuBar(visage::Canvas& canvas) const
             canvas.fill(dropdownBounds.x + 8.0f, top + 6.0f, 10.0f, 10.0f);
         }
 
-        canvas.setColor(item.enabled ? 0xffe2e6ed : 0xff808999);
+        const float labelX = dropdownBounds.x + kMenuItemLeftPadding + kMenuItemCheckAreaWidth;
+        const float shortcutWidth = measuredMenuTextWidth(labelFont_, canDrawText(), item.shortcut);
+        const float shortcutX = dropdownBounds.x + dropdownBounds.width - kMenuItemRightPadding - shortcutWidth;
+        const float labelRight = item.shortcut.empty()
+            ? dropdownBounds.x + dropdownBounds.width - kMenuItemRightPadding
+            : shortcutX - kMenuItemLabelShortcutGap;
+
+        canvas.setColor(item.enabled ? 0xffe2e6ed : 0xff8f99aa);
         canvas.text(item.label, labelFont_, visage::Font::kTopLeft,
-            dropdownBounds.x + 24.0f, top + 4.0f, dropdownBounds.width - 110.0f, kMenuBarItemHeight - 6.0f);
+            labelX, top + 4.0f, std::max(0.0f, labelRight - labelX), kMenuBarItemHeight - 6.0f);
         if (!item.shortcut.empty()) {
-            canvas.setColor(item.enabled ? 0xffaab4c3 : 0xff6d7685);
+            canvas.setColor(item.enabled ? 0xffaab4c3 : 0xff7f8999);
             canvas.text(item.shortcut, labelFont_, visage::Font::kTopRight,
-                dropdownBounds.x + dropdownBounds.width - 18.0f, top + 4.0f, 84.0f, kMenuBarItemHeight - 6.0f);
+                shortcutX, top + 4.0f, shortcutWidth, kMenuBarItemHeight - 6.0f);
         }
 
         top += kMenuBarItemHeight;
@@ -7019,10 +7134,22 @@ bool MainWindow::executeCommand(CommandId command)
         centerSelectedVertically();
         return true;
     case CommandId::SameWidth:
-        makeSelectedSameWidth();
+        makeSelectedSameWidth(SizeMatchMode::Primary);
+        return true;
+    case CommandId::SameWidthSmallest:
+        makeSelectedSameWidth(SizeMatchMode::Smallest);
+        return true;
+    case CommandId::SameWidthLargest:
+        makeSelectedSameWidth(SizeMatchMode::Largest);
         return true;
     case CommandId::SameHeight:
-        makeSelectedSameHeight();
+        makeSelectedSameHeight(SizeMatchMode::Primary);
+        return true;
+    case CommandId::SameHeightSmallest:
+        makeSelectedSameHeight(SizeMatchMode::Smallest);
+        return true;
+    case CommandId::SameHeightLargest:
+        makeSelectedSameHeight(SizeMatchMode::Largest);
         return true;
     case CommandId::DistributeHorizontally:
         distributeSelectedHorizontally();
