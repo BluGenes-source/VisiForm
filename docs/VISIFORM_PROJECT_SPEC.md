@@ -779,5 +779,5 @@ Before a release, the repository should have:
 - **Spacer**: Layout item used for fixed or stretch empty space inside a sizer.
 - **Dock**: Metadata for parent-relative edge/fill layout.
 - **Anchor**: Metadata for resize/reposition behavior.
-- **Look and feel**: Built-in style preset plus per-widget style overrides.
+- **Look and feel**: Built-in registry preset plus per-widget style overrides. One shared registry resolver supplies application/control/recessed/raised surfaces, text roles, state colors, bevel edges, and metrics to Design Mode, Preview Mode, and generated output; project files continue to store only `lookAndFeelId`.
 - **Generated project**: Standalone C++/CMake project emitted by VisiForm export.

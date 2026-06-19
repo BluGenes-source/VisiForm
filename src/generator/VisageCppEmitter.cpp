@@ -280,70 +280,53 @@ std::string runtimeOrientationLiteral(std::string_view value)
 struct ResolvedWidgetStyle {
     std::string panelColor;
     std::string fillColor;
+    std::string recessedColor;
+    std::string raisedColor;
     std::string textColor;
+    std::string secondaryTextColor;
+    std::string disabledTextColor;
     std::string borderColor;
+    std::string focusColor;
     std::string accentColor;
     std::string disabledColor;
+    std::string selectedColor;
+    std::string hoverColor;
+    std::string pressedColor;
+    std::string checkedColor;
+    std::string highlightColor;
+    std::string shadowColor;
     float borderThickness = 1.0f;
     float cornerRadius = 0.0f;
     float fontSize = 16.0f;
+    float controlPadding = 8.0f;
 };
 
 ResolvedWidgetStyle resolveWidgetStyle(const visiform::model::ProjectDocument& document, const visiform::model::WidgetNode& widget)
 {
-    const auto& registry = visiform::model::LookAndFeelRegistry::instance();
-    const std::string widgetLookAndFeelId = widget.getStringProperty("lookAndFeelId", {});
-    const visiform::model::LookAndFeelDefinition* definition = !widgetLookAndFeelId.empty()
-        ? registry.findById(widgetLookAndFeelId)
-        : registry.findById(document.lookAndFeelId);
-    if (definition == nullptr) {
-        definition = &registry.defaultDefinition();
-    }
-
-    ResolvedWidgetStyle style{
-        definition->panelColor,
-        definition->controlFillColor,
-        definition->controlTextColor,
-        definition->controlBorderColor,
-        definition->accentColor,
-        definition->disabledColor,
-        definition->borderThickness,
-        definition->cornerRadius,
-        definition->fontSize };
-
-    const std::string fillOverride = widget.getStringProperty("fillColor", {});
-    const std::string textOverride = widget.getStringProperty("textColor", {});
-    const std::string borderOverride = widget.getStringProperty("borderColor", {});
-    const std::string accentOverride = widget.getStringProperty("accentColor", {});
-    if (!fillOverride.empty()) {
-        style.fillColor = fillOverride;
-    }
-    if (!textOverride.empty()) {
-        style.textColor = textOverride;
-    }
-    if (!borderOverride.empty()) {
-        style.borderColor = borderOverride;
-    }
-    if (!accentOverride.empty()) {
-        style.accentColor = accentOverride;
-    }
-
-    style.borderThickness = std::clamp(widget.getFloatProperty("borderThickness", style.borderThickness), 0.0f, 20.0f);
-    style.cornerRadius = std::clamp(widget.getFloatProperty("cornerRadius", style.cornerRadius), 0.0f, 50.0f);
-    style.fontSize = std::clamp(widget.getFloatProperty("fontSize", style.fontSize), 8.0f, 72.0f);
-
-    if (widget.type == visiform::model::WidgetType::FormWindow
-        || widget.type == visiform::model::WidgetType::Frame
-        || widget.type == visiform::model::WidgetType::GroupBox
-        || widget.type == visiform::model::WidgetType::Panel
-        || widget.type == visiform::model::WidgetType::Sizer) {
-        const std::string backgroundOverride = widget.getStringProperty("backgroundColor", {});
-        if (!backgroundOverride.empty()) {
-            style.fillColor = backgroundOverride;
-        }
-    }
-
-    return style;
+    const visiform::model::ResolvedLookAndFeelStyle resolved =
+        visiform::model::LookAndFeelRegistry::instance().resolve(document, widget);
+    return {
+        resolved.applicationSurfaceColor,
+        resolved.controlSurfaceColor,
+        resolved.recessedSurfaceColor,
+        resolved.raisedSurfaceColor,
+        resolved.primaryTextColor,
+        resolved.secondaryTextColor,
+        resolved.disabledTextColor,
+        resolved.borderColor,
+        resolved.focusOutlineColor,
+        resolved.accentColor,
+        resolved.disabledSurfaceColor,
+        resolved.selectedStateColor,
+        resolved.hoverStateColor,
+        resolved.pressedStateColor,
+        resolved.checkedStateColor,
+        resolved.highlightEdgeColor,
+        resolved.shadowEdgeColor,
+        resolved.borderThickness,
+        resolved.cornerRadius,
+        resolved.fontSize,
+        resolved.controlPadding };
 }
 
 std::string widgetLabel(const visiform::model::WidgetNode& widget)
@@ -1271,13 +1254,25 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.events.onCellDoubleClick = " << emitStringLiteral(widget.getStringProperty("onCellDoubleClick", {})) << ";\n";
     stream << innerIndent << "widget.style.panelColor = " << emitRuntimeColorLiteral(spec.style.panelColor, "makeColor(0x1F, 0x24, 0x2D)") << ";\n";
     stream << innerIndent << "widget.style.fillColor = " << emitRuntimeColorLiteral(spec.style.fillColor, "makeColor(0x2B, 0x31, 0x3D)") << ";\n";
+    stream << innerIndent << "widget.style.recessedColor = " << emitRuntimeColorLiteral(spec.style.recessedColor, "makeColor(0x20, 0x26, 0x30)") << ";\n";
+    stream << innerIndent << "widget.style.raisedColor = " << emitRuntimeColorLiteral(spec.style.raisedColor, "makeColor(0x30, 0x37, 0x44)") << ";\n";
     stream << innerIndent << "widget.style.textColor = " << emitRuntimeColorLiteral(spec.style.textColor, "makeColor(0xEE, 0xF2, 0xF8)") << ";\n";
+    stream << innerIndent << "widget.style.secondaryTextColor = " << emitRuntimeColorLiteral(spec.style.secondaryTextColor, "makeColor(0xAE, 0xB8, 0xC8)") << ";\n";
+    stream << innerIndent << "widget.style.disabledTextColor = " << emitRuntimeColorLiteral(spec.style.disabledTextColor, "makeColor(0x6C, 0x77, 0x88)") << ";\n";
     stream << innerIndent << "widget.style.borderColor = " << emitRuntimeColorLiteral(spec.style.borderColor, "makeColor(0x97, 0xA3, 0xB7)") << ";\n";
+    stream << innerIndent << "widget.style.focusColor = " << emitRuntimeColorLiteral(spec.style.focusColor, "makeColor(0x2D, 0x7F, 0xF9)") << ";\n";
     stream << innerIndent << "widget.style.accentColor = " << emitRuntimeColorLiteral(spec.style.accentColor, "makeColor(0x2D, 0x7F, 0xF9)") << ";\n";
     stream << innerIndent << "widget.style.disabledColor = " << emitRuntimeColorLiteral(spec.style.disabledColor, "makeColor(0x6C, 0x77, 0x88)") << ";\n";
+    stream << innerIndent << "widget.style.selectedColor = " << emitRuntimeColorLiteral(spec.style.selectedColor, "makeColor(0x35, 0x53, 0x82)") << ";\n";
+    stream << innerIndent << "widget.style.hoverColor = " << emitRuntimeColorLiteral(spec.style.hoverColor, "makeColor(0x35, 0x40, 0x52)") << ";\n";
+    stream << innerIndent << "widget.style.pressedColor = " << emitRuntimeColorLiteral(spec.style.pressedColor, "makeColor(0x23, 0x2A, 0x35)") << ";\n";
+    stream << innerIndent << "widget.style.checkedColor = " << emitRuntimeColorLiteral(spec.style.checkedColor, "makeColor(0x35, 0x53, 0x82)") << ";\n";
+    stream << innerIndent << "widget.style.highlightColor = " << emitRuntimeColorLiteral(spec.style.highlightColor, "makeColor(0xC8, 0xD2, 0xE2)") << ";\n";
+    stream << innerIndent << "widget.style.shadowColor = " << emitRuntimeColorLiteral(spec.style.shadowColor, "makeColor(0x11, 0x15, 0x1C)") << ";\n";
     stream << innerIndent << "widget.style.borderThickness = " << emitFloat(spec.style.borderThickness) << ";\n";
     stream << innerIndent << "widget.style.cornerRadius = " << emitFloat(spec.style.cornerRadius) << ";\n";
     stream << innerIndent << "widget.style.fontSize = " << emitFloat(spec.style.fontSize) << ";\n";
+    stream << innerIndent << "widget.style.controlPadding = " << emitFloat(spec.style.controlPadding) << ";\n";
 
     if (widget.type == visiform::model::WidgetType::Frame) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("title", {})) << ";\n";
@@ -1533,13 +1528,25 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "struct RuntimeStyleState {\n";
     stream << "    RuntimeColor panelColor = makeColor(0x1F, 0x24, 0x2D);\n";
     stream << "    RuntimeColor fillColor = makeColor(0x2B, 0x31, 0x3D);\n";
+    stream << "    RuntimeColor recessedColor = makeColor(0x20, 0x26, 0x30);\n";
+    stream << "    RuntimeColor raisedColor = makeColor(0x30, 0x37, 0x44);\n";
     stream << "    RuntimeColor textColor = makeColor(0xEE, 0xF2, 0xF8);\n";
+    stream << "    RuntimeColor secondaryTextColor = makeColor(0xAE, 0xB8, 0xC8);\n";
+    stream << "    RuntimeColor disabledTextColor = makeColor(0x6C, 0x77, 0x88);\n";
     stream << "    RuntimeColor borderColor = makeColor(0x97, 0xA3, 0xB7);\n";
+    stream << "    RuntimeColor focusColor = makeColor(0x2D, 0x7F, 0xF9);\n";
     stream << "    RuntimeColor accentColor = makeColor(0x2D, 0x7F, 0xF9);\n";
     stream << "    RuntimeColor disabledColor = makeColor(0x6C, 0x77, 0x88);\n";
+    stream << "    RuntimeColor selectedColor = makeColor(0x35, 0x53, 0x82);\n";
+    stream << "    RuntimeColor hoverColor = makeColor(0x35, 0x40, 0x52);\n";
+    stream << "    RuntimeColor pressedColor = makeColor(0x23, 0x2A, 0x35);\n";
+    stream << "    RuntimeColor checkedColor = makeColor(0x35, 0x53, 0x82);\n";
+    stream << "    RuntimeColor highlightColor = makeColor(0xC8, 0xD2, 0xE2);\n";
+    stream << "    RuntimeColor shadowColor = makeColor(0x11, 0x15, 0x1C);\n";
     stream << "    float borderThickness = 1.0f;\n";
     stream << "    float cornerRadius = 0.0f;\n";
     stream << "    float fontSize = 16.0f;\n";
+    stream << "    float controlPadding = 8.0f;\n";
     stream << "};\n\n";
     stream << "struct RuntimeEventHandlers {\n";
     stream << "    std::string onClick;\n";
@@ -1826,14 +1833,6 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        blendChannel(colorA.b, colorB.b),\n";
     stream << "        blendChannel(colorA.a, colorB.a));\n";
     stream << "}\n\n";
-    stream << "RuntimeColor visualHighlight(RuntimeColor borderColor)\n";
-    stream << "{\n";
-    stream << "    return blendColor(borderColor, makeColor(0xFF, 0xFF, 0xFF), 0.52f);\n";
-    stream << "}\n\n";
-    stream << "RuntimeColor visualShadow(RuntimeColor borderColor)\n";
-    stream << "{\n";
-    stream << "    return blendColor(borderColor, makeColor(0x00, 0x00, 0x00), 0.62f);\n";
-    stream << "}\n\n";
     stream << "enum class RuntimeVisualBaseState {\n";
     stream << "    Normal,\n";
     stream << "    Hovered,\n";
@@ -1860,11 +1859,11 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeVisualBaseState::Disabled:\n";
     stream << "        return blendColor(fillColor, widget.style.disabledColor, 0.55f);\n";
     stream << "    case RuntimeVisualBaseState::Pressed:\n";
-    stream << "        return blendColor(fillColor, makeColor(0x00, 0x00, 0x00), 0.20f);\n";
+    stream << "        return widget.style.pressedColor;\n";
     stream << "    case RuntimeVisualBaseState::CheckedOrSelected:\n";
-    stream << "        return blendColor(fillColor, widget.style.accentColor, 0.18f);\n";
+    stream << "        return checkedOrSelected ? widget.style.checkedColor : widget.style.selectedColor;\n";
     stream << "    case RuntimeVisualBaseState::Hovered:\n";
-    stream << "        return blendColor(fillColor, widget.style.accentColor, 0.12f);\n";
+    stream << "        return widget.style.hoverColor;\n";
     stream << "    case RuntimeVisualBaseState::Normal:\n";
     stream << "        return fillColor;\n";
     stream << "    }\n";
@@ -1872,7 +1871,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "}\n\n";
     stream << "RuntimeColor visualTextColor(const RuntimeWidget& widget)\n";
     stream << "{\n";
-    stream << "    return widget.enabled ? widget.style.textColor : blendColor(widget.style.textColor, widget.style.disabledColor, 0.68f);\n";
+    stream << "    return widget.enabled ? widget.style.textColor : widget.style.disabledTextColor;\n";
     stream << "}\n\n";
     stream << "void drawVisualBevel(visage::Canvas& canvas, float x, float y, float width, float height, const RuntimeWidget& widget, RuntimeColor fillColor, bool checkedOrSelected = false, bool active = false)\n";
     stream << "{\n";
@@ -1881,12 +1880,12 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    const RuntimeColor stateFill = visualStateFill(widget, fillColor, checkedOrSelected, active);\n";
     stream << "    canvas.setColor(canvasColor(stateFill));\n";
     stream << "    canvas.fill(x, y, width, height);\n";
-    stream << "    drawBorder(canvas, x, y, width, height, widget.enabled ? widget.style.borderColor : blendColor(widget.style.borderColor, widget.style.disabledColor, 0.65f));\n";
+    stream << "    drawBorder(canvas, x, y, width, height, widget.enabled ? widget.style.borderColor : blendColor(widget.style.borderColor, widget.style.disabledColor, 0.65f), widget.style.borderThickness);\n";
     stream << "    if (width < 3.0f || height < 3.0f) {\n";
     stream << "        return;\n";
     stream << "    }\n";
-    stream << "    const RuntimeColor leading = pressed ? visualShadow(widget.style.borderColor) : visualHighlight(widget.style.borderColor);\n";
-    stream << "    const RuntimeColor trailing = pressed ? visualHighlight(widget.style.borderColor) : visualShadow(widget.style.borderColor);\n";
+    stream << "    const RuntimeColor leading = pressed ? widget.style.shadowColor : widget.style.highlightColor;\n";
+    stream << "    const RuntimeColor trailing = pressed ? widget.style.highlightColor : widget.style.shadowColor;\n";
     stream << "    canvas.setColor(canvasColor(leading));\n";
     stream << "    canvas.fill(x + 1.0f, y + 1.0f, std::max(0.0f, width - 2.0f), 1.0f);\n";
     stream << "    canvas.fill(x + 1.0f, y + 1.0f, 1.0f, std::max(0.0f, height - 2.0f));\n";
@@ -1894,12 +1893,12 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    canvas.fill(x + 1.0f, y + height - 2.0f, std::max(0.0f, width - 2.0f), 1.0f);\n";
     stream << "    canvas.fill(x + width - 2.0f, y + 1.0f, 1.0f, std::max(0.0f, height - 2.0f));\n";
     stream << "    if (widget.interaction.focused && widget.enabled) {\n";
-    stream << "        drawBorder(canvas, x - 1.0f, y - 1.0f, width + 2.0f, height + 2.0f, widget.style.accentColor);\n";
+    stream << "        drawBorder(canvas, x - 1.0f, y - 1.0f, width + 2.0f, height + 2.0f, widget.style.focusColor);\n";
     stream << "    }\n";
     stream << "}\n\n";
     stream << "void drawVisualRecessed(visage::Canvas& canvas, float x, float y, float width, float height, const RuntimeWidget& widget, bool focused)\n";
     stream << "{\n";
-    stream << "    RuntimeColor fillColor = blendColor(widget.style.fillColor, makeColor(0x00, 0x00, 0x00), 0.12f);\n";
+    stream << "    RuntimeColor fillColor = widget.style.recessedColor;\n";
     stream << "    if (widget.readOnly) {\n";
     stream << "        fillColor = blendColor(fillColor, widget.style.disabledColor, 0.28f);\n";
     stream << "    }\n";
@@ -1908,17 +1907,17 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    }\n";
     stream << "    canvas.setColor(canvasColor(fillColor));\n";
     stream << "    canvas.fill(x, y, width, height);\n";
-    stream << "    drawBorder(canvas, x, y, width, height, widget.style.borderColor);\n";
+    stream << "    drawBorder(canvas, x, y, width, height, widget.style.borderColor, widget.style.borderThickness);\n";
     stream << "    if (width >= 3.0f && height >= 3.0f) {\n";
-    stream << "        canvas.setColor(canvasColor(visualShadow(widget.style.borderColor)));\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.shadowColor));\n";
     stream << "        canvas.fill(x + 1.0f, y + 1.0f, std::max(0.0f, width - 2.0f), 1.0f);\n";
     stream << "        canvas.fill(x + 1.0f, y + 1.0f, 1.0f, std::max(0.0f, height - 2.0f));\n";
-    stream << "        canvas.setColor(canvasColor(visualHighlight(widget.style.borderColor)));\n";
+    stream << "        canvas.setColor(canvasColor(widget.style.highlightColor));\n";
     stream << "        canvas.fill(x + 1.0f, y + height - 2.0f, std::max(0.0f, width - 2.0f), 1.0f);\n";
     stream << "        canvas.fill(x + width - 2.0f, y + 1.0f, 1.0f, std::max(0.0f, height - 2.0f));\n";
     stream << "    }\n";
     stream << "    if (focused && widget.enabled) {\n";
-    stream << "        drawBorder(canvas, x - 1.0f, y - 1.0f, width + 2.0f, height + 2.0f, widget.style.accentColor);\n";
+    stream << "        drawBorder(canvas, x - 1.0f, y - 1.0f, width + 2.0f, height + 2.0f, widget.style.focusColor);\n";
     stream << "    }\n";
     stream << "}\n\n";
     stream << "void fillCircleApprox(visage::Canvas& canvas, float centerX, float centerY, float radius, RuntimeColor color)\n";
@@ -2396,7 +2395,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        if (widget.toggle.checked) {\n";
     stream << "            canvas.setColor(canvasColor(widget.enabled ? widget.style.accentColor : blendColor(widget.style.accentColor, widget.style.disabledColor, 0.62f)));\n";
     stream << "            canvas.fill(x + 10.0f, y + (height - 10.0f) * 0.5f, 10.0f, 10.0f);\n";
-    stream << "            canvas.setColor(canvasColor(visualHighlight(widget.style.borderColor)));\n";
+    stream << "            canvas.setColor(canvasColor(widget.style.highlightColor));\n";
     stream << "            canvas.fill(x + 11.0f, y + (height - 10.0f) * 0.5f + 1.0f, 8.0f, 1.0f);\n";
     stream << "        }\n";
     stream << "        if (drawText) {\n";
@@ -2411,7 +2410,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        const RuntimeColor well = visualStateFill(widget, blendColor(widget.style.fillColor, makeColor(0x00, 0x00, 0x00), 0.12f), widget.toggle.selected);\n";
     stream << "        fillCircleApprox(canvas, centerX, centerY, 9.0f, border);\n";
     stream << "        fillCircleApprox(canvas, centerX, centerY, std::max(2.0f, 9.0f - std::max(2.0f, widget.style.borderThickness + 1.0f)), well);\n";
-    stream << "        fillCircleApprox(canvas, centerX - 1.0f, centerY - 1.0f, 5.0f, visualHighlight(widget.style.borderColor));\n";
+    stream << "        fillCircleApprox(canvas, centerX - 1.0f, centerY - 1.0f, 5.0f, widget.style.highlightColor);\n";
     stream << "        fillCircleApprox(canvas, centerX, centerY, 4.0f, well);\n";
     stream << "        if (widget.toggle.selected) {\n";
     stream << "            fillCircleApprox(canvas, centerX, centerY, 4.0f, widget.enabled ? widget.style.accentColor : blendColor(widget.style.accentColor, widget.style.disabledColor, 0.62f));\n";
@@ -3294,10 +3293,10 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    canvas.setColor(canvasColor(style.panelColor));\n";
     stream << "    canvas.fill(dialog.x, dialog.y, dialog.width, 34.0f);\n";
     stream << "    drawBorder(canvas, dialog.x, dialog.y, dialog.width, dialog.height, style.borderColor, std::max(1.0f, style.borderThickness));\n";
-    stream << "    canvas.setColor(canvasColor(visualHighlight(style.borderColor)));\n";
+    stream << "    canvas.setColor(canvasColor(style.highlightColor));\n";
     stream << "    canvas.fill(dialog.x + 1.0f, dialog.y + 1.0f, std::max(0.0f, dialog.width - 2.0f), 1.0f);\n";
     stream << "    canvas.fill(dialog.x + 1.0f, dialog.y + 1.0f, 1.0f, std::max(0.0f, dialog.height - 2.0f));\n";
-    stream << "    canvas.setColor(canvasColor(visualShadow(style.borderColor)));\n";
+    stream << "    canvas.setColor(canvasColor(style.shadowColor));\n";
     stream << "    canvas.fill(dialog.x + 1.0f, dialog.y + dialog.height - 2.0f, std::max(0.0f, dialog.width - 2.0f), 1.0f);\n";
     stream << "    canvas.fill(dialog.x + dialog.width - 2.0f, dialog.y + 1.0f, 1.0f, std::max(0.0f, dialog.height - 2.0f));\n";
     stream << "    if (drawText) {\n";

@@ -7,6 +7,10 @@ namespace visage {
 class Canvas;
 }
 
+namespace visiform::model {
+struct ResolvedLookAndFeelStyle;
+}
+
 namespace visiform::ui {
 
 class Splitter {
@@ -218,7 +222,7 @@ public:
         return wasDragging;
     }
 
-    void draw(visage::Canvas& canvas) const;
+    void draw(visage::Canvas& canvas, const model::ResolvedLookAndFeelStyle& style) const;
 
 private:
     [[nodiscard]] float leadingOrigin() const

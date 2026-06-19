@@ -127,13 +127,25 @@ struct WidgetScreenInfo {
 struct ResolvedWidgetStyle {
     int panelColor = 0xff1f242d;
     int fillColor = 0xff2b313d;
+    int recessedColor = 0xff202630;
+    int raisedColor = 0xff303744;
     int textColor = 0xffeef2f8;
+    int secondaryTextColor = 0xffaeb8c8;
+    int disabledTextColor = 0xff6c7788;
     int borderColor = 0xff97a3b7;
+    int focusColor = 0xff2d7ff9;
     int accentColor = 0xff2d7ff9;
     int disabledColor = 0xff6c7788;
+    int selectedColor = 0xff355382;
+    int hoverColor = 0xff354052;
+    int pressedColor = 0xff232a35;
+    int checkedColor = 0xff355382;
+    int highlightColor = 0xffc8d2e2;
+    int shadowColor = 0xff11151c;
     float borderThickness = 1.0f;
     float cornerRadius = 0.0f;
     float fontSize = 16.0f;
+    float controlPadding = 8.0f;
 };
 
 struct GridColors {
@@ -586,39 +598,31 @@ int parseColorOrDefault(const std::string& value, int defaultColor)
 
 ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, const model::WidgetNode& widget)
 {
-    const model::LookAndFeelRegistry& registry = model::LookAndFeelRegistry::instance();
-    const std::string widgetLookAndFeelId = widget.getStringProperty("lookAndFeelId", {});
-    const model::LookAndFeelDefinition* definition = !widgetLookAndFeelId.empty()
-        ? registry.findById(widgetLookAndFeelId)
-        : registry.findById(document.lookAndFeelId);
-    if (definition == nullptr) {
-        definition = &registry.defaultDefinition();
-    }
+    const model::ResolvedLookAndFeelStyle resolved =
+        model::LookAndFeelRegistry::instance().resolve(document, widget);
 
     ResolvedWidgetStyle style;
-    style.panelColor = parseColorOrDefault(definition->panelColor, style.panelColor);
-    style.fillColor = parseColorOrDefault(definition->controlFillColor, style.fillColor);
-    style.textColor = parseColorOrDefault(definition->controlTextColor, style.textColor);
-    style.borderColor = parseColorOrDefault(definition->controlBorderColor, style.borderColor);
-    style.accentColor = parseColorOrDefault(definition->accentColor, style.accentColor);
-    style.disabledColor = parseColorOrDefault(definition->disabledColor, style.disabledColor);
-    style.borderThickness = std::clamp(widget.getFloatProperty("borderThickness", definition->borderThickness), 0.0f, 20.0f);
-    style.cornerRadius = std::clamp(widget.getFloatProperty("cornerRadius", definition->cornerRadius), 0.0f, 50.0f);
-    style.fontSize = std::clamp(widget.getFloatProperty("fontSize", definition->fontSize), 8.0f, 72.0f);
-
-    style.fillColor = parseColorOrDefault(widget.getStringProperty("fillColor", {}), style.fillColor);
-    style.textColor = parseColorOrDefault(widget.getStringProperty("textColor", {}), style.textColor);
-    style.borderColor = parseColorOrDefault(widget.getStringProperty("borderColor", {}), style.borderColor);
-    style.accentColor = parseColorOrDefault(widget.getStringProperty("accentColor", {}), style.accentColor);
-
-    if (widget.type == model::WidgetType::FormWindow
-        || widget.type == model::WidgetType::Frame
-        || widget.type == model::WidgetType::GroupBox
-        || widget.type == model::WidgetType::Panel
-        || widget.type == model::WidgetType::Sizer) {
-        style.fillColor = parseColorOrDefault(widget.getStringProperty("backgroundColor", {}),
-            widget.type == model::WidgetType::FormWindow ? style.panelColor : style.fillColor);
-    }
+    style.panelColor = parseColorOrDefault(resolved.applicationSurfaceColor, style.panelColor);
+    style.fillColor = parseColorOrDefault(resolved.controlSurfaceColor, style.fillColor);
+    style.recessedColor = parseColorOrDefault(resolved.recessedSurfaceColor, style.recessedColor);
+    style.raisedColor = parseColorOrDefault(resolved.raisedSurfaceColor, style.raisedColor);
+    style.textColor = parseColorOrDefault(resolved.primaryTextColor, style.textColor);
+    style.secondaryTextColor = parseColorOrDefault(resolved.secondaryTextColor, style.secondaryTextColor);
+    style.disabledTextColor = parseColorOrDefault(resolved.disabledTextColor, style.disabledTextColor);
+    style.borderColor = parseColorOrDefault(resolved.borderColor, style.borderColor);
+    style.focusColor = parseColorOrDefault(resolved.focusOutlineColor, style.focusColor);
+    style.accentColor = parseColorOrDefault(resolved.accentColor, style.accentColor);
+    style.disabledColor = parseColorOrDefault(resolved.disabledSurfaceColor, style.disabledColor);
+    style.selectedColor = parseColorOrDefault(resolved.selectedStateColor, style.selectedColor);
+    style.hoverColor = parseColorOrDefault(resolved.hoverStateColor, style.hoverColor);
+    style.pressedColor = parseColorOrDefault(resolved.pressedStateColor, style.pressedColor);
+    style.checkedColor = parseColorOrDefault(resolved.checkedStateColor, style.checkedColor);
+    style.highlightColor = parseColorOrDefault(resolved.highlightEdgeColor, style.highlightColor);
+    style.shadowColor = parseColorOrDefault(resolved.shadowEdgeColor, style.shadowColor);
+    style.borderThickness = resolved.borderThickness;
+    style.cornerRadius = resolved.cornerRadius;
+    style.fontSize = resolved.fontSize;
+    style.controlPadding = resolved.controlPadding;
 
     return style;
 }
@@ -686,7 +690,20 @@ struct ResizeHandleGeometry {
 
 visual_style::Palette baselinePalette(const ResolvedWidgetStyle& style, int fillColor)
 {
-    return visual_style::makePalette(fillColor, style.borderColor, style.textColor, style.accentColor, style.disabledColor);
+    visual_style::Palette palette =
+        visual_style::makePalette(fillColor, style.borderColor, style.textColor, style.accentColor, style.disabledColor);
+    palette.secondaryText = style.secondaryTextColor;
+    palette.disabledText = style.disabledTextColor;
+    palette.focus = style.focusColor;
+    palette.selectedFill = style.selectedColor;
+    palette.checkedFill = style.checkedColor;
+    palette.highlight = style.highlightColor;
+    palette.shadow = style.shadowColor;
+    palette.hoverFill = style.hoverColor;
+    palette.pressedFill = style.pressedColor;
+    palette.recessedFill = style.recessedColor;
+    palette.borderThickness = style.borderThickness;
+    return palette;
 }
 
 visual_style::Rect baselineRect(const PanelRect& bounds)

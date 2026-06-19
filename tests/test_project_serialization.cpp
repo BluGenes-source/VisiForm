@@ -1,4 +1,5 @@
 #include "model/ProjectDocument.h"
+#include "model/LookAndFeelRegistry.h"
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
 
@@ -45,6 +46,56 @@ TEST_CASE("ProjectDocument round-trips through JSON")
     REQUIRE(loaded->selectedWidgetId == document.selectedWidgetId);
     REQUIRE(loaded->root.children.size() == 1);
     REQUIRE(loaded->root.children.front().getStringProperty("text", "") == "Click Me");
+}
+
+TEST_CASE("Legacy project without look and feel uses the established default")
+{
+    JsonProjectReader reader;
+    std::string errorMessage;
+    const auto loaded = reader.readFromString(R"json(
+{
+  "schemaVersion": 1,
+  "projectName": "LegacyProject",
+  "mainFormClassName": "MainWindow",
+  "selectedWidgetId": "form_main",
+  "root": {
+    "id": "form_main",
+    "name": "MainWindow",
+    "type": "FormWindow",
+    "bounds": { "x": 0, "y": 0, "width": 900, "height": 600 },
+    "properties": {},
+    "children": []
+  }
+}
+)json", errorMessage);
+
+    REQUIRE(errorMessage.empty());
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->lookAndFeelId == "VisiFormDark");
+}
+
+TEST_CASE("Look and feel resolution preserves presets overrides and fallback")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    const auto& registry = visiform::model::LookAndFeelRegistry::instance();
+
+    document.lookAndFeelId = "VisiFormLight";
+    const auto light = registry.resolve(document, document.root);
+    CHECK(light.id == "VisiFormLight");
+    CHECK(light.applicationSurfaceColor == "#F2F4F8");
+    CHECK(light.recessedSurfaceColor == "#E8ECF2");
+    CHECK(light.hoverStateColor == "#EDF4FF");
+
+    document.root.setProperty("fillColor", "#123456");
+    const auto overridden = registry.resolve(document, document.root);
+    CHECK(overridden.controlSurfaceColor == "#123456");
+
+    document.lookAndFeelId = "UnknownPreset";
+    document.root.setProperty("fillColor", "");
+    const auto fallback = registry.resolve(document, document.root);
+    CHECK(fallback.id == "VisiFormDark");
+    CHECK(fallback.applicationSurfaceColor == "#1F242D");
+    CHECK(fallback.highlightEdgeColor == "#C8D2E2");
 }
 
 TEST_CASE("ProjectDocument z-order commands move one sibling step and preserve selection")

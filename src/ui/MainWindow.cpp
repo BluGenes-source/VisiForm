@@ -3051,10 +3051,12 @@ void MainWindow::draw(visage::Canvas& canvas)
         || canvasInteraction_.mode == CanvasInteractionState::Mode::Resize;
     designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, &imageResourceCache_, simplifySelectedImages, marqueeRect, canvasInteraction_.smartGuides);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, settings_, document_.selectedWidgetIds().size());
-    canvasInspectorSplitter_.draw(canvas);
+    const model::ResolvedLookAndFeelStyle splitterStyle =
+        model::LookAndFeelRegistry::instance().resolve(document_, document_.root);
+    canvasInspectorSplitter_.draw(canvas, splitterStyle);
     if (layout_.showProjectTree) {
         projectTree_.drawPanel(canvas, labelFont_, canDrawText(), document_);
-        projectTreeCanvasSplitter_.draw(canvas);
+        projectTreeCanvasSplitter_.draw(canvas, splitterStyle);
     }
     drawStatusBar(canvas);
     if (openMenuIndex_ >= 0) {

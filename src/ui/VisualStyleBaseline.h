@@ -17,13 +17,21 @@ struct Palette {
     int fill = 0xff2b313d;
     int border = 0xff97a3b7;
     int text = 0xffeef2f8;
+    int secondaryText = 0xffaeb8c8;
+    int disabledText = 0xff6c7788;
     int accent = 0xff2d7ff9;
     int disabled = 0xff6c7788;
+    int focus = 0xff2d7ff9;
+    int selectedFill = 0xff355382;
+    int checkedFill = 0xff355382;
     int highlight = 0xffc8d2e2;
     int shadow = 0xff11151c;
     int hoverFill = 0xff354052;
     int pressedFill = 0xff232a35;
     int recessedFill = 0xff202630;
+    float borderThickness = 1.0f;
+    float highlightThickness = 1.0f;
+    float shadowThickness = 1.0f;
 };
 
 enum class BaseState {
@@ -78,8 +86,13 @@ inline Palette makePalette(int fill, int border, int text, int accent, int disab
     palette.fill = fill;
     palette.border = border;
     palette.text = text;
+    palette.secondaryText = blend(text, disabled, 0.42f);
+    palette.disabledText = disabled;
     palette.accent = accent;
     palette.disabled = disabled;
+    palette.focus = accent;
+    palette.selectedFill = blend(fill, accent, 0.18f);
+    palette.checkedFill = palette.selectedFill;
     palette.highlight = blend(border, 0xffffffff, 0.52f);
     palette.shadow = blend(border, 0xff000000, 0.62f);
     palette.hoverFill = blend(fill, accent, 0.12f);
@@ -118,7 +131,8 @@ inline void drawBevel(visage::Canvas& canvas, const Rect& rect, const Palette& p
         : hovered ? palette.hoverFill
         : palette.fill;
     fill(canvas, rect, baseFill);
-    drawBorder(canvas, rect, enabled ? palette.border : blend(palette.border, palette.disabled, 0.65f));
+    drawBorder(canvas, rect, enabled ? palette.border : blend(palette.border, palette.disabled, 0.65f),
+        palette.borderThickness);
 
     if (rect.width < 3.0f || rect.height < 3.0f) {
         return;
@@ -126,11 +140,13 @@ inline void drawBevel(visage::Canvas& canvas, const Rect& rect, const Palette& p
     const int leading = pressed ? palette.shadow : palette.highlight;
     const int trailing = pressed ? palette.highlight : palette.shadow;
     canvas.setColor(leading);
-    canvas.fill(rect.x + 1.0f, rect.y + 1.0f, std::max(0.0f, rect.width - 2.0f), 1.0f);
-    canvas.fill(rect.x + 1.0f, rect.y + 1.0f, 1.0f, std::max(0.0f, rect.height - 2.0f));
+    canvas.fill(rect.x + 1.0f, rect.y + 1.0f, std::max(0.0f, rect.width - 2.0f), palette.highlightThickness);
+    canvas.fill(rect.x + 1.0f, rect.y + 1.0f, palette.highlightThickness, std::max(0.0f, rect.height - 2.0f));
     canvas.setColor(trailing);
-    canvas.fill(rect.x + 1.0f, rect.y + rect.height - 2.0f, std::max(0.0f, rect.width - 2.0f), 1.0f);
-    canvas.fill(rect.x + rect.width - 2.0f, rect.y + 1.0f, 1.0f, std::max(0.0f, rect.height - 2.0f));
+    canvas.fill(rect.x + 1.0f, rect.y + rect.height - 1.0f - palette.shadowThickness,
+        std::max(0.0f, rect.width - 2.0f), palette.shadowThickness);
+    canvas.fill(rect.x + rect.width - 1.0f - palette.shadowThickness, rect.y + 1.0f,
+        palette.shadowThickness, std::max(0.0f, rect.height - 2.0f));
 }
 
 inline void drawBevel(visage::Canvas& canvas, const Rect& rect, const Palette& palette, const State& state)
@@ -138,16 +154,16 @@ inline void drawBevel(visage::Canvas& canvas, const Rect& rect, const Palette& p
     const BaseState baseState = resolveBaseState(state);
     Palette resolvedPalette = palette;
     if (baseState == BaseState::CheckedOrSelected) {
-        resolvedPalette.fill = blend(palette.fill, palette.accent, 0.18f);
-        resolvedPalette.hoverFill = blend(resolvedPalette.fill, palette.accent, 0.12f);
-        resolvedPalette.pressedFill = blend(resolvedPalette.fill, 0xff000000, 0.20f);
+        resolvedPalette.fill = palette.checkedFill;
+        resolvedPalette.hoverFill = palette.checkedFill;
+        resolvedPalette.pressedFill = palette.checkedFill;
     }
     drawBevel(canvas, rect, resolvedPalette,
         baseState == BaseState::Pressed,
         baseState == BaseState::Hovered,
         baseState != BaseState::Disabled);
     if (state.focused && state.enabled) {
-        drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.accent);
+        drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.focus);
     }
 }
 
@@ -155,14 +171,16 @@ inline void drawRecessed(visage::Canvas& canvas, const Rect& rect, const Palette
     bool focused = false, bool enabled = true)
 {
     fill(canvas, rect, enabled ? palette.recessedFill : blend(palette.recessedFill, palette.disabled, 0.55f));
-    drawBorder(canvas, rect, focused && enabled ? palette.accent : palette.border);
+    drawBorder(canvas, rect, focused && enabled ? palette.focus : palette.border, palette.borderThickness);
     if (rect.width >= 3.0f && rect.height >= 3.0f) {
         canvas.setColor(palette.shadow);
-        canvas.fill(rect.x + 1.0f, rect.y + 1.0f, std::max(0.0f, rect.width - 2.0f), 1.0f);
-        canvas.fill(rect.x + 1.0f, rect.y + 1.0f, 1.0f, std::max(0.0f, rect.height - 2.0f));
+        canvas.fill(rect.x + 1.0f, rect.y + 1.0f, std::max(0.0f, rect.width - 2.0f), palette.shadowThickness);
+        canvas.fill(rect.x + 1.0f, rect.y + 1.0f, palette.shadowThickness, std::max(0.0f, rect.height - 2.0f));
         canvas.setColor(palette.highlight);
-        canvas.fill(rect.x + 1.0f, rect.y + rect.height - 2.0f, std::max(0.0f, rect.width - 2.0f), 1.0f);
-        canvas.fill(rect.x + rect.width - 2.0f, rect.y + 1.0f, 1.0f, std::max(0.0f, rect.height - 2.0f));
+        canvas.fill(rect.x + 1.0f, rect.y + rect.height - 1.0f - palette.highlightThickness,
+            std::max(0.0f, rect.width - 2.0f), palette.highlightThickness);
+        canvas.fill(rect.x + rect.width - 1.0f - palette.highlightThickness, rect.y + 1.0f,
+            palette.highlightThickness, std::max(0.0f, rect.height - 2.0f));
     }
 }
 
@@ -177,18 +195,18 @@ inline void drawRecessed(visage::Canvas& canvas, const Rect& rect, const Palette
     }
     drawRecessed(canvas, rect, resolvedPalette, false, state.enabled);
     if (state.focused && state.enabled) {
-        drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.accent);
+        drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.focus);
     }
 }
 
 inline void drawFocus(visage::Canvas& canvas, const Rect& rect, const Palette& palette)
 {
-    drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.accent);
+    drawBorder(canvas, { rect.x - 1.0f, rect.y - 1.0f, rect.width + 2.0f, rect.height + 2.0f }, palette.focus);
 }
 
 inline int stateTextColor(const Palette& palette, bool enabled)
 {
-    return enabled ? palette.text : blend(palette.text, palette.disabled, 0.68f);
+    return enabled ? palette.text : palette.disabledText;
 }
 
 } // namespace visiform::ui::visual_style

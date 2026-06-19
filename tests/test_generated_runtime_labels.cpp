@@ -65,3 +65,22 @@ TEST_CASE("generated runtime keeps internal widget names out of visible text")
     REQUIRE(generated.find("widget.button.normalText = \"Visible Button\";") != std::string::npos);
     REQUIRE(generated.find("modalState_.title = widget->dialogTitle;") != std::string::npos);
 }
+
+TEST_CASE("generated runtime emits the selected look and feel state palette")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelId = "VisiFormLight";
+
+    VisageCppEmitter::EmittedSources output;
+    std::string errorMessage;
+    REQUIRE(VisageCppEmitter{}.emitProjectSources(document, {}, output, errorMessage));
+    REQUIRE(errorMessage.empty());
+
+    const std::string& generated = output.generatedBaseCpp;
+    CHECK(generated.find("widget.style.recessedColor = makeColor(0xE8, 0xEC, 0xF2);") != std::string::npos);
+    CHECK(generated.find("widget.style.hoverColor = makeColor(0xED, 0xF4, 0xFF);") != std::string::npos);
+    CHECK(generated.find("widget.style.pressedColor = makeColor(0xDC, 0xE4, 0xEF);") != std::string::npos);
+    CHECK(generated.find("widget.style.highlightColor = makeColor(0xFF, 0xFF, 0xFF);") != std::string::npos);
+    CHECK(generated.find("return widget.style.hoverColor;") != std::string::npos);
+    CHECK(generated.find("widget.style.focusColor") != std::string::npos);
+}

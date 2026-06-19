@@ -1,19 +1,55 @@
 #include "ui/Splitter.h"
+#include "model/LookAndFeelDefinition.h"
 #include "ui/VisualStyleBaseline.h"
 
 #include <visage/graphics.h>
 
 namespace visiform::ui {
+namespace {
 
-void Splitter::draw(visage::Canvas& canvas) const
+int parseColorOrDefault(const std::string& value, int fallback)
+{
+    if (value.empty() || value.front() != '#') {
+        return fallback;
+    }
+    try {
+        const std::string digits = value.substr(1);
+        const unsigned long parsed = std::stoul(digits, nullptr, 16);
+        if (digits.size() == 6) {
+            return static_cast<int>(0xff000000u | parsed);
+        }
+        if (digits.size() == 8) {
+            return static_cast<int>(parsed);
+        }
+    }
+    catch (...) {
+    }
+    return fallback;
+}
+
+} // namespace
+
+void Splitter::draw(visage::Canvas& canvas, const model::ResolvedLookAndFeelStyle& style) const
 {
     const Bounds divider = dividerBounds();
     if (divider.width <= 0.0f || divider.height <= 0.0f) {
         return;
     }
 
-    const auto palette = visual_style::makePalette(
-        0xff242b36, 0xff566174, 0xffeef2f8, 0xff72a7ff, 0xff6c7788);
+    visual_style::Palette palette = visual_style::makePalette(
+        parseColorOrDefault(style.raisedSurfaceColor, 0xff242b36),
+        parseColorOrDefault(style.borderColor, 0xff566174),
+        parseColorOrDefault(style.primaryTextColor, 0xffeef2f8),
+        parseColorOrDefault(style.accentColor, 0xff72a7ff),
+        parseColorOrDefault(style.disabledTextColor, 0xff6c7788));
+    palette.focus = parseColorOrDefault(style.focusOutlineColor, palette.accent);
+    palette.highlight = parseColorOrDefault(style.highlightEdgeColor, palette.highlight);
+    palette.shadow = parseColorOrDefault(style.shadowEdgeColor, palette.shadow);
+    palette.hoverFill = parseColorOrDefault(style.hoverStateColor, palette.hoverFill);
+    palette.pressedFill = parseColorOrDefault(style.pressedStateColor, palette.pressedFill);
+    palette.borderThickness = style.borderThickness;
+    palette.highlightThickness = style.splitterHighlightThickness;
+    palette.shadowThickness = style.splitterShadowThickness;
     const Bounds feedback = hovered_ || dragging_ ? hitBounds() : divider;
     visual_style::State state;
     state.hovered = hovered_;

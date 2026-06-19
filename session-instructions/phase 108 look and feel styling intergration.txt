@@ -1,0 +1,376 @@
+Implement VisiForm Phase 108: Look and Feel Styling Integration.
+
+Phase 107 is complete.
+
+Use:
+
+* Phase: 108
+* Version: 1.0.14
+* Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 107 plan
+* files directly related to:
+
+  * existing Look and Feel selection
+  * Look and Feel storage and resolution
+  * project serialization
+  * shared style helpers from Phases 105–107
+  * Preview Mode rendering
+  * generated runtime styling
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_108_look_and_feel_styling_integration_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.14`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not create a second theme system.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Integrate the visual styling work from Phases 105–107 into VisiForm’s existing Look and Feel system.
+
+The existing project-level Look and Feel property must remain the source of truth.
+
+Do not introduce a competing:
+
+* Theme property
+* Style Profile property
+* skin-selection system
+* parallel appearance registry
+
+## First task: confirm existing architecture
+
+Before changing code, trace only the existing Look and Feel path.
+
+Determine:
+
+* where the project Look and Feel value is stored
+* how it is exposed in the Property Inspector
+* how it is serialized
+* how older projects receive a default
+* how Design Mode resolves it
+* how Preview Mode resolves it
+* how generated projects receive or use it
+* whether Look and Feel is currently represented by:
+
+  * an enum
+  * string identifier
+  * registry entry
+  * class/factory
+  * generated runtime helper
+
+Record the confirmed architecture in the Phase 108 plan.
+
+Do not redesign it unless a small extension is required.
+
+## Integration policy
+
+The styling introduced in Phases 105–107 must resolve through the selected Look and Feel.
+
+The selected Look and Feel should provide or resolve values for:
+
+* application surface
+* control surface
+* recessed surface
+* raised surface
+* primary text
+* secondary text
+* disabled text
+* border
+* focus outline
+* accent
+* selected state
+* hover state
+* pressed state
+* checked state
+* highlight edge
+* shadow edge
+* border thickness
+* corner radius
+* control padding
+* splitter highlight and shadow
+
+Use the smallest practical representation that fits the existing architecture.
+
+Do not add all values to project serialization individually.
+
+The project should continue storing the Look and Feel choice, not a large copied style table.
+
+## Existing Look and Feel defaults
+
+Preserve all existing Look and Feel identifiers and behavior.
+
+The current dark visual baseline from Phases 105–107 should become the resolved style for the appropriate existing Look and Feel, likely `VisiFormDark`, if that is the confirmed identifier.
+
+Do not rename existing Look and Feel values without a compatibility requirement.
+
+If multiple existing Look and Feel choices already exist:
+
+* give each one a valid resolved style
+* preserve their intended visual differences
+* avoid making every choice render identically
+* use safe fallback values where a style is incomplete
+
+Do not invent new options merely to fill the list.
+
+## Shared resolved style
+
+Prefer one compact resolved-style structure used by rendering code.
+
+Conceptually it may contain:
+
+* colors
+* border metrics
+* corner radius
+* padding
+* highlight/shadow values
+* state adjustments
+
+The exact design should match the existing project architecture.
+
+Requirements:
+
+* one place resolves Look and Feel into usable styling values
+* widgets consume resolved values
+* widgets do not repeatedly switch on Look and Feel identifiers
+* avoid scattered hard-coded colors
+* avoid copying the whole style structure into every widget instance
+* preserve DPI-aware metric handling
+
+Do not over-engineer a plugin or inheritance framework for this phase.
+
+## Migrate Phase 105–107 styling
+
+Review only the shared style helpers and widgets directly changed in Phases 105–107.
+
+Replace confirmed hard-coded appearance values with resolved Look and Feel values.
+
+Prioritize:
+
+* control fills
+* borders
+* highlights and shadows
+* text colors
+* disabled state
+* focus outline
+* selection/accent color
+* splitter appearance
+* corner radius
+* state styling
+
+Do not rewrite working widget renderers unnecessarily.
+
+Keep widget-specific geometry and interaction intact.
+
+## Design Mode
+
+Design Mode must render widgets using the project’s selected Look and Feel.
+
+Editor-only overlays must remain separate and readable:
+
+* selection outline
+* resize handles
+* corner resize arcs
+* guides
+* grid
+* drop targets
+
+Changing Look and Feel should repaint the designer immediately or through the existing property-change path.
+
+Do not require project reload when a Look and Feel value changes.
+
+## Preview Mode
+
+Preview Mode must use the same selected Look and Feel as the project.
+
+Requirements:
+
+* no editor-only labels
+* no selection overlays
+* no resize affordances
+* runtime-style states use resolved Look and Feel values
+* temporary Preview Mode interactions remain model-independent
+* entering or leaving Preview Mode does not change Look and Feel
+
+Preview Mode should remain the closest in-editor representation of generated runtime appearance.
+
+## Generated output
+
+Generated projects must use the selected Look and Feel.
+
+Confirm the current export path and make the smallest compatible update.
+
+Requirements:
+
+* export the Look and Feel identifier or appropriate runtime configuration
+* generated code resolves equivalent visual values
+* preserve `USER CODE` sections
+* do not duplicate large style tables in every generated widget
+* generated output remains readable
+* existing projects continue to export
+* older project files without a Look and Feel value use the established default
+
+Do not claim pixel-perfect parity if designer and generated runtime use different rendering paths.
+
+The required goal is consistent visual intent and state behavior.
+
+## Serialization and compatibility
+
+Preserve the existing project format wherever possible.
+
+Requirements:
+
+* continue serializing the existing Look and Feel property
+* do not add a full style table to `.vfb.json`
+* load old projects safely
+* unknown Look and Feel identifiers must fall back predictably
+* do not silently rewrite unrelated project data
+* save/load round trips must preserve the selected Look and Feel
+
+If no format change is needed, explicitly record that in the plan.
+
+## Property Inspector
+
+Preserve the existing Look and Feel property editor.
+
+Confirm:
+
+* current selection is visible
+* changing the value updates the form
+* invalid values cannot be committed
+* the option list comes from the existing source of truth
+* no duplicate style property is added
+
+Do not build a Look and Feel editor in this phase.
+
+## Fallback behavior
+
+Define one safe fallback style.
+
+Use it when:
+
+* an old project has no Look and Feel field
+* the identifier is unknown
+* a generated project cannot resolve a requested value
+* a partial style lacks a value
+
+The fallback should preserve readable controls and valid runtime rendering.
+
+Avoid assertions or crashes for recoverable missing-style data.
+
+## Scope boundaries
+
+Do not add:
+
+* visual Look and Feel editor
+* user-created themes
+* per-widget style overrides
+* imported theme files
+* light/dark switching UI
+* style presets browser
+* gradients
+* animations
+* custom shadows
+* CSS-like styling
+* skin packages
+
+Record those as future phases only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.14`.
+4. Open a project using the current default Look and Feel.
+5. Confirm widgets retain the Phase 105–107 styling.
+6. Change Look and Feel through the Property Inspector.
+7. Confirm Design Mode updates.
+8. Enter Preview Mode.
+9. Confirm Preview Mode uses the same Look and Feel.
+10. Test normal, hover, pressed, focused, checked, selected, and disabled states where supported.
+11. Confirm editor overlays remain readable in Design Mode.
+12. Save and reload the project.
+13. Confirm Look and Feel selection persists.
+14. Load an older project without the field, if a suitable fixture exists.
+15. Confirm the default fallback is used.
+16. Test an unknown identifier through a controlled fixture if practical.
+17. Confirm fallback rendering is safe.
+18. Export a representative project.
+19. Inspect or build generated output through the approved workflow.
+20. Confirm generated runtime uses the selected Look and Feel.
+21. Compare Design Mode, Preview Mode, and generated output.
+22. Record remaining parity differences.
+23. Confirm autosave and recovery preserve the Look and Feel selection.
+24. Confirm no internal widget names appear at runtime.
+
+Do not claim runtime, compatibility, or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 108 plan with:
+
+* previous and new version
+* confirmed existing Look and Feel architecture
+* source of truth
+* resolved-style design
+* values integrated
+* widgets and helpers migrated
+* fallback policy
+* serialization impact
+* Design/Preview/export behavior
+* remaining parity gaps
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep it concise.
+
+## Completion report
+
+Report:
+
+* Phase 108 plan path
+* version change to `1.0.14`
+* existing Look and Feel architecture found
+* how shared styling now resolves through it
+* fallback behavior
+* serialization compatibility
+* Property Inspector behavior
+* Design Mode behavior
+* Preview Mode behavior
+* generated-output integration
+* known remaining differences
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

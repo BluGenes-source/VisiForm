@@ -7,6 +7,9 @@
 
 namespace visiform::model {
 
+class ProjectDocument;
+class WidgetNode;
+
 class LookAndFeelRegistry {
 public:
     [[nodiscard]] static const LookAndFeelRegistry& instance();
@@ -14,6 +17,9 @@ public:
     [[nodiscard]] const LookAndFeelDefinition* findById(const std::string& id) const;
     [[nodiscard]] const LookAndFeelDefinition& defaultDefinition() const;
     [[nodiscard]] const std::vector<LookAndFeelDefinition>& definitions() const;
+    [[nodiscard]] ResolvedLookAndFeelStyle resolve(
+        const ProjectDocument& document,
+        const WidgetNode& widget) const;
 
 private:
     LookAndFeelRegistry();
