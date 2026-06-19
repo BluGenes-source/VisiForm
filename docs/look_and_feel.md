@@ -22,20 +22,36 @@ Each preset defines:
 - `fontSize`
 - control padding and splitter edge metrics
 
-`LookAndFeelRegistry::resolve(...)` is the shared source for Design Mode,
-Preview Mode, editor splitter styling, and generated runtime style values.
+`LookAndFeelRegistry::resolveProjectStyle(...)` resolves the selected preset plus
+project overrides. `LookAndFeelRegistry::resolve(...)` then applies the existing
+widget-level properties. These are the shared sources for Design Mode, Preview
+Mode, editor splitter styling, and generated runtime style values.
 Individual rendering paths convert the portable resolved color strings into
 their native color types.
 
 ## Project-level style
 
-The root project stores a top-level `lookAndFeelId`.
+The root project stores:
+
+- top-level `lookAndFeelId`
+- optional sparse `lookAndFeelOverrides`
 
 Behavior:
 
 - missing `lookAndFeelId` defaults to `VisiFormDark`
 - unknown identifiers resolve safely to `VisiFormDark`
+- absent or invalid override values inherit safely from the selected preset
+- changing the base preset preserves explicit project overrides
 - the selected project look and feel is used by widget rendering unless overridden per widget
+
+The Project menu's `Edit Look and Feel...` command edits a focused set of shared
+colors and metrics. Apply and OK commit one undoable project change when values
+actually differ. Cancel discards only unapplied temporary edits, while Reset to
+Preset clears the temporary overrides and requires Apply or OK to commit.
+
+The dialog's live sample uses the temporary resolved style without modifying the
+project model. Color fields use the existing native color picker, and numeric
+fields clamp to the conservative ranges recorded in the Phase 109 plan.
 
 ## Per-widget style overrides
 
@@ -69,24 +85,25 @@ The designer, Preview Mode, editor splitters, and generated runtime currently us
 `cornerRadius` and `fontSize` are stored and resolved for designer and generated runtime rendering.
 Rounded-corner drawing is implemented for boxed widgets through shared rounded-rectangle helpers.
 
-The `.vfb.json` format still stores only the existing `lookAndFeelId` and
-optional per-widget overrides. It does not copy the resolved style table into
-the project file.
+The `.vfb.json` format stores `lookAndFeelId`, optional sparse
+`lookAndFeelOverrides`, and established per-widget overrides. Empty project
+overrides are omitted, and the resolved style table is never copied into the
+project file.
 
 ## Current limitations
 
-- no theme editor UI yet
-- no color picker yet
 - no font picker yet
 - no runtime theme switching in the generated app yet
 - no external theme import/export yet
+- no user-defined global preset library
+- no per-widget expansion beyond the existing style properties
 - no CSS-like selector or inheritance tree beyond project preset plus widget override
 
 ## Future direction
 
 Planned future expansion may include:
 
-- editable theme preset UI
+- richer project-level style editing
 - richer rounded-corner rendering
 - external theme files
 - runtime theme switching for generated apps

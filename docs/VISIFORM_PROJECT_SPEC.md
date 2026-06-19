@@ -467,7 +467,9 @@ Incomplete areas:
 
 - No external property schema file.
 - No full event-flow designer beyond compact event assignment rows.
-- No theme editor UI.
+- The project-level Look and Feel editor intentionally covers only a compact
+  shared color/metric baseline; it is not a global preset designer or
+  per-widget styling system.
 
 ## 13. Code-generation specification
 
@@ -735,7 +737,7 @@ Before a release, the repository should have:
 | JSON persistence | Implemented | `JsonProjectReader`, `JsonProjectWriter`, serialization tests | None | Unknown top-level fields not preserved |
 | Validation | Partial | `ProjectValidator`, docs | Phase 86 gaps | Validation tests needed |
 | Designer canvas | Partial | `DesignerCanvas`, `MainWindow`, docs | Phase 86 | Some sizer feedback TODOs |
-| Property inspector | Implemented/Partial | `PropertyInspector`, docs | Phase 86 touched | No full event editor/theme editor |
+| Property inspector | Implemented/Partial | `PropertyInspector`, docs | Phase 109 touches project styling | No full event-flow designer; Look and Feel editing remains intentionally project-level |
 | Command/undo | Partial | `Command`, `UndoRedoStack`, `DocumentStateCommand` | Phase 86 | More undo tests needed |
 | Resources | Implemented/Partial | `ProjectResource`, resource docs, Windows app icon resources | None | Runtime asset loading partial |
 | Code generation | Partial | `CodeGenerator`, `VisageCppEmitter`, `CMakeEmitter` | Phase 86 | Generator tests and full runtime parity gaps |

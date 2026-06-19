@@ -84,3 +84,22 @@ TEST_CASE("generated runtime emits the selected look and feel state palette")
     CHECK(generated.find("return widget.style.hoverColor;") != std::string::npos);
     CHECK(generated.find("widget.style.focusColor") != std::string::npos);
 }
+
+TEST_CASE("generated runtime emits project look and feel overrides")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelId = "VisiFormLight";
+    document.lookAndFeelOverrides.controlSurfaceColor = "#123456";
+    document.lookAndFeelOverrides.focusOutlineColor = "#654321";
+    document.lookAndFeelOverrides.cornerRadius = 9.0f;
+
+    VisageCppEmitter::EmittedSources output;
+    std::string errorMessage;
+    REQUIRE(VisageCppEmitter{}.emitProjectSources(document, {}, output, errorMessage));
+    REQUIRE(errorMessage.empty());
+
+    const std::string& generated = output.generatedBaseCpp;
+    CHECK(generated.find("widget.style.fillColor = makeColor(0x12, 0x34, 0x56);") != std::string::npos);
+    CHECK(generated.find("widget.style.focusColor = makeColor(0x65, 0x43, 0x21);") != std::string::npos);
+    CHECK(generated.find("widget.style.cornerRadius = 9.00f;") != std::string::npos);
+}

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "model/FormNode.h"
+#include "model/LookAndFeelDefinition.h"
 #include "model/ProjectResource.h"
 
 #include <string>
@@ -24,6 +25,7 @@ public:
     std::string userSubclassName{};
     std::string windowTitle{};
     std::string lookAndFeelId = "VisiFormDark";
+    LookAndFeelOverrides lookAndFeelOverrides{};
     std::vector<ProjectResource> resources{};
     WidgetNode root{};
     std::string selectedWidgetId{};

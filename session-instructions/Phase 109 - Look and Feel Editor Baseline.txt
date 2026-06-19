@@ -1,0 +1,467 @@
+Implement VisiForm Phase 109: Look and Feel Editor Baseline.
+
+Phase 108 is complete and pushed.
+
+Use:
+
+* Phase: 109
+* Version: 1.0.15
+* Subagents: none
+
+Keep token use minimal. This phase adds a focused project-level Look and Feel editor, not a full styling system.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 108 plan
+* files directly related to:
+
+  * existing Look and Feel selection and resolution
+  * resolved style values
+  * project settings
+  * dialogs and property editors
+  * project serialization
+  * Preview Mode rendering
+  * generated runtime styling
+  * undo/dirty-state handling
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_109_look_and_feel_editor_baseline_plan.md`
+
+Before implementation:
+
+* update all authoritative version declarations to `1.0.15`
+* record the previous and new versions in the phase plan
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not add per-widget style overrides.
+Do not redesign the existing Look and Feel architecture.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Add a project-level Look and Feel editor that customizes the project’s selected built-in Look and Feel without modifying the global preset itself.
+
+The existing Look and Feel identifier remains the base style and source of default values.
+
+A project may store only explicit overrides.
+
+Do not create a second theme system.
+
+## Entry point
+
+Add an `Edit Look and Feel…` command in the most appropriate existing location.
+
+Preferred options:
+
+* next to the existing Look and Feel property in the Property Inspector
+* Project menu
+* both, if they can share one command path cleanly
+
+Do not duplicate dialog-launch logic.
+
+The current project must be open before the command is enabled.
+
+## Editor dialog
+
+Create a modal Look and Feel editor dialog.
+
+The first iteration should edit a compact, practical set of shared project-level values.
+
+Include:
+
+### Colors
+
+* application or form surface
+* control surface
+* recessed surface
+* primary text
+* disabled text
+* border
+* focus outline
+* accent or selection
+* highlight edge
+* shadow edge
+
+### Metrics
+
+* border thickness
+* corner radius
+* control padding
+* splitter highlight strength or color
+* splitter shadow strength or color
+
+Use the existing Phase 108 resolved-style structure as the source of truth.
+
+Do not introduce unrelated style properties.
+
+## Base preset and overrides
+
+The project retains:
+
+* base Look and Feel identifier
+* optional project-level overrides
+
+Required behavior:
+
+* opening the editor starts from the fully resolved current style
+* unchanged values remain inherited from the selected preset
+* changed values become explicit project overrides
+* resetting a value removes its override and restores the preset value
+* built-in presets are never modified globally
+* changing one project does not affect another project
+
+Prefer a sparse override representation rather than copying the entire resolved style table.
+
+## Override representation
+
+Use the smallest representation compatible with the existing model.
+
+Preferred approach:
+
+* optional value per supported override
+* absence means inherit from the base Look and Feel
+
+Do not store resolved fallback values as overrides merely because the dialog was opened.
+
+Only store values that differ from the base preset.
+
+Provide one shared function to:
+
+1. resolve the base Look and Feel
+2. apply project overrides
+3. return the final resolved style
+
+Design Mode, Preview Mode, and generated output must use this final resolved style.
+
+## Dialog controls
+
+Provide:
+
+* `Apply`
+* `OK`
+* `Cancel`
+* `Reset to Preset`
+
+Behavior:
+
+### Apply
+
+* commit the current dialog values to the project
+* repaint Design Mode
+* update Preview Mode rendering
+* mark the project dirty only if values changed
+* keep the dialog open
+
+### OK
+
+* apply changed values
+* close the dialog
+
+### Cancel
+
+* close without committing un-applied changes
+* preserve values already committed through Apply
+* if Apply was never used, restore the exact pre-dialog project state
+* do not leave temporary preview values active
+
+### Reset to Preset
+
+* clear all project-level Look and Feel overrides
+* show the selected built-in preset values
+* do not change the base Look and Feel identifier
+* require Apply or OK to commit the reset
+
+Do not use Cancel as an undo mechanism for values already committed with Apply.
+
+## Live sample preview
+
+Include a compact preview area inside the dialog.
+
+The preview should show representative controls using the temporary dialog style:
+
+* Button
+* Text Box
+* Check Box
+* Radio Button
+* Combo Box
+* Slider
+* Progress Bar
+* Tab Control
+* raised or recessed splitter line
+
+The preview may be non-interactive if interactive temporary states would significantly expand scope.
+
+At minimum, show representative states where practical:
+
+* normal
+* focused
+* checked
+* disabled
+* selected or active tab
+* partial progress
+
+The sample preview must not modify the project model.
+
+Use the existing shared widget style helpers.
+
+Do not implement a separate preview rendering system with duplicate colors and metrics.
+
+## Color editing
+
+Use the existing Color Picker or color-editing control where practical.
+
+Requirements:
+
+* show the current color
+* permit choosing a valid color
+* preserve alpha only if the existing styling system supports it safely
+* reject or normalize invalid values
+* update the sample preview immediately
+
+Do not add a new complex color-management framework.
+
+## Numeric editing
+
+For border thickness, corner radius, and padding:
+
+* use validated numeric controls
+* enforce sensible minimum and maximum values
+* prevent negative values
+* apply DPI scaling through the existing rendering path
+* show changes immediately in the sample preview
+
+Use conservative ranges.
+
+Document the chosen ranges in the phase plan.
+
+## Project model and serialization
+
+Extend the existing project model only as needed to store Look and Feel overrides.
+
+Requirements:
+
+* preserve the existing base Look and Feel field
+* store only supported override values
+* omit absent overrides where practical
+* load projects with no overrides safely
+* preserve backward compatibility
+* unknown override fields should follow existing serializer compatibility rules
+* save/load round trips must preserve explicit overrides
+* normal projects without overrides should remain compact
+
+Do not store dialog state, selected editor field, or live-preview state.
+
+## Dirty state and undo policy
+
+Treat committed Look and Feel changes as project modifications.
+
+Preferred behavior:
+
+* one Apply or OK operation creates one project-level undo command if the existing command system supports project settings cleanly
+* undo restores the prior base-plus-overrides state
+* redo reapplies it
+
+If project settings are not currently integrated with undo/redo:
+
+* preserve correct dirty-state behavior
+* document the limitation
+* do not create an unrelated command framework solely for this phase
+
+No-op Apply or OK must not:
+
+* mark the project dirty
+* create an undo entry
+* trigger unnecessary serialization changes
+
+## Changing the base Look and Feel
+
+The existing Look and Feel property remains usable.
+
+When the base preset changes:
+
+* preserve explicit project overrides
+* resolve them on top of the newly selected preset
+* repaint immediately
+* keep unsupported or invalid override values safely normalized
+
+Do not silently clear overrides when changing the base preset.
+
+A future phase may offer a confirmation to clear or remap overrides, but do not add that complexity now.
+
+## Design Mode integration
+
+After Apply or OK:
+
+* selected widgets repaint using the new resolved style
+* editor selection overlays remain separate and readable
+* resize handles and corner arcs remain visible
+* grid and guides remain unchanged
+* no project reload is required
+
+## Preview Mode integration
+
+Preview Mode must use:
+
+`base Look and Feel + project overrides`
+
+Requirements:
+
+* no editor-only labels
+* no selection overlays
+* normal runtime-style state rendering remains functional
+* entering and leaving Preview Mode does not alter overrides
+
+## Generated output
+
+Generated projects must receive the same resolved appearance.
+
+Preferred approach:
+
+* export the base Look and Feel identifier
+* export only project override values
+* resolve them through a generated/shared runtime style helper
+
+Requirements:
+
+* avoid embedding duplicate style tables in each widget
+* preserve generated-code readability
+* preserve `USER CODE` regions
+* generated output without overrides behaves exactly as before
+* generated output with overrides reflects the customized style
+* unsupported generated values fall back safely
+
+Do not add per-widget style code.
+
+## Fallback and validation
+
+Use the Phase 108 fallback style when:
+
+* a base Look and Feel identifier is missing or unknown
+* an override is invalid
+* a field is absent
+* generated output cannot resolve a value
+
+Do not crash for recoverable style data.
+
+## Scope boundaries
+
+Do not add:
+
+* per-widget style overrides
+* user-defined global preset library
+* theme import/export
+* preset files
+* style inheritance chains
+* gradients
+* animations
+* custom font editing
+* arbitrary border styles
+* custom shadow editors
+* CSS-like rules
+* global application-theme switching
+* a full Look and Feel designer
+
+Record these as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.15`.
+4. Open a project using a built-in Look and Feel.
+5. Open the Look and Feel editor.
+6. Confirm the dialog displays resolved preset values.
+7. Change a color and confirm the sample preview updates.
+8. Change border thickness, corner radius, and padding.
+9. Test Apply.
+10. Confirm the project updates without closing the dialog.
+11. Confirm the project becomes dirty only when values changed.
+12. Test Cancel with unapplied changes.
+13. Confirm unapplied values are discarded.
+14. Test OK.
+15. Confirm the dialog closes and values remain.
+16. Test Reset to Preset.
+17. Confirm overrides are cleared only after Apply or OK.
+18. Save and reload the project.
+19. Confirm overrides persist.
+20. Open an older project with no overrides.
+21. Confirm built-in preset behavior remains unchanged.
+22. Change the base Look and Feel while overrides exist.
+23. Confirm overrides apply over the new base preset.
+24. Enter Preview Mode.
+25. Confirm the resolved customized style appears.
+26. Confirm internal widget names remain hidden.
+27. Export a representative project.
+28. Inspect or build generated output through the approved workflow.
+29. Confirm customized values appear in generated runtime output.
+30. Confirm projects without overrides still generate correctly.
+31. Test undo and redo if project-setting commands are supported.
+32. Confirm autosave and recovery preserve the overrides.
+
+Do not claim runtime, compatibility, undo, or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 109 plan with:
+
+* previous and new version
+* editor entry point
+* supported editable values
+* base-preset and override model
+* sparse serialization design
+* resolved-style flow
+* Apply, OK, Cancel, and Reset behavior
+* sample preview implementation
+* numeric ranges
+* dirty-state and undo behavior
+* Design/Preview/export integration
+* compatibility findings
+* files changed
+* build result
+* manual validation actually performed
+* known limitations
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep the update concise.
+
+## Completion report
+
+Report:
+
+* Phase 109 plan path
+* version change to `1.0.15`
+* editor entry point
+* editable style values
+* base-preset and override behavior
+* Apply, OK, Cancel, and Reset semantics
+* sample preview behavior
+* serialization compatibility
+* dirty-state and undo behavior
+* Design Mode integration
+* Preview Mode integration
+* generated-output integration
+* known limitations
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

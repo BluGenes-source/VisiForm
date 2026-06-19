@@ -3,6 +3,7 @@
 #include "model/WidgetNode.h"
 
 #include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace visiform::model {
@@ -63,6 +64,22 @@ const std::string& valueOrFallback(const std::string& value, const std::string& 
     return value.empty() ? fallback : value;
 }
 
+bool isValidColor(const std::string& value)
+{
+    return (value.size() == 7 || value.size() == 9)
+        && value.front() == '#'
+        && std::all_of(value.begin() + 1, value.end(), [](unsigned char character) {
+               return std::isxdigit(character) != 0;
+           });
+}
+
+void applyColorOverride(const std::optional<std::string>& overrideValue, std::string& target)
+{
+    if (overrideValue.has_value() && isValidColor(*overrideValue)) {
+        target = *overrideValue;
+    }
+}
+
 } // namespace
 
 LookAndFeelRegistry::LookAndFeelRegistry()
@@ -109,14 +126,11 @@ const std::vector<LookAndFeelDefinition>& LookAndFeelRegistry::definitions() con
     return definitions_;
 }
 
-ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
-    const ProjectDocument& document,
-    const WidgetNode& widget) const
+ResolvedLookAndFeelStyle LookAndFeelRegistry::resolveProjectStyle(
+    const std::string& lookAndFeelId,
+    const LookAndFeelOverrides& overrides) const
 {
-    const std::string widgetLookAndFeelId = widget.getStringProperty("lookAndFeelId", {});
-    const LookAndFeelDefinition* definition = !widgetLookAndFeelId.empty()
-        ? findById(widgetLookAndFeelId)
-        : findById(document.lookAndFeelId);
+    const LookAndFeelDefinition* definition = findById(lookAndFeelId);
     const LookAndFeelDefinition& fallback = defaultDefinition();
     if (definition == nullptr) {
         definition = &fallback;
@@ -152,8 +166,50 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         ? definition->splitterShadowThickness
         : fallback.splitterShadowThickness;
 
-    style.borderThickness = std::clamp(widget.getFloatProperty("borderThickness", style.borderThickness), 0.0f, 20.0f);
-    style.cornerRadius = std::clamp(widget.getFloatProperty("cornerRadius", style.cornerRadius), 0.0f, 50.0f);
+    applyColorOverride(overrides.applicationSurfaceColor, style.applicationSurfaceColor);
+    applyColorOverride(overrides.controlSurfaceColor, style.controlSurfaceColor);
+    applyColorOverride(overrides.recessedSurfaceColor, style.recessedSurfaceColor);
+    applyColorOverride(overrides.primaryTextColor, style.primaryTextColor);
+    applyColorOverride(overrides.disabledTextColor, style.disabledTextColor);
+    applyColorOverride(overrides.borderColor, style.borderColor);
+    applyColorOverride(overrides.focusOutlineColor, style.focusOutlineColor);
+    applyColorOverride(overrides.accentColor, style.accentColor);
+    applyColorOverride(overrides.highlightEdgeColor, style.highlightEdgeColor);
+    applyColorOverride(overrides.shadowEdgeColor, style.shadowEdgeColor);
+    if (overrides.borderThickness.has_value()) {
+        style.borderThickness = std::clamp(*overrides.borderThickness, 0.0f, 20.0f);
+    }
+    if (overrides.cornerRadius.has_value()) {
+        style.cornerRadius = std::clamp(*overrides.cornerRadius, 0.0f, 50.0f);
+    }
+    if (overrides.controlPadding.has_value()) {
+        style.controlPadding = std::clamp(*overrides.controlPadding, 0.0f, 40.0f);
+    }
+    if (overrides.splitterHighlightThickness.has_value()) {
+        style.splitterHighlightThickness = std::clamp(*overrides.splitterHighlightThickness, 0.0f, 8.0f);
+    }
+    if (overrides.splitterShadowThickness.has_value()) {
+        style.splitterShadowThickness = std::clamp(*overrides.splitterShadowThickness, 0.0f, 8.0f);
+    }
+
+    return style;
+}
+
+ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
+    const ProjectDocument& document,
+    const WidgetNode& widget) const
+{
+    const std::string widgetLookAndFeelId = widget.getStringProperty("lookAndFeelId", {});
+    ResolvedLookAndFeelStyle style = widgetLookAndFeelId.empty()
+        ? resolveProjectStyle(document.lookAndFeelId, document.lookAndFeelOverrides)
+        : resolveProjectStyle(widgetLookAndFeelId, {});
+
+    if (!document.lookAndFeelOverrides.borderThickness.has_value()) {
+        style.borderThickness = std::clamp(widget.getFloatProperty("borderThickness", style.borderThickness), 0.0f, 20.0f);
+    }
+    if (!document.lookAndFeelOverrides.cornerRadius.has_value()) {
+        style.cornerRadius = std::clamp(widget.getFloatProperty("cornerRadius", style.cornerRadius), 0.0f, 50.0f);
+    }
     style.fontSize = std::clamp(widget.getFloatProperty("fontSize", style.fontSize), 8.0f, 72.0f);
 
     const auto applyColorOverride = [&widget](const char* key, std::string& value) {

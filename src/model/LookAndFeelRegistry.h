@@ -17,6 +17,9 @@ public:
     [[nodiscard]] const LookAndFeelDefinition* findById(const std::string& id) const;
     [[nodiscard]] const LookAndFeelDefinition& defaultDefinition() const;
     [[nodiscard]] const std::vector<LookAndFeelDefinition>& definitions() const;
+    [[nodiscard]] ResolvedLookAndFeelStyle resolveProjectStyle(
+        const std::string& lookAndFeelId,
+        const LookAndFeelOverrides& overrides) const;
     [[nodiscard]] ResolvedLookAndFeelStyle resolve(
         const ProjectDocument& document,
         const WidgetNode& widget) const;

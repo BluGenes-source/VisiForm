@@ -1,8 +1,48 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace visiform::model {
+
+struct LookAndFeelOverrides {
+    std::optional<std::string> applicationSurfaceColor{};
+    std::optional<std::string> controlSurfaceColor{};
+    std::optional<std::string> recessedSurfaceColor{};
+    std::optional<std::string> primaryTextColor{};
+    std::optional<std::string> disabledTextColor{};
+    std::optional<std::string> borderColor{};
+    std::optional<std::string> focusOutlineColor{};
+    std::optional<std::string> accentColor{};
+    std::optional<std::string> highlightEdgeColor{};
+    std::optional<std::string> shadowEdgeColor{};
+    std::optional<float> borderThickness{};
+    std::optional<float> cornerRadius{};
+    std::optional<float> controlPadding{};
+    std::optional<float> splitterHighlightThickness{};
+    std::optional<float> splitterShadowThickness{};
+
+    [[nodiscard]] bool empty() const
+    {
+        return !applicationSurfaceColor.has_value()
+            && !controlSurfaceColor.has_value()
+            && !recessedSurfaceColor.has_value()
+            && !primaryTextColor.has_value()
+            && !disabledTextColor.has_value()
+            && !borderColor.has_value()
+            && !focusOutlineColor.has_value()
+            && !accentColor.has_value()
+            && !highlightEdgeColor.has_value()
+            && !shadowEdgeColor.has_value()
+            && !borderThickness.has_value()
+            && !cornerRadius.has_value()
+            && !controlPadding.has_value()
+            && !splitterHighlightThickness.has_value()
+            && !splitterShadowThickness.has_value();
+    }
+
+    bool operator==(const LookAndFeelOverrides&) const = default;
+};
 
 struct LookAndFeelDefinition {
     std::string id;

@@ -77,6 +77,11 @@ private:
         float width;
         float height;
 
+        [[nodiscard]] bool isValid() const
+        {
+            return isVisible();
+        }
+
         [[nodiscard]] bool isVisible() const
         {
             return width > 0.0f && height > 0.0f;
@@ -110,6 +115,7 @@ private:
         ShowKeyboardShortcuts,
         ShowGeneratedCodeGuide,
         ShowProjectSettings,
+        ShowLookAndFeelEditor,
         ShowResourceManager,
         ShowExportDependencies,
         FitText,
@@ -240,6 +246,7 @@ private:
         Message,
         NewProjectWizard,
         ProjectSettings,
+        LookAndFeelEditor,
         ResourceManager,
         KeyboardShortcuts,
         ItemListEditor,
@@ -388,6 +395,11 @@ private:
         std::string localVisageSourceDirectory{};
         std::string visageGitRepository{};
         std::string visageGitTag{};
+    };
+
+    struct LookAndFeelEditorDialogState {
+        bool visible = false;
+        model::LookAndFeelOverrides pendingOverrides{};
     };
 
     struct ResourceManagerDialogState {
@@ -560,10 +572,12 @@ private:
     [[nodiscard]] bool canDrawText() const;
     bool openNewProjectWizard();
     bool openProjectSettingsDialog();
+    bool openLookAndFeelEditorDialog();
     bool openResourceManagerDialog();
     bool openKeyboardShortcutsDialog();
     void resetNewProjectWizard();
     void populateProjectSettingsDialog();
+    void populateLookAndFeelEditorDialog();
     void populateResourceManagerDialog();
     void populateKeyboardShortcutsDialog();
     void refreshResourceManagerPreview();
@@ -623,6 +637,11 @@ private:
     [[nodiscard]] std::string validateProjectSettingsDialog() const;
     bool applyNewProjectWizard();
     bool applyProjectSettingsDialog();
+    bool applyLookAndFeelEditorDialog(bool closeAfterApply);
+    void resetLookAndFeelEditorDialog();
+    [[nodiscard]] model::ResolvedLookAndFeelStyle lookAndFeelEditorResolvedStyle() const;
+    [[nodiscard]] PanelBounds lookAndFeelEditorPreviewBounds() const;
+    void drawLookAndFeelEditorPreview(visage::Canvas& canvas) const;
     [[nodiscard]] model::ProjectDocument createDocumentFromWizard();
     void applyWizardTemplate(model::ProjectDocument& document, const std::string& templateId);
     [[nodiscard]] std::vector<PanelBounds> editorModalButtonBounds() const;
@@ -679,6 +698,7 @@ private:
     EditorModalEditState editorModalEdit_{};
     NewProjectWizardState newProjectWizard_{};
     ProjectSettingsDialogState projectSettingsDialog_{};
+    LookAndFeelEditorDialogState lookAndFeelEditorDialog_{};
     ResourceManagerDialogState resourceManagerDialog_{};
     KeyboardShortcutDialogState keyboardShortcutDialog_{};
     ItemListEditorDialogState itemListEditorDialog_{};

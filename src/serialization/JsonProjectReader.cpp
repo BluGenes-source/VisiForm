@@ -374,6 +374,56 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
             }
             document.lookAndFeelId = iterator->get<std::string>();
         }
+        if (const auto iterator = json.find("lookAndFeelOverrides"); iterator != json.end()) {
+            if (!iterator->is_object()) {
+                errorMessage = "lookAndFeelOverrides must be an object when present.";
+                return std::nullopt;
+            }
+
+            const auto readOptionalString = [&errorMessage, &iterator](const char* key, std::optional<std::string>& target) {
+                const auto value = iterator->find(key);
+                if (value == iterator->end()) {
+                    return true;
+                }
+                if (!value->is_string()) {
+                    errorMessage = std::string{ "lookAndFeelOverrides." } + key + " must be a string.";
+                    return false;
+                }
+                target = value->get<std::string>();
+                return true;
+            };
+            const auto readOptionalFloat = [&errorMessage, &iterator](const char* key, std::optional<float>& target) {
+                const auto value = iterator->find(key);
+                if (value == iterator->end()) {
+                    return true;
+                }
+                if (!value->is_number()) {
+                    errorMessage = std::string{ "lookAndFeelOverrides." } + key + " must be numeric.";
+                    return false;
+                }
+                target = value->get<float>();
+                return true;
+            };
+
+            auto& overrides = document.lookAndFeelOverrides;
+            if (!readOptionalString("applicationSurfaceColor", overrides.applicationSurfaceColor)
+                || !readOptionalString("controlSurfaceColor", overrides.controlSurfaceColor)
+                || !readOptionalString("recessedSurfaceColor", overrides.recessedSurfaceColor)
+                || !readOptionalString("primaryTextColor", overrides.primaryTextColor)
+                || !readOptionalString("disabledTextColor", overrides.disabledTextColor)
+                || !readOptionalString("borderColor", overrides.borderColor)
+                || !readOptionalString("focusOutlineColor", overrides.focusOutlineColor)
+                || !readOptionalString("accentColor", overrides.accentColor)
+                || !readOptionalString("highlightEdgeColor", overrides.highlightEdgeColor)
+                || !readOptionalString("shadowEdgeColor", overrides.shadowEdgeColor)
+                || !readOptionalFloat("borderThickness", overrides.borderThickness)
+                || !readOptionalFloat("cornerRadius", overrides.cornerRadius)
+                || !readOptionalFloat("controlPadding", overrides.controlPadding)
+                || !readOptionalFloat("splitterHighlightThickness", overrides.splitterHighlightThickness)
+                || !readOptionalFloat("splitterShadowThickness", overrides.splitterShadowThickness)) {
+                return std::nullopt;
+            }
+        }
         document.generatedBaseClassName = "MainWindow";
         document.userSubclassName = (document.mainFormClassName.empty() || document.mainFormClassName == "MainWindow")
             ? "AppMainWindow"

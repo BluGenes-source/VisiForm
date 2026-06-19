@@ -13,6 +13,7 @@
 #include "serialization/JsonProjectReader.h"
 #include "serialization/JsonProjectWriter.h"
 #include "ui/WidgetMetrics.h"
+#include "ui/VisualStyleBaseline.h"
 #include "utils/AppSettings.h"
 #include "utils/CppIdentifier.h"
 #include "utils/FileUtils.h"
@@ -114,6 +115,15 @@ constexpr float kWizardModalWidth = 640.0f;
 constexpr float kWizardModalHeight = 520.0f;
 constexpr float kProjectSettingsModalWidth = 640.0f;
 constexpr float kProjectSettingsModalHeight = 520.0f;
+constexpr float kLookAndFeelEditorModalWidth = 980.0f;
+constexpr float kLookAndFeelEditorModalHeight = 720.0f;
+constexpr float kLookAndFeelEditorMaxWidth = 1060.0f;
+constexpr float kLookAndFeelEditorMaxHeight = 760.0f;
+constexpr float kLookAndFeelEditorOuterMargin = 70.0f;
+constexpr float kLookAndFeelEditorColumnGap = 24.0f;
+constexpr float kLookAndFeelEditorLabelWidth = 152.0f;
+constexpr float kLookAndFeelEditorPreviewGap = 14.0f;
+constexpr float kLookAndFeelEditorPreviewHeight = 176.0f;
 constexpr float kItemListEditorModalWidth = 700.0f;
 constexpr float kItemListEditorModalHeight = 540.0f;
 constexpr float kItemListEditorPreviewHeight = 220.0f;
@@ -724,6 +734,37 @@ bool isWidgetColorProperty(const model::WidgetNode& widget, const std::string& k
 bool isStyleFloatProperty(const std::string& key)
 {
     return key == "borderThickness" || key == "cornerRadius" || key == "fontSize";
+}
+
+int parseColorValue(const std::string& value, int fallback)
+{
+    if (!isValidColorValue(value) || value.empty()) {
+        return fallback;
+    }
+
+    try {
+        const unsigned long parsed = std::stoul(value.substr(1), nullptr, 16);
+        return value.size() == 7
+            ? static_cast<int>(0xff000000u | parsed)
+            : static_cast<int>(parsed);
+    }
+    catch (...) {
+        return fallback;
+    }
+}
+
+bool isLookAndFeelColorField(std::string_view key)
+{
+    return key == "applicationSurfaceColor"
+        || key == "controlSurfaceColor"
+        || key == "recessedSurfaceColor"
+        || key == "primaryTextColor"
+        || key == "disabledTextColor"
+        || key == "borderColor"
+        || key == "focusOutlineColor"
+        || key == "accentColor"
+        || key == "highlightEdgeColor"
+        || key == "shadowEdgeColor";
 }
 
 bool isWidgetEventProperty(const model::WidgetNode& widget, const std::string& key)
@@ -1878,6 +1919,35 @@ bool MainWindow::openProjectSettingsDialog()
     return true;
 }
 
+bool MainWindow::openLookAndFeelEditorDialog()
+{
+    cancelInspectorEdit();
+    cancelEditorModalFieldEdit();
+    clearCanvasInteraction();
+    requestKeyboardFocus();
+
+    populateLookAndFeelEditorDialog();
+    lookAndFeelEditorDialog_.visible = true;
+
+    editorModal_.visible = true;
+    editorModal_.mode = EditorModalMode::LookAndFeelEditor;
+    editorModal_.title = "Edit Look and Feel";
+    editorModal_.message.clear();
+    editorModal_.lines.clear();
+    editorModal_.buttons = {
+        { "apply_look_and_feel", "Apply" },
+        { "ok_look_and_feel", "OK" },
+        { "reset_look_and_feel", "Reset to Preset" },
+        { "cancel", "Cancel" }
+    };
+    editorModal_.result.clear();
+    editorModal_.statusText = "Values inherit from " + document_.lookAndFeelId + " until changed.";
+    editorModal_.preferredWidth = kLookAndFeelEditorModalWidth;
+    editorModal_.preferredHeight = kLookAndFeelEditorModalHeight;
+    redraw();
+    return true;
+}
+
 bool MainWindow::openResourceManagerDialog()
 {
     cancelInspectorEdit();
@@ -1918,6 +1988,12 @@ void MainWindow::populateProjectSettingsDialog()
     projectSettingsDialog_.localVisageSourceDirectory = normalizedPathText(settings_.localVisageSourceDirectory);
     projectSettingsDialog_.visageGitRepository = settings_.visageGitRepository;
     projectSettingsDialog_.visageGitTag = settings_.visageGitTag;
+}
+
+void MainWindow::populateLookAndFeelEditorDialog()
+{
+    lookAndFeelEditorDialog_ = {};
+    lookAndFeelEditorDialog_.pendingOverrides = document_.lookAndFeelOverrides;
 }
 
 void MainWindow::populateResourceManagerDialog()
@@ -2694,6 +2770,48 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
     setOperationStatus(std::move(status));
     redraw();
     return true;
+}
+
+bool MainWindow::applyLookAndFeelEditorDialog(bool closeAfterApply)
+{
+    const model::LookAndFeelOverrides pending = lookAndFeelEditorDialog_.pendingOverrides;
+    const bool changed = pending != document_.lookAndFeelOverrides;
+    if (changed) {
+        applyUndoableDocumentChange("Edit Look and Feel", [this, &pending]() {
+            document_.lookAndFeelOverrides = pending;
+            return true;
+        });
+        editorModal_.statusText = pending.empty()
+            ? "Project overrides cleared; preset values are active."
+            : "Project Look and Feel overrides applied.";
+        setOperationStatus(editorModal_.statusText);
+    }
+    else {
+        editorModal_.statusText = "No Look and Feel changes to apply.";
+    }
+
+    if (closeAfterApply) {
+        closeEditorModalDialog(changed ? "ok" : "ok_no_change");
+    }
+    else {
+        redraw();
+    }
+    return true;
+}
+
+void MainWindow::resetLookAndFeelEditorDialog()
+{
+    lookAndFeelEditorDialog_.pendingOverrides = {};
+    cancelEditorModalFieldEdit();
+    editorModal_.statusText = "Preset values restored temporarily. Click Apply or OK to commit.";
+    redraw();
+}
+
+model::ResolvedLookAndFeelStyle MainWindow::lookAndFeelEditorResolvedStyle() const
+{
+    return model::LookAndFeelRegistry::instance().resolveProjectStyle(
+        document_.lookAndFeelId,
+        lookAndFeelEditorDialog_.pendingOverrides);
 }
 
 bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
@@ -6489,6 +6607,8 @@ std::string_view MainWindow::commandRegistryId(CommandId command)
         return kHelpGeneratedCodeGuide;
     case CommandId::ShowProjectSettings:
         return kProjectSettings;
+    case CommandId::ShowLookAndFeelEditor:
+        return kProjectEditLookAndFeel;
     case CommandId::ShowResourceManager:
         return kProjectResources;
     case CommandId::ShowExportDependencies:
@@ -6696,6 +6816,9 @@ MainWindow::CommandId MainWindow::commandFromRegistryId(std::string_view registr
     }
     if (registryId == kProjectSettings) {
         return CommandId::ShowProjectSettings;
+    }
+    if (registryId == kProjectEditLookAndFeel) {
+        return CommandId::ShowLookAndFeelEditor;
     }
     if (registryId == kProjectResources) {
         return CommandId::ShowResourceManager;
@@ -6930,6 +7053,7 @@ bool MainWindow::isCommandEnabled(CommandId command) const
         case CommandId::FitWidthToParent:
         case CommandId::FitHeightToParent:
         case CommandId::ShowProjectSettings:
+        case CommandId::ShowLookAndFeelEditor:
         case CommandId::ShowResourceManager:
             return false;
         default:
@@ -6977,6 +7101,8 @@ bool MainWindow::isCommandEnabled(CommandId command) const
         return hasCompatibleGeometrySelection(document_, 3);
     case CommandId::ShowValidationReport:
         return std::filesystem::exists(projectRootPath() / "Generated" / "validation_report.md");
+    case CommandId::ShowLookAndFeelEditor:
+        return !document_.root.id.empty();
     case CommandId::None:
         return false;
     default:
@@ -7120,6 +7246,7 @@ std::vector<MainWindow::Menu> MainWindow::menus() const
     Menu projectMenu{ "Project" };
     addCommand(projectMenu, CommandId::ValidateProject, "Validate / Check");
     addCommand(projectMenu, CommandId::ShowProjectSettings, "Project Settings");
+    addCommand(projectMenu, CommandId::ShowLookAndFeelEditor, "Edit Look and Feel...");
     addCommand(projectMenu, CommandId::ShowResourceManager, "Resources");
     addCommand(projectMenu, CommandId::ShowKeyboardShortcuts, "Keyboard Shortcuts");
     addCommand(projectMenu, CommandId::ShowExportDependencies, "Export Dependencies");
@@ -7667,6 +7794,8 @@ bool MainWindow::executeCommand(CommandId command)
         return true;
     case CommandId::ShowProjectSettings:
         return openProjectSettingsDialog();
+    case CommandId::ShowLookAndFeelEditor:
+        return openLookAndFeelEditorDialog();
     case CommandId::ShowResourceManager:
         return openResourceManagerDialog();
     case CommandId::ShowExportDependencies:
@@ -8633,6 +8762,7 @@ bool MainWindow::openSelectedWidgetItemEditor()
     editorModal_.preferredHeight = kItemListEditorModalHeight;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    lookAndFeelEditorDialog_.visible = false;
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
     setItemListEditorSelectedIndex(itemListEditorDialog_.selectedItemIndex);
@@ -8759,6 +8889,7 @@ bool MainWindow::openSelectedTableGridEditor()
     editorModal_.preferredHeight = kTableGridEditorModalHeight;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    lookAndFeelEditorDialog_.visible = false;
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
     updateEditorModalEditorBounds();
@@ -9151,6 +9282,28 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
         fields.push_back(EditorModalField{ "visageGitRepository", "Visage Git Repository", projectSettingsDialog_.visageGitRepository, PropertyInspector::PropertyEditKind::Text });
         fields.push_back(EditorModalField{ "visageGitTag", "Visage Git Tag", projectSettingsDialog_.visageGitTag, PropertyInspector::PropertyEditKind::Text });
     }
+    else if (editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        const auto style = lookAndFeelEditorResolvedStyle();
+        const auto& overrides = lookAndFeelEditorDialog_.pendingOverrides;
+        const auto label = [](std::string text, bool overridden) {
+            return text + (overridden ? " *" : "");
+        };
+        fields.push_back(EditorModalField{ "applicationSurfaceColor", label("Application Surface", overrides.applicationSurfaceColor.has_value()), style.applicationSurfaceColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "controlSurfaceColor", label("Control Surface", overrides.controlSurfaceColor.has_value()), style.controlSurfaceColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "recessedSurfaceColor", label("Recessed Surface", overrides.recessedSurfaceColor.has_value()), style.recessedSurfaceColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "primaryTextColor", label("Primary Text", overrides.primaryTextColor.has_value()), style.primaryTextColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "disabledTextColor", label("Disabled Text", overrides.disabledTextColor.has_value()), style.disabledTextColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "borderColor", label("Border", overrides.borderColor.has_value()), style.borderColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "focusOutlineColor", label("Focus Outline", overrides.focusOutlineColor.has_value()), style.focusOutlineColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "accentColor", label("Accent / Selection", overrides.accentColor.has_value()), style.accentColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "highlightEdgeColor", label("Highlight Edge", overrides.highlightEdgeColor.has_value()), style.highlightEdgeColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "shadowEdgeColor", label("Shadow Edge", overrides.shadowEdgeColor.has_value()), style.shadowEdgeColor, PropertyInspector::PropertyEditKind::Color });
+        fields.push_back(EditorModalField{ "borderThickness", label("Border Thickness", overrides.borderThickness.has_value()), formatCanvasCoordinate(style.borderThickness), PropertyInspector::PropertyEditKind::Float });
+        fields.push_back(EditorModalField{ "cornerRadius", label("Corner Radius", overrides.cornerRadius.has_value()), formatCanvasCoordinate(style.cornerRadius), PropertyInspector::PropertyEditKind::Float });
+        fields.push_back(EditorModalField{ "controlPadding", label("Control Padding", overrides.controlPadding.has_value()), formatCanvasCoordinate(style.controlPadding), PropertyInspector::PropertyEditKind::Float });
+        fields.push_back(EditorModalField{ "splitterHighlightThickness", label("Splitter Highlight", overrides.splitterHighlightThickness.has_value()), formatCanvasCoordinate(style.splitterHighlightThickness), PropertyInspector::PropertyEditKind::Float });
+        fields.push_back(EditorModalField{ "splitterShadowThickness", label("Splitter Shadow", overrides.splitterShadowThickness.has_value()), formatCanvasCoordinate(style.splitterShadowThickness), PropertyInspector::PropertyEditKind::Float });
+    }
     else if (editorModal_.mode == EditorModalMode::ResourceManager) {
         std::vector<PropertyInspector::PropertyChoice> resourceChoices;
         resourceChoices.reserve(document_.resources.size());
@@ -9245,6 +9398,132 @@ MainWindow::PanelBounds MainWindow::editorModalBodyBounds() const
         dialogBounds.width - 28.0f,
         std::max(0.0f, bottom - top)
     };
+}
+
+MainWindow::PanelBounds MainWindow::lookAndFeelEditorPreviewBounds() const
+{
+    const PanelBounds bodyBounds = editorModalBodyBounds();
+    if (editorModal_.mode != EditorModalMode::LookAndFeelEditor) {
+        return {};
+    }
+
+    const float fieldsHeight = 8.0f * kEditorModalFormRowHeight
+        + 7.0f * kEditorModalFormRowSpacing;
+    const float top = bodyBounds.y + fieldsHeight + kLookAndFeelEditorPreviewGap;
+    return {
+        bodyBounds.x,
+        top,
+        bodyBounds.width,
+        std::min(kLookAndFeelEditorPreviewHeight,
+            std::max(0.0f, bodyBounds.y + bodyBounds.height - top))
+    };
+}
+
+void MainWindow::drawLookAndFeelEditorPreview(visage::Canvas& canvas) const
+{
+    const PanelBounds bounds = lookAndFeelEditorPreviewBounds();
+    if (!bounds.isValid()) {
+        return;
+    }
+
+    const auto style = lookAndFeelEditorResolvedStyle();
+    visual_style::Palette palette = visual_style::makePalette(
+        parseColorValue(style.controlSurfaceColor, 0xff2b313d),
+        parseColorValue(style.borderColor, 0xff97a3b7),
+        parseColorValue(style.primaryTextColor, 0xffeef2f8),
+        parseColorValue(style.accentColor, 0xff2d7ff9),
+        parseColorValue(style.disabledTextColor, 0xff6c7788));
+    palette.recessedFill = parseColorValue(style.recessedSurfaceColor, palette.recessedFill);
+    palette.disabledText = parseColorValue(style.disabledTextColor, palette.disabledText);
+    palette.focus = parseColorValue(style.focusOutlineColor, palette.focus);
+    palette.selectedFill = parseColorValue(style.selectedStateColor, palette.selectedFill);
+    palette.checkedFill = palette.selectedFill;
+    palette.highlight = parseColorValue(style.highlightEdgeColor, palette.highlight);
+    palette.shadow = parseColorValue(style.shadowEdgeColor, palette.shadow);
+    palette.borderThickness = style.borderThickness;
+    palette.highlightThickness = style.splitterHighlightThickness;
+    palette.shadowThickness = style.splitterShadowThickness;
+
+    canvas.setColor(parseColorValue(style.applicationSurfaceColor, 0xff1f242d));
+    canvas.fill(bounds.x, bounds.y, bounds.width, bounds.height);
+    visual_style::drawBorder(canvas, { bounds.x, bounds.y, bounds.width, bounds.height }, palette.border, std::max(1.0f, palette.borderThickness));
+
+    const float inset = std::clamp(style.controlPadding, 4.0f, 18.0f);
+    const float top = bounds.y + 28.0f;
+    const float rowHeight = 34.0f;
+    const float controlHeight = 28.0f;
+    const float left = bounds.x + 12.0f;
+    const float gap = 10.0f;
+
+    canvas.setColor(palette.text);
+    canvas.text("Live sample — preset values plus temporary project overrides", labelFont_, visage::Font::kTopLeft,
+        bounds.x + 12.0f, bounds.y + 5.0f, bounds.width - 24.0f, 20.0f);
+
+    visual_style::drawBevel(canvas, { left, top, 104.0f, controlHeight }, palette, { true, false, false, true, false, false, false });
+    canvas.setColor(palette.text);
+    canvas.text("Button", labelFont_, visage::Font::kCenter, left + inset, top, 104.0f - inset * 2.0f, controlHeight);
+
+    const float textX = left + 104.0f + gap;
+    visual_style::drawRecessed(canvas, { textX, top, 130.0f, controlHeight }, palette, { true, false, false, true, false, false, false });
+    canvas.setColor(palette.text);
+    canvas.text("Text Box", labelFont_, visage::Font::kTopLeft, textX + inset, top + 4.0f, 130.0f - inset * 2.0f, 20.0f);
+
+    const float checkX = textX + 130.0f + gap;
+    visual_style::drawBevel(canvas, { checkX, top + 5.0f, 18.0f, 18.0f }, palette, { true, false, false, false, true, false, false });
+    canvas.setColor(palette.text);
+    canvas.text("Checked", labelFont_, visage::Font::kTopLeft, checkX + 24.0f, top + 4.0f, 82.0f, 20.0f);
+
+    const float radioX = checkX + 112.0f;
+    visual_style::drawRecessed(canvas, { radioX, top + 5.0f, 18.0f, 18.0f }, palette, { true, false, false, false, true, false, false });
+    canvas.setColor(palette.text);
+    canvas.text("Radio", labelFont_, visage::Font::kTopLeft, radioX + 24.0f, top + 4.0f, 62.0f, 20.0f);
+
+    const float comboX = radioX + 94.0f;
+    visual_style::drawRecessed(canvas, { comboX, top, 122.0f, controlHeight }, palette);
+    canvas.setColor(palette.text);
+    canvas.text("Combo Box", labelFont_, visage::Font::kTopLeft, comboX + inset, top + 4.0f, 90.0f, 20.0f);
+    canvas.text("v", labelFont_, visage::Font::kCenter, comboX + 96.0f, top, 22.0f, controlHeight);
+
+    const float disabledX = comboX + 132.0f;
+    visual_style::drawBevel(canvas, { disabledX, top, 92.0f, controlHeight }, palette, { false, false, false, false, false, false, false });
+    canvas.setColor(palette.disabledText);
+    canvas.text("Disabled", labelFont_, visage::Font::kCenter, disabledX, top, 92.0f, controlHeight);
+
+    const float secondTop = top + rowHeight + 4.0f;
+    visual_style::drawRecessed(canvas, { left, secondTop + 10.0f, 150.0f, 8.0f }, palette);
+    canvas.setColor(palette.accent);
+    canvas.fill(left + 90.0f, secondTop + 5.0f, 12.0f, 18.0f);
+    canvas.setColor(palette.secondaryText);
+    canvas.text("Slider", labelFont_, visage::Font::kTopLeft, left, secondTop + 22.0f, 150.0f, 18.0f);
+
+    const float progressX = left + 164.0f;
+    visual_style::drawRecessed(canvas, { progressX, secondTop + 4.0f, 125.0f, 20.0f }, palette);
+    canvas.setColor(palette.accent);
+    canvas.fill(progressX + 2.0f, secondTop + 6.0f, 76.0f, 16.0f);
+    canvas.setColor(palette.text);
+    canvas.text("62%", labelFont_, visage::Font::kCenter, progressX, secondTop + 4.0f, 125.0f, 20.0f);
+
+    const float tabX = progressX + 139.0f;
+    visual_style::drawBevel(canvas, { tabX, secondTop, 75.0f, 28.0f }, palette, { true, false, false, false, true, true, false });
+    visual_style::drawBevel(canvas, { tabX + 77.0f, secondTop, 75.0f, 28.0f }, palette);
+    canvas.setColor(palette.text);
+    canvas.text("Active", labelFont_, visage::Font::kCenter, tabX, secondTop, 75.0f, 28.0f);
+    canvas.text("Tab", labelFont_, visage::Font::kCenter, tabX + 77.0f, secondTop, 75.0f, 28.0f);
+
+    const float splitterX = tabX + 170.0f;
+    const float splitterY = secondTop + 13.0f;
+    canvas.setColor(palette.highlight);
+    canvas.fill(splitterX, splitterY, 140.0f, std::max(1.0f, palette.highlightThickness));
+    canvas.setColor(palette.shadow);
+    canvas.fill(splitterX, splitterY + std::max(1.0f, palette.highlightThickness), 140.0f, std::max(1.0f, palette.shadowThickness));
+    canvas.setColor(palette.secondaryText);
+    canvas.text("Splitter", labelFont_, visage::Font::kTopLeft, splitterX, secondTop + 22.0f, 140.0f, 18.0f);
+
+    canvas.setColor(palette.secondaryText);
+    canvas.text("Radius " + formatCanvasCoordinate(style.cornerRadius)
+            + "  |  Padding " + formatCanvasCoordinate(style.controlPadding),
+        labelFont_, visage::Font::kTopLeft,
+        bounds.x + 12.0f, bounds.y + bounds.height - 24.0f, bounds.width - 24.0f, 18.0f);
 }
 
 MainWindow::PanelBounds MainWindow::tableGridEditorGridBounds() const
@@ -9425,6 +9704,30 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
     std::vector<EditorModalFieldHit> hits;
     const auto fields = editorModalFields();
     if (fields.empty()) {
+        return hits;
+    }
+
+    if (editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        const PanelBounds bodyBounds = editorModalBodyBounds();
+        const float columnWidth = std::max(0.0f, (bodyBounds.width - kLookAndFeelEditorColumnGap) * 0.5f);
+        constexpr std::size_t leftColumnCount = 8;
+        hits.reserve(fields.size());
+        for (std::size_t index = 0; index < fields.size(); ++index) {
+            const bool rightColumn = index >= leftColumnCount;
+            const std::size_t row = rightColumn ? index - leftColumnCount : index;
+            const float columnX = rightColumn
+                ? bodyBounds.x + columnWidth + kLookAndFeelEditorColumnGap
+                : bodyBounds.x;
+            hits.push_back({
+                fields[index],
+                {
+                    columnX + kLookAndFeelEditorLabelWidth,
+                    bodyBounds.y + static_cast<float>(row) * (kEditorModalFormRowHeight + kEditorModalFormRowSpacing),
+                    std::max(0.0f, columnWidth - kLookAndFeelEditorLabelWidth),
+                    kEditorModalFormRowHeight
+                }
+            });
+        }
         return hits;
     }
 
@@ -10019,6 +10322,60 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
         return;
     }
 
+    if (editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        const auto base = model::LookAndFeelRegistry::instance().resolveProjectStyle(document_.lookAndFeelId, {});
+        auto& overrides = lookAndFeelEditorDialog_.pendingOverrides;
+        const auto setColor = [&trimmedValue](std::optional<std::string>& target, const std::string& baseValue) {
+            if (trimmedValue == baseValue) {
+                target.reset();
+            }
+            else {
+                target = trimmedValue;
+            }
+        };
+        const auto setMetric = [](std::optional<float>& target, float value, float baseValue) {
+            if (std::abs(value - baseValue) < 0.0001f) {
+                target.reset();
+            }
+            else {
+                target = value;
+            }
+        };
+
+        if (isLookAndFeelColorField(key)) {
+            if (!isValidColorValue(trimmedValue) || trimmedValue.empty()) {
+                editorModal_.statusText = "Enter a color as #RRGGBB or #AARRGGBB.";
+                return;
+            }
+            if (key == "applicationSurfaceColor") setColor(overrides.applicationSurfaceColor, base.applicationSurfaceColor);
+            else if (key == "controlSurfaceColor") setColor(overrides.controlSurfaceColor, base.controlSurfaceColor);
+            else if (key == "recessedSurfaceColor") setColor(overrides.recessedSurfaceColor, base.recessedSurfaceColor);
+            else if (key == "primaryTextColor") setColor(overrides.primaryTextColor, base.primaryTextColor);
+            else if (key == "disabledTextColor") setColor(overrides.disabledTextColor, base.disabledTextColor);
+            else if (key == "borderColor") setColor(overrides.borderColor, base.borderColor);
+            else if (key == "focusOutlineColor") setColor(overrides.focusOutlineColor, base.focusOutlineColor);
+            else if (key == "accentColor") setColor(overrides.accentColor, base.accentColor);
+            else if (key == "highlightEdgeColor") setColor(overrides.highlightEdgeColor, base.highlightEdgeColor);
+            else if (key == "shadowEdgeColor") setColor(overrides.shadowEdgeColor, base.shadowEdgeColor);
+        }
+        else {
+            const auto parsed = tryParseFloat(trimmedValue);
+            if (!parsed.has_value()) {
+                editorModal_.statusText = "Enter a valid numeric value.";
+                return;
+            }
+            if (key == "borderThickness") setMetric(overrides.borderThickness, std::clamp(*parsed, 0.0f, 20.0f), base.borderThickness);
+            else if (key == "cornerRadius") setMetric(overrides.cornerRadius, std::clamp(*parsed, 0.0f, 50.0f), base.cornerRadius);
+            else if (key == "controlPadding") setMetric(overrides.controlPadding, std::clamp(*parsed, 0.0f, 40.0f), base.controlPadding);
+            else if (key == "splitterHighlightThickness") setMetric(overrides.splitterHighlightThickness, std::clamp(*parsed, 0.0f, 8.0f), base.splitterHighlightThickness);
+            else if (key == "splitterShadowThickness") setMetric(overrides.splitterShadowThickness, std::clamp(*parsed, 0.0f, 8.0f), base.splitterShadowThickness);
+        }
+
+        editorModal_.statusText = "Temporary preview updated. * marks explicit project overrides.";
+        redraw();
+        return;
+    }
+
     if (editorModal_.mode == EditorModalMode::ResourceManager) {
         if (key == "selectedResourceId") {
             resourceManagerDialog_.selectedResourceId = trimmedValue;
@@ -10193,6 +10550,7 @@ bool MainWindow::openSelectedTreeNodeEditor()
     editorModal_.preferredHeight = kTreeNodeEditorModalHeight;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    lookAndFeelEditorDialog_ = {};
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
 
@@ -10290,6 +10648,22 @@ bool MainWindow::commitEditorModalFieldEdit()
             redraw();
             return false;
         }
+    }
+    else if (iterator->editKind == PropertyInspector::PropertyEditKind::Float) {
+        if (!tryParseFloat(valueText).has_value()) {
+            editorModal_.statusText = "Invalid numeric value for " + iterator->label + ".";
+            redraw();
+            return false;
+        }
+        setEditorModalFieldValue(iterator->key, valueText);
+    }
+    else if (iterator->editKind == PropertyInspector::PropertyEditKind::Color) {
+        if (valueText.empty() || !isValidColorValue(valueText)) {
+            editorModal_.statusText = "Invalid color for " + iterator->label + ". Use #RRGGBB or #AARRGGBB.";
+            redraw();
+            return false;
+        }
+        setEditorModalFieldValue(iterator->key, valueText);
     }
     else {
         setEditorModalFieldValue(iterator->key, valueText);
@@ -10427,6 +10801,16 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
     if (buttonId == "apply" && editorModal_.mode == EditorModalMode::ProjectSettings) {
         return applyProjectSettingsDialog();
     }
+    if (buttonId == "apply_look_and_feel" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return applyLookAndFeelEditorDialog(false);
+    }
+    if (buttonId == "ok_look_and_feel" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return applyLookAndFeelEditorDialog(true);
+    }
+    if (buttonId == "reset_look_and_feel" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        resetLookAndFeelEditorDialog();
+        return true;
+    }
     if (buttonId == "add_image" && editorModal_.mode == EditorModalMode::ResourceManager) {
         return addResourceFromDialog(model::ProjectResourceType::Image);
     }
@@ -10553,6 +10937,7 @@ void MainWindow::showEditorMessageDialog(const std::string& title, const std::st
     editorModal_.preferredHeight = 0.0f;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    lookAndFeelEditorDialog_ = {};
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
     redraw();
@@ -10578,6 +10963,7 @@ void MainWindow::showEditorValidationDialog(const validation::ValidationReport& 
     editorModal_.preferredHeight = 0.0f;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    lookAndFeelEditorDialog_ = {};
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
 
@@ -10657,6 +11043,7 @@ void MainWindow::closeEditorModalDialog(const std::string& result)
     editorModal_.preferredHeight = 0.0f;
     newProjectWizard_.visible = false;
     projectSettingsDialog_.visible = false;
+    lookAndFeelEditorDialog_ = {};
     resourceManagerDialog_.visible = false;
     keyboardShortcutDialog_.visible = false;
     itemListEditorDialog_ = {};
@@ -10676,9 +11063,16 @@ MainWindow::PanelBounds MainWindow::editorModalDialogBounds() const
     const float preferredWidth = editorModal_.preferredWidth > 0.0f ? editorModal_.preferredWidth : kEditorModalPreferredWidth;
     const float preferredHeight = editorModal_.preferredHeight > 0.0f ? editorModal_.preferredHeight : kEditorModalPreferredHeight;
     const bool tableGridEditor = editorModal_.mode == EditorModalMode::TableGridEditor;
-    const float maxWidthLimit = tableGridEditor ? kTableGridEditorMaxWidth : kEditorModalMaxWidth;
-    const float maxHeightLimit = tableGridEditor ? kTableGridEditorMaxHeight : kEditorModalMaxHeight;
-    const float outerMargin = tableGridEditor ? kTableGridEditorOuterMargin : 120.0f;
+    const bool lookAndFeelEditor = editorModal_.mode == EditorModalMode::LookAndFeelEditor;
+    const float maxWidthLimit = lookAndFeelEditor
+        ? kLookAndFeelEditorMaxWidth
+        : (tableGridEditor ? kTableGridEditorMaxWidth : kEditorModalMaxWidth);
+    const float maxHeightLimit = lookAndFeelEditor
+        ? kLookAndFeelEditorMaxHeight
+        : (tableGridEditor ? kTableGridEditorMaxHeight : kEditorModalMaxHeight);
+    const float outerMargin = lookAndFeelEditor
+        ? kLookAndFeelEditorOuterMargin
+        : (tableGridEditor ? kTableGridEditorOuterMargin : 120.0f);
     const float maxWidth = std::max(0.0f, std::min(maxWidthLimit, width() - outerMargin));
     const float minWidth = std::min(kEditorModalMinWidth, maxWidth);
     const float dialogWidth = maxWidth <= 0.0f
@@ -10717,9 +11111,9 @@ std::vector<MainWindow::PanelBounds> MainWindow::editorModalButtonBounds() const
     }
 
     const PanelBounds dialogBounds = editorModalDialogBounds();
-    const float buttonWidth = editorModal_.mode == EditorModalMode::ItemListEditor
-        ? 108.0f
-        : kEditorModalButtonWidth;
+    const float buttonWidth = editorModal_.mode == EditorModalMode::LookAndFeelEditor
+        ? 136.0f
+        : (editorModal_.mode == EditorModalMode::ItemListEditor ? 108.0f : kEditorModalButtonWidth);
     const float buttonSpacing = editorModal_.mode == EditorModalMode::ItemListEditor
         ? 8.0f
         : kEditorModalButtonSpacing;
@@ -10800,9 +11194,11 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             : (editorModal_.mode == EditorModalMode::ItemListEditor
                     ? itemListEditorFormBounds()
                     : (editorModal_.mode == EditorModalMode::TableGridEditor ? tableGridEditorFormBounds() : editorModalBodyBounds()));
-        const float fieldLabelWidth = editorModal_.mode == EditorModalMode::ResourceManager
-            ? kResourceManagerFieldLabelWidth
-            : kEditorModalFormLabelWidth;
+        const float fieldLabelWidth = editorModal_.mode == EditorModalMode::LookAndFeelEditor
+            ? kLookAndFeelEditorLabelWidth
+            : (editorModal_.mode == EditorModalMode::ResourceManager
+                    ? kResourceManagerFieldLabelWidth
+                    : kEditorModalFormLabelWidth);
 
         if (editorModal_.mode == EditorModalMode::ItemListEditor) {
             const PanelBounds previewBounds = itemListEditorPreviewBounds();
@@ -11037,7 +11433,7 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             const float fieldTextTop = verticallyCenteredTextTop(hit.bounds.y, hit.bounds.height, 18.0f, 4.0f);
             canvas.setColor(0xffd6dbe4);
             canvas.text(hit.field.label, labelFont_, visage::Font::kTopLeft,
-                bodyBounds.x, fieldTextTop, fieldLabelWidth - 14.0f, hit.bounds.height - 6.0f);
+                hit.bounds.x - fieldLabelWidth, fieldTextTop, fieldLabelWidth - 14.0f, hit.bounds.height - 6.0f);
 
             canvas.setColor(active ? 0xff355382 : 0xff1a2028);
             canvas.fill(hit.bounds.x, hit.bounds.y, hit.bounds.width, hit.bounds.height);
@@ -11062,10 +11458,25 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
             }
 
             if (drawInlineValue) {
+                float textInset = 10.0f;
+                if (hit.field.editKind == PropertyInspector::PropertyEditKind::Color
+                    && isValidColorValue(hit.field.value)
+                    && !hit.field.value.empty()) {
+                    canvas.setColor(parseColorValue(hit.field.value, 0xff2b313d));
+                    canvas.fill(hit.bounds.x + 8.0f, hit.bounds.y + 7.0f, 20.0f, std::max(0.0f, hit.bounds.height - 14.0f));
+                    canvas.setColor(0xff0f1217);
+                    canvas.fill(hit.bounds.x + 8.0f, hit.bounds.y + 7.0f, 20.0f, 1.0f);
+                    canvas.fill(hit.bounds.x + 8.0f, hit.bounds.y + hit.bounds.height - 8.0f, 20.0f, 1.0f);
+                    textInset = 36.0f;
+                }
                 canvas.setColor(0xffeef2f8);
                 canvas.text(valueText, labelFont_, visage::Font::kTopLeft,
-                    hit.bounds.x + 10.0f, fieldTextTop, hit.bounds.width - 20.0f, hit.bounds.height - 6.0f);
+                    hit.bounds.x + textInset, fieldTextTop, hit.bounds.width - textInset - 10.0f, hit.bounds.height - 6.0f);
             }
+        }
+
+        if (editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+            drawLookAndFeelEditorPreview(canvas);
         }
 
         if (editorModal_.mode == EditorModalMode::ResourceManager) {
@@ -11160,6 +11571,8 @@ void MainWindow::drawEditorModalDialog(visage::Canvas& canvas) const
     for (std::size_t index = 0; index < buttonBounds.size(); ++index) {
         const bool accentButton = index == 0
             || editorModal_.buttons[index].id == "apply"
+            || editorModal_.buttons[index].id == "apply_look_and_feel"
+            || editorModal_.buttons[index].id == "ok_look_and_feel"
             || editorModal_.buttons[index].id == "create"
             || editorModal_.buttons[index].id == "apply_shortcuts"
             || editorModal_.buttons[index].id == "apply_table_grid"
@@ -11271,6 +11684,16 @@ bool MainWindow::handleEditorModalMouseDown(const visage::MouseEvent& e)
         }
 
         if (const auto fieldHit = editorModalFieldAt(e.position.x, e.position.y)) {
+            if (editorModal_.mode == EditorModalMode::LookAndFeelEditor
+                && fieldHit->field.editKind == PropertyInspector::PropertyEditKind::Color) {
+                const auto selectedColor = utils::showColorPickerDialog(fieldHit->field.value);
+                if (selectedColor.has_value()) {
+                    setEditorModalFieldValue(fieldHit->field.key, *selectedColor);
+                    requestKeyboardFocus();
+                    redraw();
+                }
+                return true;
+            }
             if (fieldHit->field.editKind == PropertyInspector::PropertyEditKind::Choice && !fieldHit->field.choices.empty()) {
                 beginEditorModalFieldEdit(fieldHit->field);
                 redraw();

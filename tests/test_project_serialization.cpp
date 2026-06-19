@@ -5,6 +5,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <utility>
 
 using visiform::model::ProjectDocument;
@@ -96,6 +98,63 @@ TEST_CASE("Look and feel resolution preserves presets overrides and fallback")
     CHECK(fallback.id == "VisiFormDark");
     CHECK(fallback.applicationSurfaceColor == "#1F242D");
     CHECK(fallback.highlightEdgeColor == "#C8D2E2");
+}
+
+TEST_CASE("Project look and feel overrides serialize sparsely and resolve over a changed base preset")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelId = "VisiFormLight";
+    document.lookAndFeelOverrides.controlSurfaceColor = "#123456";
+    document.lookAndFeelOverrides.borderThickness = 3.5f;
+    document.lookAndFeelOverrides.controlPadding = 12.0f;
+
+    JsonProjectWriter writer;
+    JsonProjectReader reader;
+    const std::string jsonText = writer.writeToString(document);
+    const auto json = nlohmann::json::parse(jsonText);
+    REQUIRE(json.contains("lookAndFeelOverrides"));
+    CHECK(json["lookAndFeelOverrides"].size() == 3);
+    CHECK(json["lookAndFeelOverrides"]["controlSurfaceColor"] == "#123456");
+
+    std::string errorMessage;
+    const auto loaded = reader.readFromString(jsonText, errorMessage);
+    REQUIRE(errorMessage.empty());
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->lookAndFeelOverrides == document.lookAndFeelOverrides);
+
+    const auto& registry = visiform::model::LookAndFeelRegistry::instance();
+    auto resolved = registry.resolve(*loaded, loaded->root);
+    CHECK(resolved.id == "VisiFormLight");
+    CHECK(resolved.controlSurfaceColor == "#123456");
+    CHECK(resolved.borderThickness == 3.5f);
+    CHECK(resolved.controlPadding == 12.0f);
+
+    ProjectDocument changedBase = *loaded;
+    changedBase.lookAndFeelId = "FlatClassic";
+    resolved = registry.resolve(changedBase, changedBase.root);
+    CHECK(resolved.id == "FlatClassic");
+    CHECK(resolved.applicationSurfaceColor == "#E7EAEE");
+    CHECK(resolved.controlSurfaceColor == "#123456");
+}
+
+TEST_CASE("Projects without look and feel overrides remain compact")
+{
+    const ProjectDocument document = ProjectDocument::createDefault();
+    const auto json = nlohmann::json::parse(JsonProjectWriter{}.writeToString(document));
+    CHECK_FALSE(json.contains("lookAndFeelOverrides"));
+}
+
+TEST_CASE("Invalid project look and feel overrides fall back or clamp safely")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelOverrides.borderColor = "not-a-color";
+    document.lookAndFeelOverrides.borderThickness = -20.0f;
+    document.lookAndFeelOverrides.cornerRadius = 500.0f;
+
+    const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(document, document.root);
+    CHECK(resolved.borderColor == "#97A3B7");
+    CHECK(resolved.borderThickness == 0.0f);
+    CHECK(resolved.cornerRadius == 50.0f);
 }
 
 TEST_CASE("ProjectDocument z-order commands move one sibling step and preserve selection")

@@ -55,6 +55,7 @@ const std::vector<CommandDefinition> kDefinitions = {
     { ids::kLayoutSendBackward, "Send Backward", "Layout", "Ctrl+Alt+B", "Send the selected widget backward" },
     { ids::kProjectValidate, "Validate / Check", "Project", "Ctrl+Shift+V", "Validate the current project before export" },
     { ids::kProjectSettings, "Project Settings", "Project", "", "Open the project settings dialog" },
+    { ids::kProjectEditLookAndFeel, "Edit Look and Feel...", "Project", "", "Customize project-level values inherited from the selected Look and Feel preset" },
     { ids::kProjectResources, "Resources", "Project", "Ctrl+Alt+R", "Open the project resource manager" },
     { ids::kProjectKeyboardShortcuts, "Keyboard Shortcuts", "Project", "Ctrl+Alt+K", "Open keyboard shortcut settings" },
     { ids::kProjectExportDependencies, "Export Dependencies", "Project", "", "Show where export dependency settings are edited" },

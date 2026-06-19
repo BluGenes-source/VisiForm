@@ -95,6 +95,38 @@ nlohmann::json resourceToJson(const model::ProjectResource& resource)
     };
 }
 
+nlohmann::json lookAndFeelOverridesToJson(const model::LookAndFeelOverrides& overrides)
+{
+    nlohmann::json json = nlohmann::json::object();
+    const auto addString = [&json](const char* key, const std::optional<std::string>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
+    const auto addFloat = [&json](const char* key, const std::optional<float>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
+
+    addString("applicationSurfaceColor", overrides.applicationSurfaceColor);
+    addString("controlSurfaceColor", overrides.controlSurfaceColor);
+    addString("recessedSurfaceColor", overrides.recessedSurfaceColor);
+    addString("primaryTextColor", overrides.primaryTextColor);
+    addString("disabledTextColor", overrides.disabledTextColor);
+    addString("borderColor", overrides.borderColor);
+    addString("focusOutlineColor", overrides.focusOutlineColor);
+    addString("accentColor", overrides.accentColor);
+    addString("highlightEdgeColor", overrides.highlightEdgeColor);
+    addString("shadowEdgeColor", overrides.shadowEdgeColor);
+    addFloat("borderThickness", overrides.borderThickness);
+    addFloat("cornerRadius", overrides.cornerRadius);
+    addFloat("controlPadding", overrides.controlPadding);
+    addFloat("splitterHighlightThickness", overrides.splitterHighlightThickness);
+    addFloat("splitterShadowThickness", overrides.splitterShadowThickness);
+    return json;
+}
+
 } // namespace
 
 std::string JsonProjectWriter::writeToString(const model::ProjectDocument& document) const
@@ -109,6 +141,9 @@ std::string JsonProjectWriter::writeToString(const model::ProjectDocument& docum
     json["userSubclassName"] = userSubclassName;
     json["windowTitle"] = document.windowTitle.empty() ? document.projectName : document.windowTitle;
     json["lookAndFeelId"] = document.lookAndFeelId.empty() ? std::string{"VisiFormDark"} : document.lookAndFeelId;
+    if (!document.lookAndFeelOverrides.empty()) {
+        json["lookAndFeelOverrides"] = lookAndFeelOverridesToJson(document.lookAndFeelOverrides);
+    }
     json["selectedWidgetId"] = document.selectedWidgetId;
     json["resources"] = nlohmann::json::array();
     for (const auto& resource : document.resources) {

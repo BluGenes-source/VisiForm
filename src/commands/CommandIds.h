@@ -51,6 +51,7 @@ inline constexpr std::string_view kLayoutSendBackward = "layout.sendBackward";
 
 inline constexpr std::string_view kProjectValidate = "project.validate";
 inline constexpr std::string_view kProjectSettings = "project.settings";
+inline constexpr std::string_view kProjectEditLookAndFeel = "project.editLookAndFeel";
 inline constexpr std::string_view kProjectResources = "project.resources";
 inline constexpr std::string_view kProjectKeyboardShortcuts = "project.keyboardShortcuts";
 
