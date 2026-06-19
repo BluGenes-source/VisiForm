@@ -1165,6 +1165,25 @@ bool hitRegionChangesHeight(DesignerCanvas::HitRegion region)
     return hitRegionChangesWidth(region);
 }
 
+std::optional<visage::MouseCursor> resizeCursorForHitRegion(DesignerCanvas::HitRegion region)
+{
+    switch (region) {
+    case DesignerCanvas::HitRegion::TopLeftHandle:
+        return visage::MouseCursor::TopLeftResize;
+    case DesignerCanvas::HitRegion::TopRightHandle:
+        return visage::MouseCursor::TopRightResize;
+    case DesignerCanvas::HitRegion::BottomLeftHandle:
+        return visage::MouseCursor::BottomLeftResize;
+    case DesignerCanvas::HitRegion::BottomRightHandle:
+        return visage::MouseCursor::BottomRightResize;
+    case DesignerCanvas::HitRegion::None:
+    case DesignerCanvas::HitRegion::Body:
+        return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
 bool applySizerItemResizePreview(model::ProjectDocument& document,
     const model::ProjectDocument& beforeDocument,
     const std::string& widgetId,
@@ -7874,6 +7893,16 @@ void MainWindow::updateEditorCursor(float x, float y)
     if (canvasPan_.spaceDown && designerCanvas_.containsViewport(x, y)) {
         visage::setCursorStyle(visage::MouseCursor::Dragging);
         return;
+    }
+
+    if (!isPreviewMode() && !document_.selectedWidgetId.empty()) {
+        const auto interactionHit = designerCanvas_.hitTestInteraction(document_, x, y, document_.selectedWidgetId);
+        if (interactionHit.has_value()) {
+            if (const auto resizeCursor = resizeCursorForHitRegion(interactionHit->region)) {
+                visage::setCursorStyle(*resizeCursor);
+                return;
+            }
+        }
     }
 
     visage::setCursorStyle(visage::MouseCursor::Arrow);

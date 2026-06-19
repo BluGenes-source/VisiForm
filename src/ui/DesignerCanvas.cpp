@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -646,27 +647,56 @@ void drawSecondarySelectionOutline(visage::Canvas& canvas, const PanelRect& boun
     drawBorder(canvas, { bounds.x - 1.0f, bounds.y - 1.0f, bounds.width + 2.0f, bounds.height + 2.0f }, 0xffd9473f, 1.25f);
 }
 
-PanelRect handleRect(const PanelRect& bounds, DesignerCanvas::HitRegion region, float handleSize)
+constexpr float kResizeHandleVisualSize = 10.0f;
+constexpr float kResizeHandleHitSize = 16.0f;
+constexpr float kBottomRightHitInward = 18.0f;
+constexpr float kBottomRightHitOutward = 4.0f;
+constexpr float kGripArcMinimumExtent = 18.0f;
+constexpr float kSecondGripArcMinimumExtent = 28.0f;
+constexpr std::array<float, 2> kGripArcRadii = { 8.0f, 13.0f };
+
+struct ResizeHandleGeometry {
+    PanelRect visualBounds{};
+    PanelRect hitBounds{};
+};
+
+ResizeHandleGeometry resizeHandleGeometry(const PanelRect& bounds, DesignerCanvas::HitRegion region)
 {
-    const float halfHandle = handleSize * 0.5f;
+    const float halfVisualHandle = kResizeHandleVisualSize * 0.5f;
+    const float halfHitHandle = kResizeHandleHitSize * 0.5f;
+    ResizeHandleGeometry geometry;
+
     switch (region) {
     case DesignerCanvas::HitRegion::TopLeftHandle:
-        return { bounds.x - halfHandle, bounds.y - halfHandle, handleSize, handleSize };
+        geometry.visualBounds = { bounds.x - halfVisualHandle, bounds.y - halfVisualHandle, kResizeHandleVisualSize, kResizeHandleVisualSize };
+        geometry.hitBounds = { bounds.x - halfHitHandle, bounds.y - halfHitHandle, kResizeHandleHitSize, kResizeHandleHitSize };
+        break;
     case DesignerCanvas::HitRegion::TopRightHandle:
-        return { bounds.x + bounds.width - halfHandle, bounds.y - halfHandle, handleSize, handleSize };
+        geometry.visualBounds = { bounds.x + bounds.width - halfVisualHandle, bounds.y - halfVisualHandle, kResizeHandleVisualSize, kResizeHandleVisualSize };
+        geometry.hitBounds = { bounds.x + bounds.width - halfHitHandle, bounds.y - halfHitHandle, kResizeHandleHitSize, kResizeHandleHitSize };
+        break;
     case DesignerCanvas::HitRegion::BottomLeftHandle:
-        return { bounds.x - halfHandle, bounds.y + bounds.height - halfHandle, handleSize, handleSize };
+        geometry.visualBounds = { bounds.x - halfVisualHandle, bounds.y + bounds.height - halfVisualHandle, kResizeHandleVisualSize, kResizeHandleVisualSize };
+        geometry.hitBounds = { bounds.x - halfHitHandle, bounds.y + bounds.height - halfHitHandle, kResizeHandleHitSize, kResizeHandleHitSize };
+        break;
     case DesignerCanvas::HitRegion::BottomRightHandle:
-        return { bounds.x + bounds.width - halfHandle, bounds.y + bounds.height - halfHandle, handleSize, handleSize };
+        geometry.visualBounds = { bounds.x + bounds.width - halfVisualHandle, bounds.y + bounds.height - halfVisualHandle, kResizeHandleVisualSize, kResizeHandleVisualSize };
+        geometry.hitBounds = {
+            bounds.x + bounds.width - kBottomRightHitInward,
+            bounds.y + bounds.height - kBottomRightHitInward,
+            kBottomRightHitInward + kBottomRightHitOutward,
+            kBottomRightHitInward + kBottomRightHitOutward
+        };
+        break;
     case DesignerCanvas::HitRegion::None:
     case DesignerCanvas::HitRegion::Body:
-        return {};
+        break;
     }
 
-    return {};
+    return geometry;
 }
 
-DesignerCanvas::HitRegion hitHandle(const PanelRect& bounds, float x, float y, float handleSize)
+DesignerCanvas::HitRegion hitHandle(const PanelRect& bounds, float x, float y)
 {
     constexpr std::array<DesignerCanvas::HitRegion, 4> kHandles = {
         DesignerCanvas::HitRegion::TopLeftHandle,
@@ -675,16 +705,56 @@ DesignerCanvas::HitRegion hitHandle(const PanelRect& bounds, float x, float y, f
         DesignerCanvas::HitRegion::BottomRightHandle
     };
 
+    DesignerCanvas::HitRegion nearestHandle = DesignerCanvas::HitRegion::None;
+    float nearestDistanceSquared = std::numeric_limits<float>::max();
+
     for (DesignerCanvas::HitRegion handle : kHandles) {
-        if (handleRect(bounds, handle, handleSize).contains(x, y)) {
-            return handle;
+        const ResizeHandleGeometry geometry = resizeHandleGeometry(bounds, handle);
+        if (!geometry.hitBounds.contains(x, y)) {
+            continue;
+        }
+
+        const float centerX = geometry.visualBounds.x + geometry.visualBounds.width * 0.5f;
+        const float centerY = geometry.visualBounds.y + geometry.visualBounds.height * 0.5f;
+        const float distanceX = x - centerX;
+        const float distanceY = y - centerY;
+        const float distanceSquared = distanceX * distanceX + distanceY * distanceY;
+        if (distanceSquared < nearestDistanceSquared) {
+            nearestDistanceSquared = distanceSquared;
+            nearestHandle = handle;
         }
     }
 
-    return DesignerCanvas::HitRegion::None;
+    return nearestHandle;
 }
 
-void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, float visualHandleSize)
+bool showsDirectResizeAffordance(const model::WidgetNode& widget)
+{
+    return widget.type != model::WidgetType::FormWindow
+        && widget.type != model::WidgetType::TabPage
+        && widget.dockMode() == model::DockMode::None;
+}
+
+void drawBottomRightGripArcs(visage::Canvas& canvas, const PanelRect& bounds)
+{
+    const float availableExtent = std::min(bounds.width, bounds.height);
+    if (availableExtent < kGripArcMinimumExtent) {
+        return;
+    }
+
+    const int arcCount = availableExtent >= kSecondGripArcMinimumExtent ? 2 : 1;
+    constexpr float kArcInset = 2.0f;
+    const float right = bounds.x + bounds.width - kArcInset;
+    const float bottom = bounds.y + bounds.height - kArcInset;
+
+    canvas.setColor(0xff2d7ff9);
+    for (int index = 0; index < arcCount; ++index) {
+        const float radius = kGripArcRadii[static_cast<std::size_t>(index)];
+        canvas.quadratic(right, bottom - radius, right - radius, bottom - radius, right - radius, bottom, 1.5f);
+    }
+}
+
+void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds)
 {
     constexpr std::array<DesignerCanvas::HitRegion, 4> kHandles = {
         DesignerCanvas::HitRegion::TopLeftHandle,
@@ -693,8 +763,10 @@ void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, float
         DesignerCanvas::HitRegion::BottomRightHandle
     };
 
+    drawBottomRightGripArcs(canvas, bounds);
+
     for (DesignerCanvas::HitRegion handle : kHandles) {
-        const PanelRect handleBounds = handleRect(bounds, handle, visualHandleSize);
+        const PanelRect handleBounds = resizeHandleGeometry(bounds, handle).visualBounds;
         canvas.setColor(0xffffffff);
         canvas.fill(handleBounds.x, handleBounds.y, handleBounds.width, handleBounds.height);
         drawBorder(canvas, handleBounds, 0xff2d7ff9);
@@ -835,7 +907,6 @@ void drawWidget(visage::Canvas& canvas,
     float parentLocalY,
     float scale,
     const std::string& selectedWidgetId,
-    float visualHandleSize,
     bool showGrid,
     bool showMinorGrid,
     int gridSize,
@@ -1575,13 +1646,13 @@ void drawWidget(visage::Canvas& canvas,
             continue;
         }
         drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
-            scale, selectedWidgetId, visualHandleSize, showGrid, showMinorGrid, gridSize, majorGridSize, showEditorDecorations);
+            scale, selectedWidgetId, showGrid, showMinorGrid, gridSize, majorGridSize, showEditorDecorations);
     }
 
     if (showEditorDecorations && document.isPrimarySelected(widget.id)) {
         drawSelectionOutline(canvas, bounds);
-        if (widget.type != model::WidgetType::FormWindow && widget.type != model::WidgetType::TabPage) {
-            drawSelectionHandles(canvas, bounds, visualHandleSize);
+        if (showsDirectResizeAffordance(widget)) {
+            drawSelectionHandles(canvas, bounds);
         }
     }
     else if (showEditorDecorations && document.isSecondarySelected(widget.id)) {
@@ -1876,16 +1947,16 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
         return std::nullopt;
     }
 
-    if (const auto* selectedWidget = document.findWidgetById(selectedWidgetId);
-        selectedWidget != nullptr && selectedWidget->type == model::WidgetType::TabPage) {
+    const auto* selectedWidget = document.findWidgetById(selectedWidgetId);
+    if (selectedWidget != nullptr && selectedWidget->type == model::WidgetType::TabPage) {
         return std::nullopt;
     }
 
     if (!selectedWidgetId.empty() && selectedWidgetId != document.root.id) {
         const auto selectedWidgetInfo = findWidgetScreenInfo(document.root, selectedWidgetId, previewLayout.form.x, previewLayout.form.y,
             -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale);
-        if (selectedWidgetInfo.has_value()) {
-            const HitRegion handle = hitHandle(selectedWidgetInfo->bounds, x, y, resizeHandleHitSize_);
+        if (selectedWidget != nullptr && selectedWidgetInfo.has_value() && showsDirectResizeAffordance(*selectedWidget)) {
+            const HitRegion handle = hitHandle(selectedWidgetInfo->bounds, x, y);
             if (handle != HitRegion::None) {
                 return InteractionHit{ selectedWidgetId, handle };
             }
@@ -1905,7 +1976,10 @@ std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction
 
     InteractionHit hit{ *hitWidgetId, HitRegion::Body };
     if (*hitWidgetId == selectedWidgetId && *hitWidgetId != document.root.id) {
-        const HitRegion handle = hitHandle(widgetInfo->bounds, x, y, resizeHandleHitSize_);
+        const auto* selectedWidget = document.findWidgetById(*hitWidgetId);
+        const HitRegion handle = selectedWidget != nullptr && showsDirectResizeAffordance(*selectedWidget)
+            ? hitHandle(widgetInfo->bounds, x, y)
+            : HitRegion::None;
         if (handle != HitRegion::None) {
             hit.region = handle;
             return hit;
@@ -2053,7 +2127,7 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
 
     drawWidget(canvas, font, drawText, document, imageCache, simplifySelectedImages, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
-        resizeHandleVisualSize_, showEditorDecorations && showGrid_, showMinorGrid_, gridSize_, majorGridSize_, showEditorDecorations);
+        showEditorDecorations && showGrid_, showMinorGrid_, gridSize_, majorGridSize_, showEditorDecorations);
 
     if (showEditorDecorations && marqueeRect.has_value()) {
         const PanelRect screenRect = selectionRectToScreenRect(previewLayout, *marqueeRect);

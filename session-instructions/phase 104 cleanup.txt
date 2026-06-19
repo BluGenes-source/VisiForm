@@ -1,0 +1,149 @@
+Continue VisiForm Phase 104. Do not create a new phase and do not change version 1.0.10.
+
+The bottom-right resize-corner grip arcs are drawing inverted.
+
+Current problem:
+- the arc orientation is wrong
+- it reads like the corner itself is rounded the wrong way
+- it does not clearly suggest the intended resize-grab region
+
+Keep this fix narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 104 plan and files directly related to:
+  - selected-widget drawing
+  - resize-handle rendering
+  - corner arc geometry
+  - resize hit testing
+- do not refactor unrelated canvas or selection systems
+- do not commit or push
+- build once after the geometry fix
+
+## Goal
+
+Correct the bottom-right corner grip arcs so they visually indicate the resize area properly.
+
+## Intended visual behavior
+
+The arcs should be drawn as grip marks inside the selected widget near the bottom-right corner.
+
+They should:
+
+- live inside the widget bounds
+- sit near the bottom-right resize handle
+- connect visually between the right selection edge and the bottom selection edge
+- suggest the usable resize corner region inside that corner
+- read as grip lines, not as a rounded outer border
+
+The orientation should match the intended “upper-left portion of the bottom-right corner grip area.”
+
+In practice, this means:
+
+- the arcs should visually open toward the interior/top-left of the widget
+- the curve should not bulge the wrong way
+- the arcs should not look like an outside rounded frame corner
+
+## Tasks
+
+1. Inspect the arc geometry
+---------------------------
+
+Find the arc drawing code added in Phase 104.
+
+Confirm:
+
+- the arc bounding rectangle
+- start angle
+- sweep angle
+- whether the graphics API angle direction is clockwise or counterclockwise
+- whether the code is using the bottom-right corner as the intended reference
+
+Record the actual root cause in the Phase 104 plan.
+
+2. Correct the arc orientation
+------------------------------
+
+Fix the arc start/sweep logic or bounding-box placement so the arcs are oriented correctly.
+
+Requirements:
+
+- the arcs stay inside the selected widget bounds
+- the arcs remain aligned near the bottom-right handle
+- the arcs visually bridge from the right edge toward the bottom edge
+- the arcs suggest a corner resize grip
+- the selection rectangle itself stays square-cornered
+- the handle square remains visible and aligned
+
+Do not replace the whole selection border with a rounded corner.
+
+3. Preserve spacing and sizing
+------------------------------
+
+Keep the arcs visually clean.
+
+Requirements:
+
+- one arc for very small widgets
+- two arcs when size permits
+- consistent spacing between arcs
+- arcs must not overlap the handle square
+- arcs must not extend beyond the widget boundary
+- arcs must not clutter widget content excessively
+
+4. Keep hit testing unchanged unless necessary
+----------------------------------------------
+
+The visual correction should not break the improved corner resize hit area.
+
+Requirements:
+
+- bottom-right resize hit testing still works
+- resize cursor still appears in the intended region
+- clicking the grip area still begins resize reliably
+- normal selection/drag behavior outside the resize region is preserved
+
+5. Preserve existing Phase 104 behavior
+---------------------------------------
+
+Do not regress:
+
+- resize hit-area enlargement
+- selection outlines
+- corner handle drawing
+- small-widget fallback
+- multi-selection behavior
+- Preview Mode restrictions
+- undo/redo for resizing
+- zoom and pan interaction
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Select a resizable widget.
+4. Confirm the bottom-right grip arcs are no longer inverted.
+5. Confirm the arcs read as an interior resize grip.
+6. Confirm the selection border remains square-cornered.
+7. Confirm the bottom-right handle remains visible and aligned.
+8. Confirm resizing still starts reliably from the corner region.
+9. Confirm normal dragging still works outside the resize hit area.
+10. Test a small widget and a larger widget.
+11. Confirm one arc appears for small widgets and two for larger ones.
+12. Confirm Preview Mode still hides resize affordances.
+
+Update the existing Phase 104 plan with:
+
+- arc-orientation root cause
+- corrected angle or geometry logic
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 105.
+Do not change version 1.0.10.
+Do not commit or push.

@@ -127,8 +127,6 @@ private:
     float zoom_ = 1.0f;
     float panX_ = 0.0f;
     float panY_ = 0.0f;
-    float resizeHandleVisualSize_ = 10.0f;
-    float resizeHandleHitSize_ = 16.0f;
     float smallWidgetHitPadding_ = 4.0f;
     float minimumWidgetSize_ = 20.0f;
 };

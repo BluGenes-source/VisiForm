@@ -1,0 +1,55 @@
+Continue VisiForm Phase 104. Do not create a new phase and do not change version 1.0.10.
+
+The build fails with:
+
+C2065: 'selectedWidget': undeclared identifier
+File: DesignerCanvas.cpp
+Line: approximately 1958
+
+Keep this fix narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 104 plan and the relevant section of DesignerCanvas.cpp
+- inspect nearby selection, resize-handle, and arc-drawing code
+- do not refactor unrelated canvas code
+- do not commit or push
+- rebuild only after the compile fix is complete
+
+Tasks:
+
+1. Inspect the failing statement and surrounding function.
+2. Determine which existing selected-widget variable or accessor should be used.
+3. Fix the scope or name rather than introducing a duplicate selection state.
+4. Prefer the existing canvas selection source of truth.
+5. Confirm the arc drawing and resize hit-area code use the same selected widget and bounds.
+6. Ensure null or empty selection is handled safely.
+7. Confirm multi-selection behavior is unchanged.
+8. Confirm Preview Mode does not draw resize affordances.
+
+Do not simply declare a new local variable named `selectedWidget` unless it is initialized from the existing selection model and is the correct object for that function.
+
+After fixing:
+
+1. Build the normal Windows Debug configuration.
+2. Confirm the C2065 error is gone.
+3. Check for any follow-on compile errors.
+4. Launch VisiForm manually.
+5. Select a widget and confirm the corner arcs render.
+6. Confirm the resize hit area works.
+7. Confirm no crash occurs when nothing is selected.
+8. Confirm multi-selection and Preview Mode remain correct.
+
+Update the existing Phase 104 plan with:
+
+- compile-error root cause
+- corrected variable or accessor
+- files changed
+- build result
+- runtime validation actually performed
+- remaining issues
+
+Do not create Phase 105.
+Do not change version 1.0.10.
+Do not commit or push.

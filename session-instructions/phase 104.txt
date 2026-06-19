@@ -1,0 +1,249 @@
+Implement VisiForm Phase 104: Resize Handle Affordance and Corner Grip Improvement.
+
+Phase 103 is complete and pushed.
+
+Use:
+
+* Phase: 104
+* Version: 1.0.10
+* Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 103 plan
+* files directly related to:
+
+  * selected-widget drawing
+  * resize handles
+  * hit testing
+  * mouse interaction for resizing
+  * canvas rendering
+  * cursor updates
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_104_resize_affordance_corner_grip_plan.md`
+
+Before implementation:
+
+* update all authoritative VisiForm version declarations to `1.0.10`
+* record the previous version and `1.0.10` in the phase plan
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not refactor unrelated selection or layout systems.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Improve widget resizing by making the corner resize target clearer and easier to use.
+
+The selected widget should visually indicate the resize area with curved grip arcs drawn near the corner, and the hit area for corner resizing should be more usable than the current tiny square alone.
+
+Use the provided screenshot only as a behavior reference.
+
+## Goal 1: Improve the corner resize hit area
+
+The current resize target is too small.
+
+For the bottom-right resize corner, enlarge the usable hit area so the user can grab the resize corner more easily.
+
+Use the intent shown in the screenshot:
+
+* the effective click area should extend inward from the corner
+* conceptually, the usable area is the inner upper-left portion of the corner region around the bottom-right handle
+* clicking near the corner inside that region should begin resize reliably
+
+Requirements:
+
+* preserve precise resize behavior
+* do not require clicking only on the tiny square handle
+* hit testing must remain deterministic
+* do not let the resize area become so large that it interferes with normal widget selection or dragging
+* use screen-space/pixel-space logic for pointer affordance, not model-space scaling alone
+* behavior must remain usable at different zoom levels
+
+If the same resize-handle system is shared across corners, apply the improved hit target consistently where appropriate.
+
+## Goal 2: Draw corner grip arcs
+
+Add a visual resize affordance using curved arcs near the selected widget corner.
+
+For the bottom-right resize corner:
+
+* draw small curved arc marks from the right vertical selection boundary toward the bottom horizontal selection boundary
+* the arcs should visually suggest a rounded corner grip
+* draw the arcs inside the selected boundary area, not outside the widget
+* the arcs should align cleanly with the selection outline and resize handle
+
+Requirements:
+
+* one arc is acceptable for very small widgets
+* draw two arcs when the widget size permits
+* if the widget is large enough and the visual style supports it cleanly, a third small arc is optional, but not required
+* do not overcrowd small widgets
+* keep the arcs subtle and readable
+* reuse the existing selection highlight color/style where practical
+
+The arcs are an affordance, not a decoration that changes widget geometry.
+
+## Goal 3: Define when to show arcs
+
+The arcs should be shown only when appropriate.
+
+Preferred behavior:
+
+* show the arcs when a widget is selected and resizable
+* hide them for non-resizable or layout-managed cases where direct resize is not allowed
+* hide or simplify them when the widget is too small to render them clearly
+* preserve existing selection outlines and handles
+
+If multiple resize handles are shown, the arc treatment may be limited to the corner(s) that support corner resizing, provided the result is visually consistent.
+
+For this phase, it is acceptable to implement the bottom-right corner first if that is the active and most useful resize grip in the current editor.
+
+## Goal 4: Preserve resize behavior
+
+Do not change the intended geometry semantics of resizing.
+
+Requirements:
+
+* dragging the corner still resizes the widget correctly
+* the correct anchor corner remains fixed
+* width and height update as expected
+* minimum size constraints still apply
+* sizer-managed widgets remain protected by existing rules
+* undo and redo continue to work
+* the Property Inspector updates correctly
+* zoom and pan do not break hit testing
+* Preview Mode must not permit resizing
+
+The new visual arcs and hit area must not introduce accidental resize starts during normal canvas interaction.
+
+## Rendering and hit-testing guidance
+
+Prefer one shared source of truth for:
+
+* resize handle screen rectangle
+* enlarged resize hit zone
+* arc placement geometry
+
+Avoid separate hard-coded geometry in multiple locations.
+
+Use actual rendered widget bounds and selection bounds.
+
+The arc drawing should:
+
+* respect DPI scaling
+* remain crisp
+* avoid overlapping the widget content more than necessary
+* not clip incorrectly at canvas edges
+
+## Small-widget behavior
+
+For very small widgets:
+
+* still keep the enlarged hit area usable
+* reduce the number of arcs as needed
+* do not let the arcs overlap each other
+* if the widget is too small, fall back to the handle square only, or one minimal arc
+
+Document the chosen thresholds in the phase plan.
+
+## Cursor behavior
+
+When hovering inside the resize hit area:
+
+* show the appropriate resize cursor if the current framework already supports it
+* keep the cursor behavior aligned with the actual hit-testing region
+* do not show the resize cursor outside the valid resize zone
+
+## Preserve existing behavior
+
+Do not regress:
+
+* selection outlines
+* resize handles
+* widget dragging
+* single-widget alignment
+* Fit Width / Fit Height to Parent
+* multi-selection behavior
+* Project Tree synchronization
+* zoom and pan
+* Preview Mode restrictions
+* autosave and recovery
+* save/reload
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.10`.
+4. Select a normal resizable widget.
+5. Verify the corner grip arcs are visible.
+6. Verify one arc appears on small widgets and two when size permits.
+7. Hover near the bottom-right corner and confirm the resize cursor appears in the enlarged corner region.
+8. Click inside the enlarged corner hit area and confirm resizing begins reliably.
+9. Confirm clicking outside the resize zone still performs normal selection/drag behavior.
+10. Resize widgets at 100% zoom.
+11. Resize widgets while zoomed in and zoomed out.
+12. Confirm undo and redo work.
+13. Confirm Property Inspector width and height update correctly.
+14. Confirm small widgets do not render overlapping or broken arcs.
+15. Confirm non-resizable or sizer-managed widgets do not show misleading affordances.
+16. Confirm Preview Mode still blocks resizing.
+17. Save and reload and confirm nothing about project data is affected.
+
+Do not claim runtime validation unless it was actually performed.
+
+## Documentation
+
+Update the Phase 104 plan with:
+
+* previous and new version
+* resize-hit-area policy
+* arc-drawing geometry
+* small-widget thresholds
+* whether the change applies only to bottom-right or to shared corners
+* cursor behavior
+* files changed
+* build result
+* manual validation performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep the update concise.
+
+## Completion report
+
+Report:
+
+* Phase 104 plan path
+* version change to `1.0.10`
+* resize hit-area improvement
+* arc affordance behavior
+* small-widget fallback behavior
+* cursor behavior
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

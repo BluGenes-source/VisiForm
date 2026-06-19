@@ -1,3 +1,0 @@
-Some widgets will benifit from a layout choice of fit width.  There is no menu choice for this. The fit width or fit height should also be constrained to child items of the parent.  If a fit width is clicked, it should only affect the width, not the height, Conversly, if fit height is clicked, width should not change.
-New widgets added still show as half on the canvas and half off.
-phase 102 is working and the repo was updated for this.
