@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(VisiForm
-    VERSION 1.0.15
+    VERSION 1.0.16
     LANGUAGES CXX
 )
 
@@ -115,6 +115,7 @@ add_executable(VisiForm
     src/utils/CppIdentifier.cpp
     src/utils/IdGenerator.cpp
     src/utils/AppSettings.cpp
+    src/utils/LookAndFeelPresetStore.cpp
     src/utils/UiTimer.cpp
     src/utils/ProjectRecovery.cpp
     src/utils/NativeFileDialogs.cpp

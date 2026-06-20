@@ -1,5 +1,7 @@
 #include "generator/VisageCppEmitter.h"
+#include "model/LookAndFeelRegistry.h"
 #include "model/ProjectDocument.h"
+#include "utils/LookAndFeelPresetStore.h"
 #include "model/WidgetRegistry.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -102,4 +104,32 @@ TEST_CASE("generated runtime emits project look and feel overrides")
     CHECK(generated.find("widget.style.fillColor = makeColor(0x12, 0x34, 0x56);") != std::string::npos);
     CHECK(generated.find("widget.style.focusColor = makeColor(0x65, 0x43, 0x21);") != std::string::npos);
     CHECK(generated.find("widget.style.cornerRadius = 9.00f;") != std::string::npos);
+}
+
+TEST_CASE("generated runtime resolves custom presets without preset-store dependencies")
+{
+    auto& registry = visiform::model::LookAndFeelRegistry::instance();
+    const auto base = registry.resolveProjectStyle("VisiFormDark", {});
+    auto customStyle = base;
+    customStyle.controlSurfaceColor = "#224466";
+    customStyle.accentColor = "#AA5500";
+    auto custom = visiform::utils::LookAndFeelPresetStore::definitionFromResolvedStyle(
+        "custom.generated-test", "Generated Test", customStyle);
+    registry.setCustomDefinitions({ custom });
+
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelId = custom.id;
+
+    VisageCppEmitter::EmittedSources output;
+    std::string errorMessage;
+    REQUIRE(VisageCppEmitter{}.emitProjectSources(document, {}, output, errorMessage));
+    REQUIRE(errorMessage.empty());
+
+    const std::string& generated = output.generatedBaseCpp;
+    CHECK(generated.find("widget.style.fillColor = makeColor(0x22, 0x44, 0x66);") != std::string::npos);
+    CHECK(generated.find("widget.style.accentColor = makeColor(0xAA, 0x55, 0x00);") != std::string::npos);
+    CHECK(generated.find("look_and_feel_presets.json") == std::string::npos);
+    CHECK(generated.find("custom.generated-test") == std::string::npos);
+
+    registry.setCustomDefinitions({});
 }

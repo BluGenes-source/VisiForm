@@ -101,11 +101,12 @@ LookAndFeelRegistry::LookAndFeelRegistry()
             "#DFE3E8", "#F7F7F7", "#D9E5F5", "#EEF3F9", "#D5DAE1", "#D9E5F5", "#FFFFFF", "#788493",
             1.0f, 0.0f, 16.0f, 8.0f) }
 {
+    builtInCount_ = definitions_.size();
 }
 
-const LookAndFeelRegistry& LookAndFeelRegistry::instance()
+LookAndFeelRegistry& LookAndFeelRegistry::instance()
 {
-    static const LookAndFeelRegistry registry;
+    static LookAndFeelRegistry registry;
     return registry;
 }
 
@@ -124,6 +125,23 @@ const LookAndFeelDefinition& LookAndFeelRegistry::defaultDefinition() const
 const std::vector<LookAndFeelDefinition>& LookAndFeelRegistry::definitions() const
 {
     return definitions_;
+}
+
+bool LookAndFeelRegistry::isBuiltIn(const std::string& id) const
+{
+    return std::any_of(definitions_.begin(), definitions_.begin() + static_cast<std::ptrdiff_t>(builtInCount_),
+        [&id](const LookAndFeelDefinition& definition) { return definition.id == id; });
+}
+
+void LookAndFeelRegistry::setCustomDefinitions(std::vector<LookAndFeelDefinition> definitions)
+{
+    definitions_.resize(builtInCount_);
+    for (auto& definition : definitions) {
+        if (definition.id.empty() || isBuiltIn(definition.id) || findById(definition.id) != nullptr) {
+            continue;
+        }
+        definitions_.push_back(std::move(definition));
+    }
 }
 
 ResolvedLookAndFeelStyle LookAndFeelRegistry::resolveProjectStyle(

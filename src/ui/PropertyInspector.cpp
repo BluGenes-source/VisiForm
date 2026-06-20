@@ -246,8 +246,12 @@ std::vector<PropertyInspector::PropertyChoice> lookAndFeelChoices()
 {
     std::vector<PropertyInspector::PropertyChoice> choices;
     choices.push_back(makeChoice({}, "<inherit>", "Uses the project look and feel setting."));
-    for (const auto& definition : model::LookAndFeelRegistry::instance().definitions()) {
-        choices.push_back(makeChoice(definition.id, definition.id, "Applies this registered look and feel preset."));
+    const auto& registry = model::LookAndFeelRegistry::instance();
+    for (const auto& definition : registry.definitions()) {
+        choices.push_back(makeChoice(
+            definition.id,
+            definition.displayName + (registry.isBuiltIn(definition.id) ? " (Built-in)" : " (Custom)"),
+            "Applies this registered look and feel preset."));
     }
     return choices;
 }

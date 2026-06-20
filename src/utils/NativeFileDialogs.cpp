@@ -6,7 +6,9 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cwctype>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,6 +37,10 @@ constexpr wchar_t kImageResourceFilter[] =
 
 constexpr wchar_t kFontResourceFilter[] =
     L"Font Assets (*.ttf;*.otf)\0*.ttf;*.otf\0"
+    L"All Files (*.*)\0*.*\0\0";
+
+constexpr wchar_t kLookAndFeelPresetFilter[] =
+    L"VisiForm Look and Feel Preset (*.vflnf.json)\0*.vflnf.json\0"
     L"All Files (*.*)\0*.*\0\0";
 
 HWND g_dialogOwnerHandle = nullptr;
@@ -129,6 +135,52 @@ std::optional<std::filesystem::path> showOpenFilteredFileDialog(const wchar_t* f
     }
 
     return std::filesystem::path{ buffer.data() };
+}
+
+std::filesystem::path normalizeLookAndFeelPresetSavePath(std::filesystem::path path)
+{
+    const std::wstring native = path.native();
+    const std::wstring suffix = L".vflnf.json";
+    if (native.size() >= suffix.size()
+        && std::equal(suffix.rbegin(), suffix.rend(), native.rbegin(),
+            [](wchar_t left, wchar_t right) { return std::towlower(left) == std::towlower(right); })) {
+        return path;
+    }
+    if (path.extension() == L".json") {
+        return path.parent_path() / std::filesystem::path{ path.stem().native() + suffix };
+    }
+    return std::filesystem::path{ native + suffix };
+}
+
+std::optional<std::filesystem::path> showSaveFilteredFileDialog(const wchar_t* filter,
+    const std::filesystem::path& suggestedPath,
+    const std::filesystem::path& initialDirectory)
+{
+    std::vector<wchar_t> buffer(4096, L'\0');
+    const std::wstring initialFileName = suggestedPath.filename().native();
+    if (!initialFileName.empty()) {
+        std::copy_n(initialFileName.c_str(), std::min(initialFileName.size(), buffer.size() - 1), buffer.data());
+    }
+
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = g_dialogOwnerHandle;
+    dialog.lpstrFilter = filter;
+    dialog.nFilterIndex = 1;
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    const std::filesystem::path dialogDirectory = !initialDirectory.empty()
+        ? initialDirectory
+        : suggestedPath.parent_path();
+    dialog.lpstrInitialDir = dialogDirectory.empty() ? nullptr : dialogDirectory.c_str();
+    dialog.Flags = OFN_EXPLORER | OFN_HIDEREADONLY | OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+    dialog.lpstrDefExt = L"json";
+
+    NativeDialogActivity activity;
+    if (!GetSaveFileNameW(&dialog)) {
+        return std::nullopt;
+    }
+    return normalizeLookAndFeelPresetSavePath(std::filesystem::path{ buffer.data() });
 }
 
 bool isValidColorText(const std::string& value)
@@ -262,6 +314,29 @@ std::optional<std::filesystem::path> showOpenFontResourceDialog(const std::files
 #ifdef _WIN32
     return showOpenFilteredFileDialog(kFontResourceFilter, initialDirectory);
 #else
+    static_cast<void>(initialDirectory);
+    return std::nullopt;
+#endif
+}
+
+std::optional<std::filesystem::path> showOpenLookAndFeelPresetDialog(const std::filesystem::path& initialDirectory)
+{
+#ifdef _WIN32
+    return showOpenFilteredFileDialog(kLookAndFeelPresetFilter, initialDirectory);
+#else
+    static_cast<void>(initialDirectory);
+    return std::nullopt;
+#endif
+}
+
+std::optional<std::filesystem::path> showSaveLookAndFeelPresetDialog(
+    const std::filesystem::path& suggestedPath,
+    const std::filesystem::path& initialDirectory)
+{
+#ifdef _WIN32
+    return showSaveFilteredFileDialog(kLookAndFeelPresetFilter, suggestedPath, initialDirectory);
+#else
+    static_cast<void>(suggestedPath);
     static_cast<void>(initialDirectory);
     return std::nullopt;
 #endif

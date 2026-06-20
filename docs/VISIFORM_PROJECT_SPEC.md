@@ -467,9 +467,10 @@ Incomplete areas:
 
 - No external property schema file.
 - No full event-flow designer beyond compact event assignment rows.
-- The project-level Look and Feel editor intentionally covers only a compact
-  shared color/metric baseline; it is not a global preset designer or
-  per-widget styling system.
+- The project-level Look and Feel editor intentionally covers a compact shared
+  color/metric baseline plus reusable local custom-preset management. It is not
+  a per-widget styling system, online marketplace, cloud library, or preset
+  inheritance designer.
 
 ## 13. Code-generation specification
 
@@ -781,5 +782,12 @@ Before a release, the repository should have:
 - **Spacer**: Layout item used for fixed or stretch empty space inside a sizer.
 - **Dock**: Metadata for parent-relative edge/fill layout.
 - **Anchor**: Metadata for resize/reposition behavior.
-- **Look and feel**: Built-in registry preset plus per-widget style overrides. One shared registry resolver supplies application/control/recessed/raised surfaces, text roles, state colors, bevel edges, and metrics to Design Mode, Preview Mode, and generated output; project files continue to store only `lookAndFeelId`.
+- **Look and feel**: Built-in or user custom registry preset plus sparse
+  project overrides and established per-widget style overrides. Custom presets
+  live in a versioned user-data JSON library and use stable identifiers.
+  One shared registry resolver supplies application/control/recessed/raised
+  surfaces, text roles, state colors, bevel edges, and metrics to Design Mode,
+  Preview Mode, and generated output. Project files continue to store only the
+  stable `lookAndFeelId` and sparse overrides; generated projects receive
+  resolved values and never depend on the local preset library.
 - **Generated project**: Standalone C++/CMake project emitted by VisiForm export.

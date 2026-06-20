@@ -1,0 +1,411 @@
+Implement VisiForm Phase 110: Look and Feel Preset Management.
+
+Phase 109 is complete and pushed.
+
+Use:
+
+* Phase: 110
+* Version: 1.0.16
+* Subagents: none
+
+Keep token use minimal. Extend the existing Look and Feel system; do not create a separate theme system.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 109 plan
+* files directly related to:
+
+  * built-in Look and Feel presets
+  * project-level Look and Feel overrides
+  * Look and Feel editor
+  * application settings or user-data storage
+  * serialization helpers
+  * generated runtime styling
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_110_look_and_feel_preset_management_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.16`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not add per-widget style overrides.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Allow developers to save, reuse, import, export, rename, duplicate, and delete custom Look and Feel presets.
+
+Preserve this resolution order:
+
+`built-in or custom preset → project overrides → resolved Look and Feel`
+
+The existing project-level Look and Feel property remains the selection point.
+
+## Preset types
+
+Support:
+
+### Built-in presets
+
+* shipped with VisiForm
+* read-only
+* cannot be renamed or deleted
+* may be duplicated into a custom preset
+* preserve current identifiers and behavior
+
+### Custom presets
+
+* created by the user
+* stored outside project files
+* reusable across projects
+* may be renamed, duplicated, exported, and deleted
+* must not overwrite built-in presets
+
+Do not modify global built-in preset definitions.
+
+## Storage
+
+Store custom presets in the existing application user-data or settings location.
+
+Use one deterministic preset file or directory.
+
+Requirements:
+
+* do not store custom presets inside the repository
+* do not store them inside every `.vfb.json`
+* use a versioned, readable format such as JSON if compatible with existing utilities
+* write safely through a temporary file and replacement
+* tolerate a missing preset store
+* recover gracefully from invalid entries
+* preserve valid presets when one entry is malformed where practical
+
+Document the storage location and format in the phase plan.
+
+## Preset data
+
+A custom preset should contain:
+
+* stable identifier
+* display name
+* preset-format version
+* complete reusable Look and Feel values
+* optional source/base preset identifier for informational or fallback use
+
+Prefer storing a complete preset style rather than project-specific override semantics.
+
+When saving from the Look and Feel editor:
+
+1. resolve the current base preset and project overrides
+2. store the resulting complete style as the custom preset
+3. do not copy unrelated project data
+
+## Preset management UI
+
+Extend the existing Look and Feel editor or add one compact preset-management dialog.
+
+Provide:
+
+* Save as New Preset
+* Duplicate Preset
+* Rename Preset
+* Delete Preset
+* Import Preset
+* Export Preset
+
+Reuse one shared preset-management service.
+
+Do not add duplicate logic to several dialogs.
+
+## Save as New Preset
+
+Allow the current resolved Look and Feel to be saved under a user-provided name.
+
+Requirements:
+
+* reject empty names
+* normalize surrounding whitespace
+* detect duplicate names
+* require confirmation before replacing an existing custom preset, or generate a unique name
+* never replace a built-in preset
+* create a stable internal identifier separate from the display name
+* refresh the Look and Feel property options immediately
+
+After creation, selecting the new preset is acceptable but should be explicit and predictable.
+
+## Duplicate Preset
+
+Allow duplication of:
+
+* built-in presets
+* custom presets
+
+The duplicate must:
+
+* receive a new stable identifier
+* receive a unique editable display name
+* copy the complete resolved style
+* become a custom preset
+
+Suggested default name:
+
+`<Original Name> Copy`
+
+Use numbered suffixes if needed.
+
+## Rename Preset
+
+Allow renaming custom presets only.
+
+Requirements:
+
+* preserve the stable identifier
+* update the option list immediately
+* update open projects that reference the stable identifier without changing their stored identifier
+* reject duplicate or empty display names
+* do not rename preset files solely from display-name changes if stable IDs are used
+
+## Delete Preset
+
+Allow deletion of custom presets only.
+
+Before deletion:
+
+* detect whether the active project uses that preset
+* warn the user
+* require confirmation
+
+If the active project references a deleted custom preset:
+
+* switch it to a safe built-in fallback
+* preserve project overrides
+* mark the project dirty
+* repaint Design Mode and Preview Mode
+
+Other unopened projects should load with the same fallback behavior when their preset is unavailable.
+
+Do not delete built-in presets.
+
+## Import Preset
+
+Support importing one preset file.
+
+Requirements:
+
+* validate format and version
+* validate required style values
+* normalize invalid numeric ranges where safe
+* reject unreadable or unsupported data clearly
+* prevent imported presets from claiming built-in identifiers
+* resolve identifier collisions by generating a new custom ID
+* resolve display-name collisions predictably
+* do not partially import invalid data
+
+Use the existing file-picker pattern.
+
+## Export Preset
+
+Allow exporting a custom or built-in preset to a portable preset file.
+
+Export the complete resolved preset style.
+
+Do not export:
+
+* project widget data
+* project overrides unrelated to the selected preset
+* editor state
+* filesystem-specific internal paths
+
+Use a clear file extension if the project already has a naming convention; otherwise introduce a concise documented extension such as:
+
+`.vflnf.json`
+
+Do not change `.vfb.json`.
+
+## Look and Feel property integration
+
+The existing Look and Feel property list must include:
+
+* built-in presets
+* custom presets
+
+Requirements:
+
+* distinguish custom presets where practical, such as a grouped list or suffix
+* use stable identifiers internally
+* changing selection repaints Design Mode immediately
+* Preview Mode uses the new selection
+* project overrides remain applied over the selected preset
+* generated output receives the resolved result
+
+Do not store only the display name as the project identifier.
+
+## Missing custom presets
+
+When opening a project that references an unavailable custom preset:
+
+* use the existing safe built-in fallback
+* preserve project overrides
+* show one concise warning
+* do not crash
+* do not silently replace the stored project identifier until the user saves or chooses another preset
+
+Document the exact behavior.
+
+## Project overrides
+
+Preserve Phase 109 behavior.
+
+When applying a custom preset:
+
+* project overrides remain active
+* the final style is custom preset plus project overrides
+* Reset to Preset clears project overrides and reveals the selected custom preset values
+* editing values creates project overrides unless the user explicitly saves a new preset
+
+Do not mutate the custom preset merely because project overrides change.
+
+## Dirty state
+
+Preset-library operations and project modifications are distinct.
+
+Examples:
+
+* creating or renaming a custom preset changes the user preset library
+* selecting a different preset for the project changes the project and marks it dirty
+* deleting the active preset and falling back changes the project and marks it dirty
+* exporting a preset does not mark the project dirty
+* no-op operations must not mark anything dirty
+
+## Generated output
+
+Generated output must use the project’s resolved style.
+
+Do not require the generated application to access the user’s local custom-preset library.
+
+Preferred behavior:
+
+* resolve the selected preset plus project overrides during export
+* emit the necessary resolved runtime style configuration
+* generated output remains portable
+* preserve `USER CODE` regions
+* avoid embedding duplicate style data per widget
+
+Projects using built-in presets without overrides should continue to generate as before where practical.
+
+## Scope boundaries
+
+Do not add:
+
+* online preset marketplace
+* cloud synchronization
+* preset thumbnails
+* categories or tags
+* preset inheritance chains
+* automatic preset updates
+* per-widget overrides
+* theme package installation
+* font-file bundling
+* gradients or animations
+* application-wide VisiForm IDE theme switching
+
+Record those as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.16`.
+4. Open the Look and Feel editor.
+5. Save the current resolved style as a new custom preset.
+6. Confirm it appears in the Look and Feel list.
+7. Apply it to the project.
+8. Confirm Design Mode updates.
+9. Confirm Preview Mode updates.
+10. Duplicate a built-in preset.
+11. Duplicate a custom preset.
+12. Rename a custom preset.
+13. Confirm stable project references remain valid.
+14. Attempt to rename or delete a built-in preset and confirm it is blocked.
+15. Delete an unused custom preset.
+16. Delete the active custom preset and test fallback behavior.
+17. Export a preset.
+18. Import it again.
+19. Test identifier and name collisions.
+20. Test an invalid preset file.
+21. Restart VisiForm and confirm custom presets persist.
+22. Save and reload a project using a custom preset.
+23. Test a project whose custom preset is missing.
+24. Confirm project overrides still apply over custom presets.
+25. Test Reset to Preset.
+26. Export a representative project.
+27. Inspect or build generated output through the approved workflow.
+28. Confirm generated output does not depend on the local preset store.
+29. Confirm autosave and recovery preserve project preset selection and overrides.
+
+Do not claim runtime, persistence, import/export, or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 110 plan with:
+
+* previous and new version
+* custom-preset storage location
+* preset file format and version
+* stable identifier policy
+* built-in versus custom rules
+* management UI
+* import/export behavior
+* collision handling
+* missing-preset fallback
+* project override interaction
+* generated-output strategy
+* files changed
+* build result
+* manual validation actually performed
+* known limitations
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep it concise.
+
+## Completion report
+
+Report:
+
+* Phase 110 plan path
+* version change to `1.0.16`
+* custom-preset storage and format
+* preset-management commands
+* stable identifier behavior
+* built-in preset protections
+* import/export behavior
+* missing-preset fallback
+* project override interaction
+* Design Mode and Preview Mode results
+* generated-output integration
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

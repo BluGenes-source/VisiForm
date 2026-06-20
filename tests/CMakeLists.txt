@@ -9,6 +9,7 @@ add_executable(VisiFormTests
     test_project_validation.cpp
     test_generated_runtime_labels.cpp
     test_splitter.cpp
+    test_look_and_feel_preset_store.cpp
     ${CMAKE_SOURCE_DIR}/src/generator/VisageCppEmitter.cpp
     ${CMAKE_SOURCE_DIR}/src/model/ProjectDocument.cpp
     ${CMAKE_SOURCE_DIR}/src/model/FormNode.cpp
@@ -25,6 +26,7 @@ add_executable(VisiFormTests
     ${CMAKE_SOURCE_DIR}/src/validation/ProjectValidator.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/CppIdentifier.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/FileUtils.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/LookAndFeelPresetStore.cpp
 )
 
 target_include_directories(VisiFormTests

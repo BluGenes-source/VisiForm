@@ -72,6 +72,8 @@ struct LookAndFeelDefinition {
     float controlPadding = 8.0f;
     float splitterHighlightThickness = 1.0f;
     float splitterShadowThickness = 1.0f;
+
+    bool operator==(const LookAndFeelDefinition&) const = default;
 };
 
 struct ResolvedLookAndFeelStyle {

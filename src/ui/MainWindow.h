@@ -13,6 +13,7 @@
 #include "ui/editors/DropdownControl.h"
 #include "ui/editors/TextEditControl.h"
 #include "utils/AppSettings.h"
+#include "utils/LookAndFeelPresetStore.h"
 #include "utils/IdGenerator.h"
 #include "utils/ProjectRecovery.h"
 #include "utils/UiTimer.h"
@@ -399,6 +400,9 @@ private:
 
     struct LookAndFeelEditorDialogState {
         bool visible = false;
+        std::string selectedPresetId = "VisiFormDark";
+        std::string presetName{};
+        std::string confirmDeletePresetId{};
         model::LookAndFeelOverrides pendingOverrides{};
     };
 
@@ -639,6 +643,13 @@ private:
     bool applyProjectSettingsDialog();
     bool applyLookAndFeelEditorDialog(bool closeAfterApply);
     void resetLookAndFeelEditorDialog();
+    void refreshLookAndFeelRegistry();
+    bool saveLookAndFeelPresetFromEditor();
+    bool duplicateSelectedLookAndFeelPreset();
+    bool renameSelectedLookAndFeelPreset();
+    bool deleteSelectedLookAndFeelPreset();
+    bool importLookAndFeelPreset();
+    bool exportSelectedLookAndFeelPreset();
     [[nodiscard]] model::ResolvedLookAndFeelStyle lookAndFeelEditorResolvedStyle() const;
     [[nodiscard]] PanelBounds lookAndFeelEditorPreviewBounds() const;
     void drawLookAndFeelEditorPreview(visage::Canvas& canvas) const;
@@ -668,6 +679,7 @@ private:
     commands::UndoRedoStack undoRedo_{};
     utils::IdGenerator idGenerator_{};
     utils::AppSettings settings_{};
+    utils::LookAndFeelPresetStore lookAndFeelPresetStore_{};
     WidgetPalette widgetPalette_{};
     Splitter projectTreeCanvasSplitter_{};
     Splitter canvasInspectorSplitter_{};

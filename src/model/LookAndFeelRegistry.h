@@ -2,6 +2,7 @@
 
 #include "model/LookAndFeelDefinition.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -12,11 +13,13 @@ class WidgetNode;
 
 class LookAndFeelRegistry {
 public:
-    [[nodiscard]] static const LookAndFeelRegistry& instance();
+    [[nodiscard]] static LookAndFeelRegistry& instance();
 
     [[nodiscard]] const LookAndFeelDefinition* findById(const std::string& id) const;
     [[nodiscard]] const LookAndFeelDefinition& defaultDefinition() const;
     [[nodiscard]] const std::vector<LookAndFeelDefinition>& definitions() const;
+    [[nodiscard]] bool isBuiltIn(const std::string& id) const;
+    void setCustomDefinitions(std::vector<LookAndFeelDefinition> definitions);
     [[nodiscard]] ResolvedLookAndFeelStyle resolveProjectStyle(
         const std::string& lookAndFeelId,
         const LookAndFeelOverrides& overrides) const;
@@ -27,6 +30,7 @@ public:
 private:
     LookAndFeelRegistry();
 
+    std::size_t builtInCount_ = 0;
     std::vector<LookAndFeelDefinition> definitions_{};
 };
 

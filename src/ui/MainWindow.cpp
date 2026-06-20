@@ -418,6 +418,20 @@ std::vector<std::string> availableLookAndFeelIds()
     return result;
 }
 
+std::vector<PropertyInspector::PropertyChoice> availableLookAndFeelChoices()
+{
+    std::vector<PropertyInspector::PropertyChoice> choices;
+    const auto& registry = model::LookAndFeelRegistry::instance();
+    choices.reserve(registry.definitions().size());
+    for (const auto& definition : registry.definitions()) {
+        choices.push_back({
+            definition.id,
+            definition.displayName + (registry.isBuiltIn(definition.id) ? " (Built-in)" : " (Custom)")
+        });
+    }
+    return choices;
+}
+
 std::vector<std::string> newProjectTemplateIds()
 {
     return {
@@ -1935,6 +1949,12 @@ bool MainWindow::openLookAndFeelEditorDialog()
     editorModal_.message.clear();
     editorModal_.lines.clear();
     editorModal_.buttons = {
+        { "save_look_and_feel_preset", "Save New" },
+        { "duplicate_look_and_feel_preset", "Duplicate" },
+        { "rename_look_and_feel_preset", "Rename" },
+        { "delete_look_and_feel_preset", "Delete" },
+        { "import_look_and_feel_preset", "Import" },
+        { "export_look_and_feel_preset", "Export" },
         { "apply_look_and_feel", "Apply" },
         { "ok_look_and_feel", "OK" },
         { "reset_look_and_feel", "Reset to Preset" },
@@ -1993,6 +2013,12 @@ void MainWindow::populateProjectSettingsDialog()
 void MainWindow::populateLookAndFeelEditorDialog()
 {
     lookAndFeelEditorDialog_ = {};
+    lookAndFeelEditorDialog_.selectedPresetId = document_.lookAndFeelId.empty()
+        ? std::string{ "VisiFormDark" }
+        : document_.lookAndFeelId;
+    if (const auto* definition = model::LookAndFeelRegistry::instance().findById(lookAndFeelEditorDialog_.selectedPresetId)) {
+        lookAndFeelEditorDialog_.presetName = definition->displayName;
+    }
     lookAndFeelEditorDialog_.pendingOverrides = document_.lookAndFeelOverrides;
 }
 
@@ -2775,9 +2801,12 @@ bool MainWindow::saveProjectAs(const std::filesystem::path& path)
 bool MainWindow::applyLookAndFeelEditorDialog(bool closeAfterApply)
 {
     const model::LookAndFeelOverrides pending = lookAndFeelEditorDialog_.pendingOverrides;
-    const bool changed = pending != document_.lookAndFeelOverrides;
+    const std::string selectedPresetId = lookAndFeelEditorDialog_.selectedPresetId;
+    const bool changed = pending != document_.lookAndFeelOverrides
+        || selectedPresetId != document_.lookAndFeelId;
     if (changed) {
-        applyUndoableDocumentChange("Edit Look and Feel", [this, &pending]() {
+        applyUndoableDocumentChange("Edit Look and Feel", [this, &pending, &selectedPresetId]() {
+            document_.lookAndFeelId = selectedPresetId;
             document_.lookAndFeelOverrides = pending;
             return true;
         });
@@ -2810,8 +2839,178 @@ void MainWindow::resetLookAndFeelEditorDialog()
 model::ResolvedLookAndFeelStyle MainWindow::lookAndFeelEditorResolvedStyle() const
 {
     return model::LookAndFeelRegistry::instance().resolveProjectStyle(
-        document_.lookAndFeelId,
+        lookAndFeelEditorDialog_.selectedPresetId,
         lookAndFeelEditorDialog_.pendingOverrides);
+}
+
+void MainWindow::refreshLookAndFeelRegistry()
+{
+    model::LookAndFeelRegistry::instance().setCustomDefinitions(lookAndFeelPresetStore_.definitions());
+    updateLayout();
+    redraw();
+}
+
+bool MainWindow::saveLookAndFeelPresetFromEditor()
+{
+    std::string errorMessage;
+    const auto id = lookAndFeelPresetStore_.addFromResolvedStyle(
+        lookAndFeelEditorDialog_.presetName,
+        lookAndFeelEditorResolvedStyle(),
+        lookAndFeelEditorDialog_.selectedPresetId,
+        errorMessage);
+    if (!id.has_value()) {
+        editorModal_.statusText = errorMessage;
+        redraw();
+        return false;
+    }
+    refreshLookAndFeelRegistry();
+    lookAndFeelEditorDialog_.selectedPresetId = *id;
+    if (const auto* definition = model::LookAndFeelRegistry::instance().findById(*id)) {
+        lookAndFeelEditorDialog_.presetName = definition->displayName;
+    }
+    editorModal_.statusText = "Custom preset saved and selected. Click Apply to use it for this project.";
+    redraw();
+    return true;
+}
+
+bool MainWindow::duplicateSelectedLookAndFeelPreset()
+{
+    const auto* definition = model::LookAndFeelRegistry::instance().findById(
+        lookAndFeelEditorDialog_.selectedPresetId);
+    if (definition == nullptr) {
+        editorModal_.statusText = "Select an available preset to duplicate.";
+        redraw();
+        return false;
+    }
+    std::string errorMessage;
+    const auto id = lookAndFeelPresetStore_.duplicate(*definition, definition->id, errorMessage);
+    if (!id.has_value()) {
+        editorModal_.statusText = errorMessage;
+        redraw();
+        return false;
+    }
+    refreshLookAndFeelRegistry();
+    lookAndFeelEditorDialog_.selectedPresetId = *id;
+    if (const auto* duplicate = model::LookAndFeelRegistry::instance().findById(*id)) {
+        lookAndFeelEditorDialog_.presetName = duplicate->displayName;
+    }
+    editorModal_.statusText = "Preset duplicated as a custom preset. Click Apply to use it.";
+    redraw();
+    return true;
+}
+
+bool MainWindow::renameSelectedLookAndFeelPreset()
+{
+    std::string errorMessage;
+    if (!lookAndFeelPresetStore_.rename(
+            lookAndFeelEditorDialog_.selectedPresetId,
+            lookAndFeelEditorDialog_.presetName,
+            errorMessage)) {
+        editorModal_.statusText = errorMessage;
+        redraw();
+        return false;
+    }
+    refreshLookAndFeelRegistry();
+    lookAndFeelEditorDialog_.confirmDeletePresetId.clear();
+    editorModal_.statusText = "Custom preset renamed; its stable identifier is unchanged.";
+    redraw();
+    return true;
+}
+
+bool MainWindow::deleteSelectedLookAndFeelPreset()
+{
+    const std::string id = lookAndFeelEditorDialog_.selectedPresetId;
+    const auto* preset = lookAndFeelPresetStore_.findById(id);
+    if (preset == nullptr) {
+        editorModal_.statusText = "Built-in presets cannot be deleted.";
+        redraw();
+        return false;
+    }
+    if (lookAndFeelEditorDialog_.confirmDeletePresetId != id) {
+        lookAndFeelEditorDialog_.confirmDeletePresetId = id;
+        editorModal_.statusText = document_.lookAndFeelId == id
+            ? "This project uses the preset. Click Delete again to remove it and switch the project to VisiForm Dark."
+            : "Click Delete again to confirm removal of this custom preset.";
+        redraw();
+        return false;
+    }
+
+    std::string errorMessage;
+    if (!lookAndFeelPresetStore_.remove(id, errorMessage)) {
+        editorModal_.statusText = errorMessage;
+        redraw();
+        return false;
+    }
+    refreshLookAndFeelRegistry();
+    lookAndFeelEditorDialog_.selectedPresetId = "VisiFormDark";
+    lookAndFeelEditorDialog_.presetName = model::LookAndFeelRegistry::instance().defaultDefinition().displayName;
+    lookAndFeelEditorDialog_.confirmDeletePresetId.clear();
+    if (document_.lookAndFeelId == id) {
+        document_.lookAndFeelId = "VisiFormDark";
+        document_.markDirty();
+        updateLayout();
+        editorModal_.statusText = "Active preset deleted; project switched to VisiForm Dark with overrides preserved.";
+    }
+    else {
+        editorModal_.statusText = "Custom preset deleted.";
+    }
+    redraw();
+    return true;
+}
+
+bool MainWindow::importLookAndFeelPreset()
+{
+    const auto selectedPath = utils::showOpenLookAndFeelPresetDialog(settings_.lastProjectDirectory);
+    if (!selectedPath.has_value()) {
+        editorModal_.statusText = "Preset import cancelled.";
+        redraw();
+        return false;
+    }
+    std::string errorMessage;
+    const auto id = lookAndFeelPresetStore_.importPreset(*selectedPath, errorMessage);
+    if (!id.has_value()) {
+        editorModal_.statusText = "Import failed: " + errorMessage;
+        redraw();
+        return false;
+    }
+    refreshLookAndFeelRegistry();
+    lookAndFeelEditorDialog_.selectedPresetId = *id;
+    if (const auto* imported = model::LookAndFeelRegistry::instance().findById(*id)) {
+        lookAndFeelEditorDialog_.presetName = imported->displayName;
+    }
+    editorModal_.statusText = "Preset imported as a custom preset. Click Apply to use it.";
+    redraw();
+    return true;
+}
+
+bool MainWindow::exportSelectedLookAndFeelPreset()
+{
+    const auto* definition = model::LookAndFeelRegistry::instance().findById(
+        lookAndFeelEditorDialog_.selectedPresetId);
+    if (definition == nullptr) {
+        editorModal_.statusText = "Select an available preset to export.";
+        redraw();
+        return false;
+    }
+    const std::filesystem::path suggested = settings_.lastProjectDirectory
+        / (utils::FileUtils::sanitizeFileName(definition->displayName) + ".vflnf.json");
+    const auto selectedPath = utils::showSaveLookAndFeelPresetDialog(
+        suggested, settings_.lastProjectDirectory);
+    if (!selectedPath.has_value()) {
+        editorModal_.statusText = "Preset export cancelled.";
+        redraw();
+        return false;
+    }
+    std::string errorMessage;
+    if (!lookAndFeelPresetStore_.exportPreset(
+            *definition, definition->id, *selectedPath, errorMessage)) {
+        editorModal_.statusText = "Export failed: " + errorMessage;
+        redraw();
+        return false;
+    }
+    editorModal_.statusText = "Preset exported: " + normalizedPathText(*selectedPath);
+    redraw();
+    return true;
 }
 
 bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
@@ -2862,6 +3061,10 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     }
     else if (radioNormalized) {
         loadStatus += " (radio groups normalized)";
+    }
+    if (model::LookAndFeelRegistry::instance().findById(document_.lookAndFeelId) == nullptr) {
+        loadStatus += " Warning: Look and Feel preset '" + document_.lookAndFeelId
+            + "' is unavailable; VisiForm Dark is shown until another preset is selected.";
     }
     setOperationStatus(loadStatus);
     fileOperationInProgress_ = false;
@@ -8009,6 +8212,13 @@ void MainWindow::loadAppSettings()
     settings_.projectTreeWidth = std::max(1, settings_.projectTreeWidth);
     projectTreeWidthInitialized_ = settings_.projectTreeWidthWasLoaded;
     settings_.propertyInspectorWidth = std::max(1, settings_.propertyInspectorWidth);
+    std::string presetWarning;
+    const bool presetsLoaded = lookAndFeelPresetStore_.load(presetWarning);
+    (void)presetsLoaded;
+    refreshLookAndFeelRegistry();
+    if (!presetWarning.empty()) {
+        setOperationStatus(presetWarning);
+    }
 }
 
 void MainWindow::saveAppSettings()
@@ -9260,7 +9470,7 @@ void MainWindow::clearCanvasInteraction()
 std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
 {
     std::vector<EditorModalField> fields;
-    const std::vector<PropertyInspector::PropertyChoice> lookAndFeelChoices = propertyChoicesFromValues(availableLookAndFeelIds());
+    const std::vector<PropertyInspector::PropertyChoice> lookAndFeelChoices = availableLookAndFeelChoices();
     const std::vector<PropertyInspector::PropertyChoice> templateChoices = propertyChoicesFromValues(newProjectTemplateIds());
     if (editorModal_.mode == EditorModalMode::NewProjectWizard) {
         fields.push_back(EditorModalField{ "projectName", "Project Name", newProjectWizard_.projectName, PropertyInspector::PropertyEditKind::Text });
@@ -9288,6 +9498,8 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
         const auto label = [](std::string text, bool overridden) {
             return text + (overridden ? " *" : "");
         };
+        fields.push_back(EditorModalField{ "selectedPresetId", "Preset", lookAndFeelEditorDialog_.selectedPresetId, PropertyInspector::PropertyEditKind::Choice, lookAndFeelChoices });
+        fields.push_back(EditorModalField{ "presetName", "Preset Name", lookAndFeelEditorDialog_.presetName, PropertyInspector::PropertyEditKind::Text });
         fields.push_back(EditorModalField{ "applicationSurfaceColor", label("Application Surface", overrides.applicationSurfaceColor.has_value()), style.applicationSurfaceColor, PropertyInspector::PropertyEditKind::Color });
         fields.push_back(EditorModalField{ "controlSurfaceColor", label("Control Surface", overrides.controlSurfaceColor.has_value()), style.controlSurfaceColor, PropertyInspector::PropertyEditKind::Color });
         fields.push_back(EditorModalField{ "recessedSurfaceColor", label("Recessed Surface", overrides.recessedSurfaceColor.has_value()), style.recessedSurfaceColor, PropertyInspector::PropertyEditKind::Color });
@@ -9390,7 +9602,10 @@ MainWindow::PanelBounds MainWindow::editorModalBodyBounds() const
 {
     const PanelBounds dialogBounds = editorModalDialogBounds();
     const float top = dialogBounds.y + 52.0f;
-    const float bottom = dialogBounds.y + dialogBounds.height - kEditorModalButtonHeight - 16.0f
+    const float buttonRowsHeight = editorModal_.mode == EditorModalMode::LookAndFeelEditor
+        ? (kEditorModalButtonHeight * 2.0f + 8.0f)
+        : kEditorModalButtonHeight;
+    const float bottom = dialogBounds.y + dialogBounds.height - buttonRowsHeight - 16.0f
         - (editorModal_.mode == EditorModalMode::Message ? 0.0f : (kEditorModalFormStatusHeight + 10.0f));
     return {
         dialogBounds.x + 14.0f,
@@ -9407,8 +9622,8 @@ MainWindow::PanelBounds MainWindow::lookAndFeelEditorPreviewBounds() const
         return {};
     }
 
-    const float fieldsHeight = 8.0f * kEditorModalFormRowHeight
-        + 7.0f * kEditorModalFormRowSpacing;
+    const float fieldsHeight = 9.0f * kEditorModalFormRowHeight
+        + 8.0f * kEditorModalFormRowSpacing;
     const float top = bodyBounds.y + fieldsHeight + kLookAndFeelEditorPreviewGap;
     return {
         bodyBounds.x,
@@ -9690,7 +9905,10 @@ MainWindow::PanelBounds MainWindow::treeNodeEditorFormBounds() const
 MainWindow::PanelBounds MainWindow::editorModalStatusBounds() const
 {
     const PanelBounds dialogBounds = editorModalDialogBounds();
-    const float y = dialogBounds.y + dialogBounds.height - kEditorModalButtonHeight - 16.0f - kEditorModalFormStatusHeight - 8.0f;
+    const float buttonRowsHeight = editorModal_.mode == EditorModalMode::LookAndFeelEditor
+        ? (kEditorModalButtonHeight * 2.0f + 24.0f)
+        : (kEditorModalButtonHeight + 16.0f);
+    const float y = dialogBounds.y + dialogBounds.height - buttonRowsHeight - kEditorModalFormStatusHeight - 8.0f;
     return {
         dialogBounds.x + 14.0f,
         y,
@@ -9710,7 +9928,7 @@ std::vector<MainWindow::EditorModalFieldHit> MainWindow::editorModalFieldHits() 
     if (editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
         const PanelBounds bodyBounds = editorModalBodyBounds();
         const float columnWidth = std::max(0.0f, (bodyBounds.width - kLookAndFeelEditorColumnGap) * 0.5f);
-        constexpr std::size_t leftColumnCount = 8;
+        constexpr std::size_t leftColumnCount = 9;
         hits.reserve(fields.size());
         for (std::size_t index = 0; index < fields.size(); ++index) {
             const bool rightColumn = index >= leftColumnCount;
@@ -10323,7 +10541,26 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
     }
 
     if (editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
-        const auto base = model::LookAndFeelRegistry::instance().resolveProjectStyle(document_.lookAndFeelId, {});
+        if (key == "selectedPresetId" && containsText(availableLookAndFeelIds(), trimmedValue)) {
+            lookAndFeelEditorDialog_.selectedPresetId = trimmedValue;
+            lookAndFeelEditorDialog_.confirmDeletePresetId.clear();
+            if (const auto* definition = model::LookAndFeelRegistry::instance().findById(trimmedValue)) {
+                lookAndFeelEditorDialog_.presetName = definition->displayName;
+            }
+            editorModal_.statusText = "Preset selected temporarily. Project overrides remain active; click Apply to commit.";
+            redraw();
+            return;
+        }
+        if (key == "presetName") {
+            lookAndFeelEditorDialog_.presetName = trimmedValue;
+            lookAndFeelEditorDialog_.confirmDeletePresetId.clear();
+            editorModal_.statusText = "Preset name updated temporarily. Use Save New or Rename.";
+            redraw();
+            return;
+        }
+
+        const auto base = model::LookAndFeelRegistry::instance().resolveProjectStyle(
+            lookAndFeelEditorDialog_.selectedPresetId, {});
         auto& overrides = lookAndFeelEditorDialog_.pendingOverrides;
         const auto setColor = [&trimmedValue](std::optional<std::string>& target, const std::string& baseValue) {
             if (trimmedValue == baseValue) {
@@ -10811,6 +11048,24 @@ bool MainWindow::activateEditorModalButton(const std::string& buttonId)
         resetLookAndFeelEditorDialog();
         return true;
     }
+    if (buttonId == "save_look_and_feel_preset" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return saveLookAndFeelPresetFromEditor();
+    }
+    if (buttonId == "duplicate_look_and_feel_preset" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return duplicateSelectedLookAndFeelPreset();
+    }
+    if (buttonId == "rename_look_and_feel_preset" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return renameSelectedLookAndFeelPreset();
+    }
+    if (buttonId == "delete_look_and_feel_preset" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return deleteSelectedLookAndFeelPreset();
+    }
+    if (buttonId == "import_look_and_feel_preset" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return importLookAndFeelPreset();
+    }
+    if (buttonId == "export_look_and_feel_preset" && editorModal_.mode == EditorModalMode::LookAndFeelEditor) {
+        return exportSelectedLookAndFeelPreset();
+    }
     if (buttonId == "add_image" && editorModal_.mode == EditorModalMode::ResourceManager) {
         return addResourceFromDialog(model::ProjectResourceType::Image);
     }
@@ -11111,22 +11366,34 @@ std::vector<MainWindow::PanelBounds> MainWindow::editorModalButtonBounds() const
     }
 
     const PanelBounds dialogBounds = editorModalDialogBounds();
-    const float buttonWidth = editorModal_.mode == EditorModalMode::LookAndFeelEditor
-        ? 136.0f
+    const bool lookAndFeelEditor = editorModal_.mode == EditorModalMode::LookAndFeelEditor;
+    const float buttonWidth = lookAndFeelEditor
+        ? 112.0f
         : (editorModal_.mode == EditorModalMode::ItemListEditor ? 108.0f : kEditorModalButtonWidth);
     const float buttonSpacing = editorModal_.mode == EditorModalMode::ItemListEditor
         ? 8.0f
         : kEditorModalButtonSpacing;
-    const float totalWidth = static_cast<float>(editorModal_.buttons.size()) * buttonWidth
-        + static_cast<float>(std::max<std::size_t>(0, editorModal_.buttons.size() - 1)) * buttonSpacing;
+    const std::size_t buttonsPerRow = lookAndFeelEditor ? 5 : editorModal_.buttons.size();
+    const std::size_t firstRowCount = std::min(buttonsPerRow, editorModal_.buttons.size());
+    const float totalWidth = static_cast<float>(firstRowCount) * buttonWidth
+        + static_cast<float>(std::max<std::size_t>(0, firstRowCount - 1)) * buttonSpacing;
     const float buttonX = dialogBounds.x + std::max(0.0f, (dialogBounds.width - totalWidth) * 0.5f);
-    const float buttonY = dialogBounds.y + dialogBounds.height - kEditorModalButtonHeight - 16.0f;
+    const float buttonY = dialogBounds.y + dialogBounds.height
+        - (lookAndFeelEditor ? kEditorModalButtonHeight * 2.0f + 24.0f : kEditorModalButtonHeight + 16.0f);
 
     bounds.reserve(editorModal_.buttons.size());
     for (std::size_t index = 0; index < editorModal_.buttons.size(); ++index) {
+        const std::size_t row = lookAndFeelEditor ? index / buttonsPerRow : 0;
+        const std::size_t column = lookAndFeelEditor ? index % buttonsPerRow : index;
+        const std::size_t rowCount = lookAndFeelEditor
+            ? std::min(buttonsPerRow, editorModal_.buttons.size() - row * buttonsPerRow)
+            : editorModal_.buttons.size();
+        const float rowWidth = static_cast<float>(rowCount) * buttonWidth
+            + static_cast<float>(std::max<std::size_t>(0, rowCount - 1)) * buttonSpacing;
+        const float rowX = dialogBounds.x + std::max(0.0f, (dialogBounds.width - rowWidth) * 0.5f);
         bounds.push_back({
-            buttonX + static_cast<float>(index) * (buttonWidth + buttonSpacing),
-            buttonY,
+            (lookAndFeelEditor ? rowX : buttonX) + static_cast<float>(column) * (buttonWidth + buttonSpacing),
+            buttonY + static_cast<float>(row) * (kEditorModalButtonHeight + 8.0f),
             buttonWidth,
             kEditorModalButtonHeight
         });
