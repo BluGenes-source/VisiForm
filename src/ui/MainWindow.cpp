@@ -750,6 +750,82 @@ bool isStyleFloatProperty(const std::string& key)
     return key == "borderThickness" || key == "cornerRadius" || key == "fontSize";
 }
 
+constexpr std::string_view kAppearanceInspectorPrefix = "__appearance_";
+
+std::string_view appearanceKeyFromInspectorKey(const std::string& key)
+{
+    if (!key.starts_with(kAppearanceInspectorPrefix)) {
+        return {};
+    }
+    return std::string_view{ key }.substr(kAppearanceInspectorPrefix.size());
+}
+
+bool clearAppearanceOverride(model::WidgetLookAndFeelOverrides& overrides, std::string_view key)
+{
+    const auto reset = [](auto& target) {
+        if (!target.has_value()) {
+            return false;
+        }
+        target.reset();
+        return true;
+    };
+    if (key == "controlSurfaceColor") return reset(overrides.controlSurfaceColor);
+    if (key == "textColor") return reset(overrides.textColor);
+    if (key == "borderColor") return reset(overrides.borderColor);
+    if (key == "accentColor") return reset(overrides.accentColor);
+    if (key == "focusOutlineColor") return reset(overrides.focusOutlineColor);
+    if (key == "highlightEdgeColor") return reset(overrides.highlightEdgeColor);
+    if (key == "shadowEdgeColor") return reset(overrides.shadowEdgeColor);
+    if (key == "borderThickness") return reset(overrides.borderThickness);
+    if (key == "cornerRadius") return reset(overrides.cornerRadius);
+    if (key == "controlPadding") return reset(overrides.controlPadding);
+    return false;
+}
+
+bool setAppearanceColorOverride(model::WidgetLookAndFeelOverrides& overrides, std::string_view key, const std::string& value)
+{
+    auto set = [&value](std::optional<std::string>& target) {
+        if (target == value) return false;
+        target = value;
+        return true;
+    };
+    if (key == "controlSurfaceColor") return set(overrides.controlSurfaceColor);
+    if (key == "textColor") return set(overrides.textColor);
+    if (key == "borderColor") return set(overrides.borderColor);
+    if (key == "accentColor") return set(overrides.accentColor);
+    if (key == "focusOutlineColor") return set(overrides.focusOutlineColor);
+    if (key == "highlightEdgeColor") return set(overrides.highlightEdgeColor);
+    if (key == "shadowEdgeColor") return set(overrides.shadowEdgeColor);
+    return false;
+}
+
+bool setAppearanceMetricOverride(model::WidgetLookAndFeelOverrides& overrides, std::string_view key, float value)
+{
+    auto set = [value](std::optional<float>& target) {
+        if (target == value) return false;
+        target = value;
+        return true;
+    };
+    if (key == "borderThickness") return set(overrides.borderThickness);
+    if (key == "cornerRadius") return set(overrides.cornerRadius);
+    if (key == "controlPadding") return set(overrides.controlPadding);
+    return false;
+}
+
+std::string resolvedAppearanceColor(
+    const model::ResolvedLookAndFeelStyle& style,
+    std::string_view key)
+{
+    if (key == "controlSurfaceColor") return style.controlSurfaceColor;
+    if (key == "textColor") return style.primaryTextColor;
+    if (key == "borderColor") return style.borderColor;
+    if (key == "accentColor") return style.accentColor;
+    if (key == "focusOutlineColor") return style.focusOutlineColor;
+    if (key == "highlightEdgeColor") return style.highlightEdgeColor;
+    if (key == "shadowEdgeColor") return style.shadowEdgeColor;
+    return {};
+}
+
 int parseColorValue(const std::string& value, int fallback)
 {
     if (!isValidColorValue(value) || value.empty()) {
@@ -3513,9 +3589,15 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         }
 
         const model::WidgetNode* selectedWidget = document_.selectedWidget();
-        const std::string initialColor = selectedWidget != nullptr
-            ? selectedWidget->getStringProperty(*colorPropertyKey, {})
-            : std::string{};
+        std::string initialColor;
+        if (selectedWidget != nullptr) {
+            const auto appearanceKey = appearanceKeyFromInspectorKey(*colorPropertyKey);
+            initialColor = appearanceKey.empty()
+                ? selectedWidget->getStringProperty(*colorPropertyKey, {})
+                : resolvedAppearanceColor(
+                    model::LookAndFeelRegistry::instance().resolve(document_, *selectedWidget),
+                    appearanceKey);
+        }
         const auto selectedColor = utils::showColorPickerDialog(initialColor);
         if (!selectedColor.has_value()) {
             return;
@@ -6215,6 +6297,124 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
 
         return false;
     };
+
+    if (key == "__appearance_reset_property" || key == "__appearance_reset_all") {
+        if (document_.hasMultiSelection()
+            || !model::LookAndFeelRegistry::supportsWidgetOverrides(widget->type)) {
+            setOperationStatus("Select one supported widget to edit Appearance");
+            redraw();
+            return false;
+        }
+
+        const std::string widgetId = widget->id;
+        const bool resetAll = key == "__appearance_reset_all";
+        const bool hasChange = resetAll
+            ? !widget->appearanceOverrides.empty()
+            : model::LookAndFeelRegistry::supportsWidgetOverride(widget->type, trimmedValue)
+                && [&]() {
+                    auto copy = widget->appearanceOverrides;
+                    return clearAppearanceOverride(copy, trimmedValue);
+                }();
+        if (!hasChange) {
+            return true;
+        }
+
+        const bool applied = applyUndoableDocumentChange(
+            resetAll ? "Reset all widget Appearance overrides" : "Reset widget Appearance property",
+            [this, &widgetId, &trimmedValue, resetAll]() {
+                auto* current = document_.findWidgetById(widgetId);
+                if (current == nullptr) {
+                    return false;
+                }
+                if (resetAll) {
+                    current->appearanceOverrides = {};
+                    return true;
+                }
+                return clearAppearanceOverride(current->appearanceOverrides, trimmedValue);
+            });
+        if (applied) {
+            setOperationStatus(resetAll
+                ? "Reset all widget Appearance overrides to inherited values"
+                : "Reset widget Appearance property to inherited");
+            redraw();
+        }
+        return applied;
+    }
+
+    const auto appearanceKey = appearanceKeyFromInspectorKey(key);
+    if (!appearanceKey.empty()) {
+        if (document_.hasMultiSelection()
+            || !model::LookAndFeelRegistry::supportsWidgetOverride(widget->type, appearanceKey)) {
+            setOperationStatus("Select one supported widget to edit this Appearance property");
+            redraw();
+            return false;
+        }
+
+        if (trimmedValue.empty() || isUnsetValueText(trimmedValue)) {
+            const std::string widgetId = widget->id;
+            auto copy = widget->appearanceOverrides;
+            if (!clearAppearanceOverride(copy, appearanceKey)) {
+                return true;
+            }
+            return applyUndoableDocumentChange("Reset widget Appearance property",
+                [this, &widgetId, appearanceKey]() {
+                    auto* current = document_.findWidgetById(widgetId);
+                    return current != nullptr
+                        && clearAppearanceOverride(current->appearanceOverrides, appearanceKey);
+                });
+        }
+
+        const bool colorProperty = appearanceKey.ends_with("Color");
+        std::optional<float> metricValue;
+        if (colorProperty) {
+            if (!isValidColorValue(trimmedValue)) {
+                setOperationStatus("Invalid Appearance color value");
+                redraw();
+                return false;
+            }
+        }
+        else {
+            metricValue = tryParseFloat(trimmedValue);
+            if (!metricValue.has_value()) {
+                setOperationStatus("Invalid Appearance metric value");
+                redraw();
+                return false;
+            }
+            if (appearanceKey == "borderThickness") {
+                *metricValue = std::clamp(*metricValue, 0.0f, 20.0f);
+            }
+            else if (appearanceKey == "cornerRadius") {
+                *metricValue = std::clamp(*metricValue, 0.0f, 50.0f);
+            }
+            else if (appearanceKey == "controlPadding") {
+                *metricValue = std::clamp(*metricValue, 0.0f, 40.0f);
+            }
+        }
+
+        auto updatedOverrides = widget->appearanceOverrides;
+        const bool changed = colorProperty
+            ? setAppearanceColorOverride(updatedOverrides, appearanceKey, trimmedValue)
+            : setAppearanceMetricOverride(updatedOverrides, appearanceKey, *metricValue);
+        if (!changed) {
+            return true;
+        }
+
+        const std::string widgetId = widget->id;
+        const bool applied = applyUndoableDocumentChange("Edit widget Appearance property",
+            [this, &widgetId, &updatedOverrides]() {
+                auto* current = document_.findWidgetById(widgetId);
+                if (current == nullptr) {
+                    return false;
+                }
+                current->appearanceOverrides = updatedOverrides;
+                return true;
+            });
+        if (applied) {
+            setOperationStatus("Widget Appearance override changed");
+            redraw();
+        }
+        return applied;
+    }
 
     if (key == "name") {
         return setSelectedWidgetName(trimmedValue);

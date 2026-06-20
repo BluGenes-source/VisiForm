@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "model/LookAndFeelDefinition.h"
 #include "model/PropertyValue.h"
 
 #include <map>
@@ -108,6 +109,7 @@ public:
     std::string parentId{};
     int zOrder = 0;
     std::map<std::string, PropertyValue> properties{};
+    WidgetLookAndFeelOverrides appearanceOverrides{};
     std::vector<WidgetNode> children{};
 
     [[nodiscard]] const std::string& typeName() const;

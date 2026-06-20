@@ -227,20 +227,32 @@ Compatibility rules:
 - missing `resources` defaults to an empty list
 - managed resource export paths must stay under `assets/`
 
-## Common style override properties
+## Per-widget Appearance overrides
 
-Most widgets can also store optional style override properties inside `properties`:
+Supported widgets may include an optional sparse `appearanceOverrides` object
+beside `properties`:
 
-- `lookAndFeelId`
-- `fillColor`
-- `textColor`
-- `borderColor`
-- `accentColor`
-- `borderThickness`
-- `cornerRadius`
-- `fontSize`
+```json
+"appearanceOverrides": {
+  "controlSurfaceColor": "#445566",
+  "textColor": "#F0E0D0",
+  "borderColor": "#778899",
+  "accentColor": "#2D7FF9",
+  "focusOutlineColor": "#80AFFF",
+  "highlightEdgeColor": "#DDE7F4",
+  "shadowEdgeColor": "#111820",
+  "borderThickness": 2.0,
+  "cornerRadius": 8.0,
+  "controlPadding": 10.0
+}
+```
 
-Empty style override values inherit from the project-level look and feel.
+Only explicit values are written. Missing fields inherit from the resolved
+project Look and Feel, and an empty object is omitted. Old projects without
+`appearanceOverrides` load with no widget overrides.
+
+Legacy style values inside `properties` remain readable for compatibility.
+New Phase 111 Appearance edits use the dedicated sparse object.
 
 ## Event property keys
 

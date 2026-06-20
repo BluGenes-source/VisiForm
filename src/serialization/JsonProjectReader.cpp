@@ -203,6 +203,56 @@ bool parseProperties(const nlohmann::json& json, std::map<std::string, model::Pr
     return true;
 }
 
+bool parseWidgetAppearanceOverrides(const nlohmann::json& json,
+    model::WidgetLookAndFeelOverrides& overrides,
+    std::string& errorMessage)
+{
+    overrides = {};
+    if (json.is_null()) {
+        return true;
+    }
+    if (!json.is_object()) {
+        errorMessage = "appearanceOverrides must be an object when present.";
+        return false;
+    }
+
+    const auto readOptionalString = [&json, &errorMessage](const char* key, std::optional<std::string>& target) {
+        const auto value = json.find(key);
+        if (value == json.end()) {
+            return true;
+        }
+        if (!value->is_string()) {
+            errorMessage = std::string{ "appearanceOverrides." } + key + " must be a string.";
+            return false;
+        }
+        target = value->get<std::string>();
+        return true;
+    };
+    const auto readOptionalFloat = [&json, &errorMessage](const char* key, std::optional<float>& target) {
+        const auto value = json.find(key);
+        if (value == json.end()) {
+            return true;
+        }
+        if (!value->is_number()) {
+            errorMessage = std::string{ "appearanceOverrides." } + key + " must be numeric.";
+            return false;
+        }
+        target = value->get<float>();
+        return true;
+    };
+
+    return readOptionalString("controlSurfaceColor", overrides.controlSurfaceColor)
+        && readOptionalString("textColor", overrides.textColor)
+        && readOptionalString("borderColor", overrides.borderColor)
+        && readOptionalString("accentColor", overrides.accentColor)
+        && readOptionalString("focusOutlineColor", overrides.focusOutlineColor)
+        && readOptionalString("highlightEdgeColor", overrides.highlightEdgeColor)
+        && readOptionalString("shadowEdgeColor", overrides.shadowEdgeColor)
+        && readOptionalFloat("borderThickness", overrides.borderThickness)
+        && readOptionalFloat("cornerRadius", overrides.cornerRadius)
+        && readOptionalFloat("controlPadding", overrides.controlPadding);
+}
+
 bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::string& errorMessage)
 {
     if (!requireObject(json, "root", errorMessage)) {
@@ -260,6 +310,15 @@ bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::str
     }
     if (propertiesIterator == json.end()) {
         widget.properties.clear();
+    }
+
+    const auto appearanceIterator = json.find("appearanceOverrides");
+    if (appearanceIterator != json.end()
+        && !parseWidgetAppearanceOverrides(*appearanceIterator, widget.appearanceOverrides, errorMessage)) {
+        return false;
+    }
+    if (appearanceIterator == json.end()) {
+        widget.appearanceOverrides = {};
     }
 
     model::normalizeItemListProperties(widget);

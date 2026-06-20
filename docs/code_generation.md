@@ -298,7 +298,9 @@ Current repair-pass note:
 
 ## Look and feel aware preview rendering
 
-Generated preview drawing now resolves a project-level look and feel plus optional per-widget style overrides at export time.
+Generated preview drawing resolves style at export time in this order:
+
+`built-in or custom preset -> project overrides -> widget overrides -> final widget style`
 
 Built-in preset ids currently include:
 
@@ -307,16 +309,11 @@ Built-in preset ids currently include:
 - `ImGuiDark`
 - `FlatClassic`
 
-Supported generated preview style fields include:
-
-- `lookAndFeelId`
-- `fillColor`
-- `textColor`
-- `borderColor`
-- `accentColor`
-- `borderThickness`
-- `cornerRadius`
-- `fontSize`
+Supported sparse widget Appearance overrides include control surface, text,
+border, accent, focus outline, highlight edge, shadow edge, border thickness,
+corner radius, and control padding. The generator emits the final resolved
+runtime values rather than a duplicate style table or a dependency on the local
+custom-preset library.
 
 Generated look and feel is baked into that runtime model for now.
 Runtime theme switching in the generated app is future work.

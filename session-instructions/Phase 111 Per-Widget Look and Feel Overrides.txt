@@ -1,0 +1,402 @@
+Implement VisiForm Phase 111: Per-Widget Look and Feel Overrides.
+
+Phase 110 is complete and pushed.
+
+Use:
+
+* Phase: 111
+* Version: 1.0.17
+* Subagents: none
+
+Keep token use minimal. Extend the existing Look and Feel system; do not create a separate styling system.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 110 plan
+* files directly related to:
+
+  * resolved Look and Feel
+  * project-level overrides
+  * custom presets
+  * Property Inspector
+  * widget model properties
+  * serialization
+  * Preview Mode
+  * generated runtime styling
+  * undo/redo
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_111_per_widget_look_and_feel_overrides_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.17`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not add a CSS-like styling language.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Allow selected widgets to override a limited subset of the project’s resolved Look and Feel.
+
+Resolution order must be:
+
+`built-in or custom preset → project overrides → widget overrides → final widget style`
+
+The project Look and Feel remains the default source of truth.
+
+A widget should inherit all values it does not explicitly override.
+
+## Initial override scope
+
+Support only these widget-level overrides:
+
+### Colors
+
+* control surface
+* text
+* border
+* accent
+* focus outline
+* highlight edge
+* shadow edge
+
+### Metrics
+
+* border thickness
+* corner radius
+* control padding
+
+Do not expose every Look and Feel property in this phase.
+
+Do not add widget-specific shadow geometry, gradients, fonts, or animation settings.
+
+## Supported widget scope
+
+Enable widget overrides initially for:
+
+* Button
+* Text Box
+* Check Box
+* Radio Button
+* Combo Box
+* List Box
+* Slider
+* Scroll Bar
+* Progress Bar
+* Color Picker
+* Frame
+* Group Box
+* Panel
+* Tab Control
+
+Do not force overrides onto invisible layout-only nodes.
+
+For unsupported widgets, hide or disable the override editor cleanly.
+
+## Property Inspector
+
+Add a focused `Appearance` section or tab for the selected widget.
+
+Show:
+
+* inherited value
+* optional override value
+* reset-to-inherited action
+
+Preferred behavior:
+
+* unchecked or unset field means inherit
+* editing a value creates an explicit override
+* resetting removes the override
+* inherited values remain visible for reference
+* changing an override repaints immediately
+* no duplicate global Look and Feel selector is added
+
+Do not overload the existing Name, Text, or layout properties.
+
+## Override representation
+
+Use sparse optional values.
+
+Requirements:
+
+* absence means inherit
+* do not copy the complete resolved style into every widget
+* do not serialize preset defaults as widget overrides
+* store only explicitly changed widget values
+* preserve unknown-property compatibility according to existing serializer rules
+
+Prefer one reusable widget-style override structure rather than separate fields scattered across widget types.
+
+## Style resolution
+
+Add or extend one shared resolution path:
+
+1. resolve selected preset
+2. apply project overrides
+3. apply widget overrides
+4. return final resolved widget style
+
+Requirements:
+
+* Design Mode uses the final resolved style
+* Preview Mode uses the final resolved style
+* generated output uses the final resolved style
+* widgets do not manually merge overrides independently
+* fallback values remain safe and readable
+
+Do not mutate project presets or custom presets when editing widget overrides.
+
+## Apply to selected widgets
+
+For the base iteration:
+
+* edit one selected widget at a time
+* multi-selection may show shared values only if the existing inspector supports it safely
+* otherwise disable Appearance editing for multi-selection and document the limitation
+
+Do not add complex mixed-value editing unless it already fits the current inspector architecture.
+
+## Reset behavior
+
+Provide:
+
+* Reset Property to Inherited
+* Reset All Widget Appearance Overrides
+
+Behavior:
+
+* remove the selected override or all widget overrides
+* immediately repaint
+* create one undoable operation
+* do not alter the project-level Look and Feel or project overrides
+
+No-op resets must not dirty the project.
+
+## Undo and redo
+
+Every committed widget appearance change must support undo/redo.
+
+Requirements:
+
+* one property edit creates one undoable command
+* Reset All creates one undo step
+* undo restores the prior sparse override state
+* redo reapplies it
+* selection remains stable
+* no-op changes create no undo entry
+
+Reuse the existing command system.
+
+## Design Mode
+
+Design Mode must show widget overrides while preserving editor overlays:
+
+* selection outline
+* resize handles
+* resize corner arcs
+* guides
+* grid
+
+Overrides must not alter model geometry unless the overridden metric legitimately affects rendered padding or border appearance.
+
+Do not change saved width or height automatically.
+
+## Preview Mode
+
+Preview Mode must use widget overrides.
+
+Requirements:
+
+* no editor-only labels
+* no selection overlays
+* runtime interaction states remain functional
+* temporary Preview Mode state remains model-independent
+* widget overrides must not be lost when entering or leaving Preview Mode
+
+## Generated output
+
+Generated projects must reproduce widget overrides.
+
+Preferred approach:
+
+* emit only widget override values that are present
+* apply them through the existing generated runtime style helper
+* avoid duplicating full style tables per widget
+* preserve `USER CODE` regions
+* keep generated code readable
+
+Projects with no widget overrides should generate as before.
+
+Do not require generated applications to access the local custom-preset library.
+
+## Serialization
+
+Extend `.vfb.json` only as needed for sparse widget appearance overrides.
+
+Requirements:
+
+* old projects load with no widget overrides
+* widgets without overrides remain compact
+* explicit overrides round-trip correctly
+* project Look and Feel remains unchanged
+* unknown or invalid values fall back safely
+* no editor-only dialog state is serialized
+
+Document the format change in the Phase 111 plan.
+
+## Copy, duplicate, and paste
+
+When a widget is:
+
+* duplicated
+* copied and pasted
+* cloned through an existing command
+
+its explicit widget appearance overrides should be copied with it.
+
+Do not copy overrides to unrelated widgets.
+
+## Widget-type compatibility
+
+Not every property applies equally to every widget.
+
+Examples:
+
+* text color is irrelevant to purely visual layout nodes
+* accent color may matter more for sliders, progress bars, and selected states
+* corner radius may not affect every widget
+* padding may apply differently across controls
+
+Use a small compatibility mapping.
+
+Hide or disable unsupported override fields rather than pretending they work.
+
+Do not create independent custom editor logic for every widget type.
+
+## Scope boundaries
+
+Do not add:
+
+* style classes
+* selector rules
+* CSS-like inheritance
+* widget-state-specific overrides
+* hover-only custom colors
+* pressed-only custom colors
+* custom fonts
+* image skins
+* gradients
+* animations
+* per-child selector styling
+* bulk style editor
+* theme marketplace
+
+Record those as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.17`.
+4. Select a Button.
+5. Override control surface, text, border, and corner radius.
+6. Confirm Design Mode updates immediately.
+7. Enter Preview Mode.
+8. Confirm the same widget override appears.
+9. Reset one property to inherited.
+10. Reset all widget overrides.
+11. Test undo and redo.
+12. Repeat with:
+
+    * Text Box
+    * Check Box
+    * Combo Box
+    * Slider
+    * Progress Bar
+    * Frame
+    * Group Box
+    * Tab Control
+13. Confirm unsupported properties are hidden or disabled.
+14. Save and reload.
+15. Confirm overrides persist.
+16. Duplicate and copy/paste a widget.
+17. Confirm overrides are preserved.
+18. Change the project Look and Feel.
+19. Confirm non-overridden properties follow the new base.
+20. Confirm overridden properties remain unchanged.
+21. Export a representative project.
+22. Inspect or build generated output through the approved workflow.
+23. Confirm widget overrides appear in generated runtime.
+24. Confirm widgets without overrides remain unchanged.
+25. Confirm autosave and recovery preserve widget overrides.
+
+Do not claim runtime, serialization, undo, or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 111 plan with:
+
+* previous and new version
+* supported widget override properties
+* supported widget types
+* sparse override model
+* resolution order
+* Property Inspector behavior
+* reset behavior
+* undo/redo integration
+* serialization format
+* copy/duplicate behavior
+* Design/Preview/export integration
+* compatibility limitations
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep it concise.
+
+## Completion report
+
+Report:
+
+* Phase 111 plan path
+* version change to `1.0.17`
+* widget override properties
+* supported widget scope
+* resolution order
+* Property Inspector integration
+* reset and inheritance behavior
+* undo/redo behavior
+* serialization compatibility
+* Design Mode result
+* Preview Mode result
+* generated-output result
+* known limitations
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

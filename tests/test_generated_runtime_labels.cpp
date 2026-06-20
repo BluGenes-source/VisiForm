@@ -133,3 +133,32 @@ TEST_CASE("generated runtime resolves custom presets without preset-store depend
 
     registry.setCustomDefinitions({});
 }
+
+TEST_CASE("generated runtime emits final per-widget appearance overrides")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    auto& button = document.root.children.front();
+    button.appearanceOverrides.controlSurfaceColor = "#13579B";
+    button.appearanceOverrides.textColor = "#FEDCBA";
+    button.appearanceOverrides.focusOutlineColor = "#2468AC";
+    button.appearanceOverrides.highlightEdgeColor = "#102030";
+    button.appearanceOverrides.shadowEdgeColor = "#405060";
+    button.appearanceOverrides.borderThickness = 6.0f;
+    button.appearanceOverrides.cornerRadius = 12.0f;
+    button.appearanceOverrides.controlPadding = 14.0f;
+
+    VisageCppEmitter::EmittedSources output;
+    std::string errorMessage;
+    REQUIRE(VisageCppEmitter{}.emitProjectSources(document, {}, output, errorMessage));
+    REQUIRE(errorMessage.empty());
+
+    const std::string& generated = output.generatedBaseCpp;
+    CHECK(generated.find("widget.style.fillColor = makeColor(0x13, 0x57, 0x9B);") != std::string::npos);
+    CHECK(generated.find("widget.style.textColor = makeColor(0xFE, 0xDC, 0xBA);") != std::string::npos);
+    CHECK(generated.find("widget.style.focusColor = makeColor(0x24, 0x68, 0xAC);") != std::string::npos);
+    CHECK(generated.find("widget.style.highlightColor = makeColor(0x10, 0x20, 0x30);") != std::string::npos);
+    CHECK(generated.find("widget.style.shadowColor = makeColor(0x40, 0x50, 0x60);") != std::string::npos);
+    CHECK(generated.find("widget.style.borderThickness = 6.00f;") != std::string::npos);
+    CHECK(generated.find("widget.style.cornerRadius = 12.00f;") != std::string::npos);
+    CHECK(generated.find("widget.style.controlPadding = 14.00f;") != std::string::npos);
+}

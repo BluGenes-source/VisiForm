@@ -119,6 +119,14 @@
 - Windows Debug build: passed through the approved Visual Studio workspace
   build pipeline after restoring `PanelBounds::isValid()` as a compatibility
   wrapper for the `MainWindow.cpp` preview call site.
+- Build regression fix: `src/model/LookAndFeelRegistry.cpp` incorrectly reused
+  the widget-property `applyColorOverride(const char*, std::string&)` helper for
+  `WidgetLookAndFeelOverrides` optional string fields. The helper usage was
+  split so optional appearance overrides now apply through a matching
+  `std::optional<std::string>` path.
+- Post-fix Windows Debug build: passed again through the approved Visual Studio
+  workspace build pipeline after correcting the `WidgetLookAndFeelOverrides`
+  color-override helper path in `src/model/LookAndFeelRegistry.cpp`.
 - Manual Design/Preview/generated-runtime validation: not performed; automated agents may not launch either application.
 
 ## Files Changed
@@ -175,6 +183,11 @@
 - Preserved project overrides when the base preset changes.
 - Restored `PanelBounds::isValid()` as a thin alias to `isVisible()` so the
   Look and Feel preview path matches the current `MainWindow.cpp` call site.
+- Fixed a follow-up Phase 109 compile regression in `LookAndFeelRegistry` by
+  applying `WidgetLookAndFeelOverrides` colors through an optional-string helper
+  instead of the widget-property lookup helper that expects `const char*` keys.
+- Revalidated the normal Windows Debug workspace build after the regression fix;
+  the workspace build now succeeds.
 - Design Mode, Preview Mode, editor splitters, autosave/recovery serialization,
   and generated output consume the final resolved project style.
 - Added focused serialization, fallback, base-change, and generated-output

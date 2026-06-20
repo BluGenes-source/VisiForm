@@ -44,6 +44,35 @@ struct LookAndFeelOverrides {
     bool operator==(const LookAndFeelOverrides&) const = default;
 };
 
+struct WidgetLookAndFeelOverrides {
+    std::optional<std::string> controlSurfaceColor{};
+    std::optional<std::string> textColor{};
+    std::optional<std::string> borderColor{};
+    std::optional<std::string> accentColor{};
+    std::optional<std::string> focusOutlineColor{};
+    std::optional<std::string> highlightEdgeColor{};
+    std::optional<std::string> shadowEdgeColor{};
+    std::optional<float> borderThickness{};
+    std::optional<float> cornerRadius{};
+    std::optional<float> controlPadding{};
+
+    [[nodiscard]] bool empty() const
+    {
+        return !controlSurfaceColor.has_value()
+            && !textColor.has_value()
+            && !borderColor.has_value()
+            && !accentColor.has_value()
+            && !focusOutlineColor.has_value()
+            && !highlightEdgeColor.has_value()
+            && !shadowEdgeColor.has_value()
+            && !borderThickness.has_value()
+            && !cornerRadius.has_value()
+            && !controlPadding.has_value();
+    }
+
+    bool operator==(const WidgetLookAndFeelOverrides&) const = default;
+};
+
 struct LookAndFeelDefinition {
     std::string id;
     std::string displayName;

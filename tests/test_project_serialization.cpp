@@ -157,6 +157,74 @@ TEST_CASE("Invalid project look and feel overrides fall back or clamp safely")
     CHECK(resolved.cornerRadius == 50.0f);
 }
 
+TEST_CASE("Widget appearance overrides serialize sparsely and resolve after project overrides")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelId = "VisiFormLight";
+    document.lookAndFeelOverrides.controlSurfaceColor = "#112233";
+    document.lookAndFeelOverrides.borderThickness = 2.0f;
+
+    auto& button = document.root.children.front();
+    button.appearanceOverrides.controlSurfaceColor = "#445566";
+    button.appearanceOverrides.textColor = "#F0E0D0";
+    button.appearanceOverrides.focusOutlineColor = "#ABCDEF";
+    button.appearanceOverrides.borderThickness = 5.0f;
+    button.appearanceOverrides.cornerRadius = 13.0f;
+    button.appearanceOverrides.controlPadding = 11.0f;
+
+    const auto json = nlohmann::json::parse(JsonProjectWriter{}.writeToString(document));
+    REQUIRE(json["root"]["children"][0].contains("appearanceOverrides"));
+    const auto& serialized = json["root"]["children"][0]["appearanceOverrides"];
+    CHECK(serialized.size() == 6);
+    CHECK(serialized["controlSurfaceColor"] == "#445566");
+    CHECK_FALSE(serialized.contains("borderColor"));
+
+    std::string errorMessage;
+    const auto loaded = JsonProjectReader{}.readFromString(json.dump(), errorMessage);
+    REQUIRE(errorMessage.empty());
+    REQUIRE(loaded.has_value());
+    const auto& loadedButton = loaded->root.children.front();
+    CHECK(loadedButton.appearanceOverrides == button.appearanceOverrides);
+
+    const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(*loaded, loadedButton);
+    CHECK(resolved.controlSurfaceColor == "#445566");
+    CHECK(resolved.primaryTextColor == "#F0E0D0");
+    CHECK(resolved.focusOutlineColor == "#ABCDEF");
+    CHECK(resolved.borderThickness == 5.0f);
+    CHECK(resolved.cornerRadius == 13.0f);
+    CHECK(resolved.controlPadding == 11.0f);
+    CHECK(resolved.borderColor == "#B8C2D0");
+}
+
+TEST_CASE("Widgets without appearance overrides remain compact and value copies preserve overrides")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    auto& button = document.root.children.front();
+    const auto compact = nlohmann::json::parse(JsonProjectWriter{}.writeToString(document));
+    CHECK_FALSE(compact["root"]["children"][0].contains("appearanceOverrides"));
+
+    button.appearanceOverrides.accentColor = "#123ABC";
+    button.appearanceOverrides.cornerRadius = 7.0f;
+    const auto copied = button;
+    CHECK(copied.appearanceOverrides == button.appearanceOverrides);
+}
+
+TEST_CASE("Invalid widget appearance override values fall back or clamp safely")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    auto& button = document.root.children.front();
+    button.appearanceOverrides.borderColor = "invalid";
+    button.appearanceOverrides.borderThickness = -5.0f;
+    button.appearanceOverrides.cornerRadius = 500.0f;
+    button.appearanceOverrides.controlPadding = 100.0f;
+
+    const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(document, button);
+    CHECK(resolved.borderColor == "#97A3B7");
+    CHECK(resolved.borderThickness == 0.0f);
+    CHECK(resolved.cornerRadius == 50.0f);
+    CHECK(resolved.controlPadding == 40.0f);
+}
+
 TEST_CASE("ProjectDocument z-order commands move one sibling step and preserve selection")
 {
     ProjectDocument document = ProjectDocument::createDefault();

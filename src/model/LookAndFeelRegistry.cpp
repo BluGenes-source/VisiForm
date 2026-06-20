@@ -3,6 +3,7 @@
 #include "model/WidgetNode.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <utility>
 
@@ -77,6 +78,42 @@ void applyColorOverride(const std::optional<std::string>& overrideValue, std::st
 {
     if (overrideValue.has_value() && isValidColor(*overrideValue)) {
         target = *overrideValue;
+    }
+}
+
+constexpr std::array<std::string_view, 10> kWidgetOverrideKeys = {
+    "controlSurfaceColor",
+    "textColor",
+    "borderColor",
+    "accentColor",
+    "focusOutlineColor",
+    "highlightEdgeColor",
+    "shadowEdgeColor",
+    "borderThickness",
+    "cornerRadius",
+    "controlPadding"
+};
+
+bool isSupportedWidgetType(WidgetType type)
+{
+    switch (type) {
+    case WidgetType::Button:
+    case WidgetType::TextBox:
+    case WidgetType::CheckBox:
+    case WidgetType::RadioButton:
+    case WidgetType::ComboBox:
+    case WidgetType::ListBox:
+    case WidgetType::Slider:
+    case WidgetType::ScrollBar:
+    case WidgetType::ProgressBar:
+    case WidgetType::ColorPicker:
+    case WidgetType::Frame:
+    case WidgetType::GroupBox:
+    case WidgetType::Panel:
+    case WidgetType::TabControl:
+        return true;
+    default:
+        return false;
     }
 }
 
@@ -217,6 +254,7 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
     const ProjectDocument& document,
     const WidgetNode& widget) const
 {
+    // Legacy widget style properties remain readable for existing project files.
     const std::string widgetLookAndFeelId = widget.getStringProperty("lookAndFeelId", {});
     ResolvedLookAndFeelStyle style = widgetLookAndFeelId.empty()
         ? resolveProjectStyle(document.lookAndFeelId, document.lookAndFeelOverrides)
@@ -234,6 +272,11 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         const std::string overrideValue = widget.getStringProperty(key, {});
         if (!overrideValue.empty()) {
             value = overrideValue;
+        }
+    };
+    const auto applyAppearanceOverride = [](const std::optional<std::string>& overrideValue, std::string& value) {
+        if (overrideValue.has_value() && !overrideValue->empty()) {
+            value = *overrideValue;
         }
     };
     applyColorOverride("fillColor", style.controlSurfaceColor);
@@ -255,7 +298,74 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         }
     }
 
+    if (supportsWidgetOverrides(widget.type)) {
+        const auto& overrides = widget.appearanceOverrides;
+        applyAppearanceOverride(overrides.controlSurfaceColor, style.controlSurfaceColor);
+        applyAppearanceOverride(overrides.textColor, style.primaryTextColor);
+        applyAppearanceOverride(overrides.borderColor, style.borderColor);
+        applyAppearanceOverride(overrides.accentColor, style.accentColor);
+        applyAppearanceOverride(overrides.focusOutlineColor, style.focusOutlineColor);
+        applyAppearanceOverride(overrides.highlightEdgeColor, style.highlightEdgeColor);
+        applyAppearanceOverride(overrides.shadowEdgeColor, style.shadowEdgeColor);
+        if (overrides.borderThickness.has_value()) {
+            style.borderThickness = std::clamp(*overrides.borderThickness, 0.0f, 20.0f);
+        }
+        if (overrides.cornerRadius.has_value()) {
+            style.cornerRadius = std::clamp(*overrides.cornerRadius, 0.0f, 50.0f);
+        }
+        if (overrides.controlPadding.has_value()) {
+            style.controlPadding = std::clamp(*overrides.controlPadding, 0.0f, 40.0f);
+        }
+    }
+
     return style;
+}
+
+bool LookAndFeelRegistry::supportsWidgetOverrides(WidgetType type)
+{
+    return isSupportedWidgetType(type);
+}
+
+bool LookAndFeelRegistry::supportsWidgetOverride(WidgetType type, std::string_view key)
+{
+    if (!isSupportedWidgetType(type)) {
+        return false;
+    }
+
+    if (key == "textColor") {
+        return type != WidgetType::Panel
+            && type != WidgetType::ScrollBar;
+    }
+    if (key == "focusOutlineColor") {
+        return type != WidgetType::Frame
+            && type != WidgetType::GroupBox
+            && type != WidgetType::Panel
+            && type != WidgetType::ProgressBar;
+    }
+    if (key == "accentColor") {
+        return type != WidgetType::Frame
+            && type != WidgetType::GroupBox
+            && type != WidgetType::Panel;
+    }
+    if (key == "controlPadding") {
+        return type != WidgetType::Slider
+            && type != WidgetType::ScrollBar
+            && type != WidgetType::ProgressBar
+            && type != WidgetType::Panel;
+    }
+
+    return std::find(kWidgetOverrideKeys.begin(), kWidgetOverrideKeys.end(), key) != kWidgetOverrideKeys.end();
+}
+
+std::vector<std::string_view> LookAndFeelRegistry::supportedWidgetOverrideKeys(WidgetType type)
+{
+    std::vector<std::string_view> keys;
+    for (const auto key : kWidgetOverrideKeys) {
+        if (supportsWidgetOverride(type, key)) {
+            keys.push_back(key);
+        }
+    }
+    return keys;
 }
 
 } // namespace visiform::model

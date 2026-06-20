@@ -345,6 +345,71 @@ bool isStylePropertyKey(const std::string& key)
         || key == "fontItalic";
 }
 
+bool isLegacyWidgetLookAndFeelPropertyKey(const std::string& key)
+{
+    return key == "lookAndFeelId"
+        || key == "fillColor"
+        || key == "textColor"
+        || key == "borderColor"
+        || key == "accentColor"
+        || key == "borderThickness"
+        || key == "cornerRadius";
+}
+
+std::string appearanceLabel(std::string_view key)
+{
+    if (key == "controlSurfaceColor") return "Control Surface";
+    if (key == "textColor") return "Text";
+    if (key == "borderColor") return "Border";
+    if (key == "accentColor") return "Accent";
+    if (key == "focusOutlineColor") return "Focus Outline";
+    if (key == "highlightEdgeColor") return "Highlight Edge";
+    if (key == "shadowEdgeColor") return "Shadow Edge";
+    if (key == "borderThickness") return "Border Thickness";
+    if (key == "cornerRadius") return "Corner Radius";
+    if (key == "controlPadding") return "Control Padding";
+    return std::string{ key };
+}
+
+std::optional<std::string> appearanceColorOverride(
+    const model::WidgetLookAndFeelOverrides& overrides,
+    std::string_view key)
+{
+    if (key == "controlSurfaceColor") return overrides.controlSurfaceColor;
+    if (key == "textColor") return overrides.textColor;
+    if (key == "borderColor") return overrides.borderColor;
+    if (key == "accentColor") return overrides.accentColor;
+    if (key == "focusOutlineColor") return overrides.focusOutlineColor;
+    if (key == "highlightEdgeColor") return overrides.highlightEdgeColor;
+    if (key == "shadowEdgeColor") return overrides.shadowEdgeColor;
+    return std::nullopt;
+}
+
+std::optional<float> appearanceMetricOverride(
+    const model::WidgetLookAndFeelOverrides& overrides,
+    std::string_view key)
+{
+    if (key == "borderThickness") return overrides.borderThickness;
+    if (key == "cornerRadius") return overrides.cornerRadius;
+    if (key == "controlPadding") return overrides.controlPadding;
+    return std::nullopt;
+}
+
+std::string inheritedAppearanceValue(const model::ResolvedLookAndFeelStyle& style, std::string_view key)
+{
+    if (key == "controlSurfaceColor") return style.controlSurfaceColor;
+    if (key == "textColor") return style.primaryTextColor;
+    if (key == "borderColor") return style.borderColor;
+    if (key == "accentColor") return style.accentColor;
+    if (key == "focusOutlineColor") return style.focusOutlineColor;
+    if (key == "highlightEdgeColor") return style.highlightEdgeColor;
+    if (key == "shadowEdgeColor") return style.shadowEdgeColor;
+    if (key == "borderThickness") return formatFloat(style.borderThickness);
+    if (key == "cornerRadius") return formatFloat(style.cornerRadius);
+    if (key == "controlPadding") return formatFloat(style.controlPadding);
+    return {};
+}
+
 bool isColorPropertyKey(const std::string& key)
 {
     return key == "backgroundColor"
@@ -1086,6 +1151,66 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
         });
     }
 
+    if (model::LookAndFeelRegistry::supportsWidgetOverrides(selectedWidget->type)) {
+        rows.push_back({ "__section_appearance", "Appearance", {}, {}, PropertyEditKind::ReadOnly, true });
+        if (document.hasMultiSelection()) {
+            rows.push_back({
+                "__appearance_multi_selection",
+                "Widget Overrides",
+                "Per-widget Appearance editing is available for one selected widget at a time.",
+                "Select one widget to edit",
+                PropertyEditKind::ReadOnly
+            });
+        }
+        else {
+            const auto inheritedStyle = model::LookAndFeelRegistry::instance().resolveProjectStyle(
+                document.lookAndFeelId, document.lookAndFeelOverrides);
+            std::vector<PropertyChoice> resetChoices;
+            for (const auto key : model::LookAndFeelRegistry::supportedWidgetOverrideKeys(selectedWidget->type)) {
+                const auto colorOverride = appearanceColorOverride(selectedWidget->appearanceOverrides, key);
+                const auto metricOverride = appearanceMetricOverride(selectedWidget->appearanceOverrides, key);
+                const bool overridden = colorOverride.has_value() || metricOverride.has_value();
+                const std::string value = colorOverride.has_value()
+                    ? *colorOverride
+                    : (metricOverride.has_value() ? formatFloat(*metricOverride) : inheritedAppearanceValue(inheritedStyle, key));
+                rows.push_back({
+                    "__appearance_" + std::string{ key },
+                    appearanceLabel(key) + (overridden ? " (Override)" : " (Inherited)"),
+                    overridden
+                        ? "Explicit widget override. Use Reset Property to inherit again."
+                        : "Inherited from the resolved project Look and Feel. Editing creates an explicit widget override.",
+                    value,
+                    key.ends_with("Color") ? PropertyEditKind::Color : PropertyEditKind::Float
+                });
+                if (overridden) {
+                    resetChoices.push_back(makeChoice(std::string{ key }, appearanceLabel(key),
+                        "Remove this explicit override and inherit the project value."));
+                }
+            }
+
+            if (!resetChoices.empty()) {
+                rows.push_back({
+                    "__appearance_reset_property",
+                    "Reset Property",
+                    "Removes one explicit widget Appearance override.",
+                    "Choose override",
+                    PropertyEditKind::Choice,
+                    false,
+                    std::move(resetChoices)
+                });
+                rows.push_back({
+                    "__appearance_reset_all",
+                    "Reset All Overrides",
+                    "Removes every explicit Appearance override from this widget.",
+                    "Reset all",
+                    PropertyEditKind::Choice,
+                    false,
+                    { makeChoice("reset", "Reset All", "Restore inheritance for every widget Appearance property.") }
+                });
+            }
+        }
+    }
+
     std::set<std::string> drawnKeys;
     for (const auto& row : rows) {
         drawnKeys.insert(row.key);
@@ -1118,6 +1243,10 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
     if (const auto* definition = model::WidgetRegistry::instance().find(selectedWidget->type)) {
         bool styleSectionInserted = false;
         for (const auto& property : definition->properties) {
+            if (isLegacyWidgetLookAndFeelPropertyKey(property.key)) {
+                drawnKeys.insert(property.key);
+                continue;
+            }
             if (isStylePropertyKey(property.key) && !styleSectionInserted) {
                 rows.push_back({ "__section_style", "Style", {}, {}, PropertyEditKind::ReadOnly, true });
                 styleSectionInserted = true;

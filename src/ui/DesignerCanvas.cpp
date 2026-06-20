@@ -1310,10 +1310,13 @@ void drawWidget(visage::Canvas& canvas,
         buttonState.pressed = pressedState;
         visual_style::drawBevel(canvas, baselineRect(bounds), palette, buttonState);
         if (drawText && !normalText.empty()) {
+            const float padding = std::clamp(style.controlPadding, 0.0f, std::min(bounds.width, bounds.height) * 0.45f);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.text(pressedState ? pressedText : normalText, widgetFont, visage::Font::kCenter,
-                bounds.x + (pressedState ? 1.0f : 0.0f), bounds.y + (pressedState ? 1.0f : 0.0f),
-                bounds.width, bounds.height);
+                bounds.x + padding + (pressedState ? 1.0f : 0.0f),
+                bounds.y + padding + (pressedState ? 1.0f : 0.0f),
+                std::max(0.0f, bounds.width - padding * 2.0f),
+                std::max(0.0f, bounds.height - padding * 2.0f));
         }
         break;
     }
@@ -1322,10 +1325,11 @@ void drawWidget(visage::Canvas& canvas,
         auto palette = baselinePalette(style, style.fillColor);
         visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
         if (drawText) {
+            const float padding = std::clamp(style.controlPadding, 0.0f, bounds.width * 0.45f);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
             canvas.text(getStringProperty(widget, "text", ""), widgetFont, visage::Font::kTopLeft,
-                bounds.x + 9.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
-                std::max(0.0f, bounds.width - 18.0f), std::max(0.0f, bounds.height - 8.0f));
+                bounds.x + padding, centeredTextTop(bounds.y, bounds.height, fontSize),
+                std::max(0.0f, bounds.width - padding * 2.0f), std::max(0.0f, bounds.height - 8.0f));
         }
         break;
     }
@@ -1356,9 +1360,10 @@ void drawWidget(visage::Canvas& canvas,
                 ? std::string{ "<empty>" }
                 : selectedText;
             if (!displayText.empty()) {
+                const float padding = std::clamp(style.controlPadding, 0.0f, bounds.width * 0.35f);
                 canvas.text(displayText, widgetFont, visage::Font::kTopLeft,
-                    bounds.x + 8.0f, centeredTextTop(bounds.y, bounds.height, fontSize),
-                    std::max(0.0f, bounds.width - arrowWidth - 14.0f), std::max(0.0f, bounds.height - 8.0f));
+                    bounds.x + padding, centeredTextTop(bounds.y, bounds.height, fontSize),
+                    std::max(0.0f, bounds.width - arrowWidth - padding * 1.5f), std::max(0.0f, bounds.height - 8.0f));
             }
         }
         break;

@@ -23,9 +23,13 @@ Each preset defines:
 - control padding and splitter edge metrics
 
 `LookAndFeelRegistry::resolveProjectStyle(...)` resolves the selected preset plus
-project overrides. `LookAndFeelRegistry::resolve(...)` then applies the existing
-widget-level properties. These are the shared sources for Design Mode, Preview
-Mode, editor splitter styling, and generated runtime style values.
+project overrides. `LookAndFeelRegistry::resolve(...)` then applies sparse
+widget overrides. The resolution order is:
+
+`built-in or custom preset -> project overrides -> widget overrides -> final widget style`
+
+These are the shared sources for Design Mode, Preview Mode, editor splitter
+styling, and generated runtime style values.
 Individual rendering paths convert the portable resolved color strings into
 their native color types.
 
@@ -82,24 +86,47 @@ The dialog's live sample uses the temporary resolved style without modifying the
 project model. Color fields use the existing native color picker, and numeric
 fields clamp to the conservative ranges recorded in the Phase 109 plan.
 
-## Per-widget style overrides
+## Per-widget Appearance overrides
 
-Most widgets support optional override properties:
+Supported widgets own one sparse `WidgetLookAndFeelOverrides` value. The
+Property Inspector exposes it through an `Appearance` section for a supported
+single selection.
 
-- `lookAndFeelId`
-- `fillColor`
-- `textColor`
-- `borderColor`
-- `accentColor`
-- `borderThickness`
-- `cornerRadius`
-- `fontSize`
+Supported color overrides:
 
-Override rules:
+- control surface
+- text
+- border
+- accent
+- focus outline
+- highlight edge
+- shadow edge
 
-- empty override values inherit from the project-level look and feel
-- non-empty color overrides replace the preset colors for that widget
-- numeric overrides replace the preset numeric values for that widget
+Supported metric overrides:
+
+- border thickness
+- corner radius
+- control padding
+
+Supported widget types:
+
+- Button, Text Box, Check Box, Radio Button
+- Combo Box, List Box, Slider, Scroll Bar
+- Progress Bar, Color Picker
+- Frame, Group Box, Panel, Tab Control
+
+An absent value inherits the resolved project value. Editing a field creates an
+explicit override. `Reset Property` removes one optional value, and `Reset All
+Overrides` clears only the selected widget's Appearance values. Both operations
+are no-op safe and use the existing undo/redo command path.
+
+Appearance editing is disabled for multi-selection. A small compatibility map
+hides properties that do not render meaningfully for a particular supported
+widget.
+
+Legacy `lookAndFeelId`, `fillColor`, `textColor`, `borderColor`, `accentColor`,
+`borderThickness`, and `cornerRadius` widget properties remain readable for old
+projects, but new inspector edits use the dedicated sparse Appearance object.
 
 ## Current rendering behavior
 
@@ -115,17 +142,19 @@ The designer, Preview Mode, editor splitters, and generated runtime currently us
 Rounded-corner drawing is implemented for boxed widgets through shared rounded-rectangle helpers.
 
 The `.vfb.json` format stores `lookAndFeelId`, optional sparse
-`lookAndFeelOverrides`, and established per-widget overrides. Empty project
-overrides are omitted, and the resolved style table is never copied into the
-project file. Generated output receives the fully resolved style and does not
-depend on the developer's local custom-preset library.
+`lookAndFeelOverrides`, and optional sparse per-widget `appearanceOverrides`.
+Empty project and widget override objects are omitted, and resolved style tables
+are never copied into the project file. Generated output receives the fully
+resolved style and does not depend on the developer's local custom-preset
+library.
 
 ## Current limitations
 
 - no font picker yet
 - no runtime theme switching in the generated app yet
-- no per-widget expansion beyond the existing style properties
 - no CSS-like selector or inheritance tree beyond project preset plus widget override
+- no state-specific widget overrides, custom fonts, gradients, images, or animations
+- no mixed-value or bulk Appearance editing
 - no online marketplace, cloud synchronization, thumbnails, tags, or preset
   inheritance chains
 

@@ -65,6 +65,33 @@ nlohmann::json propertiesToJson(const model::WidgetNode& widget)
     return json;
 }
 
+nlohmann::json widgetAppearanceOverridesToJson(const model::WidgetLookAndFeelOverrides& overrides)
+{
+    nlohmann::json json = nlohmann::json::object();
+    const auto addString = [&json](const char* key, const std::optional<std::string>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
+    const auto addFloat = [&json](const char* key, const std::optional<float>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
+
+    addString("controlSurfaceColor", overrides.controlSurfaceColor);
+    addString("textColor", overrides.textColor);
+    addString("borderColor", overrides.borderColor);
+    addString("accentColor", overrides.accentColor);
+    addString("focusOutlineColor", overrides.focusOutlineColor);
+    addString("highlightEdgeColor", overrides.highlightEdgeColor);
+    addString("shadowEdgeColor", overrides.shadowEdgeColor);
+    addFloat("borderThickness", overrides.borderThickness);
+    addFloat("cornerRadius", overrides.cornerRadius);
+    addFloat("controlPadding", overrides.controlPadding);
+    return json;
+}
+
 nlohmann::json widgetToJson(const model::WidgetNode& widget, const std::string& parentId = {}, int zOrder = 0)
 {
     nlohmann::json json;
@@ -75,6 +102,9 @@ nlohmann::json widgetToJson(const model::WidgetNode& widget, const std::string& 
     json["parentId"] = parentId;
     json["zOrder"] = zOrder;
     json["properties"] = propertiesToJson(widget);
+    if (!widget.appearanceOverrides.empty()) {
+        json["appearanceOverrides"] = widgetAppearanceOverridesToJson(widget.appearanceOverrides);
+    }
     json["children"] = nlohmann::json::array();
 
     for (std::size_t index = 0; index < widget.children.size(); ++index) {

@@ -4,12 +4,14 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace visiform::model {
 
 class ProjectDocument;
 class WidgetNode;
+enum class WidgetType;
 
 class LookAndFeelRegistry {
 public:
@@ -26,6 +28,9 @@ public:
     [[nodiscard]] ResolvedLookAndFeelStyle resolve(
         const ProjectDocument& document,
         const WidgetNode& widget) const;
+    [[nodiscard]] static bool supportsWidgetOverrides(WidgetType type);
+    [[nodiscard]] static bool supportsWidgetOverride(WidgetType type, std::string_view key);
+    [[nodiscard]] static std::vector<std::string_view> supportedWidgetOverrideKeys(WidgetType type);
 
 private:
     LookAndFeelRegistry();
