@@ -1273,6 +1273,32 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.style.cornerRadius = " << emitFloat(spec.style.cornerRadius) << ";\n";
     stream << innerIndent << "widget.style.fontSize = " << emitFloat(spec.style.fontSize) << ";\n";
     stream << innerIndent << "widget.style.controlPadding = " << emitFloat(spec.style.controlPadding) << ";\n";
+    const auto emitStateOverrides = [&](visiform::model::WidgetAppearanceState state, const char* member) {
+        const auto found = widget.stateAppearanceOverrides.find(state);
+        if (found == widget.stateAppearanceOverrides.end() || found->second.empty()) {
+            return;
+        }
+        const auto& overrides = found->second;
+        const auto emitColor = [&](const char* field, const std::optional<std::string>& value) {
+            if (!value.has_value() || !parseRuntimeColorLiteral(*value).has_value()) return;
+            stream << innerIndent << "widget." << member << ".has" << field << " = true;\n";
+            stream << innerIndent << "widget." << member << "." << static_cast<char>(std::tolower(field[0]))
+                   << std::string{ field + 1 } << " = "
+                   << emitRuntimeColorLiteral(*value, "makeColor(0x00, 0x00, 0x00)") << ";\n";
+        };
+        emitColor("ControlSurfaceColor", overrides.controlSurfaceColor);
+        emitColor("TextColor", overrides.textColor);
+        emitColor("BorderColor", overrides.borderColor);
+        emitColor("AccentColor", overrides.accentColor);
+        emitColor("FocusColor", overrides.focusOutlineColor);
+        emitColor("HighlightColor", overrides.highlightEdgeColor);
+        emitColor("ShadowColor", overrides.shadowEdgeColor);
+    };
+    emitStateOverrides(visiform::model::WidgetAppearanceState::Hover, "hoverAppearance");
+    emitStateOverrides(visiform::model::WidgetAppearanceState::Pressed, "pressedAppearance");
+    emitStateOverrides(visiform::model::WidgetAppearanceState::Focused, "focusedAppearance");
+    emitStateOverrides(visiform::model::WidgetAppearanceState::CheckedOrSelected, "checkedOrSelectedAppearance");
+    emitStateOverrides(visiform::model::WidgetAppearanceState::Disabled, "disabledAppearance");
 
     if (widget.type == visiform::model::WidgetType::Frame) {
         stream << innerIndent << "widget.text.value = " << emitStringLiteral(widget.getStringProperty("title", {})) << ";\n";
@@ -1566,6 +1592,22 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    bool focused = false;\n";
     stream << "    bool hovered = false;\n";
     stream << "};\n\n";
+    stream << "struct RuntimeStateAppearanceOverride {\n";
+    stream << "    bool hasControlSurfaceColor = false;\n";
+    stream << "    bool hasTextColor = false;\n";
+    stream << "    bool hasBorderColor = false;\n";
+    stream << "    bool hasAccentColor = false;\n";
+    stream << "    bool hasFocusColor = false;\n";
+    stream << "    bool hasHighlightColor = false;\n";
+    stream << "    bool hasShadowColor = false;\n";
+    stream << "    RuntimeColor controlSurfaceColor{};\n";
+    stream << "    RuntimeColor textColor{};\n";
+    stream << "    RuntimeColor borderColor{};\n";
+    stream << "    RuntimeColor accentColor{};\n";
+    stream << "    RuntimeColor focusColor{};\n";
+    stream << "    RuntimeColor highlightColor{};\n";
+    stream << "    RuntimeColor shadowColor{};\n";
+    stream << "};\n\n";
     stream << "struct RuntimeWidget {\n";
     stream << "    RuntimeWidgetType type = RuntimeWidgetType::Unknown;\n";
     stream << "    std::string id;\n";
@@ -1616,6 +1658,11 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    RuntimeToggleState toggle;\n";
     stream << "    RuntimeRangeState range;\n";
     stream << "    RuntimeStyleState style;\n";
+    stream << "    RuntimeStateAppearanceOverride hoverAppearance;\n";
+    stream << "    RuntimeStateAppearanceOverride pressedAppearance;\n";
+    stream << "    RuntimeStateAppearanceOverride focusedAppearance;\n";
+    stream << "    RuntimeStateAppearanceOverride checkedOrSelectedAppearance;\n";
+    stream << "    RuntimeStateAppearanceOverride disabledAppearance;\n";
     stream << "    RuntimeEventHandlers events;\n";
     stream << "    RuntimeInteractionState interaction;\n";
     stream << "};\n\n";
@@ -1852,6 +1899,47 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return RuntimeVisualBaseState::CheckedOrSelected;\n";
     stream << "    }\n";
     stream << "    return widget.interaction.hovered ? RuntimeVisualBaseState::Hovered : RuntimeVisualBaseState::Normal;\n";
+    stream << "}\n\n";
+    stream << "void applyStateAppearance(RuntimeWidget& widget, const RuntimeStateAppearanceOverride& overrides, RuntimeVisualBaseState baseState)\n";
+    stream << "{\n";
+    stream << "    if (overrides.hasControlSurfaceColor) {\n";
+    stream << "        switch (baseState) {\n";
+    stream << "        case RuntimeVisualBaseState::Hovered: widget.style.hoverColor = overrides.controlSurfaceColor; break;\n";
+    stream << "        case RuntimeVisualBaseState::Pressed: widget.style.pressedColor = overrides.controlSurfaceColor; break;\n";
+    stream << "        case RuntimeVisualBaseState::CheckedOrSelected:\n";
+    stream << "            widget.style.checkedColor = overrides.controlSurfaceColor;\n";
+    stream << "            widget.style.selectedColor = overrides.controlSurfaceColor;\n";
+    stream << "            break;\n";
+    stream << "        case RuntimeVisualBaseState::Disabled: widget.style.disabledColor = overrides.controlSurfaceColor; break;\n";
+    stream << "        case RuntimeVisualBaseState::Normal: widget.style.fillColor = overrides.controlSurfaceColor; break;\n";
+    stream << "        }\n";
+    stream << "    }\n";
+    stream << "    if (overrides.hasTextColor) {\n";
+    stream << "        if (baseState == RuntimeVisualBaseState::Disabled) widget.style.disabledTextColor = overrides.textColor;\n";
+    stream << "        else widget.style.textColor = overrides.textColor;\n";
+    stream << "    }\n";
+    stream << "    if (overrides.hasBorderColor) widget.style.borderColor = overrides.borderColor;\n";
+    stream << "    if (overrides.hasAccentColor) widget.style.accentColor = overrides.accentColor;\n";
+    stream << "    if (overrides.hasFocusColor) widget.style.focusColor = overrides.focusColor;\n";
+    stream << "    if (overrides.hasHighlightColor) widget.style.highlightColor = overrides.highlightColor;\n";
+    stream << "    if (overrides.hasShadowColor) widget.style.shadowColor = overrides.shadowColor;\n";
+    stream << "}\n\n";
+    stream << "void applyActiveStateAppearance(RuntimeWidget& widget)\n";
+    stream << "{\n";
+    stream << "    const bool checkedOrSelected = widget.toggle.checked || widget.toggle.selected\n";
+    stream << "        || (widget.type == RuntimeWidgetType::ListBox && widget.selectedIndex >= 0)\n";
+    stream << "        || (widget.type == RuntimeWidgetType::TabControl && widget.selectedTab >= 0);\n";
+    stream << "    const RuntimeVisualBaseState baseState = resolveVisualBaseState(widget, checkedOrSelected, checkedOrSelected);\n";
+    stream << "    switch (baseState) {\n";
+    stream << "    case RuntimeVisualBaseState::Hovered: applyStateAppearance(widget, widget.hoverAppearance, baseState); break;\n";
+    stream << "    case RuntimeVisualBaseState::Pressed: applyStateAppearance(widget, widget.pressedAppearance, baseState); break;\n";
+    stream << "    case RuntimeVisualBaseState::CheckedOrSelected: applyStateAppearance(widget, widget.checkedOrSelectedAppearance, baseState); break;\n";
+    stream << "    case RuntimeVisualBaseState::Disabled: applyStateAppearance(widget, widget.disabledAppearance, baseState); break;\n";
+    stream << "    case RuntimeVisualBaseState::Normal: break;\n";
+    stream << "    }\n";
+    stream << "    if (widget.interaction.focused && widget.enabled) {\n";
+    stream << "        applyStateAppearance(widget, widget.focusedAppearance, baseState);\n";
+    stream << "    }\n";
     stream << "}\n\n";
     stream << "RuntimeColor visualStateFill(const RuntimeWidget& widget, RuntimeColor fillColor, bool checkedOrSelected = false, bool active = false)\n";
     stream << "{\n";
@@ -2145,8 +2233,10 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    const std::string lowered = lowerText(std::string{ label });\n";
     stream << "    return lowered == \"cancel\" || lowered == \"no\" || lowered == \"close\";\n";
     stream << "}\n\n";
-    stream << "void drawRuntimeWidget(visage::Canvas& canvas, const visage::Font& font, bool drawText, const RuntimeWidget& widget)\n";
+    stream << "void drawRuntimeWidget(visage::Canvas& canvas, const visage::Font& font, bool drawText, const RuntimeWidget& sourceWidget)\n";
     stream << "{\n";
+    stream << "    RuntimeWidget widget = sourceWidget;\n";
+    stream << "    applyActiveStateAppearance(widget);\n";
     stream << "    const float x = kFormOffsetX + widget.bounds.x;\n";
     stream << "    const float y = kFormOffsetY + widget.bounds.y;\n";
     stream << "    const float width = widget.bounds.width;\n";

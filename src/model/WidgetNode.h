@@ -110,6 +110,7 @@ public:
     int zOrder = 0;
     std::map<std::string, PropertyValue> properties{};
     WidgetLookAndFeelOverrides appearanceOverrides{};
+    WidgetStateLookAndFeelOverrideMap stateAppearanceOverrides{};
     std::vector<WidgetNode> children{};
 
     [[nodiscard]] const std::string& typeName() const;

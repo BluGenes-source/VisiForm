@@ -520,6 +520,8 @@ private:
     bool setSelectedWidgetBounds(float x, float y, float width, float height);
     bool setSelectedWidgetProperty(const std::string& key, model::PropertyValue value);
     bool setSelectedWidgetPropertyFromString(const std::string& key, const std::string& valueText);
+    bool applyLiveAppearanceSliderEdit(const std::string& key, const std::string& valueText);
+    void finishAppearanceSliderEdit();
     bool selectGroupBoxChildFromInspector(const std::string& childId);
     bool selectTabPageFromInspector(const std::string& tabPageId);
     bool addExistingWidgetToSelectedGroupBox(const std::string& childId);
@@ -685,6 +687,9 @@ private:
     Splitter canvasInspectorSplitter_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};
+    std::optional<model::ProjectDocument> appearanceSliderBeforeDocument_{};
+    bool appearanceSliderChanged_ = false;
+    std::string appearanceSliderWidgetId_{};
     ProjectTree projectTree_{};
     editors::TextEditControl textEditControl_{};
     editors::DropdownControl dropdownControl_{};

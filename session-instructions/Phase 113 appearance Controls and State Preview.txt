@@ -1,0 +1,294 @@
+Implement VisiForm Phase 113: Appearance Controls and State Preview.
+
+Phase 112 is complete and builds successfully.
+
+Use:
+
+* Phase: 113
+* Version: 1.0.19
+* Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 112 plan
+* files directly related to:
+
+  * Property Inspector Appearance controls
+  * numeric property editors
+  * Corner Radius and Border Thickness
+  * state appearance selection
+  * widget preview rendering
+  * undo/redo
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_113_appearance_controls_state_preview_plan.md`
+
+Before implementation:
+
+* update authoritative VisiForm version declarations to `1.0.19`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not redesign the full Property Inspector.
+Build once after implementation unless a build error requires another pass.
+
+# Goal 1: Restore numeric sliders
+
+The Property Inspector previously used sliders for appearance metrics such as:
+
+* Corner Radius
+* Border Thickness
+
+They are now displayed only as text/numeric fields.
+
+Restore the slider-based editors.
+
+## Required behavior
+
+For supported rectangular widgets:
+
+* Corner Radius uses a slider with range `1–25`
+* Border Thickness uses a slider with range `1–25`
+* the numeric value remains visible
+* dragging updates the value immediately
+* keyboard entry remains available if the existing slider editor supports it
+* invalid typed values are clamped or rejected safely
+* changing the value repaints the widget immediately
+* one completed edit creates one undoable change
+* no-op edits create no undo entry
+
+If zero is already a valid meaning for either property, preserve that existing behavior and use the correct range rather than forcing `1`.
+
+Confirm the previous range and semantics from existing code or history before changing them.
+
+## Root-cause investigation
+
+Determine why the slider editors disappeared.
+
+Possible causes include:
+
+* Phase 112 state-property editor using a generic numeric editor
+* compatibility metadata no longer marking the properties as slider-backed
+* state and normal property descriptors using different editor types
+* range metadata being dropped while building the Appearance section
+
+Fix the shared property metadata or editor-selection path.
+
+Do not add special hard-coded UI rows only for Button.
+
+## Widget compatibility
+
+Restore the sliders for all compatible rectangle-based widgets that support these properties, including where applicable:
+
+* Button
+* Text Box
+* Combo Box
+* List Box
+* Progress Bar
+* Color Picker
+* Frame
+* Group Box
+* Panel
+* Tab Control
+* other widgets confirmed to use Corner Radius or Border Thickness
+
+Hide or disable the fields for widgets where they have no visual effect.
+
+## Normal and state appearance
+
+Corner Radius and Border Thickness remain normal appearance metrics.
+
+Do not create state-specific geometry overrides.
+
+When editing Hover, Pressed, Focused, Checked, Selected, or Disabled states:
+
+* continue inheriting Corner Radius and Border Thickness from Normal
+* do not display misleading editable state sliders for these metrics
+
+# Goal 2: Add Appearance State Preview
+
+Add a controlled preview for the currently selected Appearance State.
+
+The user should be able to preview:
+
+* Normal
+* Hover
+* Pressed
+* Focused
+* Checked or Selected
+* Disabled
+
+without changing the stored widget state or entering full Preview Mode.
+
+## UI behavior
+
+Near the existing Appearance State selector, add a compact control such as:
+
+* `Preview State`
+* `Show State`
+* or an equivalent existing UI pattern
+
+Preferred behavior:
+
+* selecting an Appearance State chooses which override data is edited
+* enabling Preview State temporarily renders the selected widget using that state
+* disabling Preview State returns it to normal Design Mode rendering
+* changing the selected state updates the temporary preview immediately
+
+Do not create a large new preview panel.
+
+## Preview-state safety
+
+The temporary state preview must:
+
+* not change the project model
+* not mark the project dirty
+* not create undo history
+* not change checked values, selected indexes, slider values, or enabled state
+* not execute events
+* not persist in `.vfb.json`
+* clear when selection changes
+* clear when the project changes
+* clear when entering Preview Mode
+* clear when the widget is deleted
+* clear when the Appearance editor is closed or reset
+
+Use one editor-only state override.
+
+Do not duplicate the runtime state machine.
+
+## Supported-state compatibility
+
+Only offer valid states for the selected widget.
+
+Examples:
+
+* Button: Normal, Hover, Pressed, Focused, Disabled
+* Check Box: Normal, Hover, Pressed, Focused, Checked, Disabled
+* Radio Button: Normal, Hover, Pressed, Focused, Checked, Disabled
+* List Box: Normal, Hover, Focused, Selected, Disabled
+* Tab Control: Normal, Hover, Pressed, Focused, Selected, Disabled
+* Progress Bar: Normal and Disabled unless additional states already exist
+
+Hide or disable unsupported states.
+
+## Design and Preview Mode interaction
+
+In Design Mode:
+
+* the temporary state preview may alter only the selected widget’s runtime-style appearance
+* selection outline, resize handles, and editor overlays remain visible
+
+When entering full Preview Mode:
+
+* clear the Property Inspector temporary state preview
+* use actual Preview Mode interactions and state handling
+
+When returning to Design Mode:
+
+* show the normal widget appearance unless the user explicitly enables state preview again
+
+# Preserve existing behavior
+
+Do not regress:
+
+* Phase 111 normal widget appearance overrides
+* Phase 112 state appearance overrides
+* inheritance indicators
+* Reset Property
+* Reset State
+* Reset All Appearance
+* Property Inspector scrolling
+* selection synchronization
+* Preview Mode
+* Look and Feel presets
+* project overrides
+* save/load
+* generated output
+* autosave and recovery
+
+# Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.19`.
+4. Select a Button.
+5. Confirm Corner Radius uses a slider.
+6. Confirm Border Thickness uses a slider.
+7. Confirm the correct range and visible value.
+8. Drag each slider and confirm immediate repaint.
+9. Test keyboard or numeric entry if supported.
+10. Test undo and redo.
+11. Repeat on representative compatible rectangular widgets.
+12. Confirm incompatible widgets do not show misleading controls.
+13. Select Hover in Appearance State.
+14. Enable temporary state preview.
+15. Confirm the selected widget shows its Hover appearance.
+16. Repeat for Pressed, Focused, Checked/Selected, and Disabled where supported.
+17. Confirm previewing states does not dirty the project.
+18. Confirm previewing states creates no undo entry.
+19. Change selection and confirm temporary preview clears.
+20. Delete the selected widget and confirm no stale state remains.
+21. Enter Preview Mode and confirm temporary Design Mode state preview clears.
+22. Save and reload and confirm only actual appearance overrides persist.
+23. Confirm generated output remains unchanged except for committed appearance settings.
+
+Do not claim manual validation unless it was actually performed.
+
+# Documentation
+
+Update the Phase 113 plan with:
+
+* previous and new version
+* cause of the missing sliders
+* restored slider ranges
+* widget compatibility rules
+* state-preview UI
+* temporary preview-state ownership
+* clearing rules
+* undo and dirty-state behavior
+* files changed
+* build result
+* manual validation performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep it concise.
+
+# Completion report
+
+Report:
+
+* Phase 113 plan path
+* version change to `1.0.19`
+* slider regression root cause
+* properties and widgets restored
+* slider range behavior
+* Appearance State preview behavior
+* state-preview cleanup rules
+* undo and dirty-state results
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

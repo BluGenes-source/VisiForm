@@ -1,7 +1,9 @@
 #pragma once
 
 #include <optional>
+#include <map>
 #include <string>
+#include <string_view>
 
 namespace visiform::model {
 
@@ -72,6 +74,44 @@ struct WidgetLookAndFeelOverrides {
 
     bool operator==(const WidgetLookAndFeelOverrides&) const = default;
 };
+
+enum class WidgetAppearanceState {
+    Normal,
+    Hover,
+    Pressed,
+    Focused,
+    CheckedOrSelected,
+    Disabled
+};
+
+[[nodiscard]] std::string_view toString(WidgetAppearanceState state);
+[[nodiscard]] std::optional<WidgetAppearanceState> widgetAppearanceStateFromString(std::string_view value);
+
+struct WidgetStateLookAndFeelOverrides {
+    std::optional<std::string> controlSurfaceColor{};
+    std::optional<std::string> textColor{};
+    std::optional<std::string> borderColor{};
+    std::optional<std::string> accentColor{};
+    std::optional<std::string> focusOutlineColor{};
+    std::optional<std::string> highlightEdgeColor{};
+    std::optional<std::string> shadowEdgeColor{};
+
+    [[nodiscard]] bool empty() const
+    {
+        return !controlSurfaceColor.has_value()
+            && !textColor.has_value()
+            && !borderColor.has_value()
+            && !accentColor.has_value()
+            && !focusOutlineColor.has_value()
+            && !highlightEdgeColor.has_value()
+            && !shadowEdgeColor.has_value();
+    }
+
+    bool operator==(const WidgetStateLookAndFeelOverrides&) const = default;
+};
+
+using WidgetStateLookAndFeelOverrideMap =
+    std::map<WidgetAppearanceState, WidgetStateLookAndFeelOverrides>;
 
 struct LookAndFeelDefinition {
     std::string id;

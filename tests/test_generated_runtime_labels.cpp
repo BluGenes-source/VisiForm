@@ -162,3 +162,29 @@ TEST_CASE("generated runtime emits final per-widget appearance overrides")
     CHECK(generated.find("widget.style.cornerRadius = 12.00f;") != std::string::npos);
     CHECK(generated.find("widget.style.controlPadding = 14.00f;") != std::string::npos);
 }
+
+TEST_CASE("generated runtime emits sparse widget state appearance overrides")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    auto& button = document.root.children.front();
+    auto& hover = button.stateAppearanceOverrides[
+        visiform::model::WidgetAppearanceState::Hover];
+    hover.controlSurfaceColor = "#123456";
+    hover.borderColor = "#654321";
+    auto& focused = button.stateAppearanceOverrides[
+        visiform::model::WidgetAppearanceState::Focused];
+    focused.focusOutlineColor = "#ABCDEF";
+
+    VisageCppEmitter::EmittedSources output;
+    std::string errorMessage;
+    REQUIRE(VisageCppEmitter{}.emitProjectSources(document, {}, output, errorMessage));
+    REQUIRE(errorMessage.empty());
+
+    const std::string& generated = output.generatedBaseCpp;
+    CHECK(generated.find("widget.hoverAppearance.hasControlSurfaceColor = true;") != std::string::npos);
+    CHECK(generated.find("widget.hoverAppearance.controlSurfaceColor = makeColor(0x12, 0x34, 0x56);") != std::string::npos);
+    CHECK(generated.find("widget.hoverAppearance.hasBorderColor = true;") != std::string::npos);
+    CHECK(generated.find("widget.focusedAppearance.hasFocusColor = true;") != std::string::npos);
+    CHECK(generated.find("applyActiveStateAppearance(widget);") != std::string::npos);
+    CHECK(generated.find("widget.pressedAppearance.hasControlSurfaceColor = true;") == std::string::npos);
+}

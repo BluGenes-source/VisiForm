@@ -94,6 +94,16 @@ constexpr std::array<std::string_view, 10> kWidgetOverrideKeys = {
     "controlPadding"
 };
 
+constexpr std::array<std::string_view, 7> kWidgetStateOverrideKeys = {
+    "controlSurfaceColor",
+    "textColor",
+    "borderColor",
+    "accentColor",
+    "focusOutlineColor",
+    "highlightEdgeColor",
+    "shadowEdgeColor"
+};
+
 bool isSupportedWidgetType(WidgetType type)
 {
     switch (type) {
@@ -117,7 +127,95 @@ bool isSupportedWidgetType(WidgetType type)
     }
 }
 
+bool isStateSupportedWidgetType(WidgetType type)
+{
+    switch (type) {
+    case WidgetType::Button:
+    case WidgetType::TextBox:
+    case WidgetType::CheckBox:
+    case WidgetType::RadioButton:
+    case WidgetType::ComboBox:
+    case WidgetType::ListBox:
+    case WidgetType::Slider:
+    case WidgetType::ScrollBar:
+    case WidgetType::ProgressBar:
+    case WidgetType::ColorPicker:
+    case WidgetType::TabControl:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void applyStateOverrides(const WidgetStateLookAndFeelOverrides& overrides,
+    WidgetAppearanceState state,
+    ResolvedLookAndFeelStyle& style)
+{
+    const auto apply = [](const std::optional<std::string>& value, std::string& target) {
+        if (value.has_value() && isValidColor(*value)) {
+            target = *value;
+        }
+    };
+
+    if (overrides.controlSurfaceColor.has_value() && isValidColor(*overrides.controlSurfaceColor)) {
+        switch (state) {
+        case WidgetAppearanceState::Hover:
+            style.hoverStateColor = *overrides.controlSurfaceColor;
+            break;
+        case WidgetAppearanceState::Pressed:
+            style.pressedStateColor = *overrides.controlSurfaceColor;
+            break;
+        case WidgetAppearanceState::CheckedOrSelected:
+            style.checkedStateColor = *overrides.controlSurfaceColor;
+            style.selectedStateColor = *overrides.controlSurfaceColor;
+            break;
+        case WidgetAppearanceState::Disabled:
+            style.disabledSurfaceColor = *overrides.controlSurfaceColor;
+            break;
+        case WidgetAppearanceState::Focused:
+        case WidgetAppearanceState::Normal:
+            style.controlSurfaceColor = *overrides.controlSurfaceColor;
+            break;
+        }
+    }
+    if (state == WidgetAppearanceState::Disabled) {
+        apply(overrides.textColor, style.disabledTextColor);
+    }
+    else {
+        apply(overrides.textColor, style.primaryTextColor);
+    }
+    apply(overrides.borderColor, style.borderColor);
+    apply(overrides.accentColor, style.accentColor);
+    apply(overrides.focusOutlineColor, style.focusOutlineColor);
+    apply(overrides.highlightEdgeColor, style.highlightEdgeColor);
+    apply(overrides.shadowEdgeColor, style.shadowEdgeColor);
+}
+
 } // namespace
+
+std::string_view toString(WidgetAppearanceState state)
+{
+    switch (state) {
+    case WidgetAppearanceState::Normal: return "normal";
+    case WidgetAppearanceState::Hover: return "hover";
+    case WidgetAppearanceState::Pressed: return "pressed";
+    case WidgetAppearanceState::Focused: return "focused";
+    case WidgetAppearanceState::CheckedOrSelected: return "checkedOrSelected";
+    case WidgetAppearanceState::Disabled: return "disabled";
+    }
+    return "normal";
+}
+
+std::optional<WidgetAppearanceState> widgetAppearanceStateFromString(std::string_view value)
+{
+    if (value == "normal") return WidgetAppearanceState::Normal;
+    if (value == "hover") return WidgetAppearanceState::Hover;
+    if (value == "pressed") return WidgetAppearanceState::Pressed;
+    if (value == "focused") return WidgetAppearanceState::Focused;
+    if (value == "checkedOrSelected") return WidgetAppearanceState::CheckedOrSelected;
+    if (value == "disabled") return WidgetAppearanceState::Disabled;
+    return std::nullopt;
+}
 
 LookAndFeelRegistry::LookAndFeelRegistry()
     : definitions_{
@@ -232,7 +330,7 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolveProjectStyle(
     applyColorOverride(overrides.highlightEdgeColor, style.highlightEdgeColor);
     applyColorOverride(overrides.shadowEdgeColor, style.shadowEdgeColor);
     if (overrides.borderThickness.has_value()) {
-        style.borderThickness = std::clamp(*overrides.borderThickness, 0.0f, 20.0f);
+        style.borderThickness = std::clamp(*overrides.borderThickness, 0.0f, 25.0f);
     }
     if (overrides.cornerRadius.has_value()) {
         style.cornerRadius = std::clamp(*overrides.cornerRadius, 0.0f, 50.0f);
@@ -308,7 +406,7 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         applyAppearanceOverride(overrides.highlightEdgeColor, style.highlightEdgeColor);
         applyAppearanceOverride(overrides.shadowEdgeColor, style.shadowEdgeColor);
         if (overrides.borderThickness.has_value()) {
-            style.borderThickness = std::clamp(*overrides.borderThickness, 0.0f, 20.0f);
+            style.borderThickness = std::clamp(*overrides.borderThickness, 0.0f, 25.0f);
         }
         if (overrides.cornerRadius.has_value()) {
             style.cornerRadius = std::clamp(*overrides.cornerRadius, 0.0f, 50.0f);
@@ -318,6 +416,33 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         }
     }
 
+    return style;
+}
+
+ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
+    const ProjectDocument& document,
+    const WidgetNode& widget,
+    WidgetAppearanceState state,
+    bool focusedOverlay) const
+{
+    ResolvedLookAndFeelStyle style = resolve(document, widget);
+    if (!supportsWidgetState(widget.type, state)) {
+        state = WidgetAppearanceState::Normal;
+    }
+
+    if (state != WidgetAppearanceState::Normal) {
+        const auto found = widget.stateAppearanceOverrides.find(state);
+        if (found != widget.stateAppearanceOverrides.end()) {
+            applyStateOverrides(found->second, state, style);
+        }
+    }
+    if (focusedOverlay && state != WidgetAppearanceState::Disabled
+        && supportsWidgetState(widget.type, WidgetAppearanceState::Focused)) {
+        const auto found = widget.stateAppearanceOverrides.find(WidgetAppearanceState::Focused);
+        if (found != widget.stateAppearanceOverrides.end()) {
+            applyStateOverrides(found->second, state, style);
+        }
+    }
     return style;
 }
 
@@ -362,6 +487,83 @@ std::vector<std::string_view> LookAndFeelRegistry::supportedWidgetOverrideKeys(W
     std::vector<std::string_view> keys;
     for (const auto key : kWidgetOverrideKeys) {
         if (supportsWidgetOverride(type, key)) {
+            keys.push_back(key);
+        }
+    }
+    return keys;
+}
+
+bool LookAndFeelRegistry::supportsWidgetStateOverrides(WidgetType type)
+{
+    return isStateSupportedWidgetType(type);
+}
+
+bool LookAndFeelRegistry::supportsWidgetState(WidgetType type, WidgetAppearanceState state)
+{
+    if (!isStateSupportedWidgetType(type)) {
+        return false;
+    }
+    if (state == WidgetAppearanceState::Normal) {
+        return true;
+    }
+    if (type == WidgetType::ProgressBar) {
+        return state == WidgetAppearanceState::Disabled;
+    }
+    if (state == WidgetAppearanceState::CheckedOrSelected) {
+        return type == WidgetType::CheckBox
+            || type == WidgetType::RadioButton
+            || type == WidgetType::ListBox
+            || type == WidgetType::TabControl;
+    }
+    if (state == WidgetAppearanceState::Pressed) {
+        return type != WidgetType::TextBox
+            && type != WidgetType::ListBox;
+    }
+    return true;
+}
+
+bool LookAndFeelRegistry::supportsWidgetStateOverride(
+    WidgetType type,
+    WidgetAppearanceState state,
+    std::string_view key)
+{
+    if (state == WidgetAppearanceState::Normal) {
+        return supportsWidgetOverride(type, key);
+    }
+    if (!supportsWidgetState(type, state)
+        || std::find(kWidgetStateOverrideKeys.begin(), kWidgetStateOverrideKeys.end(), key)
+            == kWidgetStateOverrideKeys.end()) {
+        return false;
+    }
+    return supportsWidgetOverride(type, key);
+}
+
+std::vector<WidgetAppearanceState> LookAndFeelRegistry::supportedWidgetStates(WidgetType type)
+{
+    constexpr std::array<WidgetAppearanceState, 6> states = {
+        WidgetAppearanceState::Normal,
+        WidgetAppearanceState::Hover,
+        WidgetAppearanceState::Pressed,
+        WidgetAppearanceState::Focused,
+        WidgetAppearanceState::CheckedOrSelected,
+        WidgetAppearanceState::Disabled
+    };
+    std::vector<WidgetAppearanceState> supported;
+    for (const auto state : states) {
+        if (supportsWidgetState(type, state)) {
+            supported.push_back(state);
+        }
+    }
+    return supported;
+}
+
+std::vector<std::string_view> LookAndFeelRegistry::supportedWidgetStateOverrideKeys(
+    WidgetType type,
+    WidgetAppearanceState state)
+{
+    std::vector<std::string_view> keys;
+    for (const auto key : kWidgetStateOverrideKeys) {
+        if (supportsWidgetStateOverride(type, state, key)) {
             keys.push_back(key);
         }
     }

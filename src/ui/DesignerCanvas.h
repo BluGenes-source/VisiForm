@@ -114,7 +114,8 @@ public:
         resources::ImageResourceCache* imageCache,
         bool simplifySelectedImages = false,
         const std::optional<SelectionRect>& marqueeRect = std::nullopt,
-        const std::vector<SmartGuide>& smartGuides = {}) const;
+        const std::vector<SmartGuide>& smartGuides = {},
+        const std::optional<model::WidgetAppearanceState>& appearancePreviewState = std::nullopt) const;
 
 private:
     [[nodiscard]] float snap(float value) const;

@@ -61,8 +61,8 @@ std::vector<WidgetPropertyDefinition> commonStyleProperties(bool includeLookAndF
     properties.push_back({ "textColor", "Text Color", "", PropertyEditKind::Color, true, "Optional text color override. Empty means inherit." });
     properties.push_back({ "borderColor", "Border Color", "", PropertyEditKind::Color, true, "Optional border color override. Empty means inherit." });
     properties.push_back({ "accentColor", "Accent Color", "", PropertyEditKind::Color, true, "Optional accent color override. Empty means inherit." });
-    properties.push_back({ "borderThickness", "Border Thickness", 1.0f, PropertyEditKind::Slider, true, "Border thickness override.", {}, 1.0f, 25.0f, 1.0f });
-    properties.push_back({ "cornerRadius", "Corner Radius", 1.0f, PropertyEditKind::Slider, true, "Corner radius override.", {}, 1.0f, 25.0f, 1.0f });
+    properties.push_back({ "borderThickness", "Border Thickness", 1.0f, PropertyEditKind::Slider, true, "Border thickness override.", {}, 0.0f, 25.0f, 1.0f });
+    properties.push_back({ "cornerRadius", "Corner Radius", 1.0f, PropertyEditKind::Slider, true, "Corner radius override.", {}, 0.0f, 25.0f, 1.0f });
     properties.push_back({ "fontSize", "Font Size", PropertyValue{}, PropertyEditKind::Float, true, "Optional font size override. Empty means inherit." });
     return properties;
 }

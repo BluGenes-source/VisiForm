@@ -67,6 +67,7 @@ Each widget node stores:
 - `parentId` - stored parent widget id, empty only for the root form
 - `zOrder` - stored sibling order index inside the parent
 - `properties` - object mapping property names to simple JSON values
+- optional `appearanceOverrides` - sparse normal and runtime-state Appearance values
 - `children` - array of child widget nodes
 
 Current `GroupBox` hierarchy storage notes:
@@ -253,6 +254,31 @@ project Look and Feel, and an empty object is omitted. Old projects without
 
 Legacy style values inside `properties` remain readable for compatibility.
 New Phase 111 Appearance edits use the dedicated sparse object.
+
+State-capable widgets may also store a sparse `states` object inside
+`appearanceOverrides`:
+
+```json
+"appearanceOverrides": {
+  "controlSurfaceColor": "#2B313D",
+  "states": {
+    "hover": {
+      "controlSurfaceColor": "#354052",
+      "borderColor": "#7AA7E8"
+    },
+    "focused": {
+      "focusOutlineColor": "#2D7FF9"
+    }
+  }
+}
+```
+
+Supported state identifiers are `hover`, `pressed`, `focused`,
+`checkedOrSelected`, and `disabled`. Normal values remain at the top level.
+Each state stores only explicit control surface, text, border, accent, focus
+outline, highlight edge, or shadow edge colors. Empty states are omitted,
+unknown state identifiers are ignored for forward compatibility, and Preview
+Mode interaction state is never serialized.
 
 ## Event property keys
 

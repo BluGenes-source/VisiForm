@@ -300,7 +300,7 @@ Current repair-pass note:
 
 Generated preview drawing resolves style at export time in this order:
 
-`built-in or custom preset -> project overrides -> widget overrides -> final widget style`
+`built-in or custom preset -> project overrides -> normal widget overrides -> widget state overrides`
 
 Built-in preset ids currently include:
 
@@ -314,6 +314,13 @@ border, accent, focus outline, highlight edge, shadow edge, border thickness,
 corner radius, and control padding. The generator emits the final resolved
 runtime values rather than a duplicate style table or a dependency on the local
 custom-preset library.
+
+Generated runtime widgets also receive only explicit sparse state color
+overrides for compatible Hover, Pressed, Focused, Checked/Selected, and
+Disabled states. The generated helper applies disabled, pressed,
+checked/selected, hover, then normal priority, followed by a supported focus
+overlay. Projects without state overrides emit no per-state assignments and
+retain the previous generated behavior.
 
 Generated look and feel is baked into that runtime model for now.
 Runtime theme switching in the generated app is future work.

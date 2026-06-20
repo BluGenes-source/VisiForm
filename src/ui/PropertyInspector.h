@@ -100,6 +100,14 @@ public:
     void clearEditing();
     void cancelEditing();
     [[nodiscard]] bool isEditing() const;
+    [[nodiscard]] bool isDraggingSlider() const;
+    [[nodiscard]] const std::string& draggingSliderKey() const;
+    void setAppearanceState(model::WidgetAppearanceState state);
+    [[nodiscard]] model::WidgetAppearanceState appearanceState() const;
+    void setAppearancePreviewEnabled(bool enabled, const std::string& widgetId);
+    void clearAppearancePreview();
+    void synchronizeAppearancePreviewSelection(const std::string& widgetId);
+    [[nodiscard]] bool appearancePreviewEnabledFor(const std::string& widgetId) const;
     void draw(visage::Canvas& canvas, const visage::Font& font, bool drawText, const model::ProjectDocument& document, const utils::AppSettings& settings, std::size_t selectionCount = 0);
 
 private:
@@ -147,6 +155,9 @@ private:
     std::optional<PendingEdit> pendingInteractionEdit_{};
     bool pendingScrollInteraction_ = false;
     InspectorTab activeTab_ = InspectorTab::Properties;
+    model::WidgetAppearanceState appearanceState_ = model::WidgetAppearanceState::Normal;
+    bool appearancePreviewEnabled_ = false;
+    std::string appearancePreviewWidgetId_{};
 };
 
 } // namespace visiform::ui

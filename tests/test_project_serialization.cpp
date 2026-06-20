@@ -225,6 +225,66 @@ TEST_CASE("Invalid widget appearance override values fall back or clamp safely")
     CHECK(resolved.controlPadding == 40.0f);
 }
 
+TEST_CASE("Widget state appearance overrides serialize sparsely and resolve after normal appearance")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    auto& button = document.root.children.front();
+    button.appearanceOverrides.controlSurfaceColor = "#112233";
+    button.appearanceOverrides.borderColor = "#445566";
+    auto& hover = button.stateAppearanceOverrides[
+        visiform::model::WidgetAppearanceState::Hover];
+    hover.controlSurfaceColor = "#778899";
+    hover.borderColor = "#AABBCC";
+    auto& focused = button.stateAppearanceOverrides[
+        visiform::model::WidgetAppearanceState::Focused];
+    focused.focusOutlineColor = "#DDEEFF";
+
+    const auto json = nlohmann::json::parse(JsonProjectWriter{}.writeToString(document));
+    const auto& appearance = json["root"]["children"][0]["appearanceOverrides"];
+    REQUIRE(appearance.contains("states"));
+    REQUIRE(appearance["states"].contains("hover"));
+    CHECK(appearance["states"]["hover"].size() == 2);
+    CHECK(appearance["states"]["hover"]["controlSurfaceColor"] == "#778899");
+    CHECK_FALSE(appearance["states"].contains("normal"));
+
+    std::string errorMessage;
+    const auto loaded = JsonProjectReader{}.readFromString(json.dump(), errorMessage);
+    REQUIRE(errorMessage.empty());
+    REQUIRE(loaded.has_value());
+    const auto& loadedButton = loaded->root.children.front();
+    CHECK(loadedButton.stateAppearanceOverrides == button.stateAppearanceOverrides);
+
+    const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(
+        *loaded,
+        loadedButton,
+        visiform::model::WidgetAppearanceState::Hover,
+        true);
+    CHECK(resolved.controlSurfaceColor == "#112233");
+    CHECK(resolved.hoverStateColor == "#778899");
+    CHECK(resolved.borderColor == "#AABBCC");
+    CHECK(resolved.focusOutlineColor == "#DDEEFF");
+
+    const auto copied = button;
+    CHECK(copied.stateAppearanceOverrides == button.stateAppearanceOverrides);
+}
+
+TEST_CASE("Unsupported widget states are filtered by the shared compatibility map")
+{
+    using visiform::model::LookAndFeelRegistry;
+    using visiform::model::WidgetAppearanceState;
+    using visiform::model::WidgetType;
+
+    CHECK(LookAndFeelRegistry::supportsWidgetState(WidgetType::Button, WidgetAppearanceState::Pressed));
+    CHECK_FALSE(LookAndFeelRegistry::supportsWidgetState(
+        WidgetType::Button, WidgetAppearanceState::CheckedOrSelected));
+    CHECK(LookAndFeelRegistry::supportsWidgetState(
+        WidgetType::CheckBox, WidgetAppearanceState::CheckedOrSelected));
+    CHECK_FALSE(LookAndFeelRegistry::supportsWidgetState(
+        WidgetType::ProgressBar, WidgetAppearanceState::Hover));
+    CHECK(LookAndFeelRegistry::supportsWidgetState(
+        WidgetType::ProgressBar, WidgetAppearanceState::Disabled));
+}
+
 TEST_CASE("ProjectDocument z-order commands move one sibling step and preserve selection")
 {
     ProjectDocument document = ProjectDocument::createDefault();

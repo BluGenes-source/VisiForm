@@ -812,6 +812,43 @@ bool setAppearanceMetricOverride(model::WidgetLookAndFeelOverrides& overrides, s
     return false;
 }
 
+bool clearStateAppearanceOverride(model::WidgetStateLookAndFeelOverrides& overrides, std::string_view key)
+{
+    const auto reset = [](auto& target) {
+        if (!target.has_value()) return false;
+        target.reset();
+        return true;
+    };
+    if (key == "controlSurfaceColor") return reset(overrides.controlSurfaceColor);
+    if (key == "textColor") return reset(overrides.textColor);
+    if (key == "borderColor") return reset(overrides.borderColor);
+    if (key == "accentColor") return reset(overrides.accentColor);
+    if (key == "focusOutlineColor") return reset(overrides.focusOutlineColor);
+    if (key == "highlightEdgeColor") return reset(overrides.highlightEdgeColor);
+    if (key == "shadowEdgeColor") return reset(overrides.shadowEdgeColor);
+    return false;
+}
+
+bool setStateAppearanceColorOverride(
+    model::WidgetStateLookAndFeelOverrides& overrides,
+    std::string_view key,
+    const std::string& value)
+{
+    auto set = [&value](std::optional<std::string>& target) {
+        if (target == value) return false;
+        target = value;
+        return true;
+    };
+    if (key == "controlSurfaceColor") return set(overrides.controlSurfaceColor);
+    if (key == "textColor") return set(overrides.textColor);
+    if (key == "borderColor") return set(overrides.borderColor);
+    if (key == "accentColor") return set(overrides.accentColor);
+    if (key == "focusOutlineColor") return set(overrides.focusOutlineColor);
+    if (key == "highlightEdgeColor") return set(overrides.highlightEdgeColor);
+    if (key == "shadowEdgeColor") return set(overrides.shadowEdgeColor);
+    return false;
+}
+
 std::string resolvedAppearanceColor(
     const model::ResolvedLookAndFeelStyle& style,
     std::string_view key)
@@ -2570,6 +2607,7 @@ bool MainWindow::applyNewProjectWizard()
 
     cancelInspectorEdit();
     cancelEditorModalFieldEdit();
+    propertyInspector_.clearAppearancePreview();
     idGenerator_ = {};
     document_ = createDocumentFromWizard();
     normalizeWidgetBoundsForEditor();
@@ -3094,6 +3132,7 @@ bool MainWindow::loadProjectFromPath(const std::filesystem::path& path)
     fileOperationInProgress_ = true;
     setDesignerCanvasMode(DesignerCanvas::Mode::Design);
     cancelInspectorEdit();
+    propertyInspector_.clearAppearancePreview();
     serialization::JsonProjectReader reader;
     std::string errorMessage;
     auto loadedDocument = reader.readFromFile(path, errorMessage);
@@ -3311,6 +3350,7 @@ bool MainWindow::restorePendingRecovery()
 
     setDesignerCanvasMode(DesignerCanvas::Mode::Design);
     cancelInspectorEdit();
+    propertyInspector_.clearAppearancePreview();
     document_ = std::move(*recoveredDocument);
     const bool boundsNormalized = normalizeWidgetBoundsForEditor();
     const bool radioNormalized = document_.normalizeRadioGroups();
@@ -3446,7 +3486,18 @@ void MainWindow::draw(visage::Canvas& canvas)
     widgetPalette_.draw(canvas, labelFont_, canDrawText());
     const bool simplifySelectedImages = canvasInteraction_.mode == CanvasInteractionState::Mode::Move
         || canvasInteraction_.mode == CanvasInteractionState::Mode::Resize;
-    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, &imageResourceCache_, simplifySelectedImages, marqueeRect, canvasInteraction_.smartGuides);
+    if (document_.hasMultiSelection()) {
+        propertyInspector_.clearAppearancePreview();
+    }
+    else {
+        propertyInspector_.synchronizeAppearancePreviewSelection(document_.selectedWidgetId);
+    }
+    const std::optional<model::WidgetAppearanceState> appearancePreviewState =
+        !isPreviewMode() && propertyInspector_.appearancePreviewEnabledFor(document_.selectedWidgetId)
+        ? std::optional{ propertyInspector_.appearanceState() }
+        : std::nullopt;
+    designerCanvas_.draw(canvas, labelFont_, canDrawText(), document_, &imageResourceCache_,
+        simplifySelectedImages, marqueeRect, canvasInteraction_.smartGuides, appearancePreviewState);
     propertyInspector_.draw(canvas, labelFont_, canDrawText(), document_, settings_, document_.selectedWidgetIds().size());
     const model::ResolvedLookAndFeelStyle splitterStyle =
         model::LookAndFeelRegistry::instance().resolve(document_, document_.root);
@@ -3561,6 +3612,12 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
     }
 
     if (e.isLeftButton() && propertyInspector_.mouseDown(document_, settings_, e.position.x, e.position.y)) {
+        if (propertyInspector_.isDraggingSlider()
+            && propertyInspector_.draggingSliderKey().starts_with("__appearance_")) {
+            appearanceSliderBeforeDocument_ = document_;
+            appearanceSliderChanged_ = false;
+            appearanceSliderWidgetId_ = document_.selectedWidgetId;
+        }
         applyPendingInspectorInteractionEdit();
         if (!propertyInspector_.isEditing()) {
             textEditControl_.clear();
@@ -3592,10 +3649,19 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         std::string initialColor;
         if (selectedWidget != nullptr) {
             const auto appearanceKey = appearanceKeyFromInspectorKey(*colorPropertyKey);
+            const auto requestedAppearanceState = propertyInspector_.appearanceState();
+            const auto appearanceState = model::LookAndFeelRegistry::supportsWidgetState(
+                                             selectedWidget->type, requestedAppearanceState)
+                ? requestedAppearanceState
+                : model::WidgetAppearanceState::Normal;
             initialColor = appearanceKey.empty()
                 ? selectedWidget->getStringProperty(*colorPropertyKey, {})
                 : resolvedAppearanceColor(
-                    model::LookAndFeelRegistry::instance().resolve(document_, *selectedWidget),
+                    model::LookAndFeelRegistry::instance().resolve(
+                        document_,
+                        *selectedWidget,
+                        appearanceState,
+                        appearanceState == model::WidgetAppearanceState::Focused),
                     appearanceKey);
         }
         const auto selectedColor = utils::showColorPickerDialog(initialColor);
@@ -3624,9 +3690,16 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (const auto row = propertyInspector_.hitTestRow(document_, settings_, e.position.x, e.position.y)) {
         if (row->editKind == PropertyInspector::PropertyEditKind::Bool) {
-            const bool currentValue = document_.selectedWidget() != nullptr
-                && document_.selectedWidget()->getBoolProperty(row->key, false);
-            setSelectedWidgetProperty(row->key, !currentValue);
+            if (row->key == "__appearance_preview_state") {
+                setSelectedWidgetPropertyFromString(
+                    row->key,
+                    row->displayValue == "true" ? "false" : "true");
+            }
+            else {
+                const bool currentValue = document_.selectedWidget() != nullptr
+                    && document_.selectedWidget()->getBoolProperty(row->key, false);
+                setSelectedWidgetProperty(row->key, !currentValue);
+            }
         }
         else if (row->editKind != PropertyInspector::PropertyEditKind::ReadOnly) {
             if (row->editKind == PropertyInspector::PropertyEditKind::Choice) {
@@ -4159,9 +4232,13 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
         return;
     }
 
+    const bool finishingAppearanceSlider = appearanceSliderBeforeDocument_.has_value();
     const bool releasedInspectorScrollBar = propertyInspector_.mouseUp();
     if (releasedInspectorScrollBar && canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
         applyPendingInspectorInteractionEdit();
+        if (finishingAppearanceSlider) {
+            finishAppearanceSliderEdit();
+        }
         updatePropertyEditorBounds();
         redraw();
         return;
@@ -4716,6 +4793,9 @@ void MainWindow::setDesignerCanvasMode(DesignerCanvas::Mode mode)
     hoverHint_.clear();
     projectTree_.clearHover();
     openMenuIndex_ = -1;
+    if (mode == DesignerCanvas::Mode::Preview) {
+        propertyInspector_.clearAppearancePreview();
+    }
     designerCanvas_.setMode(mode);
     requestKeyboardFocus();
     setOperationStatus(mode == DesignerCanvas::Mode::Preview
@@ -4995,6 +5075,7 @@ void MainWindow::undo()
     }
 
     const std::string description = undoRedo_.undoDescription();
+    propertyInspector_.clearAppearancePreview();
     undoRedo_.undo();
     document_.markDirty();
     projectTree_.revealWidget(document_, document_.selectedWidgetId);
@@ -5012,6 +5093,7 @@ void MainWindow::redo()
     }
 
     const std::string description = undoRedo_.redoDescription();
+    propertyInspector_.clearAppearancePreview();
     undoRedo_.redo();
     document_.markDirty();
     projectTree_.revealWidget(document_, document_.selectedWidgetId);
@@ -6298,7 +6380,42 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         return false;
     };
 
-    if (key == "__appearance_reset_property" || key == "__appearance_reset_all") {
+    if (key == "__appearance_state") {
+        const auto state = model::widgetAppearanceStateFromString(trimmedValue);
+        if (!state.has_value()
+            || !model::LookAndFeelRegistry::supportsWidgetState(widget->type, *state)) {
+            setOperationStatus("Unsupported Appearance state for this widget");
+            redraw();
+            return false;
+        }
+        propertyInspector_.setAppearanceState(*state);
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
+    if (key == "__appearance_preview_state") {
+        bool enabled = false;
+        if (!parseBool(trimmedValue, enabled)
+            || document_.hasMultiSelection()
+            || !model::LookAndFeelRegistry::supportsWidgetState(
+                widget->type, propertyInspector_.appearanceState())) {
+            setOperationStatus("Appearance state preview is unavailable for this selection");
+            redraw();
+            return false;
+        }
+        propertyInspector_.setAppearancePreviewEnabled(enabled, widget->id);
+        setOperationStatus(enabled
+            ? "Previewing selected Appearance state"
+            : "Appearance state preview disabled");
+        updatePropertyEditorBounds();
+        redraw();
+        return true;
+    }
+
+    if (key == "__appearance_reset_property"
+        || key == "__appearance_reset_state"
+        || key == "__appearance_reset_all") {
         if (document_.hasMultiSelection()
             || !model::LookAndFeelRegistry::supportsWidgetOverrides(widget->type)) {
             setOperationStatus("Select one supported widget to edit Appearance");
@@ -6307,35 +6424,72 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         }
 
         const std::string widgetId = widget->id;
+        const auto requestedAppearanceState = propertyInspector_.appearanceState();
+        const auto appearanceState = model::LookAndFeelRegistry::supportsWidgetState(
+                                         widget->type, requestedAppearanceState)
+            ? requestedAppearanceState
+            : model::WidgetAppearanceState::Normal;
         const bool resetAll = key == "__appearance_reset_all";
+        const bool resetState = key == "__appearance_reset_state";
+        propertyInspector_.clearAppearancePreview();
         const bool hasChange = resetAll
-            ? !widget->appearanceOverrides.empty()
-            : model::LookAndFeelRegistry::supportsWidgetOverride(widget->type, trimmedValue)
-                && [&]() {
-                    auto copy = widget->appearanceOverrides;
-                    return clearAppearanceOverride(copy, trimmedValue);
-                }();
+            ? !widget->appearanceOverrides.empty() || !widget->stateAppearanceOverrides.empty()
+            : resetState
+                ? appearanceState != model::WidgetAppearanceState::Normal
+                    && widget->stateAppearanceOverrides.contains(appearanceState)
+                : appearanceState == model::WidgetAppearanceState::Normal
+                    ? model::LookAndFeelRegistry::supportsWidgetOverride(widget->type, trimmedValue)
+                        && [&]() {
+                            auto copy = widget->appearanceOverrides;
+                            return clearAppearanceOverride(copy, trimmedValue);
+                        }()
+                    : model::LookAndFeelRegistry::supportsWidgetStateOverride(
+                          widget->type, appearanceState, trimmedValue)
+                        && [&]() {
+                            const auto found = widget->stateAppearanceOverrides.find(appearanceState);
+                            if (found == widget->stateAppearanceOverrides.end()) return false;
+                            auto copy = found->second;
+                            return clearStateAppearanceOverride(copy, trimmedValue);
+                        }();
         if (!hasChange) {
             return true;
         }
 
         const bool applied = applyUndoableDocumentChange(
-            resetAll ? "Reset all widget Appearance overrides" : "Reset widget Appearance property",
-            [this, &widgetId, &trimmedValue, resetAll]() {
+            resetAll ? "Reset all widget Appearance overrides"
+                : resetState ? "Reset widget Appearance state"
+                             : "Reset widget Appearance property",
+            [this, &widgetId, &trimmedValue, resetAll, resetState, appearanceState]() {
                 auto* current = document_.findWidgetById(widgetId);
                 if (current == nullptr) {
                     return false;
                 }
                 if (resetAll) {
                     current->appearanceOverrides = {};
+                    current->stateAppearanceOverrides.clear();
                     return true;
                 }
-                return clearAppearanceOverride(current->appearanceOverrides, trimmedValue);
+                if (resetState) {
+                    return current->stateAppearanceOverrides.erase(appearanceState) > 0;
+                }
+                if (appearanceState == model::WidgetAppearanceState::Normal) {
+                    return clearAppearanceOverride(current->appearanceOverrides, trimmedValue);
+                }
+                const auto found = current->stateAppearanceOverrides.find(appearanceState);
+                if (found == current->stateAppearanceOverrides.end()
+                    || !clearStateAppearanceOverride(found->second, trimmedValue)) {
+                    return false;
+                }
+                if (found->second.empty()) {
+                    current->stateAppearanceOverrides.erase(found);
+                }
+                return true;
             });
         if (applied) {
             setOperationStatus(resetAll
                 ? "Reset all widget Appearance overrides to inherited values"
-                : "Reset widget Appearance property to inherited");
+                : resetState ? "Reset widget Appearance state to inherited values"
+                             : "Reset widget Appearance property to inherited");
             redraw();
         }
         return applied;
@@ -6343,8 +6497,14 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
 
     const auto appearanceKey = appearanceKeyFromInspectorKey(key);
     if (!appearanceKey.empty()) {
+        const auto requestedAppearanceState = propertyInspector_.appearanceState();
+        const auto appearanceState = model::LookAndFeelRegistry::supportsWidgetState(
+                                         widget->type, requestedAppearanceState)
+            ? requestedAppearanceState
+            : model::WidgetAppearanceState::Normal;
         if (document_.hasMultiSelection()
-            || !model::LookAndFeelRegistry::supportsWidgetOverride(widget->type, appearanceKey)) {
+            || !model::LookAndFeelRegistry::supportsWidgetStateOverride(
+                widget->type, appearanceState, appearanceKey)) {
             setOperationStatus("Select one supported widget to edit this Appearance property");
             redraw();
             return false;
@@ -6352,15 +6512,35 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
 
         if (trimmedValue.empty() || isUnsetValueText(trimmedValue)) {
             const std::string widgetId = widget->id;
-            auto copy = widget->appearanceOverrides;
-            if (!clearAppearanceOverride(copy, appearanceKey)) {
+            bool changed = false;
+            if (appearanceState == model::WidgetAppearanceState::Normal) {
+                auto copy = widget->appearanceOverrides;
+                changed = clearAppearanceOverride(copy, appearanceKey);
+            }
+            else if (const auto found = widget->stateAppearanceOverrides.find(appearanceState);
+                     found != widget->stateAppearanceOverrides.end()) {
+                auto copy = found->second;
+                changed = clearStateAppearanceOverride(copy, appearanceKey);
+            }
+            if (!changed) {
                 return true;
             }
             return applyUndoableDocumentChange("Reset widget Appearance property",
-                [this, &widgetId, appearanceKey]() {
+                [this, &widgetId, appearanceKey, appearanceState]() {
                     auto* current = document_.findWidgetById(widgetId);
-                    return current != nullptr
-                        && clearAppearanceOverride(current->appearanceOverrides, appearanceKey);
+                    if (current == nullptr) return false;
+                    if (appearanceState == model::WidgetAppearanceState::Normal) {
+                        return clearAppearanceOverride(current->appearanceOverrides, appearanceKey);
+                    }
+                    const auto found = current->stateAppearanceOverrides.find(appearanceState);
+                    if (found == current->stateAppearanceOverrides.end()
+                        || !clearStateAppearanceOverride(found->second, appearanceKey)) {
+                        return false;
+                    }
+                    if (found->second.empty()) {
+                        current->stateAppearanceOverrides.erase(found);
+                    }
+                    return true;
                 });
         }
 
@@ -6381,10 +6561,10 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
                 return false;
             }
             if (appearanceKey == "borderThickness") {
-                *metricValue = std::clamp(*metricValue, 0.0f, 20.0f);
+                *metricValue = std::clamp(*metricValue, 0.0f, 25.0f);
             }
             else if (appearanceKey == "cornerRadius") {
-                *metricValue = std::clamp(*metricValue, 0.0f, 50.0f);
+                *metricValue = std::clamp(*metricValue, 0.0f, 25.0f);
             }
             else if (appearanceKey == "controlPadding") {
                 *metricValue = std::clamp(*metricValue, 0.0f, 40.0f);
@@ -6392,21 +6572,26 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         }
 
         auto updatedOverrides = widget->appearanceOverrides;
-        const bool changed = colorProperty
-            ? setAppearanceColorOverride(updatedOverrides, appearanceKey, trimmedValue)
-            : setAppearanceMetricOverride(updatedOverrides, appearanceKey, *metricValue);
+        auto updatedStateOverrides = widget->stateAppearanceOverrides;
+        const bool changed = appearanceState == model::WidgetAppearanceState::Normal
+            ? colorProperty
+                ? setAppearanceColorOverride(updatedOverrides, appearanceKey, trimmedValue)
+                : setAppearanceMetricOverride(updatedOverrides, appearanceKey, *metricValue)
+            : setStateAppearanceColorOverride(
+                updatedStateOverrides[appearanceState], appearanceKey, trimmedValue);
         if (!changed) {
             return true;
         }
 
         const std::string widgetId = widget->id;
         const bool applied = applyUndoableDocumentChange("Edit widget Appearance property",
-            [this, &widgetId, &updatedOverrides]() {
+            [this, &widgetId, &updatedOverrides, &updatedStateOverrides]() {
                 auto* current = document_.findWidgetById(widgetId);
                 if (current == nullptr) {
                     return false;
                 }
                 current->appearanceOverrides = updatedOverrides;
+                current->stateAppearanceOverrides = updatedStateOverrides;
                 return true;
             });
         if (applied) {
@@ -6707,12 +6892,12 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
                     return setSelectedWidgetProperty(key, 1.0f);
                 }
 
-                setOperationStatus("Invalid value for " + key + ". Use 1 to 25.");
+                setOperationStatus("Invalid value for " + key + ". Use 0 to 25.");
                 redraw();
                 return false;
             }
 
-            const float clampedValue = std::clamp(*parsedValue, 1.0f, 25.0f);
+            const float clampedValue = std::clamp(*parsedValue, 0.0f, 25.0f);
             const bool updated = setSelectedWidgetProperty(key, clampedValue);
             if (updated) {
                 setOperationStatus("Property changed: " + key + " = " + std::to_string(static_cast<int>(std::round(clampedValue))));
@@ -6809,6 +6994,74 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
     }
 
     return setSelectedWidgetProperty(key, trimmedValue);
+}
+
+bool MainWindow::applyLiveAppearanceSliderEdit(const std::string& key, const std::string& valueText)
+{
+    auto* widget = document_.selectedWidget();
+    const std::string appearanceKey{ appearanceKeyFromInspectorKey(key) };
+    if (widget == nullptr
+        || document_.hasMultiSelection()
+        || propertyInspector_.appearanceState() != model::WidgetAppearanceState::Normal
+        || !model::LookAndFeelRegistry::supportsWidgetOverride(widget->type, appearanceKey)) {
+        return false;
+    }
+
+    auto metricValue = tryParseFloat(trimWhitespace(valueText));
+    if (!metricValue.has_value()) {
+        return false;
+    }
+    if (appearanceKey == "borderThickness") {
+        *metricValue = std::clamp(*metricValue, 0.0f, 25.0f);
+    }
+    else if (appearanceKey == "cornerRadius") {
+        *metricValue = std::clamp(*metricValue, 0.0f, 25.0f);
+    }
+    else {
+        return false;
+    }
+
+    auto updatedOverrides = widget->appearanceOverrides;
+    if (!setAppearanceMetricOverride(updatedOverrides, appearanceKey, *metricValue)) {
+        return true;
+    }
+
+    widget->appearanceOverrides = std::move(updatedOverrides);
+    appearanceSliderChanged_ = true;
+    setOperationStatus("Widget Appearance override changed");
+    redraw();
+    return true;
+}
+
+void MainWindow::finishAppearanceSliderEdit()
+{
+    if (!appearanceSliderBeforeDocument_.has_value()) {
+        return;
+    }
+
+    const auto* beforeWidget = appearanceSliderBeforeDocument_->findWidgetById(appearanceSliderWidgetId_);
+    const auto* afterWidget = document_.findWidgetById(appearanceSliderWidgetId_);
+    const bool hasNetChange = appearanceSliderChanged_
+        && beforeWidget != nullptr
+        && afterWidget != nullptr
+        && beforeWidget->appearanceOverrides != afterWidget->appearanceOverrides;
+
+    if (hasNetChange) {
+        model::ProjectDocument afterDocument = document_;
+        model::ProjectDocument beforeDocument = std::move(*appearanceSliderBeforeDocument_);
+        document_ = beforeDocument;
+        undoRedo_.executeCommand(std::make_unique<commands::DocumentStateCommand>(
+            document_,
+            "Edit widget Appearance property",
+            std::move(beforeDocument),
+            std::move(afterDocument)));
+        document_.markDirty();
+        updateLayout();
+    }
+
+    appearanceSliderBeforeDocument_.reset();
+    appearanceSliderChanged_ = false;
+    appearanceSliderWidgetId_.clear();
 }
 
 void MainWindow::loadLabelFont()
@@ -8607,6 +8860,12 @@ bool MainWindow::applyPendingInspectorInteractionEdit()
     const auto pendingEdit = propertyInspector_.consumeInteractionEdit();
     if (!pendingEdit.has_value()) {
         return false;
+    }
+
+    if (pendingEdit->editKind == PropertyInspector::PropertyEditKind::Slider
+        && appearanceSliderBeforeDocument_.has_value()
+        && pendingEdit->key.starts_with("__appearance_")) {
+        return applyLiveAppearanceSliderEdit(pendingEdit->key, pendingEdit->valueText);
     }
 
     return setSelectedWidgetPropertyFromString(pendingEdit->key, pendingEdit->valueText);

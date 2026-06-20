@@ -28,9 +28,24 @@ public:
     [[nodiscard]] ResolvedLookAndFeelStyle resolve(
         const ProjectDocument& document,
         const WidgetNode& widget) const;
+    [[nodiscard]] ResolvedLookAndFeelStyle resolve(
+        const ProjectDocument& document,
+        const WidgetNode& widget,
+        WidgetAppearanceState state,
+        bool focusedOverlay = false) const;
     [[nodiscard]] static bool supportsWidgetOverrides(WidgetType type);
     [[nodiscard]] static bool supportsWidgetOverride(WidgetType type, std::string_view key);
     [[nodiscard]] static std::vector<std::string_view> supportedWidgetOverrideKeys(WidgetType type);
+    [[nodiscard]] static bool supportsWidgetStateOverrides(WidgetType type);
+    [[nodiscard]] static bool supportsWidgetState(WidgetType type, WidgetAppearanceState state);
+    [[nodiscard]] static bool supportsWidgetStateOverride(
+        WidgetType type,
+        WidgetAppearanceState state,
+        std::string_view key);
+    [[nodiscard]] static std::vector<WidgetAppearanceState> supportedWidgetStates(WidgetType type);
+    [[nodiscard]] static std::vector<std::string_view> supportedWidgetStateOverrideKeys(
+        WidgetType type,
+        WidgetAppearanceState state);
 
 private:
     LookAndFeelRegistry();

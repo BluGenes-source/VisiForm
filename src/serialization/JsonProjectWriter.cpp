@@ -92,6 +92,32 @@ nlohmann::json widgetAppearanceOverridesToJson(const model::WidgetLookAndFeelOve
     return json;
 }
 
+nlohmann::json widgetStateAppearanceOverridesToJson(
+    const model::WidgetStateLookAndFeelOverrideMap& stateOverrides)
+{
+    nlohmann::json states = nlohmann::json::object();
+    for (const auto& [state, overrides] : stateOverrides) {
+        if (state == model::WidgetAppearanceState::Normal || overrides.empty()) {
+            continue;
+        }
+        nlohmann::json json = nlohmann::json::object();
+        const auto addString = [&json](const char* key, const std::optional<std::string>& value) {
+            if (value.has_value()) {
+                json[key] = *value;
+            }
+        };
+        addString("controlSurfaceColor", overrides.controlSurfaceColor);
+        addString("textColor", overrides.textColor);
+        addString("borderColor", overrides.borderColor);
+        addString("accentColor", overrides.accentColor);
+        addString("focusOutlineColor", overrides.focusOutlineColor);
+        addString("highlightEdgeColor", overrides.highlightEdgeColor);
+        addString("shadowEdgeColor", overrides.shadowEdgeColor);
+        states[std::string{ model::toString(state) }] = std::move(json);
+    }
+    return states;
+}
+
 nlohmann::json widgetToJson(const model::WidgetNode& widget, const std::string& parentId = {}, int zOrder = 0)
 {
     nlohmann::json json;
@@ -102,8 +128,12 @@ nlohmann::json widgetToJson(const model::WidgetNode& widget, const std::string& 
     json["parentId"] = parentId;
     json["zOrder"] = zOrder;
     json["properties"] = propertiesToJson(widget);
-    if (!widget.appearanceOverrides.empty()) {
+    const auto stateOverrides = widgetStateAppearanceOverridesToJson(widget.stateAppearanceOverrides);
+    if (!widget.appearanceOverrides.empty() || !stateOverrides.empty()) {
         json["appearanceOverrides"] = widgetAppearanceOverridesToJson(widget.appearanceOverrides);
+        if (!stateOverrides.empty()) {
+            json["appearanceOverrides"]["states"] = stateOverrides;
+        }
     }
     json["children"] = nlohmann::json::array();
 

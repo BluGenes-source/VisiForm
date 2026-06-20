@@ -24,9 +24,9 @@ Each preset defines:
 
 `LookAndFeelRegistry::resolveProjectStyle(...)` resolves the selected preset plus
 project overrides. `LookAndFeelRegistry::resolve(...)` then applies sparse
-widget overrides. The resolution order is:
+normal widget overrides and compatible state overrides. The resolution order is:
 
-`built-in or custom preset -> project overrides -> widget overrides -> final widget style`
+`built-in or custom preset -> project overrides -> normal widget overrides -> widget state overrides`
 
 These are the shared sources for Design Mode, Preview Mode, editor splitter
 styling, and generated runtime style values.
@@ -128,6 +128,37 @@ Legacy `lookAndFeelId`, `fillColor`, `textColor`, `borderColor`, `accentColor`,
 `borderThickness`, and `cornerRadius` widget properties remain readable for old
 projects, but new inspector edits use the dedicated sparse Appearance object.
 
+### Widget state Appearance overrides
+
+The existing Appearance section includes one `Appearance State` selector.
+`Normal` edits the Phase 111 values. Compatible non-normal states edit sparse
+color-only records for Hover, Pressed, Focused, Checked / Selected, and
+Disabled.
+
+State records support control surface, text, border, accent, focus outline,
+highlight edge, and shadow edge colors. Metrics, geometry, and fonts inherit
+from the resolved normal widget style. `Reset Property` removes one value,
+`Reset State` removes the selected state record, and `Reset All Appearance`
+clears normal and state overrides in one undoable operation.
+
+State compatibility is centralized. Button, Text Box, Check Box, Radio Button,
+Combo Box, List Box, Slider, Scroll Bar, Progress Bar, Color Picker, and Tab
+Control expose only meaningful states; Progress Bar currently exposes Normal
+and Disabled. Runtime priority remains disabled, pressed, checked/selected,
+hover, then normal. Focus is applied as an additional overlay when supported.
+
+Design Mode resolves state Appearance as Normal so editor selection does not
+activate runtime styling. Preview Mode uses transient hover, press, focus,
+toggle, selection, and active-tab state without changing the project model.
+
+In the Normal state, `Border Thickness` and `Corner Radius` use the shared
+widget-registry slider metadata. Both sliders use `0-25`; zero remains a valid
+no-border or square-corner value. A compact `Preview State` toggle temporarily
+renders only the selected widget using the selected Appearance state while
+Design Mode overlays remain visible. This editor-only preview does not change
+the model, dirty state, undo history, serialization, or generated output, and
+clears when selection or project context changes or full Preview Mode begins.
+
 ## Current rendering behavior
 
 The designer, Preview Mode, editor splitters, and generated runtime currently use the resolved style for:
@@ -142,7 +173,8 @@ The designer, Preview Mode, editor splitters, and generated runtime currently us
 Rounded-corner drawing is implemented for boxed widgets through shared rounded-rectangle helpers.
 
 The `.vfb.json` format stores `lookAndFeelId`, optional sparse
-`lookAndFeelOverrides`, and optional sparse per-widget `appearanceOverrides`.
+`lookAndFeelOverrides`, and optional sparse per-widget `appearanceOverrides`,
+including an optional sparse `states` map.
 Empty project and widget override objects are omitted, and resolved style tables
 are never copied into the project file. Generated output receives the fully
 resolved style and does not depend on the developer's local custom-preset
@@ -153,7 +185,7 @@ library.
 - no font picker yet
 - no runtime theme switching in the generated app yet
 - no CSS-like selector or inheritance tree beyond project preset plus widget override
-- no state-specific widget overrides, custom fonts, gradients, images, or animations
+- no state-specific metrics or geometry, custom fonts, gradients, images, or animations
 - no mixed-value or bulk Appearance editing
 - no online marketplace, cloud synchronization, thumbnails, tags, or preset
   inheritance chains

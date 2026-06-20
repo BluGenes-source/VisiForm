@@ -1,0 +1,399 @@
+Implement VisiForm Phase 112: Widget State Appearance Overrides.
+
+Phase 111 is complete and pushed.
+
+Use:
+
+* Phase: 112
+* Version: 1.0.18
+* Subagents: none
+
+Keep token use minimal. Extend the existing Look and Feel and per-widget appearance system; do not create a CSS-like styling system.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 111 plan
+* files directly related to:
+
+  * resolved Look and Feel
+  * project appearance overrides
+  * per-widget appearance overrides
+  * widget interaction states
+  * Property Inspector Appearance UI
+  * Preview Mode
+  * serialization
+  * generated runtime styling
+  * undo/redo
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_112_widget_state_appearance_overrides_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.18`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not add animations, transitions, selectors, or style classes.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Allow supported widgets to define sparse appearance overrides for specific runtime states.
+
+Keep this resolution order:
+
+`preset → project overrides → normal widget overrides → widget state overrides`
+
+Unset state values inherit from the widget’s resolved normal appearance.
+
+## Initial state scope
+
+Support these states:
+
+* Normal
+* Hover
+* Pressed
+* Focused
+* Checked or Selected
+* Disabled
+
+Use one shared state model where practical.
+
+Do not create duplicate state concepts for each widget type.
+
+## Initial override properties
+
+Support only these state-specific properties:
+
+* control surface color
+* text color
+* border color
+* accent color
+* highlight edge color
+* shadow edge color
+* focus outline color
+
+Do not add state-specific:
+
+* padding
+* border thickness
+* corner radius
+* geometry
+* fonts
+* animation
+* transition timing
+
+Those remain inherited from the resolved normal widget style.
+
+## Supported widget scope
+
+Enable state appearance overrides for widgets that already expose meaningful interaction states:
+
+* Button
+* Text Box
+* Check Box
+* Radio Button
+* Combo Box
+* List Box
+* Slider
+* Scroll Bar
+* Progress Bar
+* Color Picker
+* Tab Control
+
+Use compatibility rules.
+
+Examples:
+
+* Button: Normal, Hover, Pressed, Focused, Disabled
+* Check Box: Normal, Hover, Pressed, Focused, Checked, Disabled
+* Radio Button: Normal, Hover, Pressed, Focused, Checked, Disabled
+* List Box: Normal, Hover, Focused, Selected, Disabled
+* Tab Control: Normal, Hover, Pressed, Focused, Selected, Disabled
+* Progress Bar: Normal and Disabled only, unless existing behavior supports more
+
+Hide or disable states that do not apply.
+
+Do not expose misleading options.
+
+## Property Inspector
+
+Extend the existing Appearance editor.
+
+Add an `Appearance State` selector with entries such as:
+
+* Normal
+* Hover
+* Pressed
+* Focused
+* Checked/Selected
+* Disabled
+
+Behavior:
+
+* Normal edits the existing per-widget appearance overrides from Phase 111
+* other states edit sparse state overrides
+* inherited values remain visible
+* unset values show as inherited
+* changing a value creates an explicit state override
+* resetting removes that override
+* unsupported properties or states are hidden or disabled
+
+Do not add a second Appearance tab.
+
+## Inheritance display
+
+For every editable state property, show:
+
+* inherited resolved value
+* optional explicit override
+
+Preferred behavior:
+
+* unset checkbox or inherited indicator means use the normal resolved widget style
+* editing creates an explicit state override
+* Reset Property removes one state override
+* Reset State removes all overrides for the selected state
+* Reset All Appearance remains available for normal and state overrides if it fits the current UI cleanly
+
+Do not serialize inherited values as explicit overrides.
+
+## State resolution
+
+Use one shared resolution path:
+
+1. resolve preset
+2. apply project overrides
+3. apply normal widget overrides
+4. resolve active runtime state
+5. apply matching state overrides
+6. return final state style
+
+Requirements:
+
+* widgets do not merge state overrides independently
+* state priority remains consistent with Phase 107
+* disabled has highest priority
+* pressed overrides hover
+* checked or selected remains distinct
+* focus may be applied as an overlay where appropriate
+* fallback remains safe
+
+Document the final state priority.
+
+## Preview Mode
+
+Preview Mode is the primary place to test state appearance.
+
+Requirements:
+
+* hover state appears while hovering
+* pressed state appears while pressing
+* checked or selected state may be previewed temporarily
+* focus state appears where supported
+* disabled state uses the override when the widget is disabled
+* preview-only state must not modify the project model
+* leaving Preview Mode clears temporary state
+
+Do not execute generated event handlers.
+
+## Design Mode
+
+Design Mode should normally render the widget’s normal appearance.
+
+Do not let ordinary editor selection falsely activate runtime Selected or Focused state.
+
+Editor overlays remain separate:
+
+* selection outline
+* resize handles
+* corner arcs
+* guides
+* grid
+
+Optional controlled state preview inside the Property Inspector is acceptable only if it fits the existing Appearance editor cleanly.
+
+Do not broaden scope with a dedicated state simulator panel.
+
+## Serialization
+
+Extend the widget appearance data with sparse per-state overrides.
+
+Requirements:
+
+* widgets without state overrides remain compact
+* old projects load normally
+* missing states inherit safely
+* invalid color values use existing validation/fallback behavior
+* save/load round trips preserve explicit state overrides
+* no temporary Preview Mode state is serialized
+
+Prefer a structure keyed by supported state identifier.
+
+Do not duplicate the full appearance table for every state.
+
+## Undo and redo
+
+Every committed state appearance edit must support undo/redo.
+
+Requirements:
+
+* one property edit creates one undo step
+* Reset Property creates one undo step
+* Reset State creates one undo step
+* undo restores the prior sparse state data
+* redo reapplies it
+* no-op changes create no undo entry
+* selection remains stable
+
+Reuse the existing command system.
+
+## Copy, duplicate, and paste
+
+When a widget is:
+
+* duplicated
+* copied and pasted
+* cloned through an existing command
+
+copy its explicit state appearance overrides with it.
+
+Do not copy state overrides to unrelated widgets.
+
+## Generated output
+
+Generated applications must reproduce state overrides.
+
+Preferred approach:
+
+* emit only explicit state override values
+* apply them through the existing generated style-resolution helper
+* preserve the same state priority
+* avoid duplicating full style data per state
+* preserve `USER CODE` regions
+* keep generated code readable
+
+Projects without state overrides must generate as before.
+
+Do not require access to the local preset library at runtime.
+
+## Scope boundaries
+
+Do not add:
+
+* animations
+* transition timing
+* hover delay settings
+* style classes
+* selector rules
+* state-specific geometry
+* custom fonts
+* gradients
+* image skins
+* per-child selectors
+* bulk multi-widget state editor
+* theme marketplace
+
+Record these as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.18`.
+4. Select a Button.
+5. Set Hover surface and border overrides.
+6. Set Pressed highlight and shadow overrides.
+7. Set Focused outline override.
+8. Set Disabled text and surface overrides.
+9. Enter Preview Mode.
+10. Confirm hover, pressed, focused, and disabled states use the overrides.
+11. Confirm Design Mode still shows normal appearance.
+12. Test Check Box checked-state override.
+13. Test Radio Button checked-state override.
+14. Test List Box selected-state override.
+15. Test Tab Control selected-state override.
+16. Test Slider and Scroll Bar hover/pressed thumb states.
+17. Confirm unsupported states are hidden or disabled.
+18. Reset one property.
+19. Reset one state.
+20. Test undo and redo.
+21. Save and reload.
+22. Confirm state overrides persist.
+23. Duplicate and copy/paste widgets.
+24. Confirm overrides copy correctly.
+25. Change project Look and Feel.
+26. Confirm inherited values update while explicit state overrides remain.
+27. Export a representative project.
+28. Inspect or build generated output through the approved workflow.
+29. Confirm runtime state styling matches Preview Mode in intent.
+30. Confirm widgets without state overrides remain unchanged.
+31. Confirm autosave and recovery preserve state overrides.
+
+Do not claim runtime, serialization, undo, or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 112 plan with:
+
+* previous and new version
+* supported states
+* supported state override properties
+* supported widget types
+* state priority
+* sparse serialization model
+* Property Inspector behavior
+* reset behavior
+* Preview Mode behavior
+* Design Mode behavior
+* generated-output integration
+* compatibility limits
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep it concise.
+
+## Completion report
+
+Report:
+
+* Phase 112 plan path
+* version change to `1.0.18`
+* supported states
+* state override properties
+* supported widget scope
+* inheritance and resolution order
+* Property Inspector integration
+* reset behavior
+* undo/redo behavior
+* Preview Mode result
+* Design Mode result
+* generated-output result
+* known limitations
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

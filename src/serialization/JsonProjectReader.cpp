@@ -205,9 +205,11 @@ bool parseProperties(const nlohmann::json& json, std::map<std::string, model::Pr
 
 bool parseWidgetAppearanceOverrides(const nlohmann::json& json,
     model::WidgetLookAndFeelOverrides& overrides,
+    model::WidgetStateLookAndFeelOverrideMap& stateOverrides,
     std::string& errorMessage)
 {
     overrides = {};
+    stateOverrides.clear();
     if (json.is_null()) {
         return true;
     }
@@ -241,7 +243,7 @@ bool parseWidgetAppearanceOverrides(const nlohmann::json& json,
         return true;
     };
 
-    return readOptionalString("controlSurfaceColor", overrides.controlSurfaceColor)
+    if (!(readOptionalString("controlSurfaceColor", overrides.controlSurfaceColor)
         && readOptionalString("textColor", overrides.textColor)
         && readOptionalString("borderColor", overrides.borderColor)
         && readOptionalString("accentColor", overrides.accentColor)
@@ -250,7 +252,56 @@ bool parseWidgetAppearanceOverrides(const nlohmann::json& json,
         && readOptionalString("shadowEdgeColor", overrides.shadowEdgeColor)
         && readOptionalFloat("borderThickness", overrides.borderThickness)
         && readOptionalFloat("cornerRadius", overrides.cornerRadius)
-        && readOptionalFloat("controlPadding", overrides.controlPadding);
+        && readOptionalFloat("controlPadding", overrides.controlPadding))) {
+        return false;
+    }
+
+    const auto states = json.find("states");
+    if (states == json.end()) {
+        return true;
+    }
+    if (!states->is_object()) {
+        errorMessage = "appearanceOverrides.states must be an object when present.";
+        return false;
+    }
+    for (const auto& [stateKey, stateJson] : states->items()) {
+        const auto state = model::widgetAppearanceStateFromString(stateKey);
+        if (!state.has_value() || *state == model::WidgetAppearanceState::Normal) {
+            continue;
+        }
+        if (!stateJson.is_object()) {
+            errorMessage = "appearanceOverrides.states." + stateKey + " must be an object.";
+            return false;
+        }
+        model::WidgetStateLookAndFeelOverrides parsed;
+        const auto readStateString = [&stateJson, &stateKey, &errorMessage](
+                                         const char* key,
+                                         std::optional<std::string>& target) {
+            const auto value = stateJson.find(key);
+            if (value == stateJson.end()) {
+                return true;
+            }
+            if (!value->is_string()) {
+                errorMessage = "appearanceOverrides.states." + stateKey + "." + key + " must be a string.";
+                return false;
+            }
+            target = value->get<std::string>();
+            return true;
+        };
+        if (!readStateString("controlSurfaceColor", parsed.controlSurfaceColor)
+            || !readStateString("textColor", parsed.textColor)
+            || !readStateString("borderColor", parsed.borderColor)
+            || !readStateString("accentColor", parsed.accentColor)
+            || !readStateString("focusOutlineColor", parsed.focusOutlineColor)
+            || !readStateString("highlightEdgeColor", parsed.highlightEdgeColor)
+            || !readStateString("shadowEdgeColor", parsed.shadowEdgeColor)) {
+            return false;
+        }
+        if (!parsed.empty()) {
+            stateOverrides.insert_or_assign(*state, std::move(parsed));
+        }
+    }
+    return true;
 }
 
 bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::string& errorMessage)
@@ -314,11 +365,16 @@ bool parseWidget(const nlohmann::json& json, model::WidgetNode& widget, std::str
 
     const auto appearanceIterator = json.find("appearanceOverrides");
     if (appearanceIterator != json.end()
-        && !parseWidgetAppearanceOverrides(*appearanceIterator, widget.appearanceOverrides, errorMessage)) {
+        && !parseWidgetAppearanceOverrides(
+            *appearanceIterator,
+            widget.appearanceOverrides,
+            widget.stateAppearanceOverrides,
+            errorMessage)) {
         return false;
     }
     if (appearanceIterator == json.end()) {
         widget.appearanceOverrides = {};
+        widget.stateAppearanceOverrides.clear();
     }
 
     model::normalizeItemListProperties(widget);

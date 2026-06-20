@@ -627,6 +627,87 @@ ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, c
     return style;
 }
 
+model::WidgetAppearanceState appearanceStateFor(const visual_style::State& state)
+{
+    switch (visual_style::resolveBaseState(state)) {
+    case visual_style::BaseState::Hovered:
+        return model::WidgetAppearanceState::Hover;
+    case visual_style::BaseState::CheckedOrSelected:
+        return model::WidgetAppearanceState::CheckedOrSelected;
+    case visual_style::BaseState::Pressed:
+        return model::WidgetAppearanceState::Pressed;
+    case visual_style::BaseState::Disabled:
+        return model::WidgetAppearanceState::Disabled;
+    case visual_style::BaseState::Normal:
+        return model::WidgetAppearanceState::Normal;
+    }
+    return model::WidgetAppearanceState::Normal;
+}
+
+visual_style::State visualStateForAppearancePreview(model::WidgetAppearanceState state)
+{
+    visual_style::State visualState;
+    visualState.enabled = true;
+    switch (state) {
+    case model::WidgetAppearanceState::Hover:
+        visualState.hovered = true;
+        break;
+    case model::WidgetAppearanceState::Pressed:
+        visualState.hovered = true;
+        visualState.pressed = true;
+        break;
+    case model::WidgetAppearanceState::Focused:
+        visualState.focused = true;
+        break;
+    case model::WidgetAppearanceState::CheckedOrSelected:
+        visualState.checkedOrSelected = true;
+        break;
+    case model::WidgetAppearanceState::Disabled:
+        visualState.enabled = false;
+        break;
+    case model::WidgetAppearanceState::Normal:
+        break;
+    }
+    return visualState;
+}
+
+ResolvedWidgetStyle resolveWidgetStyle(
+    const model::ProjectDocument& document,
+    const model::WidgetNode& widget,
+    const visual_style::State& state)
+{
+    const model::ResolvedLookAndFeelStyle resolved =
+        model::LookAndFeelRegistry::instance().resolve(
+            document,
+            widget,
+            appearanceStateFor(state),
+            state.focused && state.enabled);
+
+    ResolvedWidgetStyle style;
+    style.panelColor = parseColorOrDefault(resolved.applicationSurfaceColor, style.panelColor);
+    style.fillColor = parseColorOrDefault(resolved.controlSurfaceColor, style.fillColor);
+    style.recessedColor = parseColorOrDefault(resolved.recessedSurfaceColor, style.recessedColor);
+    style.raisedColor = parseColorOrDefault(resolved.raisedSurfaceColor, style.raisedColor);
+    style.textColor = parseColorOrDefault(resolved.primaryTextColor, style.textColor);
+    style.secondaryTextColor = parseColorOrDefault(resolved.secondaryTextColor, style.secondaryTextColor);
+    style.disabledTextColor = parseColorOrDefault(resolved.disabledTextColor, style.disabledTextColor);
+    style.borderColor = parseColorOrDefault(resolved.borderColor, style.borderColor);
+    style.focusColor = parseColorOrDefault(resolved.focusOutlineColor, style.focusColor);
+    style.accentColor = parseColorOrDefault(resolved.accentColor, style.accentColor);
+    style.disabledColor = parseColorOrDefault(resolved.disabledSurfaceColor, style.disabledColor);
+    style.selectedColor = parseColorOrDefault(resolved.selectedStateColor, style.selectedColor);
+    style.hoverColor = parseColorOrDefault(resolved.hoverStateColor, style.hoverColor);
+    style.pressedColor = parseColorOrDefault(resolved.pressedStateColor, style.pressedColor);
+    style.checkedColor = parseColorOrDefault(resolved.checkedStateColor, style.checkedColor);
+    style.highlightColor = parseColorOrDefault(resolved.highlightEdgeColor, style.highlightColor);
+    style.shadowColor = parseColorOrDefault(resolved.shadowEdgeColor, style.shadowColor);
+    style.borderThickness = resolved.borderThickness;
+    style.cornerRadius = resolved.cornerRadius;
+    style.fontSize = resolved.fontSize;
+    style.controlPadding = resolved.controlPadding;
+    return style;
+}
+
 PreviewLayout calculatePreviewLayout(float x,
     float y,
     float width,
@@ -968,7 +1049,8 @@ void drawWidget(visage::Canvas& canvas,
     bool showMinorGrid,
     int gridSize,
     int majorGridSize,
-    bool showEditorDecorations)
+    bool showEditorDecorations,
+    const std::optional<model::WidgetAppearanceState>& appearancePreviewState)
 {
     const float widgetLocalX = parentLocalX + widget.bounds.x;
     const float widgetLocalY = parentLocalY + widget.bounds.y;
@@ -978,8 +1060,17 @@ void drawWidget(visage::Canvas& canvas,
         std::max(1.0f, widget.bounds.width * scale),
         std::max(1.0f, widget.bounds.height * scale)
     };
-    const ResolvedWidgetStyle style = resolveWidgetStyle(document, widget);
-    const visual_style::State visualState = designerCanvas.resolvedVisualState(widget);
+    const bool previewSelectedAppearance = designerCanvas.mode() == DesignerCanvas::Mode::Design
+        && widget.id == selectedWidgetId
+        && appearancePreviewState.has_value()
+        && model::LookAndFeelRegistry::supportsWidgetState(widget.type, *appearancePreviewState);
+    const visual_style::State visualState = previewSelectedAppearance
+        ? visualStateForAppearancePreview(*appearancePreviewState)
+        : designerCanvas.resolvedVisualState(widget);
+    const ResolvedWidgetStyle style = designerCanvas.mode() == DesignerCanvas::Mode::Preview
+        || previewSelectedAppearance
+        ? resolveWidgetStyle(document, widget, visualState)
+        : resolveWidgetStyle(document, widget);
     visage::Font widgetFontStorage{};
     const visage::Font& widgetFont = resolvedWidgetFont(widget, style, font, widgetFontStorage);
     const float fontSize = resolvedFontSize(widget, style);
@@ -1812,7 +1903,8 @@ void drawWidget(visage::Canvas& canvas,
             continue;
         }
         drawWidget(canvas, font, drawText, document, designerCanvas, imageCache, simplifySelectedImages, child, formScreenX, formScreenY, widgetLocalX, widgetLocalY,
-            scale, selectedWidgetId, showGrid, showMinorGrid, gridSize, majorGridSize, showEditorDecorations);
+            scale, selectedWidgetId, showGrid, showMinorGrid, gridSize, majorGridSize,
+            showEditorDecorations, appearancePreviewState);
     }
 
     if (showEditorDecorations && document.isPrimarySelected(widget.id)) {
@@ -1884,7 +1976,7 @@ bool DesignerCanvas::beginPreviewInteraction(const model::ProjectDocument& docum
     const model::WidgetNode* widget = hit.has_value() ? document.findWidgetById(*hit) : nullptr;
     const std::string nextId = widget != nullptr
             && !document.isRootWidgetId(widget->id)
-            && widget->getBoolProperty("enabled", true)
+            && widgetIsEnabled(*widget)
         ? widget->id
         : std::string{};
     const bool changed = previewPressedWidgetId_ != nextId
@@ -1910,7 +2002,7 @@ bool DesignerCanvas::endPreviewInteraction(const model::ProjectDocument& documen
     }
 
     const model::WidgetNode* widget = document.findWidgetById(pressedId);
-    if (widget == nullptr || !widget->getBoolProperty("enabled", true)) {
+    if (widget == nullptr || !widgetIsEnabled(*widget)) {
         return true;
     }
 
@@ -1980,7 +2072,7 @@ void DesignerCanvas::clearPreviewInteraction()
 visual_style::State DesignerCanvas::resolvedVisualState(const model::WidgetNode& widget) const
 {
     visual_style::State state;
-    state.enabled = widget.getBoolProperty("enabled", true);
+    state.enabled = widgetIsEnabled(widget);
     state.readOnly = widget.getBoolProperty("readOnly", false);
     state.hovered = mode_ == Mode::Preview && previewHoveredWidgetId_ == widget.id;
     state.pressed = mode_ == Mode::Preview && previewPressedWidgetId_ == widget.id;
@@ -1991,7 +2083,10 @@ visual_style::State DesignerCanvas::resolvedVisualState(const model::WidgetNode&
     const bool selected = mode_ == Mode::Preview && previewSelected_.contains(widget.id)
         ? previewSelected_.at(widget.id)
         : widget.getBoolProperty("selected", false);
-    state.checkedOrSelected = checked || selected;
+    const bool itemSelected = mode_ == Mode::Preview
+        && ((widget.type == model::WidgetType::ListBox && previewSelectedIndex_.contains(widget.id))
+            || (widget.type == model::WidgetType::TabControl && previewSelectedTab_.contains(widget.id)));
+    state.checkedOrSelected = checked || selected || itemSelected;
     state.active = state.checkedOrSelected;
     return state;
 }
@@ -2392,7 +2487,8 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
     resources::ImageResourceCache* imageCache,
     bool simplifySelectedImages,
     const std::optional<SelectionRect>& marqueeRect,
-    const std::vector<SmartGuide>& smartGuides) const
+    const std::vector<SmartGuide>& smartGuides,
+    const std::optional<model::WidgetAppearanceState>& appearancePreviewState) const
 {
     (void)simplifySelectedImages;
 
@@ -2444,7 +2540,8 @@ void DesignerCanvas::draw(visage::Canvas& canvas,
 
     drawWidget(canvas, font, drawText, document, *this, imageCache, simplifySelectedImages, document.root, previewLayout.form.x, previewLayout.form.y,
         -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale, document.selectedWidgetId,
-        showEditorDecorations && showGrid_, showMinorGrid_, gridSize_, majorGridSize_, showEditorDecorations);
+        showEditorDecorations && showGrid_, showMinorGrid_, gridSize_, majorGridSize_,
+        showEditorDecorations, appearancePreviewState);
 
     if (showEditorDecorations && marqueeRect.has_value()) {
         const PanelRect screenRect = selectionRectToScreenRect(previewLayout, *marqueeRect);

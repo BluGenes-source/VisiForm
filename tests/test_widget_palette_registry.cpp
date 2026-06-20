@@ -7,6 +7,7 @@
 
 using visiform::model::WidgetRegistry;
 using visiform::model::WidgetType;
+using visiform::model::PropertyEditKind;
 
 TEST_CASE("Widget palette includes Slider with registry-backed metadata")
 {
@@ -47,4 +48,31 @@ TEST_CASE("Widget palette includes Slider with registry-backed metadata")
         REQUIRE(expectedGroups.contains(definition->paletteGroup));
         REQUIRE(uniqueTypes.insert(definition->type).second);
     }
+}
+
+TEST_CASE("Appearance geometry metadata preserves zero-valued slider semantics")
+{
+    const auto* button = WidgetRegistry::instance().find(WidgetType::Button);
+    REQUIRE(button != nullptr);
+
+    const auto findProperty = [button](const std::string& key) {
+        return std::find_if(
+            button->properties.begin(),
+            button->properties.end(),
+            [&key](const auto& property) { return property.key == key; });
+    };
+
+    const auto borderThickness = findProperty("borderThickness");
+    REQUIRE(borderThickness != button->properties.end());
+    CHECK(borderThickness->editKind == PropertyEditKind::Slider);
+    CHECK(borderThickness->minimumValue == 0.0f);
+    CHECK(borderThickness->maximumValue == 25.0f);
+    CHECK(borderThickness->stepValue == 1.0f);
+
+    const auto cornerRadius = findProperty("cornerRadius");
+    REQUIRE(cornerRadius != button->properties.end());
+    CHECK(cornerRadius->editKind == PropertyEditKind::Slider);
+    CHECK(cornerRadius->minimumValue == 0.0f);
+    CHECK(cornerRadius->maximumValue == 25.0f);
+    CHECK(cornerRadius->stepValue == 1.0f);
 }
