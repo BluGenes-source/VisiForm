@@ -42,7 +42,10 @@ constexpr float kMouseWheelSensitivity = 40.0f;
 constexpr float kSliderTrackHeight = 4.0f;
 constexpr float kSliderThumbWidth = 10.0f;
 constexpr float kSliderThumbHeight = 16.0f;
-constexpr float kSliderValueWidth = 56.0f;
+constexpr float kSliderMinimumTrackWidth = 36.0f;
+constexpr float kSliderValueGap = 10.0f;
+constexpr float kSliderTextPadding = 8.0f;
+constexpr float kApproxInspectorTextWidth = 7.0f;
 constexpr float kActionButtonWidth = 72.0f;
 constexpr float kTabGap = 8.0f;
 constexpr float kEventActionGap = 6.0f;
@@ -116,6 +119,31 @@ std::string formatSliderValue(float value, float stepValue)
     }
 
     return formatFloat(value);
+}
+
+float estimateInspectorTextWidth(std::string_view text)
+{
+    return static_cast<float>(text.size()) * kApproxInspectorTextWidth;
+}
+
+std::string sliderValueLabel(const PropertyInspector::PropertyRow& row, float value, float availableWidth)
+{
+    const std::string current = formatSliderValue(value, row.stepValue);
+    const std::string withMaximum = current + " / "
+        + formatSliderValue(std::max(row.minimumValue, row.maximumValue), row.stepValue);
+    const float maximumWidth = estimateInspectorTextWidth(withMaximum) + kSliderTextPadding * 2.0f;
+    if (availableWidth >= kSliderMinimumTrackWidth + kSliderValueGap + maximumWidth) {
+        return withMaximum;
+    }
+
+    return current;
+}
+
+float sliderValueLabelWidth(std::string_view label, float availableWidth)
+{
+    const float idealWidth = estimateInspectorTextWidth(label) + kSliderTextPadding * 2.0f;
+    const float maximumWidth = std::max(0.0f, availableWidth - kSliderMinimumTrackWidth - kSliderValueGap);
+    return std::clamp(idealWidth, 24.0f, std::max(24.0f, maximumWidth));
 }
 
 std::string propertyValueText(const model::PropertyValue& value)
@@ -920,8 +948,13 @@ std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::sliderTrack
     }
 
     const float valueLeft = x_ + labelColumnWidth();
-    const float trackLeft = valueLeft + 10.0f;
-    const float trackWidth = std::max(36.0f, valueCellWidth() - kSliderValueWidth - 20.0f);
+    const float valueWidth = valueCellWidth();
+    const float sliderValue = tryParseFloatText(row.displayValue).value_or(row.minimumValue);
+    const std::string valueLabel = sliderValueLabel(row, sliderValue, valueWidth);
+    const float valueLabelWidth = sliderValueLabelWidth(valueLabel, valueWidth);
+    const float trackLeft = valueLeft + kSliderValueGap;
+    const float trackRight = valueLeft + std::max(0.0f, valueWidth - valueLabelWidth - kSliderValueGap);
+    const float trackWidth = std::max(0.0f, trackRight - trackLeft);
     return ValueCellBounds{
         trackLeft,
         rowTop + (kRowHeight - kSliderTrackHeight) * 0.5f,
@@ -1281,7 +1314,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 const auto editorMetadata = appearanceEditorMetadata(selectedWidget->type, key);
                 rows.push_back({
                     "__appearance_" + std::string{ key },
-                    appearanceLabel(key) + (overridden ? " (Override)" : " (Inherited)"),
+                    appearanceLabel(key) + (overridden ? " (Set)" : " (Inh)"),
                     overridden
                         ? "Explicit " + appearanceStateLabel(selectedState) + " override. Use Reset Property to inherit again."
                         : "Inherited from the resolved normal widget Appearance. Editing creates an explicit override.",
@@ -1842,7 +1875,7 @@ bool PropertyInspector::mouseDown(const model::ProjectDocument& document, const 
         const ValueCellBounds sliderHitBounds{
             track->x,
             rowTop + 4.0f,
-            track->width + kSliderValueWidth,
+            std::max(0.0f, valueCellWidth() - (track->x - (x_ + labelColumnWidth()))),
             kRowHeight - 8.0f
         };
         if (!containsPoint(sliderHitBounds, x, y)) {
@@ -2350,10 +2383,13 @@ void PropertyInspector::draw(visage::Canvas& canvas, const visage::Font& font, b
                     }
                 }
 
-                const std::string valueLabel = formatSliderValue(sliderValue, row.stepValue)
-                    + " / " + formatSliderValue(std::max(row.minimumValue, row.maximumValue), row.stepValue);
+                const std::string valueLabel = sliderValueLabel(row, sliderValue, valueWidth);
+                const float valueLabelWidth = sliderValueLabelWidth(valueLabel, valueWidth);
                 canvas.text(valueLabel, font, visage::Font::kTopLeft,
-                    valueLeft + valueWidth - kSliderValueWidth, rowTop + 5.0f, kSliderValueWidth - 6.0f, kRowHeight - 8.0f);
+                    valueLeft + std::max(0.0f, valueWidth - valueLabelWidth),
+                    rowTop + 5.0f,
+                    std::max(0.0f, valueLabelWidth - 4.0f),
+                    kRowHeight - 8.0f);
             }
             else if (!isActive || row.editKind == PropertyEditKind::Choice) {
                 std::string valueText = row.displayValue;

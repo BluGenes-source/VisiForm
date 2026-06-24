@@ -1,0 +1,189 @@
+Continue VisiForm Phase 113. Do not create a new phase and do not change version 1.0.19.
+
+Phase 113 still has a corner-radius rendering bug.
+
+Current problem:
+- the widget fill responds to Corner Radius
+- but not all widget-drawn lines use the same rounded geometry
+- for example, a Button still shows a rectangular outline/highlight/shadow box over or around the rounded shape
+
+This makes the control look partially rounded and partially rectangular.
+
+Keep this pass narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 113 plan and files directly related to:
+  - Corner Radius property resolution
+  - rectangular widget rendering
+  - shared border/highlight/shadow drawing helpers
+  - Button rendering
+  - other rectangular widget renderers that share the same style path
+- do not perform a repository-wide audit
+- do not refactor unrelated widget behavior
+- build once after the focused fix is complete
+- do not commit or push
+
+## Goal
+
+Ensure that all widget-owned visual lines for rounded rectangular controls use the same resolved Corner Radius.
+
+For supported rectangular widgets, the following must agree on the same rounded geometry:
+
+- background fill
+- border stroke
+- highlight edge
+- shadow edge
+- pressed/recessed edge treatment
+- focus outline where applicable
+
+The only lines that may remain square are editor overlays such as:
+
+- selection outline
+- resize handles
+- resize-corner arcs
+- grid/guides
+
+## Root-cause investigation
+
+Trace the drawing path for a representative Button and determine exactly which layer is still rectangular.
+
+Possible causes include:
+
+- fill uses a rounded-rect helper but border uses drawRect
+- highlight and shadow edges are still built from straight rectangular line segments
+- pressed-state bevel code still assumes square corners
+- focus outline uses a separate square-rect path
+- one or more layers use hard-coded widget bounds instead of rounded geometry
+- the shared style helper returns a radius but not a rounded-rect path
+- different layers clamp the radius differently
+
+Record the confirmed root cause in the Phase 113 plan.
+
+## Required rendering fix
+
+For supported rectangular widgets, use one shared rounded-geometry source of truth.
+
+Preferred approach:
+
+- compute the resolved visual rectangle
+- compute the effective clamped radius
+- build one rounded-rectangle path or equivalent shared geometry description
+- use that same rounded geometry for:
+  - fill
+  - border
+  - highlight edge
+  - shadow edge
+  - focus outline where applicable
+
+Avoid mixing:
+- rounded fill
+with
+- square border/highlight/shadow
+
+If the bevel/highlight system cannot use a single path directly, update it so its visible edge treatment follows the rounded corners rather than drawing a plain rectangle on top.
+
+## Radius behavior
+
+Preserve the current Corner Radius property behavior:
+
+- immediate repaint when changed
+- radius clamped safely to half the smaller widget dimension
+- zero, if supported, produces square corners
+- large values produce strongly rounded corners without self-intersection
+- width and height do not change
+- hit testing may remain rectangular unless existing infrastructure already supports shape-aware hit testing
+
+## Widget scope
+
+Fix the shared path, not just Button.
+
+Verify representative compatible rectangular widgets, including where applicable:
+
+- Button
+- Text Box
+- Combo Box
+- List Box
+- Progress Bar
+- Color Picker
+- Panel
+- Frame
+- Group Box
+- Tab Control
+
+Do not hard-code a Button-only patch if the same bug exists in shared rendering.
+
+## State behavior
+
+Ensure all runtime visual states still use the rounded geometry correctly:
+
+- Normal
+- Hover
+- Pressed
+- Focused
+- Disabled
+- Checked/Selected where applicable
+
+Pressed or recessed appearance must still respect the same rounded corners.
+
+Do not let state preview or state overrides reintroduce square edge layers.
+
+## Preserve existing behavior
+
+Do not regress:
+
+- Corner Radius slider and value editing
+- Border Thickness behavior
+- Property Inspector layout fixes
+- state appearance selector
+- temporary state preview
+- inherited indicators
+- Reset Property / Reset State / Reset All Appearance
+- Preview Mode
+- Look and Feel presets and overrides
+- save/load
+- generated output
+- autosave and recovery
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.19`.
+4. Select a Button.
+5. Set Corner Radius to several values including maximum.
+6. Confirm the fill, border, highlight, and shadow all follow rounded corners.
+7. Confirm there is no remaining square widget-owned rectangle around the control.
+8. Test Normal, Hover, Pressed, Focused, and Disabled appearances if supported.
+9. Repeat on representative rectangular widgets:
+   - Text Box
+   - Combo Box
+   - Progress Bar
+   - Group Box
+   - Tab Control
+10. Confirm editor overlays may remain square while widget styling is rounded.
+11. Enter Preview Mode and confirm the rounded styling remains correct.
+12. Test undo and redo for Corner Radius changes.
+13. Confirm Border Thickness still works.
+
+Do not claim manual validation unless it was actually performed.
+
+## Documentation
+
+Update the existing Phase 113 plan with:
+
+- confirmed root cause of the remaining square lines
+- shared rounded-geometry approach
+- affected render layers fixed
+- widget types verified
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 114.
+Do not change version 1.0.19.
+Do not commit or push.

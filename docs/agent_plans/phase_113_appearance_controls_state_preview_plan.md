@@ -31,6 +31,9 @@
 - Color keys retained their `Color` editor, but every metric key was assigned generic `Float`.
 - That path dropped the existing slider editor kind and range/step metadata even though the Property Inspector slider renderer and interaction implementation remained intact.
 - Phase 113 centralizes Appearance metric editor metadata and uses it when constructing normal-state rows.
+- Follow-up corner-radius investigation confirmed the committed normal override reached `WidgetLookAndFeelOverrides`, `LookAndFeelRegistry::resolve()`, and `ResolvedWidgetStyle::cornerRadius`, but several supported rectangular widgets still rendered their outer shell through square bevel/recessed/border helpers. Button, Text Box, Combo Box, List Box, Progress Bar, Color Picker, Panel, Frame, Group Box, and Tab Control therefore ignored the resolved radius at the visible border/fill stage.
+- Continued fill-fix investigation found a remaining square-line layer after the first rounded-shell pass: the shared rounded bevel/recessed helpers still painted highlight and shadow as straight inset horizontal/vertical rectangles, and Combo Box painted a full-height square beveled arrow region over the rounded right edge.
+- The Appearance row crowding came from a fixed slider value reservation and unconditional `current / max` value text, combined with long ` (Override)` / ` (Inherited)` suffixes in the label column. At narrower inspector widths this left too little negotiated space for the label, slider track, and numeric value.
 
 ## Architecture Decisions
 
@@ -40,6 +43,10 @@
 - Store temporary preview state only in editor UI state, associated with the currently selected widget.
 - Pass the editor-only state intent into Designer Canvas rendering for the selected widget while remaining in Design Mode.
 - Reuse the existing shared runtime-style resolver; do not duplicate Preview Mode interaction state.
+- Keep Corner Radius as a normal widget metric. State Appearance resolution starts from the normal resolved style, so Hover, Pressed, Focused, Checked/Selected, and Disabled inherit the normal radius and apply only state color overrides.
+- Route supported rectangular widget outer shells through rounded drawing helpers that clamp the radius to `min(width, height) / 2`; editor selection outlines, resize handles, and internal list/tab/item geometry remain rectangular editor or content affordances.
+- Use the same clamped radius source for rounded bevel/recessed highlight and shadow edge treatment. The edge helper draws inset rounded edge segments instead of a square inner rectangle, while Combo Box keeps its arrow affordance inset from the rounded outer corners.
+- Compute slider row layout from the current available value-cell width. Reserve the current value first, show `current / max` only when it fits, and shorten visible inherited/override labels to compact markers while keeping full meaning in hints/reset controls.
 
 ## Slider Compatibility
 
@@ -48,6 +55,9 @@
 - Historical property metadata used `1-25` for both sliders.
 - Existing resolver semantics make zero meaningful, so both restored sliders use `0-25`.
 - Slider edits remain clamped, immediately applied, and no-op safe through the existing inspector and document-command paths.
+- Corner Radius rendering clamps the resolved radius per widget draw to half the smaller rendered dimension. This preserves model width/height and rectangular hit testing while preventing invalid radius geometry.
+- Supported rectangular widgets using the rounded outer-shell path in Design/Preview now include Button, Text Box, Combo Box, List Box, Progress Bar, Color Picker, Panel, Frame, Group Box, and Tab Control. The same helper is also used by existing compatible rounded shells such as Form Window, Tool Bar, Table Grid, Tree View, Sizer, and Tab Page.
+- Slider value display policy: show `current / max` only when the value area can also preserve a practical slider track; otherwise show the current value only.
 
 ## Temporary Preview Rules
 
@@ -69,6 +79,8 @@
 - [x] Integrate selected-widget Design Mode rendering and cleanup rules.
 - [x] Add focused tests or static checks for compatibility and non-persistence.
 - [x] Update final project status and this plan.
+- [x] Fix supported rectangular widget rendering so resolved Corner Radius affects visible fill and border.
+- [x] Fix Appearance slider row layout to avoid clipped labels, crowded values, and truncated `current / max` strings.
 - [ ] Run approved validation once, if an exact approved path is available.
 
 ## Validation Plan
@@ -96,6 +108,9 @@
   Tests were not executed because no approved exact build/test command was supplied.
 - Windows Debug build: not run.
 - Manual runtime validation: not performed.
+- Follow-up static validation for the corner-radius/layout fix: `git diff --check` passed with only the repository's existing LF-to-CRLF normalization warnings. Targeted searches confirmed no remaining fixed `kSliderValueWidth` usage, normal Appearance metrics remain model-backed, and supported rectangular Designer Canvas shells now consume the resolved corner radius through rounded drawing helpers.
+- Continued fill-fix static validation: `git diff --check` passed with only the repository's existing LF-to-CRLF normalization warnings. Targeted searches confirmed Button, Text Box, Combo Box, List Box, Progress Bar, Color Picker, Panel, Frame, Group Box, and Tab Control outer shells use rounded helpers, and the shared rounded bevel/recessed edge treatment no longer draws square inset highlight/shadow rectangles. Combo Box no longer draws a full-height square beveled arrow box over the rounded right edge.
+- Follow-up Windows Debug build: not run because the repository instructions prohibit terminal build commands without an exact developer-requested command and no unambiguous Visual Studio workspace build pipeline was available to the agent.
 
 ## Compatibility Considerations
 
@@ -145,6 +160,17 @@
   redo, and full Preview Mode entry.
 - Grouped live Appearance slider changes into one completed no-op-safe undoable
   document command.
+- Follow-up corner-radius fix routed the supported rectangular widget outer
+  shells through rounded drawing helpers using the resolved normal radius,
+  with per-widget clamping to half the smaller rendered dimension.
+- Continued fill fix changed the shared rounded bevel/recessed edge treatment
+  so highlight and shadow follow inset rounded edge segments instead of drawing
+  a square inner box. Combo Box also keeps its arrow affordance inset from the
+  rounded outer right corners.
+- Follow-up inspector formatting fix made slider value text responsive:
+  `current / max` is shown only when it fits; otherwise the row preserves the
+  slider track and current value. Appearance inherited/override suffixes are
+  compacted to reduce label-column crowding.
 
 ## Remaining TODOs
 

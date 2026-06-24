@@ -1,0 +1,230 @@
+Continue VisiForm Phase 113. Do not create a new phase and do not change version 1.0.19.
+
+Phase 113 currently builds and runs, but two issues remain:
+
+1. Changing Corner Radius in the Property Inspector does not visibly change the selected widget.
+2. Appearance rows in the Property Inspector have clipped or crowded labels and values.
+
+Keep this pass narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 113 plan and files directly related to:
+  - Corner Radius property metadata
+  - appearance override storage
+  - resolved widget style
+  - rectangular widget rendering
+  - Property Inspector appearance-row layout
+  - numeric slider rendering
+- do not perform a repository-wide audit
+- do not refactor unrelated styling or inspector systems
+- build once after both fixes are complete
+- do not commit or push
+
+## Goal 1: Make Corner Radius affect widget rendering
+
+Changing Corner Radius must immediately alter the visible shape of supported widgets.
+
+Trace the complete value path:
+
+1. Property Inspector slider value
+2. committed appearance override
+3. resolved normal widget style
+4. widget rendering helper
+5. rounded rectangle or border drawing
+
+Confirm where the value is lost, ignored, overwritten, or rendered incorrectly.
+
+Possible causes include:
+
+- slider updates a temporary UI value but does not commit the model property
+- state appearance editing writes to the wrong override scope
+- resolved style ignores the widget-level Corner Radius override
+- renderer still uses a hard-coded radius
+- fill is rounded but border remains square
+- border is rounded but selection overlay makes the change difficult to see
+- radius units are not DPI- or zoom-adjusted correctly
+- the drawing API receives an invalid radius or diameter value
+
+Record the confirmed root cause in the Phase 113 plan.
+
+## Corner Radius behavior
+
+For supported rectangular widgets:
+
+- changing the slider repaints immediately
+- both fill and visible border use the resolved radius
+- zero, if supported, produces square corners
+- larger values produce progressively rounder corners
+- radius is clamped safely to the widget dimensions
+- radius must not exceed half the smaller widget dimension
+- model width and height must not change
+- hit testing and widget bounds remain rectangular unless the existing system already supports shape-aware hit testing
+- selection outlines and resize handles remain editor geometry and need not become rounded
+
+Do not confuse the Phase 104 resize-corner arcs with the widget’s runtime corner radius.
+
+## Supported widgets
+
+Verify the shared rendering path for compatible rectangular widgets, including where applicable:
+
+- Button
+- Text Box
+- Combo Box
+- List Box
+- Progress Bar
+- Color Picker
+- Panel
+- Frame
+- Group Box
+- Tab Control
+
+Do not hard-code the fix only for Button if these widgets use the same style property.
+
+Hide or disable Corner Radius for widget types where it has no visible effect.
+
+## Normal versus state appearance
+
+Corner Radius remains a normal geometry/style metric.
+
+Requirements:
+
+- state appearance overrides must inherit the normal Corner Radius
+- Hover, Pressed, Focused, Checked/Selected, and Disabled must not replace it
+- editing a state must not write Corner Radius into state-specific overrides
+- changing the normal Corner Radius must affect all runtime states
+
+## Undo and dirty state
+
+Changing Corner Radius must:
+
+- create the expected undoable property change
+- mark the project dirty only when the value changes
+- support undo and redo
+- repaint immediately after undo and redo
+- create no undo entry for a no-op
+
+## Goal 2: Correct Property Inspector appearance-row formatting
+
+The screenshot shows clipping and crowding in rows such as:
+
+- Border Thickness
+- Corner Radius
+- inherited-property labels
+- slider values such as `25 / 25`
+
+Fix the row layout using actual available width and font metrics.
+
+Each slider row should reserve clear regions for:
+
+1. property label
+2. optional inherited indicator
+3. slider track
+4. current value
+5. range or maximum value, if displayed
+6. reset or override control, if present
+
+Requirements:
+
+- property labels remain readable
+- labels do not overlap sliders
+- current value and maximum do not clip
+- the slider thumb remains visible at minimum and maximum
+- inherited text does not crowd the property name
+- rows remain vertically centered
+- narrow inspector widths degrade cleanly
+- horizontal content must not draw outside the inspector panel
+- vertical scrolling remains functional
+
+## Responsive inspector layout
+
+Use practical minimum widths.
+
+Preferred behavior:
+
+- give the property-name column a reasonable minimum width
+- allow the editor/value region to use remaining width
+- compact or omit redundant range text before clipping the current value
+- use elision or a hover hint for long labels when necessary
+- keep the numeric current value readable
+- recompute layout when the Property Inspector splitter moves
+
+Do not use a single hard-coded width that only matches the current screenshot.
+
+## Slider display
+
+For Corner Radius and Border Thickness:
+
+- show the current numeric value clearly
+- show the valid range only if it fits cleanly
+- avoid truncated strings such as `25 / 2`
+- keep slider movement and typed editing synchronized
+- preserve the confirmed property range
+
+If displaying both current and maximum makes the row too crowded, prefer showing only the current value beside the slider and expose the range through the property hint or tooltip.
+
+## Preserve existing behavior
+
+Do not regress:
+
+- state appearance selector
+- temporary state preview
+- inherited-value indicators
+- Reset Property
+- Reset State
+- Reset All Appearance
+- Border Thickness behavior
+- Look and Feel presets
+- project and widget overrides
+- Preview Mode
+- save/load
+- generated output
+- autosave and recovery
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.19`.
+4. Select a Button.
+5. Set Corner Radius to its minimum.
+6. Confirm the widget appears square or minimally rounded.
+7. Move the slider through several values.
+8. Confirm the visible corners change progressively.
+9. Set the maximum value.
+10. Confirm the radius is clamped correctly for the widget size.
+11. Test undo and redo.
+12. Repeat on representative supported rectangular widgets.
+13. Confirm state preview preserves the same radius.
+14. Enter Preview Mode and confirm the radius remains visible.
+15. Confirm generated output uses the committed radius if that path is already supported.
+16. Resize the Property Inspector narrower and wider.
+17. Confirm labels, sliders, and values remain readable.
+18. Confirm no text overlaps or draws outside the panel.
+19. Confirm vertical scrolling still works.
+20. Confirm Border Thickness remains functional.
+
+Do not claim manual or generated-output validation unless it was actually performed.
+
+## Documentation
+
+Update the existing Phase 113 plan with:
+
+- Corner Radius root cause
+- corrected property-resolution and rendering path
+- radius clamping rule
+- supported widget types
+- inspector layout root cause
+- final row-layout policy
+- slider value-display policy
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 114.
+Do not change version 1.0.19.
+Do not commit or push.

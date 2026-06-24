@@ -227,6 +227,172 @@ void drawRoundedBox(visage::Canvas& canvas, const PanelRect& bounds, int fillCol
     drawRoundedRectBorder(canvas, bounds.x, bounds.y, bounds.width, bounds.height, radius, borderColor, borderThickness, fillColor);
 }
 
+enum class RoundedCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight
+};
+
+void fillRoundedCornerRing(visage::Canvas& canvas,
+    float centerX,
+    float centerY,
+    float radius,
+    float thickness,
+    RoundedCorner corner,
+    int color)
+{
+    const float outerRadius = std::max(0.0f, radius);
+    const float innerRadius = std::max(0.0f, outerRadius - std::max(1.0f, thickness));
+    if (outerRadius <= 0.0f) {
+        return;
+    }
+
+    canvas.setColor(color);
+    const int radiusPixels = std::max(1, static_cast<int>(std::ceil(outerRadius)));
+    for (int offsetY = -radiusPixels; offsetY <= radiusPixels; ++offsetY) {
+        const float dy = static_cast<float>(offsetY);
+        const bool upper = dy <= 0.0f;
+        if ((corner == RoundedCorner::TopLeft || corner == RoundedCorner::TopRight) != upper) {
+            continue;
+        }
+
+        const float outerHalfWidth = std::sqrt(std::max(0.0f, outerRadius * outerRadius - dy * dy));
+        const float innerHalfWidth = std::abs(dy) < innerRadius
+            ? std::sqrt(std::max(0.0f, innerRadius * innerRadius - dy * dy))
+            : 0.0f;
+        const bool left = corner == RoundedCorner::TopLeft || corner == RoundedCorner::BottomLeft;
+        const float startX = left ? centerX - outerHalfWidth : centerX + innerHalfWidth;
+        const float endX = left ? centerX - innerHalfWidth : centerX + outerHalfWidth;
+        canvas.fill(startX, centerY + dy, std::max(1.0f, endX - startX), 1.0f);
+    }
+}
+
+void drawRoundedEdgeTreatment(visage::Canvas& canvas,
+    const PanelRect& bounds,
+    float cornerRadius,
+    float thickness,
+    int leadingColor,
+    int trailingColor)
+{
+    if (!bounds.isValid() || thickness <= 0.0f || bounds.width < 2.0f || bounds.height < 2.0f) {
+        return;
+    }
+
+    const float edge = std::max(1.0f, std::min(thickness, std::min(bounds.width, bounds.height) * 0.25f));
+    const float radius = std::clamp(cornerRadius, 0.0f, std::min(bounds.width, bounds.height) * 0.5f);
+    if (radius <= 1.0f) {
+        canvas.setColor(leadingColor);
+        canvas.fill(bounds.x, bounds.y, bounds.width, edge);
+        canvas.fill(bounds.x, bounds.y, edge, bounds.height);
+        canvas.setColor(trailingColor);
+        canvas.fill(bounds.x, bounds.y + bounds.height - edge, bounds.width, edge);
+        canvas.fill(bounds.x + bounds.width - edge, bounds.y, edge, bounds.height);
+        return;
+    }
+
+    canvas.setColor(leadingColor);
+    canvas.fill(bounds.x + radius, bounds.y, std::max(0.0f, bounds.width - radius * 2.0f), edge);
+    canvas.fill(bounds.x, bounds.y + radius, edge, std::max(0.0f, bounds.height - radius * 2.0f));
+    fillRoundedCornerRing(canvas, bounds.x + radius, bounds.y + radius, radius, edge, RoundedCorner::TopLeft, leadingColor);
+    fillRoundedCornerRing(canvas, bounds.x + radius, bounds.y + bounds.height - radius, radius, edge, RoundedCorner::BottomLeft, leadingColor);
+
+    canvas.setColor(trailingColor);
+    canvas.fill(bounds.x + radius, bounds.y + bounds.height - edge, std::max(0.0f, bounds.width - radius * 2.0f), edge);
+    canvas.fill(bounds.x + bounds.width - edge, bounds.y + radius, edge, std::max(0.0f, bounds.height - radius * 2.0f));
+    fillRoundedCornerRing(canvas, bounds.x + bounds.width - radius, bounds.y + radius, radius, edge, RoundedCorner::TopRight, trailingColor);
+    fillRoundedCornerRing(canvas, bounds.x + bounds.width - radius, bounds.y + bounds.height - radius, radius, edge, RoundedCorner::BottomRight, trailingColor);
+}
+
+int resolvedStateFill(const ResolvedWidgetStyle& style, const visual_style::State& state, int fillColor)
+{
+    if (!state.enabled) {
+        return visual_style::blend(fillColor, style.disabledColor, 0.55f);
+    }
+
+    switch (visual_style::resolveBaseState(state)) {
+    case visual_style::BaseState::Pressed: return visual_style::blend(fillColor, 0xff000000, 0.20f);
+    case visual_style::BaseState::Hovered: return visual_style::blend(fillColor, style.accentColor, 0.12f);
+    case visual_style::BaseState::CheckedOrSelected: return visual_style::blend(fillColor, style.accentColor, 0.18f);
+    case visual_style::BaseState::Disabled: return visual_style::blend(fillColor, style.disabledColor, 0.55f);
+    case visual_style::BaseState::Normal: return fillColor;
+    }
+
+    return fillColor;
+}
+
+void drawRoundedBevel(visage::Canvas& canvas,
+    const PanelRect& bounds,
+    const ResolvedWidgetStyle& style,
+    const visual_style::State& state,
+    int fillColor)
+{
+    if (!bounds.isValid()) {
+        return;
+    }
+
+    const bool pressed = visual_style::resolveBaseState(state) == visual_style::BaseState::Pressed;
+    const int resolvedFill = resolvedStateFill(style, state, fillColor);
+    const int resolvedBorder = state.enabled ? style.borderColor : visual_style::blend(style.borderColor, style.disabledColor, 0.65f);
+    drawRoundedBox(canvas, bounds, resolvedFill, resolvedBorder, style.borderThickness, style.cornerRadius);
+
+    if (bounds.width < 3.0f || bounds.height < 3.0f) {
+        return;
+    }
+
+    const float inset = std::max(1.0f, std::min(style.borderThickness + 1.0f, std::min(bounds.width, bounds.height) * 0.25f));
+    const int leading = pressed ? style.shadowColor : style.highlightColor;
+    const int trailing = pressed ? style.highlightColor : style.shadowColor;
+    const PanelRect edgeBounds{
+        bounds.x + inset,
+        bounds.y + inset,
+        std::max(0.0f, bounds.width - inset * 2.0f),
+        std::max(0.0f, bounds.height - inset * 2.0f)
+    };
+    drawRoundedEdgeTreatment(canvas, edgeBounds, std::max(0.0f, style.cornerRadius - inset), 1.0f, leading, trailing);
+}
+
+void drawRoundedRecessed(visage::Canvas& canvas,
+    const PanelRect& bounds,
+    const ResolvedWidgetStyle& style,
+    const visual_style::State& state)
+{
+    if (!bounds.isValid()) {
+        return;
+    }
+
+    int fillColor = style.recessedColor;
+    if (state.readOnly) {
+        fillColor = visual_style::blend(fillColor, style.disabledColor, 0.28f);
+    }
+    if (state.checkedOrSelected || state.active) {
+        fillColor = visual_style::blend(fillColor, style.accentColor, 0.14f);
+    }
+    if (!state.enabled) {
+        fillColor = visual_style::blend(fillColor, style.disabledColor, 0.55f);
+    }
+
+    drawRoundedBox(canvas,
+        bounds,
+        fillColor,
+        state.focused && state.enabled ? style.focusColor : style.borderColor,
+        style.borderThickness,
+        style.cornerRadius);
+
+    if (bounds.width < 3.0f || bounds.height < 3.0f) {
+        return;
+    }
+
+    const float inset = std::max(1.0f, std::min(style.borderThickness + 1.0f, std::min(bounds.width, bounds.height) * 0.25f));
+    const PanelRect edgeBounds{
+        bounds.x + inset,
+        bounds.y + inset,
+        std::max(0.0f, bounds.width - inset * 2.0f),
+        std::max(0.0f, bounds.height - inset * 2.0f)
+    };
+    drawRoundedEdgeTreatment(canvas, edgeBounds, std::max(0.0f, style.cornerRadius - inset), 1.0f, style.shadowColor, style.highlightColor);
+}
+
 int blendColor(int colorA, int colorB, float amount)
 {
     const auto blendChannel = [amount](int first, int second) {
@@ -1187,7 +1353,9 @@ void drawWidget(visage::Canvas& canvas,
         const bool enabled = widgetIsEnabled(widget);
         const auto palette = baselinePalette(style, style.fillColor);
         const float normalized = normalizedRangeValue(widget, "value");
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        auto progressState = visualState;
+        progressState.enabled = enabled;
+        drawRoundedRecessed(canvas, bounds, style, progressState);
 
         const float inset = std::min(3.0f, std::max(1.0f, style.borderThickness + 1.0f));
         const float trackWidth = std::max(0.0f, bounds.width - inset * 2.0f);
@@ -1213,7 +1381,9 @@ void drawWidget(visage::Canvas& canvas,
         const float swatchX = bounds.x + 6.0f;
         const float swatchY = bounds.y + (bounds.height - swatchSize) * 0.5f;
         const float textX = swatchX + swatchSize + 10.0f;
-        visual_style::drawBevel(canvas, baselineRect(bounds), palette, visualState);
+        auto pickerState = visualState;
+        pickerState.enabled = enabled;
+        drawRoundedBevel(canvas, bounds, style, pickerState, style.fillColor);
         canvas.setColor(enabled ? parseColorOrDefault(colorValue, style.accentColor)
                                 : visual_style::blend(parseColorOrDefault(colorValue, style.accentColor), style.disabledColor, 0.58f));
         canvas.fill(swatchX, swatchY, swatchSize, swatchSize);
@@ -1276,7 +1446,9 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::Frame: {
         const bool enabled = widgetIsEnabled(widget);
         const auto palette = baselinePalette(style, style.fillColor);
-        visual_style::drawBevel(canvas, baselineRect(bounds), palette, visualState);
+        auto frameState = visualState;
+        frameState.enabled = enabled;
+        drawRoundedBevel(canvas, bounds, style, frameState, style.fillColor);
         canvas.setColor(enabled ? style.panelColor : visual_style::blend(style.panelColor, style.disabledColor, 0.55f));
         canvas.fill(bounds.x + 2.0f, bounds.y + 2.0f, std::max(0.0f, bounds.width - 4.0f), std::min(24.0f, std::max(0.0f, bounds.height - 4.0f)));
         if (drawText) {
@@ -1293,7 +1465,9 @@ void drawWidget(visage::Canvas& canvas,
         const bool enabled = widgetIsEnabled(widget);
         const auto palette = baselinePalette(style, style.fillColor);
         const PanelRect contentBounds{ bounds.x, bounds.y + 10.0f, bounds.width, std::max(0.0f, bounds.height - 10.0f) };
-        visual_style::drawBevel(canvas, baselineRect(contentBounds), palette, false, false, enabled);
+        visual_style::State groupState;
+        groupState.enabled = enabled;
+        drawRoundedBevel(canvas, contentBounds, style, groupState, style.fillColor);
         if (drawText) {
             const std::string title = runtimeTextOrEditorLabel(widget, "title", showEditorDecorations);
             if (!title.empty()) {
@@ -1313,11 +1487,17 @@ void drawWidget(visage::Canvas& canvas,
         palette.highlight = visual_style::blend(palette.highlight, palette.fill, 0.55f);
         palette.shadow = visual_style::blend(palette.shadow, palette.fill, 0.55f);
         if (style.borderThickness > 0.0f) {
-            visual_style::drawBevel(canvas, baselineRect(bounds), palette, false, false, enabled);
+            visual_style::State panelState;
+            panelState.enabled = enabled;
+            drawRoundedBevel(canvas, bounds, style, panelState, style.fillColor);
         }
         else {
-            visual_style::fill(canvas, baselineRect(bounds),
-                enabled ? palette.fill : visual_style::blend(palette.fill, palette.disabled, 0.55f));
+            drawRoundedBox(canvas,
+                bounds,
+                enabled ? palette.fill : visual_style::blend(palette.fill, palette.disabled, 0.55f),
+                style.borderColor,
+                0.0f,
+                style.cornerRadius);
         }
         break;
     }
@@ -1336,7 +1516,9 @@ void drawWidget(visage::Canvas& canvas,
         const std::vector<std::string> labels = tabLabels(widget);
         const int selectedTab = designerCanvas.previewSelectedTab(widget, selectedTabIndex(widget));
         const float headerHeight = std::min(32.0f, std::max(24.0f, bounds.height * 0.18f));
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
+        auto tabControlState = visualState;
+        tabControlState.enabled = enabled;
+        drawRoundedRecessed(canvas, bounds, style, tabControlState);
         const float tabWidth = bounds.width / static_cast<float>(std::max<std::size_t>(1, labels.size()));
         for (std::size_t index = 0; index < labels.size(); ++index) {
             const PanelRect tabBounds{
@@ -1367,7 +1549,12 @@ void drawWidget(visage::Canvas& canvas,
         const bool enabled = widgetIsEnabled(widget);
         auto palette = baselinePalette(style, style.fillColor);
         palette.border = blendColor(style.borderColor, style.fillColor, 0.20f);
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, false, enabled);
+        drawRoundedBox(canvas,
+            bounds,
+            enabled ? style.recessedColor : visual_style::blend(style.recessedColor, style.disabledColor, 0.55f),
+            palette.border,
+            style.borderThickness,
+            style.cornerRadius);
         break;
     }
     case model::WidgetType::Label:
@@ -1399,7 +1586,8 @@ void drawWidget(visage::Canvas& canvas,
         const auto palette = baselinePalette(style, stateFill);
         auto buttonState = visualState;
         buttonState.pressed = pressedState;
-        visual_style::drawBevel(canvas, baselineRect(bounds), palette, buttonState);
+        buttonState.enabled = enabled;
+        drawRoundedBevel(canvas, bounds, style, buttonState, stateFill);
         if (drawText && !normalText.empty()) {
             const float padding = std::clamp(style.controlPadding, 0.0f, std::min(bounds.width, bounds.height) * 0.45f);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
@@ -1414,7 +1602,9 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::TextBox: {
         const bool enabled = widgetIsEnabled(widget);
         auto palette = baselinePalette(style, style.fillColor);
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
+        auto textBoxState = visualState;
+        textBoxState.enabled = enabled;
+        drawRoundedRecessed(canvas, bounds, style, textBoxState);
         if (drawText) {
             const float padding = std::clamp(style.controlPadding, 0.0f, bounds.width * 0.45f);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
@@ -1432,13 +1622,19 @@ void drawWidget(visage::Canvas& canvas,
         const std::string selectedText = model::getSelectedItemText(items, selectedIndex);
         const float arrowWidth = std::min(26.0f, std::max(20.0f, bounds.width * 0.18f));
         auto palette = baselinePalette(style, style.fillColor);
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
+        auto comboState = visualState;
+        comboState.enabled = enabled;
+        drawRoundedRecessed(canvas, bounds, style, comboState);
         const visual_style::Rect arrowBounds{
             bounds.x + bounds.width - arrowWidth, bounds.y, arrowWidth, bounds.height
         };
         auto arrowPalette = palette;
         arrowPalette.fill = blendColor(style.panelColor, style.fillColor, 0.22f);
-        visual_style::drawBevel(canvas, arrowBounds, arrowPalette, visualState);
+        const float arrowInset = std::max(1.0f, std::min(style.borderThickness + 1.0f, bounds.height * 0.25f));
+        canvas.setColor(enabled ? arrowPalette.fill : visual_style::blend(arrowPalette.fill, arrowPalette.disabled, 0.55f));
+        canvas.fill(arrowBounds.x, arrowBounds.y + arrowInset, std::max(0.0f, arrowBounds.width - arrowInset), std::max(0.0f, arrowBounds.height - arrowInset * 2.0f));
+        canvas.setColor(enabled ? style.shadowColor : visual_style::blend(style.shadowColor, style.disabledColor, 0.65f));
+        canvas.fill(arrowBounds.x, arrowBounds.y + arrowInset, 1.0f, std::max(0.0f, arrowBounds.height - arrowInset * 2.0f));
         canvas.setColor(enabled ? palette.text : palette.disabled);
         const float arrowCenterX = arrowBounds.x + arrowBounds.width * 0.5f;
         const float arrowCenterY = arrowBounds.y + arrowBounds.height * 0.5f;
@@ -1469,7 +1665,9 @@ void drawWidget(visage::Canvas& canvas,
         const float listTop = bounds.y + 4.0f;
         const float visibleHeight = std::max(0.0f, bounds.height - 8.0f);
         const std::size_t visibleCount = std::max<std::size_t>(1, static_cast<std::size_t>(std::floor(visibleHeight / rowHeight)));
-        visual_style::drawRecessed(canvas, baselineRect(bounds), palette, visualState);
+        auto listState = visualState;
+        listState.enabled = enabled;
+        drawRoundedRecessed(canvas, bounds, style, listState);
         float rowTop = listTop;
         for (std::size_t index = 0; index < std::min<std::size_t>(visibleCount, items.size()); ++index) {
             const bool selected = static_cast<int>(index) == selectedIndex;
