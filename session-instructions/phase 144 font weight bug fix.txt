@@ -1,0 +1,146 @@
+Continue VisiForm Phase 114. Do not create a new phase and do not change version 1.0.20.
+
+The Font Weight property currently shows a numeric value such as `400` in the Property Inspector row, while the dropdown uses readable labels such as `Regular` and `Bold`.
+
+Keep this fix narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 114 plan and files directly related to:
+  - Font Weight property metadata
+  - Property Inspector dropdown/value formatting
+  - typography override storage
+  - typography serialization
+- do not refactor unrelated typography or inspector code
+- build once after the focused fix
+- do not commit or push
+
+## Goal
+
+Display Font Weight using readable text everywhere in the Property Inspector.
+
+Preferred labels:
+
+- `Regular`
+- `Bold`
+
+If additional weights are already supported, use clear labels such as:
+
+- Light
+- Medium
+- Semi Bold
+- Bold
+
+Do not show raw numeric values such as `400` or `700` in the editor UI.
+
+## Internal representation
+
+The internal model may continue storing standard numeric font weights if that is already established.
+
+Requirements:
+
+- preserve existing serialization compatibility
+- preserve generated-output behavior
+- map numeric values to display labels in one shared place
+- map selected labels back to the correct internal values
+- do not store the display label redundantly unless the current model already does so
+
+Example mapping:
+
+- `400` → `Regular`
+- `700` → `Bold`
+
+Confirm the actual supported values from the existing code before changing them.
+
+## Property row display
+
+The closed Property Inspector row must show the same label as the dropdown selection.
+
+Examples:
+
+- `Regular`
+- `Bold`
+
+Do not display:
+
+- `400`
+- `700`
+- mixed formats such as `400 >`
+
+Inherited formatting should remain consistent, for example:
+
+- `Regular (Inherited)`
+- or the existing compact inherited indicator pattern
+
+Do not let the inherited marker crowd or clip the value.
+
+## Dropdown behavior
+
+The dropdown must:
+
+- show only supported readable labels
+- select the label matching the current internal value
+- commit the correct internal weight when changed
+- repaint text-bearing widgets immediately
+- support undo and redo
+- create no undo entry for a no-op
+
+## Fallback behavior
+
+If a project contains an unsupported numeric weight:
+
+- map it to the nearest supported value or safe default
+- use `Regular` as the fallback unless existing behavior defines another default
+- do not assert or crash
+- preserve backward compatibility where practical
+
+Document the fallback rule in the Phase 114 plan.
+
+## Preserve existing behavior
+
+Do not regress:
+
+- font family
+- font size
+- italic
+- text alignment
+- inherited typography values
+- widget-level typography overrides
+- Preview Mode
+- generated output
+- save/load
+- autosave and recovery
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.20`.
+4. Select a text-bearing widget.
+5. Confirm Font Weight shows `Regular` rather than `400`.
+6. Open the dropdown.
+7. Select `Bold`.
+8. Confirm the closed row shows `Bold`.
+9. Confirm the widget text updates.
+10. Test undo and redo.
+11. Save and reload.
+12. Confirm the label and internal value remain correct.
+13. Test inherited and explicitly overridden font weights.
+14. Confirm generated output still receives the correct weight value.
+
+Update the existing Phase 114 plan with:
+
+- display/internal mapping
+- supported labels
+- fallback behavior
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 115.
+Do not change version 1.0.20.
+Do not commit or push.

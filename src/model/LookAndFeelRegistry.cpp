@@ -55,8 +55,13 @@ LookAndFeelDefinition makeDefinition(
     definition.shadowEdgeColor = std::move(shadow);
     definition.borderThickness = borderThickness;
     definition.cornerRadius = cornerRadius;
+    definition.fontFamily = "Default";
     definition.fontSize = fontSize;
+    definition.fontWeight = 400;
+    definition.italic = false;
     definition.controlPadding = controlPadding;
+    definition.textPadding = controlPadding;
+    definition.disabledTextTreatment = "Muted";
     return definition;
 }
 
@@ -94,6 +99,16 @@ constexpr std::array<std::string_view, 10> kWidgetOverrideKeys = {
     "controlPadding"
 };
 
+constexpr std::array<std::string_view, 7> kWidgetTypographyOverrideKeys = {
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "italic",
+    "horizontalTextAlignment",
+    "verticalTextAlignment",
+    "textPadding"
+};
+
 constexpr std::array<std::string_view, 7> kWidgetStateOverrideKeys = {
     "controlSurfaceColor",
     "textColor",
@@ -121,6 +136,27 @@ bool isSupportedWidgetType(WidgetType type)
     case WidgetType::GroupBox:
     case WidgetType::Panel:
     case WidgetType::TabControl:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool isTextBearingWidgetType(WidgetType type)
+{
+    switch (type) {
+    case WidgetType::Button:
+    case WidgetType::Label:
+    case WidgetType::TextBox:
+    case WidgetType::CheckBox:
+    case WidgetType::RadioButton:
+    case WidgetType::ComboBox:
+    case WidgetType::ListBox:
+    case WidgetType::GroupBox:
+    case WidgetType::Frame:
+    case WidgetType::TabControl:
+    case WidgetType::StatusBar:
+    case WidgetType::MenuBar:
         return true;
     default:
         return false;
@@ -189,6 +225,22 @@ void applyStateOverrides(const WidgetStateLookAndFeelOverrides& overrides,
     apply(overrides.focusOutlineColor, style.focusOutlineColor);
     apply(overrides.highlightEdgeColor, style.highlightEdgeColor);
     apply(overrides.shadowEdgeColor, style.shadowEdgeColor);
+}
+
+std::string normalizedAlignment(std::string value, bool vertical)
+{
+    if (value == "Left" || value == "Center" || value == "Right") {
+        return vertical && value != "Center" ? "Default" : value;
+    }
+    if (vertical && (value == "Top" || value == "Bottom")) {
+        return value;
+    }
+    return "Default";
+}
+
+std::string normalizedDisabledTextTreatment(std::string value)
+{
+    return value == "Muted" || value == "Normal" ? value : "Muted";
 }
 
 } // namespace
@@ -310,8 +362,14 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolveProjectStyle(
     style.shadowEdgeColor = valueOrFallback(definition->shadowEdgeColor, fallback.shadowEdgeColor);
     style.borderThickness = definition->borderThickness > 0.0f ? definition->borderThickness : fallback.borderThickness;
     style.cornerRadius = definition->cornerRadius >= 0.0f ? definition->cornerRadius : fallback.cornerRadius;
+    style.fontFamily = valueOrFallback(definition->fontFamily, fallback.fontFamily);
     style.fontSize = definition->fontSize > 0.0f ? definition->fontSize : fallback.fontSize;
+    style.fontWeight = normalizeFontWeight(definition->fontWeight);
+    style.italic = definition->italic;
     style.controlPadding = definition->controlPadding >= 0.0f ? definition->controlPadding : fallback.controlPadding;
+    style.textPadding = definition->textPadding >= 0.0f ? definition->textPadding : fallback.textPadding;
+    style.disabledTextTreatment = normalizedDisabledTextTreatment(
+        valueOrFallback(definition->disabledTextTreatment, fallback.disabledTextTreatment));
     style.splitterHighlightThickness = definition->splitterHighlightThickness > 0.0f
         ? definition->splitterHighlightThickness
         : fallback.splitterHighlightThickness;
@@ -337,6 +395,24 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolveProjectStyle(
     }
     if (overrides.controlPadding.has_value()) {
         style.controlPadding = std::clamp(*overrides.controlPadding, 0.0f, 40.0f);
+    }
+    if (overrides.fontFamily.has_value() && !overrides.fontFamily->empty()) {
+        style.fontFamily = *overrides.fontFamily;
+    }
+    if (overrides.fontSize.has_value()) {
+        style.fontSize = std::clamp(*overrides.fontSize, 8.0f, 72.0f);
+    }
+    if (overrides.fontWeight.has_value()) {
+        style.fontWeight = normalizeFontWeight(*overrides.fontWeight);
+    }
+    if (overrides.italic.has_value()) {
+        style.italic = *overrides.italic;
+    }
+    if (overrides.textPadding.has_value()) {
+        style.textPadding = std::clamp(*overrides.textPadding, 0.0f, 40.0f);
+    }
+    if (overrides.disabledTextTreatment.has_value()) {
+        style.disabledTextTreatment = normalizedDisabledTextTreatment(*overrides.disabledTextTreatment);
     }
     if (overrides.splitterHighlightThickness.has_value()) {
         style.splitterHighlightThickness = std::clamp(*overrides.splitterHighlightThickness, 0.0f, 8.0f);
@@ -365,6 +441,16 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         style.cornerRadius = std::clamp(widget.getFloatProperty("cornerRadius", style.cornerRadius), 0.0f, 50.0f);
     }
     style.fontSize = std::clamp(widget.getFloatProperty("fontSize", style.fontSize), 8.0f, 72.0f);
+    const std::string legacyFontFamily = widget.getStringProperty("fontFamily", {});
+    if (!legacyFontFamily.empty()) {
+        style.fontFamily = legacyFontFamily;
+    }
+    if (widget.getBoolProperty("fontBold", false)) {
+        style.fontWeight = normalizeFontWeight(700);
+    }
+    if (widget.getBoolProperty("fontItalic", false)) {
+        style.italic = true;
+    }
 
     const auto applyColorOverride = [&widget](const char* key, std::string& value) {
         const std::string overrideValue = widget.getStringProperty(key, {});
@@ -414,6 +500,27 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         if (overrides.controlPadding.has_value()) {
             style.controlPadding = std::clamp(*overrides.controlPadding, 0.0f, 40.0f);
         }
+        if (overrides.fontFamily.has_value() && !overrides.fontFamily->empty()) {
+            style.fontFamily = *overrides.fontFamily;
+        }
+        if (overrides.fontSize.has_value()) {
+            style.fontSize = std::clamp(*overrides.fontSize, 8.0f, 72.0f);
+        }
+        if (overrides.fontWeight.has_value()) {
+            style.fontWeight = normalizeFontWeight(*overrides.fontWeight);
+        }
+        if (overrides.italic.has_value()) {
+            style.italic = *overrides.italic;
+        }
+        if (overrides.horizontalTextAlignment.has_value()) {
+            style.horizontalTextAlignment = normalizedAlignment(*overrides.horizontalTextAlignment, false);
+        }
+        if (overrides.verticalTextAlignment.has_value()) {
+            style.verticalTextAlignment = normalizedAlignment(*overrides.verticalTextAlignment, true);
+        }
+        if (overrides.textPadding.has_value()) {
+            style.textPadding = std::clamp(*overrides.textPadding, 0.0f, 40.0f);
+        }
     }
 
     return style;
@@ -448,11 +555,31 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
 
 bool LookAndFeelRegistry::supportsWidgetOverrides(WidgetType type)
 {
-    return isSupportedWidgetType(type);
+    return isSupportedWidgetType(type) || isTextBearingWidgetType(type);
 }
 
 bool LookAndFeelRegistry::supportsWidgetOverride(WidgetType type, std::string_view key)
 {
+    if (!isSupportedWidgetType(type) && !isTextBearingWidgetType(type)) {
+        return false;
+    }
+
+    if (std::find(kWidgetTypographyOverrideKeys.begin(), kWidgetTypographyOverrideKeys.end(), key)
+        != kWidgetTypographyOverrideKeys.end()) {
+        if (!isTextBearingWidgetType(type)) {
+            return false;
+        }
+        if (key == "verticalTextAlignment") {
+            return type == WidgetType::Button
+                || type == WidgetType::Label
+                || type == WidgetType::TextBox
+                || type == WidgetType::ComboBox
+                || type == WidgetType::ListBox
+                || type == WidgetType::StatusBar;
+        }
+        return true;
+    }
+
     if (!isSupportedWidgetType(type)) {
         return false;
     }
@@ -485,7 +612,14 @@ bool LookAndFeelRegistry::supportsWidgetOverride(WidgetType type, std::string_vi
 std::vector<std::string_view> LookAndFeelRegistry::supportedWidgetOverrideKeys(WidgetType type)
 {
     std::vector<std::string_view> keys;
-    for (const auto key : kWidgetOverrideKeys) {
+    if (isSupportedWidgetType(type)) {
+        for (const auto key : kWidgetOverrideKeys) {
+            if (supportsWidgetOverride(type, key)) {
+                keys.push_back(key);
+            }
+        }
+    }
+    for (const auto key : kWidgetTypographyOverrideKeys) {
         if (supportsWidgetOverride(type, key)) {
             keys.push_back(key);
         }

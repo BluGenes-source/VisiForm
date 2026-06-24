@@ -78,6 +78,16 @@ nlohmann::json widgetAppearanceOverridesToJson(const model::WidgetLookAndFeelOve
             json[key] = *value;
         }
     };
+    const auto addInt = [&json](const char* key, const std::optional<int>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
+    const auto addBool = [&json](const char* key, const std::optional<bool>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
 
     addString("controlSurfaceColor", overrides.controlSurfaceColor);
     addString("textColor", overrides.textColor);
@@ -89,6 +99,13 @@ nlohmann::json widgetAppearanceOverridesToJson(const model::WidgetLookAndFeelOve
     addFloat("borderThickness", overrides.borderThickness);
     addFloat("cornerRadius", overrides.cornerRadius);
     addFloat("controlPadding", overrides.controlPadding);
+    addString("fontFamily", overrides.fontFamily);
+    addFloat("fontSize", overrides.fontSize);
+    addInt("fontWeight", overrides.fontWeight);
+    addBool("italic", overrides.italic);
+    addString("horizontalTextAlignment", overrides.horizontalTextAlignment);
+    addString("verticalTextAlignment", overrides.verticalTextAlignment);
+    addFloat("textPadding", overrides.textPadding);
     return json;
 }
 
@@ -168,6 +185,16 @@ nlohmann::json lookAndFeelOverridesToJson(const model::LookAndFeelOverrides& ove
             json[key] = *value;
         }
     };
+    const auto addInt = [&json](const char* key, const std::optional<int>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
+    const auto addBool = [&json](const char* key, const std::optional<bool>& value) {
+        if (value.has_value()) {
+            json[key] = *value;
+        }
+    };
 
     addString("applicationSurfaceColor", overrides.applicationSurfaceColor);
     addString("controlSurfaceColor", overrides.controlSurfaceColor);
@@ -184,6 +211,12 @@ nlohmann::json lookAndFeelOverridesToJson(const model::LookAndFeelOverrides& ove
     addFloat("controlPadding", overrides.controlPadding);
     addFloat("splitterHighlightThickness", overrides.splitterHighlightThickness);
     addFloat("splitterShadowThickness", overrides.splitterShadowThickness);
+    addString("fontFamily", overrides.fontFamily);
+    addFloat("fontSize", overrides.fontSize);
+    addInt("fontWeight", overrides.fontWeight);
+    addBool("italic", overrides.italic);
+    addFloat("textPadding", overrides.textPadding);
+    addString("disabledTextTreatment", overrides.disabledTextTreatment);
     return json;
 }
 

@@ -284,6 +284,15 @@ std::vector<PropertyInspector::PropertyChoice> lookAndFeelChoices()
     return choices;
 }
 
+std::vector<PropertyInspector::PropertyChoice> fontWeightChoices()
+{
+    std::vector<PropertyInspector::PropertyChoice> choices;
+    for (const auto choice : model::supportedFontWeightChoices()) {
+        choices.push_back(makeChoice(std::to_string(choice.value), std::string{ choice.label }));
+    }
+    return choices;
+}
+
 std::vector<PropertyInspector::PropertyChoice> callbackChoices(const model::ProjectDocument& document,
     const model::WidgetEventDefinition& eventDefinition)
 {
@@ -370,7 +379,12 @@ bool isStylePropertyKey(const std::string& key)
         || key == "fontFamily"
         || key == "fontSize"
         || key == "fontBold"
-        || key == "fontItalic";
+        || key == "fontItalic"
+        || key == "fontWeight"
+        || key == "italic"
+        || key == "horizontalTextAlignment"
+        || key == "verticalTextAlignment"
+        || key == "textPadding";
 }
 
 bool isLegacyWidgetLookAndFeelPropertyKey(const std::string& key)
@@ -396,6 +410,13 @@ std::string appearanceLabel(std::string_view key)
     if (key == "borderThickness") return "Border Thickness";
     if (key == "cornerRadius") return "Corner Radius";
     if (key == "controlPadding") return "Control Padding";
+    if (key == "fontFamily") return "Font Family";
+    if (key == "fontSize") return "Font Size";
+    if (key == "fontWeight") return "Font Weight";
+    if (key == "italic") return "Italic";
+    if (key == "horizontalTextAlignment") return "Text Align";
+    if (key == "verticalTextAlignment") return "Vertical Align";
+    if (key == "textPadding") return "Text Padding";
     return std::string{ key };
 }
 
@@ -410,6 +431,9 @@ std::optional<std::string> appearanceColorOverride(
     if (key == "focusOutlineColor") return overrides.focusOutlineColor;
     if (key == "highlightEdgeColor") return overrides.highlightEdgeColor;
     if (key == "shadowEdgeColor") return overrides.shadowEdgeColor;
+    if (key == "fontFamily") return overrides.fontFamily;
+    if (key == "horizontalTextAlignment") return overrides.horizontalTextAlignment;
+    if (key == "verticalTextAlignment") return overrides.verticalTextAlignment;
     return std::nullopt;
 }
 
@@ -420,6 +444,24 @@ std::optional<float> appearanceMetricOverride(
     if (key == "borderThickness") return overrides.borderThickness;
     if (key == "cornerRadius") return overrides.cornerRadius;
     if (key == "controlPadding") return overrides.controlPadding;
+    if (key == "fontSize") return overrides.fontSize;
+    if (key == "textPadding") return overrides.textPadding;
+    return std::nullopt;
+}
+
+std::optional<int> appearanceIntegerOverride(
+    const model::WidgetLookAndFeelOverrides& overrides,
+    std::string_view key)
+{
+    if (key == "fontWeight") return overrides.fontWeight;
+    return std::nullopt;
+}
+
+std::optional<bool> appearanceBoolOverride(
+    const model::WidgetLookAndFeelOverrides& overrides,
+    std::string_view key)
+{
+    if (key == "italic") return overrides.italic;
     return std::nullopt;
 }
 
@@ -494,6 +536,13 @@ std::string inheritedAppearanceValue(const model::ResolvedLookAndFeelStyle& styl
     if (key == "borderThickness") return formatFloat(style.borderThickness);
     if (key == "cornerRadius") return formatFloat(style.cornerRadius);
     if (key == "controlPadding") return formatFloat(style.controlPadding);
+    if (key == "fontFamily") return style.fontFamily;
+    if (key == "fontSize") return formatFloat(style.fontSize);
+    if (key == "fontWeight") return std::string{ model::fontWeightLabel(style.fontWeight) };
+    if (key == "italic") return style.italic ? "true" : "false";
+    if (key == "horizontalTextAlignment") return style.horizontalTextAlignment;
+    if (key == "verticalTextAlignment") return style.verticalTextAlignment;
+    if (key == "textPadding") return formatFloat(style.textPadding);
     return {};
 }
 
@@ -1298,7 +1347,19 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 ? model::LookAndFeelRegistry::supportedWidgetOverrideKeys(selectedWidget->type)
                 : model::LookAndFeelRegistry::supportedWidgetStateOverrideKeys(selectedWidget->type, selectedState);
             const auto stateOverrides = selectedWidget->stateAppearanceOverrides.find(selectedState);
+            bool addedTypographySection = false;
             for (const auto key : keys) {
+                const bool typographyKey = key == "fontFamily"
+                    || key == "fontSize"
+                    || key == "fontWeight"
+                    || key == "italic"
+                    || key == "horizontalTextAlignment"
+                    || key == "verticalTextAlignment"
+                    || key == "textPadding";
+                if (typographyKey && !addedTypographySection) {
+                    rows.push_back({ "__section_typography", "Typography", {}, {}, PropertyEditKind::ReadOnly, true });
+                    addedTypographySection = true;
+                }
                 const auto colorOverride = selectedState == model::WidgetAppearanceState::Normal
                     ? appearanceColorOverride(selectedWidget->appearanceOverrides, key)
                     : stateOverrides != selectedWidget->stateAppearanceOverrides.end()
@@ -1307,21 +1368,72 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 const auto metricOverride = selectedState == model::WidgetAppearanceState::Normal
                     ? appearanceMetricOverride(selectedWidget->appearanceOverrides, key)
                     : std::nullopt;
-                const bool overridden = colorOverride.has_value() || metricOverride.has_value();
+                const auto integerOverride = selectedState == model::WidgetAppearanceState::Normal
+                    ? appearanceIntegerOverride(selectedWidget->appearanceOverrides, key)
+                    : std::nullopt;
+                const auto boolOverride = selectedState == model::WidgetAppearanceState::Normal
+                    ? appearanceBoolOverride(selectedWidget->appearanceOverrides, key)
+                    : std::nullopt;
+                const bool overridden = colorOverride.has_value()
+                    || metricOverride.has_value()
+                    || integerOverride.has_value()
+                    || boolOverride.has_value();
                 const std::string value = colorOverride.has_value()
                     ? *colorOverride
-                    : (metricOverride.has_value() ? formatFloat(*metricOverride) : inheritedAppearanceValue(inheritedStyle, key));
+                    : metricOverride.has_value() ? formatFloat(*metricOverride)
+                    : integerOverride.has_value() ? std::to_string(model::normalizeFontWeight(*integerOverride))
+                    : boolOverride.has_value() ? (*boolOverride ? "true" : "false")
+                                                : inheritedAppearanceValue(inheritedStyle, key);
                 const auto editorMetadata = appearanceEditorMetadata(selectedWidget->type, key);
+                PropertyEditKind editKind = key.ends_with("Color") ? PropertyEditKind::Color : editorMetadata.editKind;
+                std::vector<PropertyChoice> choices;
+                if (key == "fontFamily") {
+                    editKind = PropertyEditKind::Choice;
+                    choices = {
+                        makeChoice("Default", "Default", "Use the application default font."),
+                        makeChoice("Segoe UI"),
+                        makeChoice("Tahoma"),
+                        makeChoice("Arial")
+                    };
+                }
+                else if (key == "fontWeight") {
+                    editKind = PropertyEditKind::Choice;
+                    choices = fontWeightChoices();
+                }
+                else if (key == "italic") {
+                    editKind = PropertyEditKind::Bool;
+                }
+                else if (key == "horizontalTextAlignment") {
+                    editKind = PropertyEditKind::Choice;
+                    choices = {
+                        makeChoice("Default", "Default"),
+                        makeChoice("Left"),
+                        makeChoice("Center"),
+                        makeChoice("Right")
+                    };
+                }
+                else if (key == "verticalTextAlignment") {
+                    editKind = PropertyEditKind::Choice;
+                    choices = {
+                        makeChoice("Default", "Default"),
+                        makeChoice("Top"),
+                        makeChoice("Center"),
+                        makeChoice("Bottom")
+                    };
+                }
+                const std::string displayValue = key == "fontWeight"
+                    ? choiceLabelForValue(choices, value)
+                    : value;
                 rows.push_back({
                     "__appearance_" + std::string{ key },
                     appearanceLabel(key) + (overridden ? " (Set)" : " (Inh)"),
                     overridden
                         ? "Explicit " + appearanceStateLabel(selectedState) + " override. Use Reset Property to inherit again."
                         : "Inherited from the resolved normal widget Appearance. Editing creates an explicit override.",
-                    value,
-                    key.ends_with("Color") ? PropertyEditKind::Color : editorMetadata.editKind,
+                    displayValue,
+                    editKind,
                     false,
-                    {},
+                    std::move(choices),
                     editorMetadata.minimumValue,
                     editorMetadata.maximumValue,
                     editorMetadata.stepValue

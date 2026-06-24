@@ -3,6 +3,7 @@
 #include "serialization/JsonProjectReader.h"
 
 #include "model/BoxSizerLayout.h"
+#include "model/LookAndFeelDefinition.h"
 #include "model/WidgetItemUtils.h"
 #include "utils/FileUtils.h"
 
@@ -242,6 +243,30 @@ bool parseWidgetAppearanceOverrides(const nlohmann::json& json,
         target = value->get<float>();
         return true;
     };
+    const auto readOptionalInt = [&json, &errorMessage](const char* key, std::optional<int>& target) {
+        const auto value = json.find(key);
+        if (value == json.end()) {
+            return true;
+        }
+        if (!value->is_number_integer()) {
+            errorMessage = std::string{ "appearanceOverrides." } + key + " must be an integer.";
+            return false;
+        }
+        target = value->get<int>();
+        return true;
+    };
+    const auto readOptionalBool = [&json, &errorMessage](const char* key, std::optional<bool>& target) {
+        const auto value = json.find(key);
+        if (value == json.end()) {
+            return true;
+        }
+        if (!value->is_boolean()) {
+            errorMessage = std::string{ "appearanceOverrides." } + key + " must be boolean.";
+            return false;
+        }
+        target = value->get<bool>();
+        return true;
+    };
 
     if (!(readOptionalString("controlSurfaceColor", overrides.controlSurfaceColor)
         && readOptionalString("textColor", overrides.textColor)
@@ -252,8 +277,18 @@ bool parseWidgetAppearanceOverrides(const nlohmann::json& json,
         && readOptionalString("shadowEdgeColor", overrides.shadowEdgeColor)
         && readOptionalFloat("borderThickness", overrides.borderThickness)
         && readOptionalFloat("cornerRadius", overrides.cornerRadius)
-        && readOptionalFloat("controlPadding", overrides.controlPadding))) {
+        && readOptionalFloat("controlPadding", overrides.controlPadding)
+        && readOptionalString("fontFamily", overrides.fontFamily)
+        && readOptionalFloat("fontSize", overrides.fontSize)
+        && readOptionalInt("fontWeight", overrides.fontWeight)
+        && readOptionalBool("italic", overrides.italic)
+        && readOptionalString("horizontalTextAlignment", overrides.horizontalTextAlignment)
+        && readOptionalString("verticalTextAlignment", overrides.verticalTextAlignment)
+        && readOptionalFloat("textPadding", overrides.textPadding))) {
         return false;
+    }
+    if (overrides.fontWeight.has_value()) {
+        overrides.fontWeight = model::normalizeFontWeight(*overrides.fontWeight);
     }
 
     const auto states = json.find("states");
@@ -519,6 +554,30 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
                 target = value->get<float>();
                 return true;
             };
+            const auto readOptionalInt = [&errorMessage, &iterator](const char* key, std::optional<int>& target) {
+                const auto value = iterator->find(key);
+                if (value == iterator->end()) {
+                    return true;
+                }
+                if (!value->is_number_integer()) {
+                    errorMessage = std::string{ "lookAndFeelOverrides." } + key + " must be an integer.";
+                    return false;
+                }
+                target = value->get<int>();
+                return true;
+            };
+            const auto readOptionalBool = [&errorMessage, &iterator](const char* key, std::optional<bool>& target) {
+                const auto value = iterator->find(key);
+                if (value == iterator->end()) {
+                    return true;
+                }
+                if (!value->is_boolean()) {
+                    errorMessage = std::string{ "lookAndFeelOverrides." } + key + " must be boolean.";
+                    return false;
+                }
+                target = value->get<bool>();
+                return true;
+            };
 
             auto& overrides = document.lookAndFeelOverrides;
             if (!readOptionalString("applicationSurfaceColor", overrides.applicationSurfaceColor)
@@ -535,8 +594,17 @@ std::optional<model::ProjectDocument> JsonProjectReader::readFromString(const st
                 || !readOptionalFloat("cornerRadius", overrides.cornerRadius)
                 || !readOptionalFloat("controlPadding", overrides.controlPadding)
                 || !readOptionalFloat("splitterHighlightThickness", overrides.splitterHighlightThickness)
-                || !readOptionalFloat("splitterShadowThickness", overrides.splitterShadowThickness)) {
+                || !readOptionalFloat("splitterShadowThickness", overrides.splitterShadowThickness)
+                || !readOptionalString("fontFamily", overrides.fontFamily)
+                || !readOptionalFloat("fontSize", overrides.fontSize)
+                || !readOptionalInt("fontWeight", overrides.fontWeight)
+                || !readOptionalBool("italic", overrides.italic)
+                || !readOptionalFloat("textPadding", overrides.textPadding)
+                || !readOptionalString("disabledTextTreatment", overrides.disabledTextTreatment)) {
                 return std::nullopt;
+            }
+            if (overrides.fontWeight.has_value()) {
+                overrides.fontWeight = model::normalizeFontWeight(*overrides.fontWeight);
             }
         }
         document.generatedBaseClassName = "MainWindow";

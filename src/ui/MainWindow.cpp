@@ -747,7 +747,7 @@ bool isWidgetColorProperty(const model::WidgetNode& widget, const std::string& k
 
 bool isStyleFloatProperty(const std::string& key)
 {
-    return key == "borderThickness" || key == "cornerRadius" || key == "fontSize";
+    return key == "borderThickness" || key == "cornerRadius" || key == "fontSize" || key == "textPadding";
 }
 
 constexpr std::string_view kAppearanceInspectorPrefix = "__appearance_";
@@ -779,6 +779,13 @@ bool clearAppearanceOverride(model::WidgetLookAndFeelOverrides& overrides, std::
     if (key == "borderThickness") return reset(overrides.borderThickness);
     if (key == "cornerRadius") return reset(overrides.cornerRadius);
     if (key == "controlPadding") return reset(overrides.controlPadding);
+    if (key == "fontFamily") return reset(overrides.fontFamily);
+    if (key == "fontSize") return reset(overrides.fontSize);
+    if (key == "fontWeight") return reset(overrides.fontWeight);
+    if (key == "italic") return reset(overrides.italic);
+    if (key == "horizontalTextAlignment") return reset(overrides.horizontalTextAlignment);
+    if (key == "verticalTextAlignment") return reset(overrides.verticalTextAlignment);
+    if (key == "textPadding") return reset(overrides.textPadding);
     return false;
 }
 
@@ -796,6 +803,9 @@ bool setAppearanceColorOverride(model::WidgetLookAndFeelOverrides& overrides, st
     if (key == "focusOutlineColor") return set(overrides.focusOutlineColor);
     if (key == "highlightEdgeColor") return set(overrides.highlightEdgeColor);
     if (key == "shadowEdgeColor") return set(overrides.shadowEdgeColor);
+    if (key == "fontFamily") return set(overrides.fontFamily);
+    if (key == "horizontalTextAlignment") return set(overrides.horizontalTextAlignment);
+    if (key == "verticalTextAlignment") return set(overrides.verticalTextAlignment);
     return false;
 }
 
@@ -809,6 +819,30 @@ bool setAppearanceMetricOverride(model::WidgetLookAndFeelOverrides& overrides, s
     if (key == "borderThickness") return set(overrides.borderThickness);
     if (key == "cornerRadius") return set(overrides.cornerRadius);
     if (key == "controlPadding") return set(overrides.controlPadding);
+    if (key == "fontSize") return set(overrides.fontSize);
+    if (key == "textPadding") return set(overrides.textPadding);
+    return false;
+}
+
+bool setAppearanceIntegerOverride(model::WidgetLookAndFeelOverrides& overrides, std::string_view key, int value)
+{
+    auto set = [value](std::optional<int>& target) {
+        if (target == value) return false;
+        target = value;
+        return true;
+    };
+    if (key == "fontWeight") return set(overrides.fontWeight);
+    return false;
+}
+
+bool setAppearanceBoolOverride(model::WidgetLookAndFeelOverrides& overrides, std::string_view key, bool value)
+{
+    auto set = [value](std::optional<bool>& target) {
+        if (target == value) return false;
+        target = value;
+        return true;
+    };
+    if (key == "italic") return set(overrides.italic);
     return false;
 }
 
@@ -6544,16 +6578,43 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
                 });
         }
 
-        const bool colorProperty = appearanceKey.ends_with("Color");
+        const bool colorProperty = appearanceKey.ends_with("Color")
+            || appearanceKey == "fontFamily"
+            || appearanceKey == "horizontalTextAlignment"
+            || appearanceKey == "verticalTextAlignment";
+        const bool integerProperty = appearanceKey == "fontWeight";
+        const bool boolProperty = appearanceKey == "italic";
         std::optional<float> metricValue;
-        if (colorProperty) {
+        std::optional<int> integerValue;
+        std::optional<bool> boolValue;
+        if (appearanceKey.ends_with("Color")) {
             if (!isValidColorValue(trimmedValue)) {
                 setOperationStatus("Invalid Appearance color value");
                 redraw();
                 return false;
             }
         }
-        else {
+        else if (integerProperty) {
+            integerValue = tryParseInt(trimmedValue);
+            if (!integerValue.has_value()) {
+                setOperationStatus("Invalid typography weight");
+                redraw();
+                return false;
+            }
+            *integerValue = model::normalizeFontWeight(*integerValue);
+            if (appearanceState == model::WidgetAppearanceState::Normal
+                && !widget->appearanceOverrides.fontWeight.has_value()) {
+                const auto inheritedStyle = model::LookAndFeelRegistry::instance().resolveProjectStyle(
+                    document_.lookAndFeelId, document_.lookAndFeelOverrides);
+                if (*integerValue == model::normalizeFontWeight(inheritedStyle.fontWeight)) {
+                    return true;
+                }
+            }
+        }
+        else if (boolProperty) {
+            boolValue = trimmedValue == "true" || trimmedValue == "1";
+        }
+        else if (!colorProperty) {
             metricValue = tryParseFloat(trimmedValue);
             if (!metricValue.has_value()) {
                 setOperationStatus("Invalid Appearance metric value");
@@ -6569,12 +6630,22 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
             else if (appearanceKey == "controlPadding") {
                 *metricValue = std::clamp(*metricValue, 0.0f, 40.0f);
             }
+            else if (appearanceKey == "fontSize") {
+                *metricValue = std::clamp(*metricValue, 8.0f, 72.0f);
+            }
+            else if (appearanceKey == "textPadding") {
+                *metricValue = std::clamp(*metricValue, 0.0f, 40.0f);
+            }
         }
 
         auto updatedOverrides = widget->appearanceOverrides;
         auto updatedStateOverrides = widget->stateAppearanceOverrides;
         const bool changed = appearanceState == model::WidgetAppearanceState::Normal
-            ? colorProperty
+            ? integerProperty
+                ? setAppearanceIntegerOverride(updatedOverrides, appearanceKey, *integerValue)
+                : boolProperty
+                ? setAppearanceBoolOverride(updatedOverrides, appearanceKey, *boolValue)
+                : colorProperty
                 ? setAppearanceColorOverride(updatedOverrides, appearanceKey, trimmedValue)
                 : setAppearanceMetricOverride(updatedOverrides, appearanceKey, *metricValue)
             : setStateAppearanceColorOverride(
@@ -8978,11 +9049,24 @@ void MainWindow::openInspectorDropdown(const PropertyInspector::PropertyRow& row
         return;
     }
 
+    std::string currentValue = document_.selectedWidget() != nullptr
+        ? document_.selectedWidget()->getStringProperty(row.key, row.displayValue)
+        : row.displayValue;
+    if (row.key == "__appearance_fontWeight") {
+        const auto iterator = std::find_if(row.choices.begin(), row.choices.end(),
+            [&row](const PropertyInspector::PropertyChoice& choice) {
+                return choice.label == row.displayValue;
+            });
+        if (iterator != row.choices.end()) {
+            currentValue = iterator->value;
+        }
+    }
+
     dropdownControl_.open(row.key,
         { anchor->x, anchor->y, anchor->width, anchor->height },
         *viewport,
         dropdownItemsFromChoices(row.choices),
-        document_.selectedWidget() != nullptr ? document_.selectedWidget()->getStringProperty(row.key, row.displayValue) : row.displayValue);
+        currentValue);
 }
 
 bool MainWindow::handleInspectorEventAction(const PropertyInspector::PendingEventAction& action)
@@ -9972,6 +10056,15 @@ std::vector<MainWindow::EditorModalField> MainWindow::editorModalFields() const
         fields.push_back(EditorModalField{ "borderThickness", label("Border Thickness", overrides.borderThickness.has_value()), formatCanvasCoordinate(style.borderThickness), PropertyInspector::PropertyEditKind::Float });
         fields.push_back(EditorModalField{ "cornerRadius", label("Corner Radius", overrides.cornerRadius.has_value()), formatCanvasCoordinate(style.cornerRadius), PropertyInspector::PropertyEditKind::Float });
         fields.push_back(EditorModalField{ "controlPadding", label("Control Padding", overrides.controlPadding.has_value()), formatCanvasCoordinate(style.controlPadding), PropertyInspector::PropertyEditKind::Float });
+        fields.push_back(EditorModalField{ "fontFamily", label("Font Family", overrides.fontFamily.has_value()), style.fontFamily, PropertyInspector::PropertyEditKind::Choice,
+            { { "Default", "Default" }, { "Segoe UI", "Segoe UI" }, { "Tahoma", "Tahoma" }, { "Arial", "Arial" } } });
+        fields.push_back(EditorModalField{ "fontSize", label("Font Size", overrides.fontSize.has_value()), formatCanvasCoordinate(style.fontSize), PropertyInspector::PropertyEditKind::Float });
+        fields.push_back(EditorModalField{ "fontWeight", label("Font Weight", overrides.fontWeight.has_value()), std::to_string(model::normalizeFontWeight(style.fontWeight)), PropertyInspector::PropertyEditKind::Choice,
+            { { "400", "Regular" }, { "700", "Bold" } } });
+        fields.push_back(EditorModalField{ "italic", label("Italic", overrides.italic.has_value()), style.italic ? "true" : "false", PropertyInspector::PropertyEditKind::Bool });
+        fields.push_back(EditorModalField{ "textPadding", label("Text Padding", overrides.textPadding.has_value()), formatCanvasCoordinate(style.textPadding), PropertyInspector::PropertyEditKind::Float });
+        fields.push_back(EditorModalField{ "disabledTextTreatment", label("Disabled Text", overrides.disabledTextTreatment.has_value()), style.disabledTextTreatment, PropertyInspector::PropertyEditKind::Choice,
+            { { "Muted", "Muted" }, { "Normal", "Normal" } } });
         fields.push_back(EditorModalField{ "splitterHighlightThickness", label("Splitter Highlight", overrides.splitterHighlightThickness.has_value()), formatCanvasCoordinate(style.splitterHighlightThickness), PropertyInspector::PropertyEditKind::Float });
         fields.push_back(EditorModalField{ "splitterShadowThickness", label("Splitter Shadow", overrides.splitterShadowThickness.has_value()), formatCanvasCoordinate(style.splitterShadowThickness), PropertyInspector::PropertyEditKind::Float });
     }
@@ -11037,6 +11130,14 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
                 target = value;
             }
         };
+        const auto setString = [&trimmedValue](std::optional<std::string>& target, const std::string& baseValue) {
+            if (trimmedValue == baseValue) {
+                target.reset();
+            }
+            else {
+                target = trimmedValue;
+            }
+        };
 
         if (isLookAndFeelColorField(key)) {
             if (!isValidColorValue(trimmedValue) || trimmedValue.empty()) {
@@ -11054,6 +11155,29 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
             else if (key == "highlightEdgeColor") setColor(overrides.highlightEdgeColor, base.highlightEdgeColor);
             else if (key == "shadowEdgeColor") setColor(overrides.shadowEdgeColor, base.shadowEdgeColor);
         }
+        else if (key == "fontFamily") {
+            setString(overrides.fontFamily, base.fontFamily);
+        }
+        else if (key == "fontWeight") {
+            const auto parsed = tryParseInt(trimmedValue);
+            if (!parsed.has_value()) {
+                editorModal_.statusText = "Enter a valid font weight.";
+                return;
+            }
+            const int value = model::normalizeFontWeight(*parsed);
+            if (value == base.fontWeight) overrides.fontWeight.reset();
+            else overrides.fontWeight = value;
+        }
+        else if (key == "italic") {
+            const bool value = trimmedValue == "true" || trimmedValue == "1";
+            if (value == base.italic) overrides.italic.reset();
+            else overrides.italic = value;
+        }
+        else if (key == "disabledTextTreatment") {
+            const std::string value = trimmedValue == "Normal" ? "Normal" : "Muted";
+            if (value == base.disabledTextTreatment) overrides.disabledTextTreatment.reset();
+            else overrides.disabledTextTreatment = value;
+        }
         else {
             const auto parsed = tryParseFloat(trimmedValue);
             if (!parsed.has_value()) {
@@ -11063,6 +11187,8 @@ void MainWindow::setEditorModalFieldValue(const std::string& key, const std::str
             if (key == "borderThickness") setMetric(overrides.borderThickness, std::clamp(*parsed, 0.0f, 20.0f), base.borderThickness);
             else if (key == "cornerRadius") setMetric(overrides.cornerRadius, std::clamp(*parsed, 0.0f, 50.0f), base.cornerRadius);
             else if (key == "controlPadding") setMetric(overrides.controlPadding, std::clamp(*parsed, 0.0f, 40.0f), base.controlPadding);
+            else if (key == "fontSize") setMetric(overrides.fontSize, std::clamp(*parsed, 8.0f, 72.0f), base.fontSize);
+            else if (key == "textPadding") setMetric(overrides.textPadding, std::clamp(*parsed, 0.0f, 40.0f), base.textPadding);
             else if (key == "splitterHighlightThickness") setMetric(overrides.splitterHighlightThickness, std::clamp(*parsed, 0.0f, 8.0f), base.splitterHighlightThickness);
             else if (key == "splitterShadowThickness") setMetric(overrides.splitterShadowThickness, std::clamp(*parsed, 0.0f, 8.0f), base.splitterShadowThickness);
         }

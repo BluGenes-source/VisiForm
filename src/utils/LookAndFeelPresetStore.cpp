@@ -81,8 +81,13 @@ Json styleToJson(const model::LookAndFeelDefinition& definition)
         { "shadowEdgeColor", definition.shadowEdgeColor },
         { "borderThickness", definition.borderThickness },
         { "cornerRadius", definition.cornerRadius },
+        { "fontFamily", definition.fontFamily },
         { "fontSize", definition.fontSize },
+        { "fontWeight", definition.fontWeight },
+        { "italic", definition.italic },
         { "controlPadding", definition.controlPadding },
+        { "textPadding", definition.textPadding },
+        { "disabledTextTreatment", definition.disabledTextTreatment },
         { "splitterHighlightThickness", definition.splitterHighlightThickness },
         { "splitterShadowThickness", definition.splitterShadowThickness }
     };
@@ -128,6 +133,32 @@ bool readMetric(const Json& style, const char* key, float minimum, float maximum
     }
     target = std::clamp(static_cast<float>(value), minimum, maximum);
     return true;
+}
+
+void readOptionalTypography(const Json& style, model::LookAndFeelDefinition& definition)
+{
+    if (const auto iterator = style.find("fontFamily"); iterator != style.end() && iterator->is_string()) {
+        definition.fontFamily = trimWhitespace(iterator->get<std::string>());
+        if (definition.fontFamily.empty()) {
+            definition.fontFamily = "Default";
+        }
+    }
+    if (const auto iterator = style.find("fontWeight"); iterator != style.end() && iterator->is_number_integer()) {
+        definition.fontWeight = std::clamp(iterator->get<int>(), 100, 900);
+    }
+    if (const auto iterator = style.find("italic"); iterator != style.end() && iterator->is_boolean()) {
+        definition.italic = iterator->get<bool>();
+    }
+    if (const auto iterator = style.find("textPadding"); iterator != style.end() && iterator->is_number()) {
+        definition.textPadding = std::clamp(iterator->get<float>(), 0.0f, 40.0f);
+    }
+    else {
+        definition.textPadding = definition.controlPadding;
+    }
+    if (const auto iterator = style.find("disabledTextTreatment"); iterator != style.end() && iterator->is_string()) {
+        const std::string value = trimWhitespace(iterator->get<std::string>());
+        definition.disabledTextTreatment = value == "Normal" ? "Normal" : "Muted";
+    }
 }
 
 std::optional<CustomLookAndFeelPreset> presetFromJson(const Json& json, std::string& errorMessage)
@@ -187,6 +218,7 @@ std::optional<CustomLookAndFeelPreset> presetFromJson(const Json& json, std::str
         || !readMetric(style, "splitterShadowThickness", 0.0f, 8.0f, definition.splitterShadowThickness, errorMessage)) {
         return std::nullopt;
     }
+    readOptionalTypography(style, definition);
     return preset;
 }
 
@@ -549,8 +581,13 @@ model::LookAndFeelDefinition LookAndFeelPresetStore::definitionFromResolvedStyle
     definition.shadowEdgeColor = style.shadowEdgeColor;
     definition.borderThickness = style.borderThickness;
     definition.cornerRadius = style.cornerRadius;
+    definition.fontFamily = style.fontFamily;
     definition.fontSize = style.fontSize;
+    definition.fontWeight = style.fontWeight;
+    definition.italic = style.italic;
     definition.controlPadding = style.controlPadding;
+    definition.textPadding = style.textPadding;
+    definition.disabledTextTreatment = style.disabledTextTreatment;
     definition.splitterHighlightThickness = style.splitterHighlightThickness;
     definition.splitterShadowThickness = style.splitterShadowThickness;
     return definition;

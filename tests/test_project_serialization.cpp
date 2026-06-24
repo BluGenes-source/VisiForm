@@ -144,17 +144,84 @@ TEST_CASE("Projects without look and feel overrides remain compact")
     CHECK_FALSE(json.contains("lookAndFeelOverrides"));
 }
 
+TEST_CASE("Typography overrides serialize sparsely and resolve through project then widget")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelOverrides.fontFamily = "Segoe UI";
+    document.lookAndFeelOverrides.fontSize = 18.0f;
+    document.lookAndFeelOverrides.fontWeight = 700;
+    document.lookAndFeelOverrides.italic = true;
+    document.lookAndFeelOverrides.textPadding = 10.0f;
+    document.lookAndFeelOverrides.disabledTextTreatment = "Normal";
+
+    auto& button = document.root.children.front();
+    button.appearanceOverrides.fontSize = 20.0f;
+    button.appearanceOverrides.horizontalTextAlignment = "Right";
+    button.appearanceOverrides.verticalTextAlignment = "Bottom";
+    button.appearanceOverrides.textPadding = 14.0f;
+
+    const auto json = nlohmann::json::parse(JsonProjectWriter{}.writeToString(document));
+    REQUIRE(json.contains("lookAndFeelOverrides"));
+    CHECK(json["lookAndFeelOverrides"]["fontFamily"] == "Segoe UI");
+    CHECK(json["lookAndFeelOverrides"]["fontWeight"] == 700);
+    CHECK(json["lookAndFeelOverrides"]["italic"] == true);
+    REQUIRE(json["root"]["children"][0].contains("appearanceOverrides"));
+    CHECK(json["root"]["children"][0]["appearanceOverrides"]["horizontalTextAlignment"] == "Right");
+    CHECK(json["root"]["children"][0]["appearanceOverrides"]["textPadding"] == 14.0f);
+
+    std::string errorMessage;
+    const auto loaded = JsonProjectReader{}.readFromString(json.dump(), errorMessage);
+    REQUIRE(errorMessage.empty());
+    REQUIRE(loaded.has_value());
+
+    const auto& loadedButton = loaded->root.children.front();
+    const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(*loaded, loadedButton);
+    CHECK(resolved.fontFamily == "Segoe UI");
+    CHECK(resolved.fontSize == 20.0f);
+    CHECK(resolved.fontWeight == 700);
+    CHECK(resolved.italic);
+    CHECK(resolved.textPadding == 14.0f);
+    CHECK(resolved.disabledTextTreatment == "Normal");
+    CHECK(resolved.horizontalTextAlignment == "Right");
+    CHECK(resolved.verticalTextAlignment == "Bottom");
+}
+
 TEST_CASE("Invalid project look and feel overrides fall back or clamp safely")
 {
     ProjectDocument document = ProjectDocument::createDefault();
     document.lookAndFeelOverrides.borderColor = "not-a-color";
     document.lookAndFeelOverrides.borderThickness = -20.0f;
     document.lookAndFeelOverrides.cornerRadius = 500.0f;
+    document.lookAndFeelOverrides.fontWeight = 500;
 
     const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(document, document.root);
     CHECK(resolved.borderColor == "#97A3B7");
     CHECK(resolved.borderThickness == 0.0f);
     CHECK(resolved.cornerRadius == 50.0f);
+    CHECK(resolved.fontWeight == 400);
+}
+
+TEST_CASE("Unsupported serialized typography weights load as Regular")
+{
+    ProjectDocument document = ProjectDocument::createDefault();
+    document.lookAndFeelOverrides.fontWeight = 500;
+    document.root.children.front().appearanceOverrides.fontWeight = 600;
+
+    const auto json = nlohmann::json::parse(JsonProjectWriter{}.writeToString(document));
+    std::string errorMessage;
+    const auto loaded = JsonProjectReader{}.readFromString(json.dump(), errorMessage);
+    REQUIRE(errorMessage.empty());
+    REQUIRE(loaded.has_value());
+
+    REQUIRE(loaded->lookAndFeelOverrides.fontWeight.has_value());
+    CHECK(*loaded->lookAndFeelOverrides.fontWeight == 400);
+    REQUIRE(loaded->root.children.front().appearanceOverrides.fontWeight.has_value());
+    CHECK(*loaded->root.children.front().appearanceOverrides.fontWeight == 400);
+
+    const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(
+        *loaded, loaded->root.children.front());
+    CHECK(resolved.fontWeight == 400);
+    CHECK(visiform::model::fontWeightLabel(resolved.fontWeight) == "Regular");
 }
 
 TEST_CASE("Widget appearance overrides serialize sparsely and resolve after project overrides")

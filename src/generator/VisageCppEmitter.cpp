@@ -297,8 +297,14 @@ struct ResolvedWidgetStyle {
     std::string shadowColor;
     float borderThickness = 1.0f;
     float cornerRadius = 0.0f;
+    std::string fontFamily = "Default";
     float fontSize = 16.0f;
+    int fontWeight = 400;
+    bool italic = false;
     float controlPadding = 8.0f;
+    float textPadding = 8.0f;
+    std::string horizontalTextAlignment = "Default";
+    std::string verticalTextAlignment = "Default";
 };
 
 ResolvedWidgetStyle resolveWidgetStyle(const visiform::model::ProjectDocument& document, const visiform::model::WidgetNode& widget)
@@ -325,8 +331,14 @@ ResolvedWidgetStyle resolveWidgetStyle(const visiform::model::ProjectDocument& d
         resolved.shadowEdgeColor,
         resolved.borderThickness,
         resolved.cornerRadius,
+        resolved.fontFamily,
         resolved.fontSize,
-        resolved.controlPadding };
+        resolved.fontWeight,
+        resolved.italic,
+        resolved.controlPadding,
+        resolved.textPadding,
+        resolved.horizontalTextAlignment,
+        resolved.verticalTextAlignment };
 }
 
 std::string widgetLabel(const visiform::model::WidgetNode& widget)
@@ -1271,8 +1283,14 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.style.shadowColor = " << emitRuntimeColorLiteral(spec.style.shadowColor, "makeColor(0x11, 0x15, 0x1C)") << ";\n";
     stream << innerIndent << "widget.style.borderThickness = " << emitFloat(spec.style.borderThickness) << ";\n";
     stream << innerIndent << "widget.style.cornerRadius = " << emitFloat(spec.style.cornerRadius) << ";\n";
+    stream << innerIndent << "widget.style.fontFamily = \"" << escapeCppStringLiteral(spec.style.fontFamily) << "\";\n";
     stream << innerIndent << "widget.style.fontSize = " << emitFloat(spec.style.fontSize) << ";\n";
+    stream << innerIndent << "widget.style.fontWeight = " << spec.style.fontWeight << ";\n";
+    stream << innerIndent << "widget.style.italic = " << (spec.style.italic ? "true" : "false") << ";\n";
     stream << innerIndent << "widget.style.controlPadding = " << emitFloat(spec.style.controlPadding) << ";\n";
+    stream << innerIndent << "widget.style.textPadding = " << emitFloat(spec.style.textPadding) << ";\n";
+    stream << innerIndent << "widget.style.horizontalTextAlignment = \"" << escapeCppStringLiteral(spec.style.horizontalTextAlignment) << "\";\n";
+    stream << innerIndent << "widget.style.verticalTextAlignment = \"" << escapeCppStringLiteral(spec.style.verticalTextAlignment) << "\";\n";
     const auto emitStateOverrides = [&](visiform::model::WidgetAppearanceState state, const char* member) {
         const auto found = widget.stateAppearanceOverrides.find(state);
         if (found == widget.stateAppearanceOverrides.end() || found->second.empty()) {
@@ -1571,8 +1589,14 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    RuntimeColor shadowColor = makeColor(0x11, 0x15, 0x1C);\n";
     stream << "    float borderThickness = 1.0f;\n";
     stream << "    float cornerRadius = 0.0f;\n";
+    stream << "    std::string fontFamily = \"Default\";\n";
     stream << "    float fontSize = 16.0f;\n";
+    stream << "    int fontWeight = 400;\n";
+    stream << "    bool italic = false;\n";
     stream << "    float controlPadding = 8.0f;\n";
+    stream << "    float textPadding = 8.0f;\n";
+    stream << "    std::string horizontalTextAlignment = \"Default\";\n";
+    stream << "    std::string verticalTextAlignment = \"Default\";\n";
     stream << "};\n\n";
     stream << "struct RuntimeEventHandlers {\n";
     stream << "    std::string onClick;\n";
@@ -2342,7 +2366,8 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::Label:\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 6.0f, y + 4.0f, std::max(0.0f, width - 12.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "            const float padding = std::clamp(widget.style.textPadding, 0.0f, width * 0.45f);\n";
+    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + padding, y + padding, std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - padding * 2.0f));\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Button:\n";
@@ -2355,7 +2380,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        const std::string& buttonText = buttonPressed && !widget.button.pressedText.empty() ? widget.button.pressedText : normalText;\n";
     stream << "        drawVisualBevel(canvas, x, y, width, height, widget, fillColor, buttonPressed);\n";
     stream << "        if (drawText) {\n";
-    stream << "            const float padding = std::clamp(widget.style.controlPadding, 0.0f, std::min(width, height) * 0.45f);\n";
+    stream << "            const float padding = std::clamp(widget.style.textPadding, 0.0f, std::min(width, height) * 0.45f);\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
     stream << "            canvas.text(buttonText, font, visage::Font::kCenter, x + padding + (buttonPressed ? 1.0f : 0.0f), y + padding + (buttonPressed ? 1.0f : 0.0f), std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - padding * 2.0f));\n";
     stream << "        }\n";
@@ -2364,7 +2389,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    case RuntimeWidgetType::TextBox:\n";
     stream << "        drawVisualRecessed(canvas, x, y, width, height, widget, widget.interaction.focused);\n";
     stream << "        if (drawText) {\n";
-    stream << "            const float padding = std::clamp(widget.style.controlPadding, 0.0f, width * 0.45f);\n";
+    stream << "            const float padding = std::clamp(widget.style.textPadding, 0.0f, width * 0.45f);\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
     stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + padding, y + 6.0f, std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - 8.0f));\n";
     stream << "        }\n";
@@ -2382,7 +2407,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
     stream << "            const std::string display = selectedItemText(widget);\n";
-    stream << "            const float padding = std::clamp(widget.style.controlPadding, 0.0f, width * 0.35f);\n";
+    stream << "            const float padding = std::clamp(widget.style.textPadding, 0.0f, width * 0.35f);\n";
     stream << "            canvas.text(display, font, visage::Font::kTopLeft, x + padding, y + std::max(0.0f, (height - std::max(8.0f, widget.style.fontSize) * 1.6f) * 0.5f), std::max(0.0f, width - arrowWidth - padding * 1.5f), std::max(0.0f, height - 8.0f));\n";
     stream << "        }\n";
     stream << "        break;\n";
@@ -2404,7 +2429,8 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            canvas.fill(x + 4.0f, rowTop, std::max(0.0f, width - 14.0f), rowHeight - 1.0f);\n";
     stream << "            if (drawText) {\n";
     stream << "                canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "                canvas.text(widget.items[index], font, visage::Font::kTopLeft, x + 10.0f, rowTop + std::max(2.0f, (rowHeight - std::max(8.0f, widget.style.fontSize) * 1.4f) * 0.5f), std::max(0.0f, width - 22.0f), std::max(0.0f, rowHeight - 4.0f));\n";
+    stream << "                const float padding = std::clamp(widget.style.textPadding, 0.0f, width * 0.35f);\n";
+    stream << "                canvas.text(widget.items[index], font, visage::Font::kTopLeft, x + padding, rowTop + std::max(2.0f, (rowHeight - std::max(8.0f, widget.style.fontSize) * 1.4f) * 0.5f), std::max(0.0f, width - padding - 12.0f), std::max(0.0f, rowHeight - 4.0f));\n";
     stream << "            }\n";
     stream << "            rowTop += rowHeight;\n";
     stream << "        }\n";
@@ -2493,7 +2519,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 36.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 30.0f - widget.style.textPadding), std::max(0.0f, height - 8.0f));\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::RadioButton: {\n";
@@ -2513,7 +2539,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 36.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 30.0f - widget.style.textPadding), std::max(0.0f, height - 8.0f));\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    }\n";

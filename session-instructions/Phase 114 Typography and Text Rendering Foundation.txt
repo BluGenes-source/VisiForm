@@ -1,0 +1,387 @@
+Implement VisiForm Phase 114: Typography and Text Rendering Foundation.
+
+Phase 113 is complete and pushed.
+
+Use:
+
+* Phase: 114
+* Version: 1.0.20
+* Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 113 plan
+* files directly related to:
+
+  * existing Look and Feel typography values
+  * shared text rendering and font metrics
+  * Property Inspector appearance controls
+  * text-bearing widget rendering
+  * Preview Mode
+  * generated runtime styling
+  * serialization
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_114_typography_text_rendering_plan.md`
+
+Before implementation:
+
+* update authoritative version declarations to `1.0.20`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not add embedded font files, rich text, or a full typography editor.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Integrate typography into the existing Look and Feel system and establish consistent text rendering across Design Mode, Preview Mode, and generated output.
+
+Use this resolution order:
+
+`Look and Feel typography → project typography overrides → widget typography overrides`
+
+Do not create a separate font or theme system.
+
+## Initial typography properties
+
+Support:
+
+* font family
+* font size
+* font weight
+* italic
+* horizontal text alignment
+* vertical text alignment where already meaningful
+* text padding
+* disabled-text treatment
+
+Do not add:
+
+* underline
+* strikeout
+* rich text
+* font-file embedding
+* per-character styling
+* letter spacing
+* line-height editing
+* text effects
+
+## Project-level typography
+
+Extend the existing Look and Feel editor or resolved-style model so project typography can define:
+
+* default font family
+* default font size
+* default font weight
+* default italic state
+* default text padding
+* default disabled-text treatment
+
+Requirements:
+
+* built-in Look and Feel presets provide safe defaults
+* project overrides remain sparse
+* changing typography repaints immediately
+* Preview Mode uses the same resolved values
+* generated output receives equivalent settings
+
+Do not duplicate typography values into every widget.
+
+## Per-widget typography overrides
+
+Add sparse overrides only for text-bearing widgets.
+
+Initial widget scope:
+
+* Button
+* Label
+* Text Box
+* Check Box
+* Radio Button
+* Combo Box
+* List Box
+* Group Box
+* Frame
+* Tab Control
+* Status Bar
+* Menu Bar
+
+Support widget-level overrides for:
+
+* font family
+* font size
+* font weight
+* italic
+* horizontal alignment
+* vertical alignment where supported
+* text padding
+
+Hide or disable unsupported properties.
+
+Widgets without overrides inherit project typography.
+
+## Property Inspector
+
+Add a compact Typography section within the existing Appearance UI.
+
+Requirements:
+
+* show inherited values
+* allow explicit overrides
+* reset one property to inherited
+* reset all typography overrides
+* no duplicate Look and Feel selector
+* no separate typography dialog in this phase
+
+For multi-selection:
+
+* disable typography editing unless the existing inspector safely supports shared values
+
+## Font availability and fallback
+
+Use existing font-loading infrastructure.
+
+Requirements:
+
+* unavailable font family falls back safely
+* fallback must not assert or crash
+* record the requested family and resolved fallback separately where needed
+* use the existing default application font when resolution fails
+* avoid repeatedly loading the same font
+
+Do not bundle or distribute font files.
+
+## DPI and metrics
+
+Use actual font metrics and DPI-aware sizing.
+
+Requirements:
+
+* font size scales correctly with DPI
+* text remains vertically centered
+* padding is included consistently
+* no glyph clipping
+* no baseline drift between Design and Preview
+* hit testing and text-edit caret placement remain correct
+* avoid fixed-width character assumptions
+
+## Text alignment
+
+Support horizontal alignment where meaningful:
+
+* Left
+* Center
+* Right
+
+Support vertical alignment only for widgets whose renderer already has a clear text box:
+
+* Top
+* Center
+* Bottom
+
+Do not expose vertical alignment for controls where it would be misleading.
+
+Preserve current default alignment behavior when no override exists.
+
+## Widget-specific expectations
+
+### Button
+
+* centered text by default
+* correct vertical centering
+* pressed state must not misalign text
+* rounded corners and state styling remain intact
+
+### Label
+
+* alignment must affect text within its bounds
+* no internal widget name fallback
+* empty Text remains empty
+
+### Text Box
+
+* preserve caret, selection, padding, scrolling, and editing
+* font changes must not break hit testing
+* placeholder and text use correct style rules
+
+### Check Box and Radio Button
+
+* label spacing remains correct
+* control glyph and text stay vertically aligned
+
+### Combo Box and List Box
+
+* text stays readable
+* selected value and rows use resolved typography
+* dropdown/list metrics remain consistent
+
+### Group Box and Frame
+
+* caption aligns correctly with border
+* no overlap or clipping
+
+### Tab Control
+
+* tab labels remain centered and readable
+* active/inactive states remain consistent
+
+### Menu Bar and Status Bar
+
+* preserve current command layout
+* text clipping and shortcut alignment must not regress
+
+## Serialization
+
+Store only explicit project and widget typography overrides.
+
+Requirements:
+
+* old projects load with defaults
+* no override means inherit
+* invalid values fall back safely
+* save/load round trips preserve overrides
+* no editor-only state is serialized
+
+Do not change `.vfb.json` more than required.
+
+## Undo and dirty state
+
+Typography edits must:
+
+* mark the project dirty only when values change
+* support undo/redo through the existing command system
+* create no undo entry for no-op changes
+* repaint immediately after edit, undo, or redo
+
+## Preview Mode
+
+Preview Mode must use resolved typography.
+
+Requirements:
+
+* no editor-only labels
+* text remains aligned and unclipped
+* temporary runtime states preserve typography
+* entering or leaving Preview Mode must not alter overrides
+
+## Generated output
+
+Generated projects must reproduce typography settings.
+
+Requirements:
+
+* emit only explicit project and widget overrides where practical
+* preserve generated-code readability
+* preserve `USER CODE` regions
+* use safe font fallback
+* projects without typography overrides behave as before
+
+Do not require generated apps to access editor-only font resources.
+
+## Scope boundaries
+
+Do not add:
+
+* embedded fonts
+* font package management
+* text styles/classes
+* rich text
+* markdown
+* typography presets
+* kerning controls
+* line spacing controls
+* text shadows
+* text outlines
+* per-state typography overrides
+
+Record those as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.20`.
+4. Change project font family and size.
+5. Confirm Design Mode updates.
+6. Enter Preview Mode and confirm the same typography.
+7. Override one Button’s typography.
+8. Override one Label’s alignment.
+9. Test Text Box caret, selection, and typing.
+10. Test Check Box and Radio Button label alignment.
+11. Test Combo Box and List Box text.
+12. Test Group Box, Frame, Tab Control, Menu Bar, and Status Bar.
+13. Test unavailable font fallback.
+14. Test several font sizes and weights.
+15. Test DPI scaling if practical.
+16. Test undo and redo.
+17. Save and reload.
+18. Duplicate and copy/paste a widget with overrides.
+19. Export a representative project.
+20. Inspect or build generated output through the approved workflow.
+21. Confirm typography matches Preview Mode in intent.
+22. Confirm autosave and recovery preserve typography overrides.
+
+Do not claim runtime, DPI, or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 114 plan with:
+
+* previous and new version
+* typography resolution order
+* project and widget override properties
+* supported widgets
+* font fallback policy
+* DPI and metrics handling
+* Property Inspector behavior
+* serialization impact
+* Preview Mode behavior
+* generated-output integration
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it has an existing current-progress section. Keep it concise.
+
+## Completion report
+
+Report:
+
+* Phase 114 plan path
+* version change to `1.0.20`
+* typography properties added
+* resolution and inheritance behavior
+* supported widgets
+* font fallback behavior
+* Property Inspector integration
+* Preview Mode result
+* generated-output result
+* known limitations
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.
