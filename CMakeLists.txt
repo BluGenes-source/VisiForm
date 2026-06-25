@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(VisiForm
-    VERSION 1.0.20
+    VERSION 1.0.21
     LANGUAGES CXX
 )
 
@@ -83,6 +83,7 @@ add_executable(VisiForm
     src/app/main.cpp
     src/ui/MainWindow.cpp
     src/ui/DesignerCanvas.cpp
+    src/ui/TextLayout.cpp
     src/ui/resources/ImageResourceCache.cpp
     src/ui/WidgetMetrics.cpp
     src/ui/WidgetPalette.cpp

@@ -786,6 +786,9 @@ bool clearAppearanceOverride(model::WidgetLookAndFeelOverrides& overrides, std::
     if (key == "horizontalTextAlignment") return reset(overrides.horizontalTextAlignment);
     if (key == "verticalTextAlignment") return reset(overrides.verticalTextAlignment);
     if (key == "textPadding") return reset(overrides.textPadding);
+    if (key == "multiline") return reset(overrides.multiline);
+    if (key == "wordWrap") return reset(overrides.wordWrap);
+    if (key == "overflowMode") return reset(overrides.overflowMode);
     return false;
 }
 
@@ -806,6 +809,7 @@ bool setAppearanceColorOverride(model::WidgetLookAndFeelOverrides& overrides, st
     if (key == "fontFamily") return set(overrides.fontFamily);
     if (key == "horizontalTextAlignment") return set(overrides.horizontalTextAlignment);
     if (key == "verticalTextAlignment") return set(overrides.verticalTextAlignment);
+    if (key == "overflowMode") return set(overrides.overflowMode);
     return false;
 }
 
@@ -843,6 +847,8 @@ bool setAppearanceBoolOverride(model::WidgetLookAndFeelOverrides& overrides, std
         return true;
     };
     if (key == "italic") return set(overrides.italic);
+    if (key == "multiline") return set(overrides.multiline);
+    if (key == "wordWrap") return set(overrides.wordWrap);
     return false;
 }
 
@@ -6581,9 +6587,12 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         const bool colorProperty = appearanceKey.ends_with("Color")
             || appearanceKey == "fontFamily"
             || appearanceKey == "horizontalTextAlignment"
-            || appearanceKey == "verticalTextAlignment";
+            || appearanceKey == "verticalTextAlignment"
+            || appearanceKey == "overflowMode";
         const bool integerProperty = appearanceKey == "fontWeight";
-        const bool boolProperty = appearanceKey == "italic";
+        const bool boolProperty = appearanceKey == "italic"
+            || appearanceKey == "multiline"
+            || appearanceKey == "wordWrap";
         std::optional<float> metricValue;
         std::optional<int> integerValue;
         std::optional<bool> boolValue;
@@ -6593,6 +6602,13 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
                 redraw();
                 return false;
             }
+        }
+        else if (appearanceKey == "overflowMode"
+            && trimmedValue != "Clip"
+            && trimmedValue != "Ellipsis") {
+            setOperationStatus("Invalid text overflow mode");
+            redraw();
+            return false;
         }
         else if (integerProperty) {
             integerValue = tryParseInt(trimmedValue);
@@ -6613,6 +6629,25 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         }
         else if (boolProperty) {
             boolValue = trimmedValue == "true" || trimmedValue == "1";
+            if (appearanceState == model::WidgetAppearanceState::Normal) {
+                const bool hasExistingOverride =
+                    appearanceKey == "italic" ? widget->appearanceOverrides.italic.has_value()
+                    : appearanceKey == "multiline" ? widget->appearanceOverrides.multiline.has_value()
+                    : appearanceKey == "wordWrap" ? widget->appearanceOverrides.wordWrap.has_value()
+                                                  : true;
+                if (!hasExistingOverride) {
+                    const auto inheritedStyle = model::LookAndFeelRegistry::instance().resolveProjectStyle(
+                        document_.lookAndFeelId, document_.lookAndFeelOverrides);
+                    const bool inheritedValue =
+                        appearanceKey == "italic" ? inheritedStyle.italic
+                        : appearanceKey == "multiline" ? inheritedStyle.multiline
+                        : appearanceKey == "wordWrap" ? inheritedStyle.wordWrap
+                                                      : *boolValue;
+                    if (*boolValue == inheritedValue) {
+                        return true;
+                    }
+                }
+            }
         }
         else if (!colorProperty) {
             metricValue = tryParseFloat(trimmedValue);

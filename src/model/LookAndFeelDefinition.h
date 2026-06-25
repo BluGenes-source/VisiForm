@@ -111,6 +111,9 @@ struct WidgetLookAndFeelOverrides {
     std::optional<std::string> horizontalTextAlignment{};
     std::optional<std::string> verticalTextAlignment{};
     std::optional<float> textPadding{};
+    std::optional<bool> multiline{};
+    std::optional<bool> wordWrap{};
+    std::optional<std::string> overflowMode{};
 
     [[nodiscard]] bool empty() const
     {
@@ -130,7 +133,10 @@ struct WidgetLookAndFeelOverrides {
             && !italic.has_value()
             && !horizontalTextAlignment.has_value()
             && !verticalTextAlignment.has_value()
-            && !textPadding.has_value();
+            && !textPadding.has_value()
+            && !multiline.has_value()
+            && !wordWrap.has_value()
+            && !overflowMode.has_value();
     }
 
     bool operator==(const WidgetLookAndFeelOverrides&) const = default;
@@ -241,6 +247,9 @@ struct ResolvedLookAndFeelStyle {
     std::string disabledTextTreatment = "Muted";
     std::string horizontalTextAlignment = "Default";
     std::string verticalTextAlignment = "Default";
+    bool multiline = false;
+    bool wordWrap = false;
+    std::string overflowMode = "Clip";
     float splitterHighlightThickness = 1.0f;
     float splitterShadowThickness = 1.0f;
 };

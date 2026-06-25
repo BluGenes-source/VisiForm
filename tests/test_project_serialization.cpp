@@ -159,6 +159,9 @@ TEST_CASE("Typography overrides serialize sparsely and resolve through project t
     button.appearanceOverrides.horizontalTextAlignment = "Right";
     button.appearanceOverrides.verticalTextAlignment = "Bottom";
     button.appearanceOverrides.textPadding = 14.0f;
+    button.appearanceOverrides.multiline = true;
+    button.appearanceOverrides.wordWrap = true;
+    button.appearanceOverrides.overflowMode = "Ellipsis";
 
     const auto json = nlohmann::json::parse(JsonProjectWriter{}.writeToString(document));
     REQUIRE(json.contains("lookAndFeelOverrides"));
@@ -168,6 +171,9 @@ TEST_CASE("Typography overrides serialize sparsely and resolve through project t
     REQUIRE(json["root"]["children"][0].contains("appearanceOverrides"));
     CHECK(json["root"]["children"][0]["appearanceOverrides"]["horizontalTextAlignment"] == "Right");
     CHECK(json["root"]["children"][0]["appearanceOverrides"]["textPadding"] == 14.0f);
+    CHECK(json["root"]["children"][0]["appearanceOverrides"]["multiline"] == true);
+    CHECK(json["root"]["children"][0]["appearanceOverrides"]["wordWrap"] == true);
+    CHECK(json["root"]["children"][0]["appearanceOverrides"]["overflowMode"] == "Ellipsis");
 
     std::string errorMessage;
     const auto loaded = JsonProjectReader{}.readFromString(json.dump(), errorMessage);
@@ -184,6 +190,33 @@ TEST_CASE("Typography overrides serialize sparsely and resolve through project t
     CHECK(resolved.disabledTextTreatment == "Normal");
     CHECK(resolved.horizontalTextAlignment == "Right");
     CHECK(resolved.verticalTextAlignment == "Bottom");
+    CHECK(resolved.multiline);
+    CHECK(resolved.wordWrap);
+    CHECK(resolved.overflowMode == "Ellipsis");
+}
+
+TEST_CASE("Text layout overrides default and normalize safely")
+{
+    visiform::model::ProjectDocument document;
+    auto& label = document.root.children.front();
+    label.type = visiform::model::WidgetType::Label;
+    label.appearanceOverrides.overflowMode = "Marquee";
+
+    const visiform::serialization::JsonProjectWriter writer;
+    const std::string jsonText = writer.writeToString(document);
+
+    std::string errorMessage;
+    visiform::serialization::JsonProjectReader reader;
+    const auto loaded = reader.readFromString(jsonText, errorMessage);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->root.children.front().appearanceOverrides.overflowMode.has_value());
+    CHECK(*loaded->root.children.front().appearanceOverrides.overflowMode == "Clip");
+
+    const auto resolved = visiform::model::LookAndFeelRegistry::instance().resolve(
+        *loaded, loaded->root.children.front());
+    CHECK_FALSE(resolved.multiline);
+    CHECK_FALSE(resolved.wordWrap);
+    CHECK(resolved.overflowMode == "Clip");
 }
 
 TEST_CASE("Invalid project look and feel overrides fall back or clamp safely")

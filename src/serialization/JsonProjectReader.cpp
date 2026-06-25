@@ -284,11 +284,17 @@ bool parseWidgetAppearanceOverrides(const nlohmann::json& json,
         && readOptionalBool("italic", overrides.italic)
         && readOptionalString("horizontalTextAlignment", overrides.horizontalTextAlignment)
         && readOptionalString("verticalTextAlignment", overrides.verticalTextAlignment)
-        && readOptionalFloat("textPadding", overrides.textPadding))) {
+        && readOptionalFloat("textPadding", overrides.textPadding)
+        && readOptionalBool("multiline", overrides.multiline)
+        && readOptionalBool("wordWrap", overrides.wordWrap)
+        && readOptionalString("overflowMode", overrides.overflowMode))) {
         return false;
     }
     if (overrides.fontWeight.has_value()) {
         overrides.fontWeight = model::normalizeFontWeight(*overrides.fontWeight);
+    }
+    if (overrides.overflowMode.has_value() && *overrides.overflowMode != "Ellipsis") {
+        overrides.overflowMode = "Clip";
     }
 
     const auto states = json.find("states");

@@ -109,6 +109,12 @@ constexpr std::array<std::string_view, 7> kWidgetTypographyOverrideKeys = {
     "textPadding"
 };
 
+constexpr std::array<std::string_view, 3> kWidgetTextLayoutOverrideKeys = {
+    "multiline",
+    "wordWrap",
+    "overflowMode"
+};
+
 constexpr std::array<std::string_view, 7> kWidgetStateOverrideKeys = {
     "controlSurfaceColor",
     "textColor",
@@ -241,6 +247,26 @@ std::string normalizedAlignment(std::string value, bool vertical)
 std::string normalizedDisabledTextTreatment(std::string value)
 {
     return value == "Muted" || value == "Normal" ? value : "Muted";
+}
+
+std::string normalizedOverflowMode(std::string value)
+{
+    return value == "Ellipsis" ? "Ellipsis" : "Clip";
+}
+
+bool supportsMultilineTextLayout(WidgetType type)
+{
+    switch (type) {
+    case WidgetType::Button:
+    case WidgetType::Label:
+    case WidgetType::TextBox:
+    case WidgetType::CheckBox:
+    case WidgetType::RadioButton:
+    case WidgetType::StatusBar:
+        return true;
+    default:
+        return false;
+    }
 }
 
 } // namespace
@@ -521,6 +547,15 @@ ResolvedLookAndFeelStyle LookAndFeelRegistry::resolve(
         if (overrides.textPadding.has_value()) {
             style.textPadding = std::clamp(*overrides.textPadding, 0.0f, 40.0f);
         }
+        if (overrides.multiline.has_value()) {
+            style.multiline = *overrides.multiline;
+        }
+        if (overrides.wordWrap.has_value()) {
+            style.wordWrap = *overrides.wordWrap;
+        }
+        if (overrides.overflowMode.has_value()) {
+            style.overflowMode = normalizedOverflowMode(*overrides.overflowMode);
+        }
     }
 
     return style;
@@ -580,6 +615,25 @@ bool LookAndFeelRegistry::supportsWidgetOverride(WidgetType type, std::string_vi
         return true;
     }
 
+    if (std::find(kWidgetTextLayoutOverrideKeys.begin(), kWidgetTextLayoutOverrideKeys.end(), key)
+        != kWidgetTextLayoutOverrideKeys.end()) {
+        if (!isTextBearingWidgetType(type)) {
+            return false;
+        }
+        if (key == "multiline" || key == "wordWrap") {
+            return supportsMultilineTextLayout(type);
+        }
+        return type == WidgetType::Button
+            || type == WidgetType::Label
+            || type == WidgetType::TextBox
+            || type == WidgetType::CheckBox
+            || type == WidgetType::RadioButton
+            || type == WidgetType::GroupBox
+            || type == WidgetType::Frame
+            || type == WidgetType::TabControl
+            || type == WidgetType::StatusBar;
+    }
+
     if (!isSupportedWidgetType(type)) {
         return false;
     }
@@ -620,6 +674,11 @@ std::vector<std::string_view> LookAndFeelRegistry::supportedWidgetOverrideKeys(W
         }
     }
     for (const auto key : kWidgetTypographyOverrideKeys) {
+        if (supportsWidgetOverride(type, key)) {
+            keys.push_back(key);
+        }
+    }
+    for (const auto key : kWidgetTextLayoutOverrideKeys) {
         if (supportsWidgetOverride(type, key)) {
             keys.push_back(key);
         }

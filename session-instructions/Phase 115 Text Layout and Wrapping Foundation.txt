@@ -1,0 +1,404 @@
+Implement VisiForm Phase 115: Text Layout and Wrapping Foundation.
+
+Phase 114 is complete and pushed.
+
+Use:
+
+* Phase: 115
+* Version: 1.0.21
+* Subagents: none
+
+Keep this pass focused and token-efficient.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 114 plan
+* files directly related to:
+
+  * shared text rendering
+  * typography resolution
+  * text-bearing widget properties
+  * Property Inspector editors
+  * Preview Mode
+  * generated runtime text layout
+  * serialization
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_115_text_layout_wrapping_plan.md`
+
+Before implementation:
+
+* update authoritative versions to `1.0.21`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not build a full text-editor widget in this phase.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Create shared text-layout behavior that future multiline and text-editor widgets can reuse.
+
+Support:
+
+* single-line and multiline layout
+* word wrapping
+* clipping
+* ellipsis
+* horizontal alignment
+* vertical alignment
+* padding-aware content bounds
+* consistent Design, Preview, and generated-runtime behavior
+
+Do not change widget geometry automatically unless an existing explicit Fit Text command is used.
+
+## Initial properties
+
+Add or standardize these properties where meaningful:
+
+* `Multiline`
+* `Word Wrap`
+* `Overflow Mode`
+
+  * Clip
+  * Ellipsis
+* horizontal alignment
+
+  * Left
+  * Center
+  * Right
+* vertical alignment
+
+  * Top
+  * Center
+  * Bottom
+* text padding
+
+Reuse Phase 114 typography properties.
+
+Do not add rich text, markdown, syntax highlighting, or scrollbars yet.
+
+## Widget scope
+
+Apply the shared layout system to:
+
+* Label
+* Button
+* Text Box
+* Check Box
+* Radio Button
+* Group Box
+* Frame
+* Tab labels
+* Status Bar
+
+Only expose properties that make sense for each widget.
+
+Examples:
+
+* Button may support wrapping and alignment.
+* Label may support multiline, wrapping, clipping, and ellipsis.
+* Text Box may expose multiline and wrapping foundations without becoming a full editor yet.
+* Check Box and Radio Button may wrap captions but should preserve glyph alignment.
+* Group Box and Frame captions may support clipping or ellipsis but should not become multiline unless the current renderer can support it cleanly.
+
+## Shared text-layout helper
+
+Prefer one shared text-layout path.
+
+It should accept:
+
+* text
+* resolved font
+* content rectangle
+* padding
+* multiline flag
+* word-wrap flag
+* horizontal alignment
+* vertical alignment
+* overflow mode
+
+It should produce reusable layout results such as:
+
+* lines
+* measured line widths
+* total text height
+* clipped or elided text
+* line positions
+
+Use actual font metrics.
+
+Do not duplicate line wrapping and alignment logic across widgets.
+
+## Content bounds
+
+Calculate text bounds from the widget’s usable content area.
+
+Account for:
+
+* border thickness
+* corner radius where relevant
+* control padding
+* check/radio glyph area
+* combo or tab control reserved areas
+* captions and frame borders
+* DPI and canvas zoom
+
+Do not draw text outside widget bounds.
+
+## Single-line behavior
+
+When `Multiline` is false:
+
+* ignore newline layout beyond the first logical line, or normalize according to existing behavior
+* support left, center, and right alignment
+* support vertical alignment
+* use Clip or Ellipsis when text exceeds available width
+* preserve existing default behavior when no new properties are set
+
+Ellipsis should use font metrics, not character-count estimates.
+
+## Multiline behavior
+
+When `Multiline` is true:
+
+* preserve explicit newline characters
+* support optional word wrapping
+* align each line horizontally
+* align the full text block vertically
+* clip lines that exceed the available height
+* do not automatically resize the widget
+
+When Word Wrap is false:
+
+* preserve long lines
+* clip horizontally
+* do not add horizontal scrolling in this phase
+
+## Word wrapping
+
+Wrap at word boundaries where practical.
+
+For words wider than the available line width:
+
+* fall back to character-boundary wrapping or clipping
+* avoid infinite loops
+* handle empty lines
+* preserve whitespace reasonably
+* avoid trailing-space measurement errors
+
+Keep the algorithm deterministic and reusable.
+
+## Overflow behavior
+
+Support:
+
+### Clip
+
+* render only within the content rectangle
+* do not draw outside widget bounds
+
+### Ellipsis
+
+For single-line text:
+
+* append an ellipsis when content does not fit
+
+For multiline text:
+
+* ellipsis on the final visible line is optional for this base phase
+* if not implemented, clip safely and document the limitation
+
+Do not modify stored text.
+
+## Property Inspector
+
+Add the new properties only for compatible widgets.
+
+Requirements:
+
+* use dropdowns for alignment and overflow mode
+* use checkboxes/toggles for Multiline and Word Wrap
+* hide Word Wrap when Multiline is false if the inspector supports conditional visibility cleanly
+* show inherited typography and padding behavior consistently
+* repaint immediately when values change
+* support undo and redo
+* no-op edits create no undo entry
+
+Do not redesign the entire Property Inspector.
+
+## Text Box foundation
+
+For the existing Text Box:
+
+* allow Multiline and Word Wrap properties to be stored
+* render multiline text correctly
+* preserve current single-line editing behavior
+* do not implement full multiline caret navigation in this phase unless it already exists
+* if multiline editing is incomplete, Preview Mode may render multiline while Design Mode editing remains limited
+
+Document any editing limitation clearly.
+
+This phase prepares for a later Text Editor widget.
+
+## Design Mode
+
+Design Mode must:
+
+* render text using the shared layout helper
+* keep selection overlays separate
+* preserve resize handles and corner arcs
+* update immediately when text-layout properties change
+* avoid using internal widget names as runtime text
+
+## Preview Mode
+
+Preview Mode must:
+
+* use the same resolved text layout
+* hide editor-only labels
+* preserve wrapping, alignment, clipping, and ellipsis
+* avoid modifying the project model
+
+## Generated output
+
+Generated projects must reproduce the same text-layout intent.
+
+Requirements:
+
+* emit only explicit properties where practical
+* preserve readable generated code
+* preserve `USER CODE` regions
+* projects without new properties behave as before
+* unsupported runtime behavior falls back safely
+
+Do not add a second independent wrapping algorithm if generated code can reuse a shared helper.
+
+## Serialization
+
+Store only explicit text-layout properties.
+
+Requirements:
+
+* old projects load with current defaults
+* missing properties preserve previous behavior
+* invalid enum values fall back safely
+* save/load round trips preserve settings
+* no editor-only layout cache is serialized
+
+## Undo and dirty state
+
+Each committed property change must:
+
+* support undo and redo
+* mark the project dirty only when changed
+* repaint immediately
+* create no undo entry for a no-op
+
+## Scope boundaries
+
+Do not add:
+
+* full multiline text editing
+* line/column caret movement
+* text scrollbars
+* syntax highlighting
+* rich text
+* markdown
+* text styles
+* line spacing controls
+* letter spacing
+* hyphenation
+* bidirectional-text editing
+* text-file loading
+
+Record these for later phases only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.21`.
+4. Test a Label with long single-line text.
+5. Test Clip and Ellipsis.
+6. Test left, center, and right alignment.
+7. Test top, center, and bottom alignment.
+8. Enable Multiline.
+9. Test explicit newlines.
+10. Test Word Wrap on and off.
+11. Resize the widget and confirm layout updates.
+12. Test long unbroken words.
+13. Test empty text and empty lines.
+14. Test Button wrapping.
+15. Test Check Box and Radio Button caption wrapping.
+16. Test Group Box, Frame, tab labels, and Status Bar.
+17. Test Text Box multiline rendering without breaking single-line editing.
+18. Enter Preview Mode and compare behavior.
+19. Test several typography sizes and weights.
+20. Test undo and redo.
+21. Save and reload.
+22. Export a representative project.
+23. Inspect or build generated output through the approved workflow.
+24. Confirm existing projects without new properties remain unchanged.
+25. Confirm autosave and recovery preserve the new properties.
+
+Do not claim runtime or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 115 plan with:
+
+* previous and new version
+* supported properties
+* widget compatibility
+* shared text-layout design
+* wrapping algorithm
+* clipping and ellipsis behavior
+* Text Box limitations
+* serialization impact
+* Design/Preview/export behavior
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it already has a current-progress section.
+
+## Completion report
+
+Report:
+
+* Phase 115 plan path
+* version change to `1.0.21`
+* text-layout properties added
+* shared layout helper
+* supported widgets
+* wrapping and overflow behavior
+* Text Box foundation and limitations
+* Design Mode result
+* Preview Mode result
+* generated-output result
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

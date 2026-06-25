@@ -106,6 +106,9 @@ nlohmann::json widgetAppearanceOverridesToJson(const model::WidgetLookAndFeelOve
     addString("horizontalTextAlignment", overrides.horizontalTextAlignment);
     addString("verticalTextAlignment", overrides.verticalTextAlignment);
     addFloat("textPadding", overrides.textPadding);
+    addBool("multiline", overrides.multiline);
+    addBool("wordWrap", overrides.wordWrap);
+    addString("overflowMode", overrides.overflowMode);
     return json;
 }
 

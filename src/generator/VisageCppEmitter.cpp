@@ -305,6 +305,9 @@ struct ResolvedWidgetStyle {
     float textPadding = 8.0f;
     std::string horizontalTextAlignment = "Default";
     std::string verticalTextAlignment = "Default";
+    bool multiline = false;
+    bool wordWrap = false;
+    std::string overflowMode = "Clip";
 };
 
 ResolvedWidgetStyle resolveWidgetStyle(const visiform::model::ProjectDocument& document, const visiform::model::WidgetNode& widget)
@@ -338,7 +341,10 @@ ResolvedWidgetStyle resolveWidgetStyle(const visiform::model::ProjectDocument& d
         resolved.controlPadding,
         resolved.textPadding,
         resolved.horizontalTextAlignment,
-        resolved.verticalTextAlignment };
+        resolved.verticalTextAlignment,
+        resolved.multiline,
+        resolved.wordWrap,
+        resolved.overflowMode };
 }
 
 std::string widgetLabel(const visiform::model::WidgetNode& widget)
@@ -1291,6 +1297,9 @@ void emitRuntimeWidgetInitialization(std::ostringstream& stream, const RuntimeWi
     stream << innerIndent << "widget.style.textPadding = " << emitFloat(spec.style.textPadding) << ";\n";
     stream << innerIndent << "widget.style.horizontalTextAlignment = \"" << escapeCppStringLiteral(spec.style.horizontalTextAlignment) << "\";\n";
     stream << innerIndent << "widget.style.verticalTextAlignment = \"" << escapeCppStringLiteral(spec.style.verticalTextAlignment) << "\";\n";
+    stream << innerIndent << "widget.style.multiline = " << (spec.style.multiline ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.style.wordWrap = " << (spec.style.wordWrap ? "true" : "false") << ";\n";
+    stream << innerIndent << "widget.style.overflowMode = \"" << escapeCppStringLiteral(spec.style.overflowMode) << "\";\n";
     const auto emitStateOverrides = [&](visiform::model::WidgetAppearanceState state, const char* member) {
         const auto found = widget.stateAppearanceOverrides.find(state);
         if (found == widget.stateAppearanceOverrides.end() || found->second.empty()) {
@@ -1597,6 +1606,9 @@ std::string emitGeneratedBaseHeader(const visiform::model::ProjectDocument& docu
     stream << "    float textPadding = 8.0f;\n";
     stream << "    std::string horizontalTextAlignment = \"Default\";\n";
     stream << "    std::string verticalTextAlignment = \"Default\";\n";
+    stream << "    bool multiline = false;\n";
+    stream << "    bool wordWrap = false;\n";
+    stream << "    std::string overflowMode = \"Clip\";\n";
     stream << "};\n\n";
     stream << "struct RuntimeEventHandlers {\n";
     stream << "    std::string onClick;\n";
@@ -2257,6 +2269,84 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    const std::string lowered = lowerText(std::string{ label });\n";
     stream << "    return lowered == \"cancel\" || lowered == \"no\" || lowered == \"close\";\n";
     stream << "}\n\n";
+    stream << "float measuredTextWidth(const visage::Font& font, const std::string& text)\n";
+    stream << "{\n";
+    stream << "    if (text.empty() || font.packedFont() == nullptr) return 0.0f;\n";
+    stream << "    return font.stringWidth(visage::String::convertUtf8ToUtf32<std::u32string>(text));\n";
+    stream << "}\n\n";
+    stream << "std::string elideText(const visage::Font& font, const std::string& text, float availableWidth)\n";
+    stream << "{\n";
+    stream << "    if (text.empty() || availableWidth <= 0.0f || measuredTextWidth(font, text) <= availableWidth) return availableWidth <= 0.0f ? std::string{} : text;\n";
+    stream << "    const std::u32string ellipsis = U\"\\u2026\";\n";
+    stream << "    const float ellipsisWidth = font.stringWidth(ellipsis);\n";
+    stream << "    if (ellipsisWidth > availableWidth) return {};\n";
+    stream << "    std::u32string utf32 = visage::String::convertUtf8ToUtf32<std::u32string>(text);\n";
+    stream << "    const int prefixLength = font.widthOverflowIndex(utf32.c_str(), static_cast<int>(utf32.size()), availableWidth - ellipsisWidth);\n";
+    stream << "    utf32.resize(static_cast<std::size_t>(std::max(0, prefixLength)));\n";
+    stream << "    while (!utf32.empty() && (utf32.back() == U' ' || utf32.back() == U'\\t')) utf32.pop_back();\n";
+    stream << "    utf32 += ellipsis;\n";
+    stream << "    return visage::String::convertUtf32ToUtf8(utf32);\n";
+    stream << "}\n\n";
+    stream << "std::vector<std::string> layoutRuntimeLines(const visage::Font& font, const std::string& text, float availableWidth, bool multiline, bool wordWrap)\n";
+    stream << "{\n";
+    stream << "    std::vector<std::string> logical;\n";
+    stream << "    std::size_t lineStart = 0;\n";
+    stream << "    while (lineStart <= text.size()) {\n";
+    stream << "        const std::size_t lineEnd = text.find('\\n', lineStart);\n";
+    stream << "        logical.push_back(text.substr(lineStart, (lineEnd == std::string::npos ? text.size() : lineEnd) - lineStart));\n";
+    stream << "        if (lineEnd == std::string::npos || !multiline) break;\n";
+    stream << "        lineStart = lineEnd + 1;\n";
+    stream << "    }\n";
+    stream << "    std::vector<std::string> lines;\n";
+    stream << "    for (const auto& sourceLine : logical) {\n";
+    stream << "        if (!multiline || !wordWrap || availableWidth <= 0.0f || measuredTextWidth(font, sourceLine) <= availableWidth) { lines.push_back(sourceLine); continue; }\n";
+    stream << "        std::string remaining = sourceLine;\n";
+    stream << "        while (!remaining.empty()) {\n";
+    stream << "            while (!remaining.empty() && std::isspace(static_cast<unsigned char>(remaining.front())) != 0) remaining.erase(remaining.begin());\n";
+    stream << "            if (remaining.empty()) break;\n";
+    stream << "            if (measuredTextWidth(font, remaining) <= availableWidth) { lines.push_back(remaining); break; }\n";
+    stream << "            std::size_t bestBreak = std::string::npos;\n";
+    stream << "            std::size_t overflow = 1;\n";
+    stream << "            for (std::size_t index = 1; index <= remaining.size(); ++index) {\n";
+    stream << "                if (index < remaining.size() && std::isspace(static_cast<unsigned char>(remaining[index])) != 0) bestBreak = index;\n";
+    stream << "                if (measuredTextWidth(font, remaining.substr(0, index)) > availableWidth) { overflow = index; break; }\n";
+    stream << "            }\n";
+    stream << "            const std::size_t split = bestBreak != std::string::npos && bestBreak > 0 ? bestBreak : std::max<std::size_t>(1, overflow - 1);\n";
+    stream << "            std::string line = remaining.substr(0, split);\n";
+    stream << "            while (!line.empty() && std::isspace(static_cast<unsigned char>(line.back())) != 0) line.pop_back();\n";
+    stream << "            lines.push_back(line);\n";
+    stream << "            remaining.erase(0, split);\n";
+    stream << "        }\n";
+    stream << "        if (sourceLine.empty()) lines.emplace_back();\n";
+    stream << "    }\n";
+    stream << "    if (lines.empty()) lines.emplace_back();\n";
+    stream << "    return lines;\n";
+    stream << "}\n\n";
+    stream << "void drawRuntimeText(visage::Canvas& canvas, const visage::Font& font, const RuntimeStyleState& style, const std::string& text, float x, float y, float width, float height, std::string defaultHorizontal = \"Left\", std::string defaultVertical = \"Top\", bool forceSingleLine = false)\n";
+    stream << "{\n";
+    stream << "    if (width <= 0.0f || height <= 0.0f) return;\n";
+    stream << "    const bool multiline = !forceSingleLine && style.multiline;\n";
+    stream << "    std::vector<std::string> lines = layoutRuntimeLines(font, text, width, multiline, !forceSingleLine && style.wordWrap);\n";
+    stream << "    if (!multiline && style.overflowMode == \"Ellipsis\" && !lines.empty()) lines.front() = elideText(font, lines.front(), width);\n";
+    stream << "    const float lineHeight = std::max(1.0f, font.packedFont() != nullptr ? font.lineHeight() : std::max(8.0f, style.fontSize) * 1.25f);\n";
+    stream << "    const float totalHeight = lineHeight * static_cast<float>(lines.size());\n";
+    stream << "    const std::string horizontal = style.horizontalTextAlignment == \"Default\" ? defaultHorizontal : style.horizontalTextAlignment;\n";
+    stream << "    const std::string vertical = style.verticalTextAlignment == \"Default\" ? defaultVertical : style.verticalTextAlignment;\n";
+    stream << "    float lineTop = y;\n";
+    stream << "    if (vertical == \"Center\") lineTop = y + std::max(0.0f, (height - totalHeight) * 0.5f);\n";
+    stream << "    else if (vertical == \"Bottom\") lineTop = y + std::max(0.0f, height - totalHeight);\n";
+    stream << "    canvas.saveState();\n";
+    stream << "    canvas.setClampBounds(x, y, width, height);\n";
+    stream << "    for (const auto& line : lines) {\n";
+    stream << "        const float lineWidth = measuredTextWidth(font, line);\n";
+    stream << "        float lineX = x;\n";
+    stream << "        if (horizontal == \"Center\") lineX = x + std::max(0.0f, (width - lineWidth) * 0.5f);\n";
+    stream << "        else if (horizontal == \"Right\") lineX = x + std::max(0.0f, width - lineWidth);\n";
+    stream << "        canvas.text(line, font, visage::Font::kTopLeft, lineX, lineTop, std::max(width, lineWidth), lineHeight);\n";
+    stream << "        lineTop += lineHeight;\n";
+    stream << "    }\n";
+    stream << "    canvas.restoreState();\n";
+    stream << "}\n\n";
     stream << "void drawRuntimeWidget(visage::Canvas& canvas, const visage::Font& font, bool drawText, const RuntimeWidget& sourceWidget)\n";
     stream << "{\n";
     stream << "    RuntimeWidget widget = sourceWidget;\n";
@@ -2274,7 +2364,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        canvas.fill(x + 2.0f, y + 2.0f, std::max(0.0f, width - 4.0f), std::min(24.0f, std::max(0.0f, height - 4.0f)));\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), 20.0f);\n";
+    stream << "            drawRuntimeText(canvas, font, widget.style, widget.text.value, x + 8.0f, y + 6.0f, std::max(0.0f, width - 16.0f), 20.0f, \"Left\", \"Top\", true);\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::GroupBox:\n";
@@ -2283,7 +2373,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            canvas.setColor(canvasColor(widget.enabled ? widget.style.fillColor : blendColor(widget.style.fillColor, widget.style.disabledColor, 0.55f)));\n";
     stream << "            canvas.fill(x + 12.0f, y, std::max(0.0f, width - 24.0f), 20.0f);\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 10.0f, y, std::max(0.0f, width - 20.0f), 20.0f);\n";
+    stream << "            drawRuntimeText(canvas, font, widget.style, widget.text.value, x + 10.0f, y, std::max(0.0f, width - 20.0f), 20.0f, \"Left\", \"Top\", true);\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Panel:\n";
@@ -2312,7 +2402,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "            if (drawText) {\n";
     stream << "                canvas.setColor(canvasColor(visualTextColor(widget)));\n";
     stream << "                const std::string label = index < widget.items.size() ? widget.items[index] : std::string{ \"Tab\" };\n";
-    stream << "                canvas.text(label, font, visage::Font::kCenter, tabX, y, tabWidth, kTabHeaderHeight);\n";
+    stream << "                drawRuntimeText(canvas, font, widget.style, label, tabX, y, tabWidth, kTabHeaderHeight, \"Center\", \"Center\", true);\n";
     stream << "            }\n";
     stream << "        }\n";
     stream << "        canvas.setColor(canvasColor(widget.enabled ? widget.style.fillColor : blendColor(widget.style.fillColor, widget.style.disabledColor, 0.55f)));\n";
@@ -2367,7 +2457,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(widget.style.textColor));\n";
     stream << "            const float padding = std::clamp(widget.style.textPadding, 0.0f, width * 0.45f);\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + padding, y + padding, std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - padding * 2.0f));\n";
+    stream << "            drawRuntimeText(canvas, font, widget.style, widget.text.value, x + padding, y + padding, std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - padding * 2.0f));\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::Button:\n";
@@ -2382,7 +2472,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        if (drawText) {\n";
     stream << "            const float padding = std::clamp(widget.style.textPadding, 0.0f, std::min(width, height) * 0.45f);\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(buttonText, font, visage::Font::kCenter, x + padding + (buttonPressed ? 1.0f : 0.0f), y + padding + (buttonPressed ? 1.0f : 0.0f), std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - padding * 2.0f));\n";
+    stream << "            drawRuntimeText(canvas, font, widget.style, buttonText, x + padding + (buttonPressed ? 1.0f : 0.0f), y + padding + (buttonPressed ? 1.0f : 0.0f), std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - padding * 2.0f), \"Center\", \"Center\");\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    }\n";
@@ -2391,7 +2481,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        if (drawText) {\n";
     stream << "            const float padding = std::clamp(widget.style.textPadding, 0.0f, width * 0.45f);\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + padding, y + 6.0f, std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - 8.0f));\n";
+    stream << "            drawRuntimeText(canvas, font, widget.style, widget.text.value, x + padding, y + 4.0f, std::max(0.0f, width - padding * 2.0f), std::max(0.0f, height - 8.0f), \"Left\", \"Center\");\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::ComboBox: {\n";
@@ -2519,7 +2609,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 30.0f - widget.style.textPadding), std::max(0.0f, height - 8.0f));\n";
+    stream << "            drawRuntimeText(canvas, font, widget.style, widget.text.value, x + 30.0f, y + 4.0f, std::max(0.0f, width - 30.0f - widget.style.textPadding), std::max(0.0f, height - 8.0f), \"Left\", \"Center\");\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    case RuntimeWidgetType::RadioButton: {\n";
@@ -2539,7 +2629,7 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        }\n";
     stream << "        if (drawText) {\n";
     stream << "            canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "            canvas.text(widget.text.value, font, visage::Font::kTopLeft, x + 30.0f, y + 4.0f, std::max(0.0f, width - 30.0f - widget.style.textPadding), std::max(0.0f, height - 8.0f));\n";
+    stream << "            drawRuntimeText(canvas, font, widget.style, widget.text.value, x + 30.0f, y + 4.0f, std::max(0.0f, width - 30.0f - widget.style.textPadding), std::max(0.0f, height - 8.0f), \"Left\", \"Center\");\n";
     stream << "        }\n";
     stream << "        break;\n";
     stream << "    }\n";
@@ -2581,13 +2671,10 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        drawVisualRecessed(canvas, x, y, width, height, widget, false);\n";
     stream << "        if (drawText && !widget.items.empty()) {\n";
     stream << "            const float fieldWidth = width / static_cast<float>(widget.items.size());\n";
-    stream << "            const float fontSize = std::max(8.0f, widget.style.fontSize);\n";
-    stream << "            const float lineHeight = fontSize * 1.6f;\n";
     stream << "            const float fieldInset = std::min(10.0f, std::max(6.0f, height * 0.16f));\n";
-    stream << "            const float textTop = y + std::max(0.0f, (height - lineHeight) * 0.5f);\n";
     stream << "            for (std::size_t index = 0; index < widget.items.size(); ++index) {\n";
     stream << "                canvas.setColor(canvasColor(visualTextColor(widget)));\n";
-    stream << "                canvas.text(widget.items[index], font, visage::Font::kTopLeft, x + fieldWidth * static_cast<float>(index) + fieldInset, textTop, std::max(0.0f, fieldWidth - fieldInset * 2.0f), std::max(0.0f, height - 4.0f));\n";
+    stream << "                drawRuntimeText(canvas, font, widget.style, widget.items[index], x + fieldWidth * static_cast<float>(index) + fieldInset, y + 2.0f, std::max(0.0f, fieldWidth - fieldInset * 2.0f), std::max(0.0f, height - 4.0f), \"Left\", \"Center\");\n";
     stream << "                if (index + 1 < widget.items.size()) {\n";
     stream << "                    canvas.setColor(canvasColor(widget.style.borderColor));\n";
     stream << "                    canvas.fill(x + fieldWidth * static_cast<float>(index + 1) - 1.0f, y + fieldInset * 0.5f, 1.0f, std::max(0.0f, height - fieldInset));\n";

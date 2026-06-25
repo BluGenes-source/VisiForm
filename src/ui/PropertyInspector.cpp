@@ -384,7 +384,10 @@ bool isStylePropertyKey(const std::string& key)
         || key == "italic"
         || key == "horizontalTextAlignment"
         || key == "verticalTextAlignment"
-        || key == "textPadding";
+        || key == "textPadding"
+        || key == "multiline"
+        || key == "wordWrap"
+        || key == "overflowMode";
 }
 
 bool isLegacyWidgetLookAndFeelPropertyKey(const std::string& key)
@@ -417,6 +420,9 @@ std::string appearanceLabel(std::string_view key)
     if (key == "horizontalTextAlignment") return "Text Align";
     if (key == "verticalTextAlignment") return "Vertical Align";
     if (key == "textPadding") return "Text Padding";
+    if (key == "multiline") return "Multiline";
+    if (key == "wordWrap") return "Word Wrap";
+    if (key == "overflowMode") return "Overflow Mode";
     return std::string{ key };
 }
 
@@ -434,6 +440,7 @@ std::optional<std::string> appearanceColorOverride(
     if (key == "fontFamily") return overrides.fontFamily;
     if (key == "horizontalTextAlignment") return overrides.horizontalTextAlignment;
     if (key == "verticalTextAlignment") return overrides.verticalTextAlignment;
+    if (key == "overflowMode") return overrides.overflowMode;
     return std::nullopt;
 }
 
@@ -462,6 +469,8 @@ std::optional<bool> appearanceBoolOverride(
     std::string_view key)
 {
     if (key == "italic") return overrides.italic;
+    if (key == "multiline") return overrides.multiline;
+    if (key == "wordWrap") return overrides.wordWrap;
     return std::nullopt;
 }
 
@@ -543,6 +552,9 @@ std::string inheritedAppearanceValue(const model::ResolvedLookAndFeelStyle& styl
     if (key == "horizontalTextAlignment") return style.horizontalTextAlignment;
     if (key == "verticalTextAlignment") return style.verticalTextAlignment;
     if (key == "textPadding") return formatFloat(style.textPadding);
+    if (key == "multiline") return style.multiline ? "true" : "false";
+    if (key == "wordWrap") return style.wordWrap ? "true" : "false";
+    if (key == "overflowMode") return style.overflowMode;
     return {};
 }
 
@@ -1348,6 +1360,7 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 : model::LookAndFeelRegistry::supportedWidgetStateOverrideKeys(selectedWidget->type, selectedState);
             const auto stateOverrides = selectedWidget->stateAppearanceOverrides.find(selectedState);
             bool addedTypographySection = false;
+            bool addedTextLayoutSection = false;
             for (const auto key : keys) {
                 const bool typographyKey = key == "fontFamily"
                     || key == "fontSize"
@@ -1356,9 +1369,23 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                     || key == "horizontalTextAlignment"
                     || key == "verticalTextAlignment"
                     || key == "textPadding";
+                const bool textLayoutKey = key == "multiline"
+                    || key == "wordWrap"
+                    || key == "overflowMode";
+                if (key == "wordWrap" && selectedState == model::WidgetAppearanceState::Normal) {
+                    const bool wordWrapOverridden = selectedWidget->appearanceOverrides.wordWrap.has_value();
+                    const bool multilineEnabled = selectedWidget->appearanceOverrides.multiline.value_or(inheritedStyle.multiline);
+                    if (!multilineEnabled && !wordWrapOverridden) {
+                        continue;
+                    }
+                }
                 if (typographyKey && !addedTypographySection) {
                     rows.push_back({ "__section_typography", "Typography", {}, {}, PropertyEditKind::ReadOnly, true });
                     addedTypographySection = true;
+                }
+                if (textLayoutKey && !addedTextLayoutSection) {
+                    rows.push_back({ "__section_text_layout", "Text Layout", {}, {}, PropertyEditKind::ReadOnly, true });
+                    addedTextLayoutSection = true;
                 }
                 const auto colorOverride = selectedState == model::WidgetAppearanceState::Normal
                     ? appearanceColorOverride(selectedWidget->appearanceOverrides, key)
@@ -1402,6 +1429,16 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                 }
                 else if (key == "italic") {
                     editKind = PropertyEditKind::Bool;
+                }
+                else if (key == "multiline" || key == "wordWrap") {
+                    editKind = PropertyEditKind::Bool;
+                }
+                else if (key == "overflowMode") {
+                    editKind = PropertyEditKind::Choice;
+                    choices = {
+                        makeChoice("Clip", "Clip"),
+                        makeChoice("Ellipsis", "Ellipsis")
+                    };
                 }
                 else if (key == "horizontalTextAlignment") {
                     editKind = PropertyEditKind::Choice;

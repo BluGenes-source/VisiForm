@@ -5,6 +5,7 @@
 #include "model/BoxSizerLayout.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
+#include "ui/TextLayout.h"
 #include "ui/WidgetMetrics.h"
 #include "ui/VisualStyleBaseline.h"
 #include "ui/resources/ImageResourceCache.h"
@@ -152,6 +153,9 @@ struct ResolvedWidgetStyle {
     float textPadding = 8.0f;
     std::string horizontalTextAlignment = "Default";
     std::string verticalTextAlignment = "Default";
+    bool multiline = false;
+    bool wordWrap = false;
+    std::string overflowMode = "Clip";
 };
 
 struct GridColors {
@@ -615,6 +619,38 @@ float alignedTextTop(float y, float height, float fontSize, const ResolvedWidget
     return centeredTextTop(y, height, fontSize);
 }
 
+TextLayoutOptions textLayoutOptions(
+    const ResolvedWidgetStyle& style,
+    bool forceSingleLine = false,
+    std::string defaultHorizontalAlignment = "Left",
+    std::string defaultVerticalAlignment = "Top")
+{
+    return {
+        forceSingleLine ? false : style.multiline,
+        forceSingleLine ? false : style.wordWrap,
+        textOverflowModeFromString(style.overflowMode),
+        style.horizontalTextAlignment == "Default" ? std::move(defaultHorizontalAlignment) : style.horizontalTextAlignment,
+        style.verticalTextAlignment == "Default" ? std::move(defaultVerticalAlignment) : style.verticalTextAlignment
+    };
+}
+
+void drawWidgetText(visage::Canvas& canvas,
+    const std::string& text,
+    const visage::Font& font,
+    const PanelRect& bounds,
+    const ResolvedWidgetStyle& style,
+    bool forceSingleLine = false,
+    std::string defaultHorizontalAlignment = "Left",
+    std::string defaultVerticalAlignment = "Top")
+{
+    drawLaidOutText(
+        canvas,
+        text,
+        font,
+        { bounds.x, bounds.y, std::max(0.0f, bounds.width), std::max(0.0f, bounds.height) },
+        textLayoutOptions(style, forceSingleLine, std::move(defaultHorizontalAlignment), std::move(defaultVerticalAlignment)));
+}
+
 bool shouldDrawEditorLabel(bool showEditorDecorations)
 {
     return showEditorDecorations;
@@ -827,6 +863,9 @@ ResolvedWidgetStyle resolveWidgetStyle(const model::ProjectDocument& document, c
     style.textPadding = resolved.textPadding;
     style.horizontalTextAlignment = resolved.horizontalTextAlignment;
     style.verticalTextAlignment = resolved.verticalTextAlignment;
+    style.multiline = resolved.multiline;
+    style.wordWrap = resolved.wordWrap;
+    style.overflowMode = resolved.overflowMode;
 
     return style;
 }
@@ -915,6 +954,9 @@ ResolvedWidgetStyle resolveWidgetStyle(
     style.textPadding = resolved.textPadding;
     style.horizontalTextAlignment = resolved.horizontalTextAlignment;
     style.verticalTextAlignment = resolved.verticalTextAlignment;
+    style.multiline = resolved.multiline;
+    style.wordWrap = resolved.wordWrap;
+    style.overflowMode = resolved.overflowMode;
     return style;
 }
 
@@ -1374,7 +1416,6 @@ void drawWidget(visage::Canvas& canvas,
         fields = std::clamp(fields, 1, 4);
         const float fieldWidth = bounds.width / static_cast<float>(fields);
         const float fieldInset = std::min(10.0f, std::max(6.0f, bounds.height * 0.16f));
-        const float textTop = centeredTextTop(bounds.y + 1.0f, std::max(0.0f, bounds.height - 2.0f), fontSize);
         const float textHeight = std::max(0.0f, bounds.height - 4.0f);
         for (int i = 0; i < fields; ++i) {
             const float fx = bounds.x + fieldWidth * static_cast<float>(i);
@@ -1383,8 +1424,12 @@ void drawWidget(visage::Canvas& canvas,
                 const std::string key = std::string("text") + std::to_string(i);
                 const std::string text = getStringProperty(widget, key, {});
                 canvas.setColor(visual_style::stateTextColor(palette, enabled));
-                canvas.text(text, widgetFont, textJustification(style, visage::Font::kTopLeft),
-                    fx + fieldInset, textTop, std::max(0.0f, fw - fieldInset * 2.0f), textHeight);
+                drawWidgetText(canvas, text, widgetFont,
+                    { fx + fieldInset, bounds.y + 2.0f, std::max(0.0f, fw - fieldInset * 2.0f), textHeight },
+                    style,
+                    false,
+                    "Left",
+                    "Center");
             }
             if (i + 1 < fields) {
                 canvas.setColor(style.borderColor);
@@ -1500,8 +1545,10 @@ void drawWidget(visage::Canvas& canvas,
             if (!title.empty()) {
                 canvas.setColor(visual_style::stateTextColor(palette, enabled));
                 const float padding = std::clamp(style.textPadding, 0.0f, bounds.width * 0.35f);
-                canvas.text(title, widgetFont, textJustification(style, visage::Font::kTopLeft),
-                    bounds.x + padding, bounds.y + 6.0f, std::max(0.0f, bounds.width - padding * 2.0f), 20.0f);
+                drawWidgetText(canvas, title, widgetFont,
+                    { bounds.x + padding, bounds.y + 6.0f, std::max(0.0f, bounds.width - padding * 2.0f), 20.0f },
+                    style,
+                    true);
             }
         }
         break;
@@ -1521,8 +1568,10 @@ void drawWidget(visage::Canvas& canvas,
                 canvas.setColor(enabled ? style.fillColor : visual_style::blend(style.fillColor, style.disabledColor, 0.55f));
                 canvas.fill(bounds.x + padding, bounds.y, titleWidth + 12.0f, 20.0f);
                 canvas.setColor(visual_style::stateTextColor(palette, enabled));
-                canvas.text(title, widgetFont, textJustification(style, visage::Font::kTopLeft),
-                    bounds.x + padding + 6.0f, bounds.y + 1.0f, std::max(0.0f, bounds.width - padding * 2.0f), 18.0f);
+                drawWidgetText(canvas, title, widgetFont,
+                    { bounds.x + padding + 6.0f, bounds.y + 1.0f, std::max(0.0f, bounds.width - padding * 2.0f), 18.0f },
+                    style,
+                    true);
             }
         }
         break;
@@ -1583,8 +1632,7 @@ void drawWidget(visage::Canvas& canvas,
             visual_style::drawBevel(canvas, baselineRect(tabBounds), tabPalette, tabState);
             if (drawText) {
                 canvas.setColor(visual_style::stateTextColor(tabPalette, enabled));
-                canvas.text(labels[index], widgetFont, textJustification(style, visage::Font::kCenter),
-                    tabBounds.x, tabBounds.y, tabBounds.width, tabBounds.height);
+                drawWidgetText(canvas, labels[index], widgetFont, tabBounds, style, true, "Center", "Center");
             }
         }
         canvas.setColor(enabled ? style.fillColor : visual_style::blend(style.fillColor, style.disabledColor, 0.55f));
@@ -1609,10 +1657,9 @@ void drawWidget(visage::Canvas& canvas,
             if (!text.empty()) {
                 canvas.setColor(style.textColor);
                 const float padding = std::clamp(style.textPadding, 0.0f, bounds.width * 0.45f);
-                canvas.text(text, widgetFont, textJustification(style, visage::Font::kTopLeft),
-                    bounds.x + padding,
-                    alignedTextTop(bounds.y + padding, std::max(0.0f, bounds.height - padding * 2.0f), fontSize, style),
-                    std::max(0.0f, bounds.width - padding * 2.0f), std::max(0.0f, bounds.height - padding * 2.0f));
+                drawWidgetText(canvas, text, widgetFont,
+                    { bounds.x + padding, bounds.y + padding, std::max(0.0f, bounds.width - padding * 2.0f), std::max(0.0f, bounds.height - padding * 2.0f) },
+                    style);
             }
         }
         break;
@@ -1639,11 +1686,17 @@ void drawWidget(visage::Canvas& canvas,
         if (drawText && !normalText.empty()) {
             const float padding = std::clamp(style.textPadding, 0.0f, std::min(bounds.width, bounds.height) * 0.45f);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
-            canvas.text(pressedState ? pressedText : normalText, widgetFont, textJustification(style, visage::Font::kCenter),
-                bounds.x + padding + (pressedState ? 1.0f : 0.0f),
-                bounds.y + padding + (pressedState ? 1.0f : 0.0f),
-                std::max(0.0f, bounds.width - padding * 2.0f),
-                std::max(0.0f, bounds.height - padding * 2.0f));
+            drawWidgetText(canvas, pressedState ? pressedText : normalText, widgetFont,
+                {
+                    bounds.x + padding + (pressedState ? 1.0f : 0.0f),
+                    bounds.y + padding + (pressedState ? 1.0f : 0.0f),
+                    std::max(0.0f, bounds.width - padding * 2.0f),
+                    std::max(0.0f, bounds.height - padding * 2.0f)
+                },
+                style,
+                false,
+                "Center",
+                "Center");
         }
         break;
     }
@@ -1656,9 +1709,12 @@ void drawWidget(visage::Canvas& canvas,
         if (drawText) {
             const float padding = std::clamp(style.textPadding, 0.0f, bounds.width * 0.45f);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
-            canvas.text(getStringProperty(widget, "text", ""), widgetFont, textJustification(style, visage::Font::kTopLeft),
-                bounds.x + padding, alignedTextTop(bounds.y, bounds.height, fontSize, style),
-                std::max(0.0f, bounds.width - padding * 2.0f), std::max(0.0f, bounds.height - 8.0f));
+            drawWidgetText(canvas, getStringProperty(widget, "text", ""), widgetFont,
+                { bounds.x + padding, bounds.y + 4.0f, std::max(0.0f, bounds.width - padding * 2.0f), std::max(0.0f, bounds.height - 8.0f) },
+                style,
+                false,
+                "Left",
+                "Center");
         }
         break;
     }
@@ -1935,9 +1991,12 @@ void drawWidget(visage::Canvas& canvas,
             const std::string text = runtimeTextOrEditorLabel(widget, "text", showEditorDecorations);
             if (!text.empty()) {
                 canvas.setColor(visual_style::stateTextColor(palette, enabled));
-                canvas.text(text, widgetFont, textJustification(style, visage::Font::kTopLeft),
-                    textX, centeredTextTop(bounds.y, bounds.height, fontSize),
-                    std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+                drawWidgetText(canvas, text, widgetFont,
+                    { textX, bounds.y + 4.0f, std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f) },
+                    style,
+                    false,
+                    "Left",
+                    "Center");
             }
         }
         break;
@@ -1971,9 +2030,12 @@ void drawWidget(visage::Canvas& canvas,
             const std::string text = runtimeTextOrEditorLabel(widget, "text", showEditorDecorations);
             if (!text.empty()) {
                 canvas.setColor(visual_style::stateTextColor(palette, enabled));
-                canvas.text(text, widgetFont, textJustification(style, visage::Font::kTopLeft),
-                    textX, centeredTextTop(bounds.y, bounds.height, fontSize),
-                    std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f));
+                drawWidgetText(canvas, text, widgetFont,
+                    { textX, bounds.y + 4.0f, std::max(0.0f, bounds.x + bounds.width - textX - 8.0f), std::max(0.0f, bounds.height - 8.0f) },
+                    style,
+                    false,
+                    "Left",
+                    "Center");
             }
         }
         break;
