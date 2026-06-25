@@ -1,0 +1,150 @@
+Continue VisiForm Phase 116. Do not create a new phase and do not change version 1.0.22.
+
+The incorrect Appearance inheritance is fixed, but the Multiline property still cannot be changed from false to true.
+
+Observed behavior:
+
+- the row now correctly appears under Text Box Behavior
+- the label is `Multiline`
+- the value displays `false`
+- editing produces an “edited” status hint
+- the value does not become `true`
+- the control appears to be using a generic text editor instead of a Boolean selector
+
+Keep this fix narrow and token-efficient.
+
+Rules:
+
+- no subagents
+- read only the active Phase 116 plan and files directly related to:
+  - Multiline property metadata
+  - Boolean Property Inspector editors
+  - property commit/parsing
+  - Text Box model updates
+  - undo/redo
+- do not perform a repository-wide audit
+- do not refactor unrelated inspector controls
+- build once after the fix
+- do not commit or push
+
+## Goal 1: Use the Boolean editor
+
+Ensure Multiline is described as a Boolean property and uses the existing Boolean editor.
+
+Preferred UI:
+
+- dropdown with `false` and `true`
+- checkbox/toggle if that is the established inspector convention
+
+Do not use a free-form text field for Boolean values.
+
+Verify the property descriptor supplies:
+
+- Boolean editor type
+- valid values
+- editable state
+- correct property ID
+- correct commit callback
+
+## Goal 2: Trace the failed commit
+
+Trace the current edit path:
+
+1. user selects or enters `true`
+2. editor commits its value
+3. value is parsed as Boolean
+4. Text Box model property is updated
+5. command/undo system records the change
+6. inspector refresh reads the updated value
+7. canvas repaints
+
+Determine where the value is being lost or rejected.
+
+Possible causes:
+
+- generic string editor is used
+- Boolean parsing accepts only `1/0`
+- commit callback still targets an Appearance override
+- property name or ID does not match the model field
+- model setter is missing
+- refresh reads a different property source
+- the command stores the old value again
+- conditional visibility rebuild overwrites the edit
+
+Record the confirmed root cause in the Phase 116 plan.
+
+## Goal 3: Correct Boolean parsing and commit
+
+Required behavior:
+
+- selecting `true` stores Boolean true
+- selecting `false` stores Boolean false
+- closed row reflects the committed value
+- canvas updates immediately
+- the Text Box enters multiline behavior when true
+- undo and redo work
+- no-op changes create no undo entry
+- save/reload preserves the value
+
+Do not store the strings `"true"` or `"false"` if the model already uses a Boolean.
+
+## Goal 4: Verify Word Wrap
+
+Check Word Wrap through the same Boolean editor path.
+
+Requirements:
+
+- it can be changed between false and true
+- it commits to the correct model property
+- it becomes enabled or visible appropriately when Multiline is true
+- it does not inherit stale editor metadata
+
+Use the shared Boolean property editor fix rather than a Multiline-only workaround.
+
+## Status hint
+
+The status hint must describe the actual result.
+
+After a successful change, show a useful message such as:
+
+`Multiline set to true.`
+
+Do not show a generic “edited” success message when the model value was not committed.
+
+If validation fails, show a concise failure message instead.
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Select a Text Box.
+4. Confirm Multiline uses a Boolean selector.
+5. Change false to true.
+6. Confirm the row displays true.
+7. Confirm Enter inserts a newline while editing.
+8. Change true back to false.
+9. Confirm single-line behavior returns.
+10. Test undo and redo.
+11. Test Word Wrap false and true.
+12. Change selection and return to the Text Box.
+13. Confirm values remain correct.
+14. Save and reload.
+15. Confirm Multiline and Word Wrap persist.
+16. Confirm the status hint reports the committed value accurately.
+
+Update the existing Phase 116 plan with:
+
+- failed-commit root cause
+- Boolean editor fix
+- parsing and model-update path
+- status-hint correction
+- files changed
+- build result
+- manual validation performed
+- remaining issues
+
+Do not create Phase 117.
+Do not change version 1.0.22.
+Do not commit or push.

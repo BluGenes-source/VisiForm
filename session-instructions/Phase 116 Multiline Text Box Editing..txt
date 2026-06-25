@@ -1,0 +1,377 @@
+Implement VisiForm Phase 116: Multiline Text Box Editing.
+
+Phase 115 is complete and pushed.
+
+Use:
+
+* Phase: 116
+* Version: 1.0.22
+* Subagents: none
+
+Keep this focused and token-efficient.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 115 plan
+* files directly related to:
+
+  * Text Box model and properties
+  * shared text layout
+  * text editing, caret, selection, and keyboard input
+  * scrolling
+  * Preview Mode
+  * generated Text Box output
+  * serialization
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_116_multiline_text_box_editing_plan.md`
+
+Before implementation:
+
+* update authoritative versions to `1.0.22`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not create a new Text Editor widget.
+Build once after implementation unless a build failure requires another pass.
+
+## Goal
+
+Extend the existing Text Box widget so enabling `Multiline` provides practical multiline editing.
+
+The same Text Box widget must support:
+
+* single-line mode
+* multiline mode
+
+Preserve current single-line behavior when `Multiline` is false.
+
+## Multiline input
+
+When `Multiline` is true:
+
+* Enter inserts a newline
+* Shift+Enter also inserts a newline unless existing conventions require otherwise
+* Backspace and Delete work across line boundaries
+* typed text inserts at the caret
+* selected text is replaced by typing
+* pasted multiline text preserves newlines
+
+When `Multiline` is false:
+
+* preserve existing Enter behavior
+* prevent stored multiline content from breaking single-line rendering
+* do not regress current editing
+
+## Caret navigation
+
+Support:
+
+* Left and Right
+* Up and Down
+* Home and End
+* Ctrl+Home and Ctrl+End
+* Page Up and Page Down where practical
+
+Required behavior:
+
+* Up and Down preserve the preferred horizontal caret position
+* Home moves to line start
+* End moves to line end
+* Ctrl+Home moves to document start
+* Ctrl+End moves to document end
+* caret remains on a valid text boundary
+* clicking places the caret on the nearest valid character boundary
+
+Reuse Phase 115 layout results and font metrics.
+
+Do not use fixed-width character assumptions.
+
+## Selection
+
+Support multiline selection using:
+
+* Shift+arrow keys
+* Shift+Home and Shift+End
+* Shift+Up and Shift+Down
+* mouse drag across lines
+* Ctrl+A
+
+Requirements:
+
+* selection draws correctly across multiple lines
+* selected text deletion works
+* copy, cut, and paste preserve newline characters
+* selection remains valid after wrapping or resizing
+* changing text does not leave invalid indexes
+
+Use the existing clipboard path.
+
+## Word wrapping
+
+Use the existing `Word Wrap` property.
+
+### Word Wrap enabled
+
+* wrap text to the available content width
+* caret navigation follows visual lines
+* no horizontal scrollbar is required
+* vertical scrolling is available when needed
+
+### Word Wrap disabled
+
+* preserve logical lines
+* allow horizontal scrolling when content exceeds the field width
+* vertical scrolling remains available
+
+Do not modify stored text to create visual wrapping.
+
+## Scrolling
+
+Add editor scrolling for multiline Text Boxes.
+
+Support:
+
+* vertical scrolling when content exceeds the visible height
+* horizontal scrolling when Word Wrap is disabled
+* mouse wheel for vertical scrolling
+* caret-follow scrolling while typing or navigating
+* drag-selection autoscroll near field edges where practical
+
+Use existing scrollbar controls or scrolling infrastructure where available.
+
+Requirements:
+
+* scroll offsets are editor/runtime state, not project data
+* changing text keeps the caret visible
+* switching selection or project clears stale scroll state safely
+* no callback or timer survives widget destruction
+
+Do not add scrollbars to single-line Text Boxes unless already supported.
+
+## Text layout integration
+
+Reuse the Phase 115 shared text-layout system.
+
+The editor must use the same layout results for:
+
+* text drawing
+* caret placement
+* hit testing
+* selection rectangles
+* scrolling
+* line navigation
+
+Do not implement a second independent wrapping algorithm.
+
+Account for:
+
+* resolved font
+* DPI
+* border thickness
+* corner radius
+* text padding
+* content bounds
+* zoom in Design Mode
+
+## Property Inspector
+
+Preserve existing properties:
+
+* Multiline
+* Word Wrap
+* Overflow Mode
+* alignment
+* typography
+* padding
+
+Behavior:
+
+* Word Wrap is meaningful only when Multiline is enabled
+* multiline editing must update the Text property correctly
+* changing Multiline or Word Wrap repaints immediately
+* edits support undo/redo
+* no-op changes create no undo entry
+
+Do not redesign the Property Inspector.
+
+## Design Mode editing
+
+In Design Mode:
+
+* normal widget selection and resizing must remain available
+* entering text-edit mode enables multiline editing
+* editor overlays remain separate
+* Escape exits text editing before performing other canvas actions
+* Delete edits text while the Text Box editor has focus
+* Delete removes the widget only when text editing is not active
+
+Do not allow multiline editing to interfere with widget drag or resize handling.
+
+## Preview Mode
+
+Preview Mode should provide runtime-like multiline Text Box interaction where existing architecture allows it.
+
+Requirements:
+
+* render multiline text correctly
+* support caret, selection, wrapping, and scrolling
+* temporary text edits must not modify the project model unless Preview Mode already intentionally supports committed editing
+* leaving Preview Mode discards temporary preview text state
+
+If safe interactive editing is not practical in Preview Mode, render and scroll without modifying the project and document the limitation.
+
+## Undo and redo
+
+Text changes in Design Mode must use the existing editing or command system.
+
+Preferred behavior:
+
+* group normal typing into reasonable undo units
+* Enter/newline insertion is undoable
+* paste is one undo operation
+* cut is one undo operation
+* deletion of selected text is undoable
+* widget selection remains stable
+
+Do not create one project undo entry for every caret movement.
+
+## Serialization
+
+Continue storing Text as a normal string containing newline characters.
+
+Requirements:
+
+* no new widget type
+* old single-line projects load unchanged
+* multiline text round-trips correctly
+* Multiline and Word Wrap persist
+* scroll position, caret, and selection are not serialized
+* JSON escaping remains valid
+
+## Generated output
+
+Generated Text Box controls must support the same properties:
+
+* Multiline
+* Word Wrap
+* text content with newlines
+* read-only state where already supported
+* resolved typography and appearance
+* vertical scrolling
+* horizontal scrolling when wrapping is disabled
+
+Preserve:
+
+* generated-code readability
+* `USER CODE` regions
+* existing single-line output behavior
+
+Do not generate a separate widget class solely for multiline mode unless the runtime framework requires an internal implementation distinction.
+
+## Scope boundaries
+
+Do not add:
+
+* a new Text Editor widget
+* syntax highlighting
+* rich text
+* line numbers
+* search and replace
+* spell checking
+* markdown
+* code folding
+* multiple cursors
+* tab-width settings
+* file loading or saving
+* bidirectional editing improvements beyond existing support
+
+Record those as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.22`.
+4. Verify existing single-line Text Box editing.
+5. Enable Multiline.
+6. Insert several lines with Enter.
+7. Test Backspace and Delete across line boundaries.
+8. Test Left, Right, Up, Down, Home, End, Ctrl+Home, and Ctrl+End.
+9. Test Shift-based selection across lines.
+10. Test mouse selection across lines.
+11. Test Ctrl+A, copy, cut, and multiline paste.
+12. Test Word Wrap enabled.
+13. Test Word Wrap disabled.
+14. Test vertical scrolling.
+15. Test horizontal scrolling without wrapping.
+16. Resize the Text Box and confirm layout updates.
+17. Test several fonts, sizes, padding values, and corner radii.
+18. Confirm Delete does not remove the widget while text editing is active.
+19. Test undo and redo for text operations.
+20. Save and reload multiline content.
+21. Enter Preview Mode and verify the implemented interaction policy.
+22. Export a project containing single-line and multiline Text Boxes.
+23. Inspect or build generated output through the approved workflow.
+24. Confirm autosave and recovery preserve multiline text.
+
+Do not claim runtime or generated-output validation unless actually performed.
+
+## Documentation
+
+Update the Phase 116 plan with:
+
+* previous and new version
+* single-line versus multiline behavior
+* caret navigation
+* selection behavior
+* wrapping integration
+* scrolling design
+* undo grouping
+* Preview Mode policy
+* serialization impact
+* generated-output behavior
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it already has a current-progress section.
+
+## Completion report
+
+Report:
+
+* Phase 116 plan path
+* version change to `1.0.22`
+* multiline input behavior
+* caret and selection support
+* wrapping and scrolling behavior
+* Design Mode integration
+* Preview Mode behavior
+* serialization result
+* generated-output result
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

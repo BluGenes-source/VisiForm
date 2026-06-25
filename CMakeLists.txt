@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(VisiForm
-    VERSION 1.0.21
+    VERSION 1.0.22
     LANGUAGES CXX
 )
 

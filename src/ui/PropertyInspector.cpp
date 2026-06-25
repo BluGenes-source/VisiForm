@@ -558,6 +558,11 @@ std::string inheritedAppearanceValue(const model::ResolvedLookAndFeelStyle& styl
     return {};
 }
 
+bool isDirectTextBoxTextLayoutKey(std::string_view key)
+{
+    return key == "multiline" || key == "wordWrap";
+}
+
 bool isColorPropertyKey(const std::string& key)
 {
     return key == "backgroundColor"
@@ -1362,6 +1367,11 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
             bool addedTypographySection = false;
             bool addedTextLayoutSection = false;
             for (const auto key : keys) {
+                if (selectedWidget->type == model::WidgetType::TextBox
+                    && isDirectTextBoxTextLayoutKey(key)) {
+                    continue;
+                }
+
                 const bool typographyKey = key == "fontFamily"
                     || key == "fontSize"
                     || key == "fontWeight"
@@ -1518,6 +1528,29 @@ std::vector<PropertyInspector::PropertyRow> PropertyInspector::buildRows(const m
                     { makeChoice("reset", "Reset All", "Restore inheritance for every widget Appearance property and state.") }
                 });
             }
+        }
+    }
+
+    if (selectedWidget->type == model::WidgetType::TextBox && !document.hasMultiSelection()) {
+        rows.push_back({ "__section_text_box_behavior", "Text Box Behavior", {}, {}, PropertyEditKind::ReadOnly, true });
+
+        const bool multiline = selectedWidget->appearanceOverrides.multiline.value_or(false);
+        const bool wordWrap = selectedWidget->appearanceOverrides.wordWrap.value_or(false);
+        rows.push_back({
+            "multiline",
+            "Multiline",
+            "Allows the Text Box to contain and edit multiple lines.",
+            multiline ? "true" : "false",
+            PropertyEditKind::Bool
+        });
+        if (multiline || wordWrap) {
+            rows.push_back({
+                "wordWrap",
+                "Word Wrap",
+                "Wraps multiline Text Box contents to the available width.",
+                wordWrap ? "true" : "false",
+                PropertyEditKind::Bool
+            });
         }
     }
 

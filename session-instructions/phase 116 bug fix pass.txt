@@ -1,0 +1,221 @@
+Continue VisiForm Phase 116. Do not create a new phase and do not change version 1.0.22.
+
+The `Multiline` property cannot be changed in the Property Inspector.
+
+Observed behavior:
+
+* the row displays `Multiline (Inh)`
+* the status hint says it is inherited from normal widget Appearance
+* the Boolean editor does not allow selecting `true`
+* `Multiline` is a normal Text Box behavior property and must not use Appearance inheritance
+
+Keep this pass narrow and token-efficient.
+
+## Rules
+
+* Do not use subagents.
+* Read only:
+
+  * the active Phase 116 plan
+  * Property Inspector row construction and reuse
+  * property metadata/editor selection
+  * Appearance inheritance handling
+  * Text Box `Multiline` and `Word Wrap` property definitions
+  * directly related commit and undo paths
+* Search before opening large files.
+* Do not perform a repository-wide audit.
+* Do not refactor unrelated Property Inspector behavior.
+* Build once after the focused fix.
+* Do not commit or push.
+
+## Goal 1: Confirm the root cause
+
+Trace how the Property Inspector row for `Multiline` is created.
+
+Determine why it receives Appearance metadata such as:
+
+* inherited state
+* `(Inh)` label suffix
+* Appearance override hint
+* read-only or override-specific editor behavior
+* incorrect commit callback
+* stale dropdown metadata
+
+Check whether Property Inspector rows or editor controls are reused and not fully reset when switching between:
+
+* Appearance properties
+* typography properties
+* normal widget properties
+* different selected widgets
+* Appearance states
+* inspector tabs or sections
+
+Record the confirmed cause in the Phase 116 plan.
+
+## Goal 2: Fully reset reused row/editor state
+
+When a Property Inspector row is assigned to a new property, reset all prior metadata before applying the new descriptor.
+
+Reset directly relevant state such as:
+
+* property identifier
+* label text
+* inherited flag
+* override scope
+* read-only state
+* editor type
+* dropdown options
+* numeric range
+* hint text
+* commit callback
+* reset action
+* state-specific styling
+* visibility and enablement
+
+Do not let an Appearance row’s metadata leak into a normal property row.
+
+Prefer one shared row-reset or initialization path rather than scattered fixes.
+
+## Goal 3: Correct `Multiline` semantics
+
+`Multiline` must be a direct Boolean Text Box property.
+
+Required behavior:
+
+* label displays `Multiline`, without `(Inh)`
+* editor offers `false` and `true`
+* selecting a value commits immediately
+* the Text Box model updates
+* the project becomes dirty only when the value changes
+* undo and redo work
+* the widget repaints
+* save/load preserves the value
+* the hint describes multiline behavior, not Appearance inheritance
+
+Suggested hint:
+
+`Allows the Text Box to contain and edit multiple lines.`
+
+Use existing project wording conventions.
+
+## Goal 4: Correct `Word Wrap` semantics
+
+Verify `Word Wrap` uses the same direct-property path.
+
+Required behavior:
+
+* no Appearance inheritance marker
+* editable Boolean control
+* enabled or visible only when appropriate for Multiline
+* correct hint
+* model commit, undo/redo, save/load, and repaint behavior
+
+Do not allow stale Appearance metadata to affect it.
+
+## Goal 5: Check nearby normal properties
+
+Perform a targeted check of other normal Text Layout properties:
+
+* Multiline
+* Word Wrap
+* Overflow Mode
+* horizontal alignment
+* vertical alignment
+* text padding
+
+Confirm normal widget properties are not mistakenly routed through:
+
+* project Appearance overrides
+* widget Appearance overrides
+* state Appearance overrides
+
+Do not broaden this into a full Property Inspector audit.
+
+## Appearance properties must still work
+
+Preserve the intended inheritance behavior for actual Appearance and Typography overrides.
+
+Examples that may legitimately show inherited state:
+
+* font family
+* font size
+* font weight
+* border color
+* corner radius
+* text padding when it is specifically an Appearance override
+
+The fix must distinguish property scope correctly rather than disabling inheritance globally.
+
+## Selection and refresh behavior
+
+Verify the fix remains stable when:
+
+* selecting another widget and returning
+* switching Properties and Events tabs
+* changing Appearance State
+* scrolling the inspector
+* changing from Button to Text Box
+* opening a new project
+* loading an existing project
+
+The issue must not reappear due to reused row state.
+
+## Preserve existing behavior
+
+Do not regress:
+
+* Phase 116 multiline rendering
+* single-line Text Box behavior
+* typography inheritance
+* Appearance inheritance
+* state appearance overrides
+* Property Inspector scrolling
+* Preview Mode
+* undo/redo
+* save/load
+* autosave and recovery
+* generated output
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.22`.
+4. Select a Text Box.
+5. Confirm the row shows `Multiline`, not `Multiline (Inh)`.
+6. Confirm the hint describes multiline behavior.
+7. Change `Multiline` from false to true.
+8. Confirm the model and widget update.
+9. Change it back to false.
+10. Test undo and redo.
+11. Enable Multiline and test Word Wrap.
+12. Confirm Word Wrap has the correct editor and hint.
+13. Switch between Appearance and Text Layout sections.
+14. Change the selected widget several times.
+15. Scroll the Property Inspector and return to the rows.
+16. Confirm the incorrect inherited state does not return.
+17. Confirm real Appearance properties still show inheritance correctly.
+18. Save and reload.
+19. Confirm Multiline and Word Wrap persist.
+20. Confirm generated Text Box properties remain correct.
+
+Do not claim manual validation unless it was actually performed.
+
+## Documentation
+
+Update the existing Phase 116 plan with:
+
+* root cause
+* row/editor reset fix
+* property-scope distinction
+* Multiline and Word Wrap behavior
+* files changed
+* build result
+* manual validation performed
+* remaining issues
+
+Do not create Phase 117.
+Do not change version 1.0.22.
+Do not commit or push.

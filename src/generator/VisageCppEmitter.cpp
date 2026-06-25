@@ -4096,6 +4096,9 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "        return true;\n";
     stream << "    }\n";
     stream << "    if (e.keyCode() == KeyCode::Return) {\n";
+    stream << "        if (widget->style.multiline && updateTextBoxText(*widget, widget->text.value + \"\\n\", true)) {\n";
+    stream << "            redraw();\n";
+    stream << "        }\n";
     stream << "        return true;\n";
     stream << "    }\n";
     stream << "    return false;\n";
@@ -4116,7 +4119,13 @@ std::string emitGeneratedBaseCpp(const visiform::model::ProjectDocument& documen
     stream << "    std::string appended;\n";
     stream << "    appended.reserve(text.size());\n";
     stream << "    for (char character : text) {\n";
-    stream << "        if (character == '\\n' || character == '\\r' || character == '\\b') {\n";
+    stream << "        if (character == '\\r' || character == '\\b') {\n";
+    stream << "            continue;\n";
+    stream << "        }\n";
+    stream << "        if (character == '\\n') {\n";
+    stream << "            if (widget->style.multiline) {\n";
+    stream << "                appended.push_back(character);\n";
+    stream << "            }\n";
     stream << "            continue;\n";
     stream << "        }\n";
     stream << "        if (!std::iscntrl(static_cast<unsigned char>(character))) {\n";

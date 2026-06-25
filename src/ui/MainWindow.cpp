@@ -3730,16 +3730,8 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (const auto row = propertyInspector_.hitTestRow(document_, settings_, e.position.x, e.position.y)) {
         if (row->editKind == PropertyInspector::PropertyEditKind::Bool) {
-            if (row->key == "__appearance_preview_state") {
-                setSelectedWidgetPropertyFromString(
-                    row->key,
-                    row->displayValue == "true" ? "false" : "true");
-            }
-            else {
-                const bool currentValue = document_.selectedWidget() != nullptr
-                    && document_.selectedWidget()->getBoolProperty(row->key, false);
-                setSelectedWidgetProperty(row->key, !currentValue);
-            }
+            const bool currentValue = row->displayValue == "true" || row->displayValue == "1";
+            setSelectedWidgetPropertyFromString(row->key, currentValue ? "false" : "true");
         }
         else if (row->editKind != PropertyInspector::PropertyEditKind::ReadOnly) {
             if (row->editKind == PropertyInspector::PropertyEditKind::Choice) {
@@ -3999,6 +3991,12 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
 
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
 {
+    if (textEditControl_.mouseDrag(e.position.x, e.position.y)) {
+        updateTextEditCaretTimer();
+        redraw();
+        return;
+    }
+
     if (isEditorModalVisible()) {
         return;
     }
@@ -4219,6 +4217,11 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 
 void MainWindow::mouseUp(const visage::MouseEvent& e)
 {
+    if (textEditControl_.mouseUp()) {
+        redraw();
+        return;
+    }
+
     if (canvasPan_.active
         && ((canvasPan_.startedWithMiddleButton && e.isMiddleButton())
             || (!canvasPan_.startedWithMiddleButton && e.isLeftButton()))) {
@@ -4510,6 +4513,12 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
     }
 
     if (dropdownControl_.mouseWheel(deltaY, e.position.x, e.position.y)) {
+        redraw();
+        return true;
+    }
+
+    if (textEditControl_.mouseWheel(deltaY, e.position.x, e.position.y)) {
+        updateTextEditCaretTimer();
         redraw();
         return true;
     }
@@ -6404,6 +6413,10 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
     }
 
     const std::string trimmedValue = trimWhitespace(valueText);
+    const bool preserveRawTextValue = key == "text"
+        && widget->type == model::WidgetType::TextBox
+        && model::LookAndFeelRegistry::instance().resolve(document_, *widget).multiline;
+    const std::string& propertyValueText = preserveRawTextValue ? valueText : trimmedValue;
     auto parseBool = [](const std::string& text, bool& output) -> bool {
         std::string normalized = text;
         std::transform(normalized.begin(), normalized.end(), normalized.begin(),
@@ -6451,6 +6464,56 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         updatePropertyEditorBounds();
         redraw();
         return true;
+    }
+
+    if (widget->type == model::WidgetType::TextBox && (key == "multiline" || key == "wordWrap")) {
+        bool boolValue = false;
+        if (!parseBool(trimmedValue, boolValue)) {
+            setOperationStatus("Invalid Text Box behavior value");
+            redraw();
+            return false;
+        }
+
+        const bool currentValue = key == "multiline"
+            ? widget->appearanceOverrides.multiline.value_or(false)
+            : widget->appearanceOverrides.wordWrap.value_or(false);
+        if (key == "wordWrap" && boolValue && !widget->appearanceOverrides.multiline.value_or(false)) {
+            setOperationStatus("Enable Multiline before enabling Word Wrap");
+            redraw();
+            return false;
+        }
+        if (currentValue == boolValue) {
+            return true;
+        }
+
+        const std::string widgetId = widget->id;
+        const std::string propertyKey = key;
+        const bool applied = applyUndoableDocumentChange("Edit Text Box behavior",
+            [this, widgetId, propertyKey, boolValue]() {
+                auto* current = document_.findWidgetById(widgetId);
+                if (current == nullptr || current->type != model::WidgetType::TextBox) {
+                    return false;
+                }
+
+                if (propertyKey == "multiline") {
+                    current->appearanceOverrides.multiline = boolValue;
+                    if (!boolValue) {
+                        current->appearanceOverrides.wordWrap.reset();
+                    }
+                }
+                else {
+                    current->appearanceOverrides.wordWrap = boolValue;
+                }
+                return true;
+            });
+        if (applied) {
+            setOperationStatus((key == "multiline" ? "Multiline" : "Word Wrap")
+                + std::string(" set to ")
+                + (boolValue ? "true." : "false."));
+            updatePropertyEditorBounds();
+            redraw();
+        }
+        return applied;
     }
 
     if (key == "__appearance_reset_property"
@@ -6885,7 +6948,7 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
             return true;
         }
 
-        return setSelectedWidgetProperty(key, trimmedValue);
+        return setSelectedWidgetProperty(key, propertyValueText);
     }
 
     if (key == "localVisageSourceDirectory") {
@@ -6940,7 +7003,7 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
             return false;
         }
 
-        return setSelectedWidgetProperty(key, trimmedValue);
+        return setSelectedWidgetProperty(key, propertyValueText);
     }
 
     if (key == "dock") {
@@ -6950,7 +7013,7 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
             return false;
         }
 
-        return setSelectedWidgetProperty(key, trimmedValue);
+        return setSelectedWidgetProperty(key, propertyValueText);
     }
 
     if (key == "anchor") {
@@ -7099,7 +7162,7 @@ bool MainWindow::setSelectedWidgetPropertyFromString(const std::string& key, con
         }
     }
 
-    return setSelectedWidgetProperty(key, trimmedValue);
+    return setSelectedWidgetProperty(key, propertyValueText);
 }
 
 bool MainWindow::applyLiveAppearanceSliderEdit(const std::string& key, const std::string& valueText)
@@ -8951,7 +9014,17 @@ bool MainWindow::beginInspectorEdit(const PropertyInspector::PropertyRow& row)
     }
 
     updateTextEditMetricsFont();
-    textEditControl_.begin(row.displayValue);
+    bool multilineEdit = false;
+    bool wordWrapEdit = false;
+    if (row.key == "text") {
+        const auto* selectedWidget = document_.selectedWidget();
+        if (selectedWidget != nullptr && selectedWidget->type == model::WidgetType::TextBox) {
+            const auto style = model::LookAndFeelRegistry::instance().resolve(document_, *selectedWidget);
+            multilineEdit = style.multiline;
+            wordWrapEdit = style.wordWrap;
+        }
+    }
+    textEditControl_.begin(row.displayValue, true, multilineEdit, wordWrapEdit);
     updatePropertyEditorBounds();
     updateTextEditCaretTimer();
     if (!row.choices.empty()) {

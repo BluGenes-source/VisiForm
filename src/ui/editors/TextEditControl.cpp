@@ -1,6 +1,7 @@
 #include "ui/editors/TextEditControl.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <string_view>
 #include <vector>
@@ -80,13 +81,15 @@ bool TextEditControl::contains(float x, float y) const
     return editing_ && bounds_.contains(x, y);
 }
 
-void TextEditControl::begin(std::string text, bool selectAllText, bool multiline)
+void TextEditControl::begin(std::string text, bool selectAllText, bool multiline, bool wordWrap)
 {
     originalText_ = text;
     text_ = std::move(text);
     editing_ = true;
     focused_ = true;
     multiline_ = multiline;
+    wordWrap_ = multiline && wordWrap;
+    draggingSelection_ = false;
     caretVisible_ = true;
     pendingAction_ = PendingAction::None;
     cursorIndex_ = text_.size();
@@ -94,6 +97,7 @@ void TextEditControl::begin(std::string text, bool selectAllText, bool multiline
     selectionEnd_ = cursorIndex_;
     scrollX_ = 0.0f;
     scrollY_ = 0.0f;
+    preferredCursorX_ = -1.0f;
     if (selectAllText) {
         selectAll();
     }
@@ -115,7 +119,10 @@ void TextEditControl::clear()
     scrollX_ = 0.0f;
     scrollY_ = 0.0f;
     multiline_ = false;
+    wordWrap_ = false;
+    draggingSelection_ = false;
     caretVisible_ = false;
+    preferredCursorX_ = -1.0f;
 }
 
 bool TextEditControl::isActive() const
@@ -176,6 +183,43 @@ bool TextEditControl::mouseDown(float x, float y)
     selectionStart_ = hitIndex;
     selectionEnd_ = hitIndex;
     ensureCursorVisible();
+    draggingSelection_ = true;
+    noteEditingInteraction();
+    return true;
+}
+
+bool TextEditControl::mouseDrag(float x, float y)
+{
+    if (!editing_ || !focused_ || !draggingSelection_) {
+        return false;
+    }
+
+    const std::size_t hitIndex = hitTestCharacterIndex(x, y);
+    moveCursor(hitIndex, true);
+    return true;
+}
+
+bool TextEditControl::mouseUp()
+{
+    const bool wasDragging = draggingSelection_;
+    draggingSelection_ = false;
+    return wasDragging;
+}
+
+bool TextEditControl::mouseWheel(float deltaY, float x, float y)
+{
+    if (!editing_ || !focused_ || !multiline_ || !bounds_.contains(x, y)) {
+        return false;
+    }
+
+    const float innerHeight = std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f);
+    const float maxVerticalScroll = std::max(0.0f, static_cast<float>(lineCount()) * lineAdvance() - innerHeight);
+    if (maxVerticalScroll <= 0.0f) {
+        return false;
+    }
+
+    const float direction = deltaY > 0.0f ? -1.0f : 1.0f;
+    scrollY_ = std::clamp(scrollY_ + direction * lineAdvance() * 3.0f, 0.0f, maxVerticalScroll);
     noteEditingInteraction();
     return true;
 }
@@ -187,6 +231,8 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
     }
 
     using KeyCode = visage::KeyCode;
+    const bool extending = event.isShiftDown();
+    const bool control = event.isCtrlDown() || event.isCmdDown() || event.isMetaDown();
     switch (event.keyCode()) {
     case KeyCode::Backspace:
         if (hasSelection()) {
@@ -212,27 +258,38 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
         ensureCursorVisible();
         noteEditingInteraction();
         return true;
+    case KeyCode::A:
+        if (control) {
+            selectAll();
+            noteEditingInteraction();
+            return true;
+        }
+        return false;
     case KeyCode::Left:
-        if (hasSelection()) {
+        preferredCursorX_ = -1.0f;
+        if (hasSelection() && !extending) {
             moveCursor(selectionMin());
         }
         else if (cursorIndex_ > 0) {
-            moveCursor(previousTextBoundary(text_, cursorIndex_));
+            moveCursor(previousTextBoundary(text_, cursorIndex_), extending);
         }
         return true;
     case KeyCode::Right:
-        if (hasSelection()) {
+        preferredCursorX_ = -1.0f;
+        if (hasSelection() && !extending) {
             moveCursor(selectionMax());
         }
         else if (cursorIndex_ < text_.size()) {
-            moveCursor(nextTextBoundary(text_, cursorIndex_));
+            moveCursor(nextTextBoundary(text_, cursorIndex_), extending);
         }
         return true;
     case KeyCode::Home:
-        moveCursor(multiline_ ? lineStartForIndex(cursorIndex_) : 0);
+        preferredCursorX_ = -1.0f;
+        moveCursor(control ? 0 : (multiline_ ? lineStartForIndex(cursorIndex_) : 0), extending);
         return true;
     case KeyCode::End:
-        moveCursor(multiline_ ? lineEndForIndex(cursorIndex_) : text_.size());
+        preferredCursorX_ = -1.0f;
+        moveCursor(control ? text_.size() : (multiline_ ? lineEndForIndex(cursorIndex_) : text_.size()), extending);
         return true;
     case KeyCode::Return:
         if (multiline_) {
@@ -245,9 +302,11 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
     case KeyCode::Up:
         if (multiline_) {
             const std::size_t lineIndex = currentLineIndex();
-            const std::size_t columnIndex = currentColumnIndex();
+            if (preferredCursorX_ < 0.0f) {
+                preferredCursorX_ = cursorOffsetForIndex(cursorIndex_);
+            }
             if (lineIndex > 0) {
-                moveCursor(indexForLineColumn(lineIndex - 1, columnIndex));
+                moveCursor(indexForLineOffset(lineIndex - 1, preferredCursorX_), extending);
             }
             return true;
         }
@@ -255,9 +314,11 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
     case KeyCode::Down:
         if (multiline_) {
             const std::size_t lineIndex = currentLineIndex();
-            const std::size_t columnIndex = currentColumnIndex();
+            if (preferredCursorX_ < 0.0f) {
+                preferredCursorX_ = cursorOffsetForIndex(cursorIndex_);
+            }
             if (lineIndex + 1 < lineCount()) {
-                moveCursor(indexForLineColumn(lineIndex + 1, columnIndex));
+                moveCursor(indexForLineOffset(lineIndex + 1, preferredCursorX_), extending);
             }
             return true;
         }
@@ -347,36 +408,44 @@ void TextEditControl::draw(visage::Canvas& canvas, const visage::Font& font, boo
     const float textTop = multiline_
         ? bounds_.y + kVerticalPadding
         : bounds_.y + std::max(kVerticalPadding, (bounds_.height - textHeight) * 0.5f);
-    const float selectionLeft = textLeft - scrollX_ + cursorOffsetForIndex(selectionMin());
-    const float selectionWidth = std::max(0.0f, cursorOffsetForIndex(selectionMax()) - cursorOffsetForIndex(selectionMin()));
 
     canvas.saveState();
     canvas.setClampBounds(bounds_.x + 1.0f, bounds_.y + 1.0f, std::max(0.0f, bounds_.width - 2.0f), std::max(0.0f, bounds_.height - 2.0f));
-    if (!multiline_ && hasSelection() && selectionWidth > 0.0f) {
+    if (!multiline_ && hasSelection()) {
+        const float selectionLeft = textLeft - scrollX_ + cursorOffsetForIndex(selectionMin());
+        const float selectionWidth = std::max(0.0f, cursorOffsetForIndex(selectionMax()) - cursorOffsetForIndex(selectionMin()));
         canvas.setColor(0x66355382);
         canvas.fill(selectionLeft, bounds_.y + kVerticalPadding, selectionWidth, std::max(0.0f, bounds_.height - kVerticalPadding * 2.0f));
     }
 
     canvas.setColor(0xffeef2f8);
     if (multiline_) {
-        std::size_t lineStart = 0;
+        const auto ranges = visualLineRanges();
         float lineTop = textTop - scrollY_;
-        while (lineStart <= text_.size()) {
-            const std::size_t lineEnd = text_.find('\n', lineStart);
-            const std::size_t safeLineEnd = lineEnd == std::string::npos ? text_.size() : lineEnd;
+        for (const auto& [lineStart, safeLineEnd] : ranges) {
             const std::string lineText = text_.substr(lineStart, safeLineEnd - lineStart);
-            canvas.text(lineText, font, visage::Font::kTopLeft, textLeft - scrollX_, lineTop, std::max(textWidth + scrollX_, textWidth), textHeight);
-            if (lineEnd == std::string::npos) {
-                break;
+            if (hasSelection()) {
+                const std::size_t selectedStart = std::max(selectionMin(), lineStart);
+                const std::size_t selectedEnd = std::min(selectionMax(), safeLineEnd);
+                if (selectedStart < selectedEnd
+                    || (selectionMax() > safeLineEnd && selectionMin() <= safeLineEnd && safeLineEnd < text_.size() && text_[safeLineEnd] == '\n')) {
+                    const float left = textLeft - scrollX_ + measuredTextWidth(lineStart, selectedStart);
+                    const float right = selectedStart < selectedEnd
+                        ? textLeft - scrollX_ + measuredTextWidth(lineStart, selectedEnd)
+                        : left + 4.0f;
+                    canvas.setColor(0x66355382);
+                    canvas.fill(left, lineTop, std::max(1.0f, right - left), std::max(textHeight, lineAdvance() - 2.0f));
+                    canvas.setColor(0xffeef2f8);
+                }
             }
-            lineStart = lineEnd + 1;
+            canvas.text(lineText, font, visage::Font::kTopLeft, textLeft - scrollX_, lineTop, std::max(textWidth + scrollX_, textWidth), textHeight);
             lineTop += lineAdvance();
         }
 
         if (isCaretVisible()) {
-            const std::size_t lineIndex = currentLineIndex();
+            const std::size_t caretLineIndex = currentLineIndex();
             const float cursorX = textLeft - scrollX_ + cursorOffsetForIndex(cursorIndex_);
-            const float cursorY = textTop - scrollY_ + static_cast<float>(lineIndex) * lineAdvance();
+            const float cursorY = textTop - scrollY_ + static_cast<float>(caretLineIndex) * lineAdvance();
             canvas.setColor(0xff92b9ff);
             canvas.fill(cursorX, cursorY, 1.0f, std::max(textHeight, lineAdvance() - 2.0f));
         }
@@ -437,6 +506,7 @@ void TextEditControl::insertText(const std::string& text)
     cursorIndex_ += text.size();
     clearSelection();
     ensureCursorVisible();
+    preferredCursorX_ = -1.0f;
     noteEditingInteraction();
 }
 
@@ -454,6 +524,9 @@ void TextEditControl::moveCursor(std::size_t index, bool extendSelection)
         clearSelection();
     }
     ensureCursorVisible();
+    if (!extendSelection) {
+        preferredCursorX_ = -1.0f;
+    }
     noteEditingInteraction();
 }
 
@@ -461,14 +534,17 @@ void TextEditControl::ensureCursorVisible()
 {
     const float innerWidth = std::max(0.0f, bounds_.width - kHorizontalPadding * 2.0f);
     const float cursorX = cursorOffsetForIndex(cursorIndex_);
-    if (cursorX < scrollX_) {
+    if (wordWrap_) {
+        scrollX_ = 0.0f;
+    }
+    else if (cursorX < scrollX_) {
         scrollX_ = cursorX;
     }
     else if (cursorX > scrollX_ + innerWidth) {
         scrollX_ = std::max(0.0f, cursorX - innerWidth);
     }
 
-    const float maxScroll = std::max(0.0f, cursorOffsetForIndex(lineEndForIndex(cursorIndex_)) - innerWidth);
+    const float maxScroll = wordWrap_ ? 0.0f : std::max(0.0f, cursorOffsetForIndex(lineEndForIndex(cursorIndex_)) - innerWidth);
     scrollX_ = std::clamp(scrollX_, 0.0f, maxScroll);
 
     if (multiline_) {
@@ -496,6 +572,15 @@ void TextEditControl::noteEditingInteraction()
 
 std::size_t TextEditControl::lineStartForIndex(std::size_t index) const
 {
+    if (wordWrap_) {
+        const std::size_t safeIndex = std::min(index, text_.size());
+        for (const auto& [start, end] : visualLineRanges()) {
+            if (safeIndex >= start && safeIndex <= end) {
+                return start;
+            }
+        }
+    }
+
     const std::size_t safeIndex = std::min(index, text_.size());
     const std::size_t searchStart = safeIndex == 0 ? 0 : safeIndex - 1;
     const std::size_t newline = text_.rfind('\n', searchStart);
@@ -508,6 +593,15 @@ std::size_t TextEditControl::lineStartForIndex(std::size_t index) const
 
 std::size_t TextEditControl::lineEndForIndex(std::size_t index) const
 {
+    if (wordWrap_) {
+        const std::size_t safeIndex = std::min(index, text_.size());
+        for (const auto& [start, end] : visualLineRanges()) {
+            if (safeIndex >= start && safeIndex <= end) {
+                return end;
+            }
+        }
+    }
+
     const std::size_t safeIndex = std::min(index, text_.size());
     const std::size_t newline = text_.find('\n', safeIndex);
     return newline == std::string::npos ? text_.size() : newline;
@@ -529,9 +623,12 @@ std::size_t TextEditControl::hitTestCharacterIndex(float x, float y) const
     }
 
     const float relativeY = std::max(0.0f, y - bounds_.y - kVerticalPadding + scrollY_);
-    const std::size_t lineIndex = static_cast<std::size_t>(std::floor(relativeY / lineAdvance()));
-    const std::size_t lineStart = indexForLineColumn(lineIndex, 0);
-    const std::size_t lineEnd = lineEndForIndex(lineStart);
+    const std::size_t lineIndex = std::min<std::size_t>(
+        static_cast<std::size_t>(std::floor(relativeY / lineAdvance())),
+        lineCount() == 0 ? 0 : lineCount() - 1);
+    const auto ranges = visualLineRanges();
+    const std::size_t lineStart = lineIndex < ranges.size() ? ranges[lineIndex].first : 0;
+    const std::size_t lineEnd = lineIndex < ranges.size() ? ranges[lineIndex].second : text_.size();
     const auto boundaries = lineBoundaries(lineStart, lineEnd);
     for (std::size_t i = 0; i + 1 < boundaries.size(); ++i) {
         const float left = measuredTextWidth(lineStart, boundaries[i]);
@@ -545,6 +642,17 @@ std::size_t TextEditControl::hitTestCharacterIndex(float x, float y) const
 
 std::size_t TextEditControl::currentLineIndex() const
 {
+    if (wordWrap_) {
+        const std::size_t safeIndex = std::min(cursorIndex_, text_.size());
+        const auto ranges = visualLineRanges();
+        for (std::size_t index = 0; index < ranges.size(); ++index) {
+            if (safeIndex >= ranges[index].first && safeIndex <= ranges[index].second) {
+                return index;
+            }
+        }
+        return ranges.empty() ? 0 : ranges.size() - 1;
+    }
+
     return static_cast<std::size_t>(std::count(text_.begin(), text_.begin() + static_cast<std::ptrdiff_t>(std::min(cursorIndex_, text_.size())), '\n'));
 }
 
@@ -555,11 +663,23 @@ std::size_t TextEditControl::currentColumnIndex() const
 
 std::size_t TextEditControl::lineCount() const
 {
+    if (wordWrap_) {
+        return std::max<std::size_t>(1, visualLineRanges().size());
+    }
+
     return static_cast<std::size_t>(std::count(text_.begin(), text_.end(), '\n')) + 1;
 }
 
 std::size_t TextEditControl::indexForLineColumn(std::size_t lineIndex, std::size_t columnIndex) const
 {
+    if (wordWrap_) {
+        const auto ranges = visualLineRanges();
+        if (lineIndex >= ranges.size()) {
+            return text_.size();
+        }
+        return std::min(ranges[lineIndex].first + columnIndex, ranges[lineIndex].second);
+    }
+
     std::size_t currentLine = 0;
     std::size_t currentIndex = 0;
     while (currentLine < lineIndex && currentIndex < text_.size()) {
@@ -581,6 +701,21 @@ std::size_t TextEditControl::indexForLineColumn(std::size_t lineIndex, std::size
     return std::min(currentIndex + columnIndex, lineEnd);
 }
 
+std::size_t TextEditControl::indexForLineOffset(std::size_t lineIndex, float offset) const
+{
+    const std::size_t lineStart = indexForLineColumn(lineIndex, 0);
+    const std::size_t lineEnd = lineEndForIndex(lineStart);
+    const auto boundaries = lineBoundaries(lineStart, lineEnd);
+    for (std::size_t i = 0; i + 1 < boundaries.size(); ++i) {
+        const float left = measuredTextWidth(lineStart, boundaries[i]);
+        const float right = measuredTextWidth(lineStart, boundaries[i + 1]);
+        if (offset < left + (right - left) * 0.5f) {
+            return boundaries[i];
+        }
+    }
+    return lineEnd;
+}
+
 std::vector<std::size_t> TextEditControl::lineBoundaries(std::size_t lineStart, std::size_t lineEnd) const
 {
     const std::size_t safeStart = std::min(lineStart, text_.size());
@@ -596,6 +731,69 @@ std::vector<std::size_t> TextEditControl::lineBoundaries(std::size_t lineStart, 
         boundaries.push_back(safeEnd);
     }
     return boundaries;
+}
+
+std::vector<std::pair<std::size_t, std::size_t>> TextEditControl::visualLineRanges() const
+{
+    std::vector<std::pair<std::size_t, std::size_t>> ranges;
+    if (!wordWrap_) {
+        std::size_t lineStart = 0;
+        while (lineStart <= text_.size()) {
+            const std::size_t lineEnd = text_.find('\n', lineStart);
+            const std::size_t safeLineEnd = lineEnd == std::string::npos ? text_.size() : lineEnd;
+            ranges.emplace_back(lineStart, safeLineEnd);
+            if (lineEnd == std::string::npos) {
+                break;
+            }
+            lineStart = lineEnd + 1;
+        }
+        return ranges;
+    }
+
+    const float availableWidth = std::max(1.0f, bounds_.width - kHorizontalPadding * 2.0f);
+    std::size_t logicalStart = 0;
+    while (logicalStart <= text_.size()) {
+        const std::size_t logicalEndMarker = text_.find('\n', logicalStart);
+        const std::size_t logicalEnd = logicalEndMarker == std::string::npos ? text_.size() : logicalEndMarker;
+        std::size_t visualStart = logicalStart;
+        while (visualStart < logicalEnd) {
+            std::size_t visualEnd = nextTextBoundary(text_, visualStart);
+            std::size_t bestEnd = visualEnd;
+            std::size_t lastSpaceEnd = std::string::npos;
+            while (visualEnd <= logicalEnd) {
+                if (visualEnd > visualStart && std::isspace(static_cast<unsigned char>(text_[visualEnd - 1])) != 0) {
+                    lastSpaceEnd = visualEnd;
+                }
+                if (measuredTextWidth(visualStart, visualEnd) > availableWidth) {
+                    if (lastSpaceEnd != std::string::npos && lastSpaceEnd > visualStart) {
+                        bestEnd = lastSpaceEnd;
+                    }
+                    break;
+                }
+                bestEnd = visualEnd;
+                if (visualEnd == logicalEnd) {
+                    break;
+                }
+                visualEnd = nextTextBoundary(text_, visualEnd);
+            }
+            ranges.emplace_back(visualStart, std::max(bestEnd, nextTextBoundary(text_, visualStart)));
+            visualStart = ranges.back().second;
+            while (visualStart < logicalEnd && std::isspace(static_cast<unsigned char>(text_[visualStart])) != 0) {
+                ++visualStart;
+            }
+        }
+        if (logicalStart == logicalEnd) {
+            ranges.emplace_back(logicalEnd, logicalEnd);
+        }
+        if (logicalEndMarker == std::string::npos) {
+            break;
+        }
+        logicalStart = logicalEndMarker + 1;
+    }
+    if (ranges.empty()) {
+        ranges.emplace_back(0, 0);
+    }
+    return ranges;
 }
 
 float TextEditControl::measuredTextWidth(std::size_t start, std::size_t end) const
