@@ -1,10 +1,9 @@
 #include "ui/DesignerCanvas.h"
 
-#include "ui/DesignerCanvas.h"
-
 #include "model/BoxSizerLayout.h"
 #include "model/LookAndFeelRegistry.h"
 #include "model/WidgetItemUtils.h"
+#include "model/WidgetRegistry.h"
 #include "ui/TextLayout.h"
 #include "ui/WidgetMetrics.h"
 #include "ui/VisualStyleBaseline.h"
@@ -16,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <sstream>
@@ -764,11 +764,10 @@ bool isChildVisibleInParent(const model::WidgetNode& parent, const model::Widget
     return child.getIntProperty("tabIndex", 0) == selectedTabIndex(parent);
 }
 
-float normalizedSliderValue(const model::WidgetNode& widget)
+float normalizedSliderValue(const model::WidgetNode& widget, float value)
 {
     const float minimum = getNumericProperty(widget, "min", 0.0f);
     const float maximum = getNumericProperty(widget, "max", 100.0f);
-    const float value = getNumericProperty(widget, "value", 50.0f);
     if (maximum <= minimum) {
         return 0.5f;
     }
@@ -777,16 +776,25 @@ float normalizedSliderValue(const model::WidgetNode& widget)
     return std::clamp((clampedValue - minimum) / (maximum - minimum), 0.0f, 1.0f);
 }
 
-float normalizedRangeValue(const model::WidgetNode& widget, const std::string& valueKey = "value")
+float normalizedSliderValue(const model::WidgetNode& widget)
+{
+    return normalizedSliderValue(widget, getNumericProperty(widget, "value", 50.0f));
+}
+
+float normalizedRangeValue(const model::WidgetNode& widget, float value)
 {
     const float minimum = getNumericProperty(widget, "min", 0.0f);
     const float maximum = getNumericProperty(widget, "max", 100.0f);
-    const float value = getNumericProperty(widget, valueKey, minimum);
     if (maximum <= minimum) {
         return 0.0f;
     }
 
     return std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
+}
+
+float normalizedRangeValue(const model::WidgetNode& widget, const std::string& valueKey = "value")
+{
+    return normalizedRangeValue(widget, getNumericProperty(widget, valueKey, getNumericProperty(widget, "min", 0.0f)));
 }
 
 std::string progressBarDisplayText(const model::WidgetNode& widget)
@@ -1143,7 +1151,19 @@ void drawBottomRightGripArcs(visage::Canvas& canvas, const PanelRect& bounds)
     }
 }
 
-void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds)
+bool hasAssignedCallbacks(const model::WidgetNode& widget)
+{
+    const auto* definition = model::WidgetRegistry::instance().find(widget.type);
+    if (definition == nullptr) {
+        return false;
+    }
+
+    return std::any_of(definition->events.begin(), definition->events.end(), [&widget](const model::WidgetEventDefinition& event) {
+        return !widget.getStringProperty(event.key, {}).empty();
+    });
+}
+
+void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds, bool callbackIndicator)
 {
     constexpr std::array<DesignerCanvas::HitRegion, 4> kHandles = {
         DesignerCanvas::HitRegion::TopLeftHandle,
@@ -1159,6 +1179,14 @@ void drawSelectionHandles(visage::Canvas& canvas, const PanelRect& bounds)
         canvas.setColor(0xffffffff);
         canvas.fill(handleBounds.x, handleBounds.y, handleBounds.width, handleBounds.height);
         drawBorder(canvas, handleBounds, 0xff2d7ff9);
+        if (handle == DesignerCanvas::HitRegion::TopRightHandle) {
+            canvas.setColor(callbackIndicator ? 0xfff4c84a : 0xff8fb8f4);
+            const float dotSize = callbackIndicator ? 4.0f : 3.0f;
+            canvas.fill(handleBounds.x + handleBounds.width - dotSize - 2.0f,
+                handleBounds.y + 2.0f,
+                dotSize,
+                dotSize);
+        }
     }
 }
 
@@ -1706,10 +1734,10 @@ void drawWidget(visage::Canvas& canvas,
         auto textBoxState = visualState;
         textBoxState.enabled = enabled;
         drawRoundedRecessed(canvas, bounds, style, textBoxState);
-        if (drawText) {
+        if (drawText && !designerCanvas.isPreviewTextOverlayWidget(widget.id)) {
             const float padding = std::clamp(style.textPadding, 0.0f, bounds.width * 0.45f);
             canvas.setColor(visual_style::stateTextColor(palette, enabled));
-            drawWidgetText(canvas, getStringProperty(widget, "text", ""), widgetFont,
+            drawWidgetText(canvas, designerCanvas.previewText(widget, getStringProperty(widget, "text", "")), widgetFont,
                 { bounds.x + padding, bounds.y + 4.0f, std::max(0.0f, bounds.width - padding * 2.0f), std::max(0.0f, bounds.height - 8.0f) },
                 style,
                 false,
@@ -1804,11 +1832,12 @@ void drawWidget(visage::Canvas& canvas,
     case model::WidgetType::TableGrid: {
         const auto columns = model::splitTableColumns(getStringProperty(widget, "columns", {}));
         const auto rows = model::splitTableRows(getStringProperty(widget, "rows", {}));
-        const auto selection = model::clampSelectedCell(
+        const auto modelSelection = model::clampSelectedCell(
             columns,
             rows,
             widget.getIntProperty("selectedRow", rows.empty() ? -1 : 0),
             widget.getIntProperty("selectedColumn", columns.empty() ? -1 : 0));
+        const auto selection = designerCanvas.previewTableGridSelection(widget, modelSelection);
         const bool showHeader = getBoolProperty(widget, "showHeader", true);
         const bool showGridLines = getBoolProperty(widget, "showGridLines", true);
         const float headerHeight = showHeader ? std::max(18.0f, getNumericProperty(widget, "headerHeight", 30.0f)) : 0.0f;
@@ -2042,7 +2071,8 @@ void drawWidget(visage::Canvas& canvas,
     }
     case model::WidgetType::Slider: {
         const bool enabled = widgetIsEnabled(widget);
-        const float normalized = normalizedSliderValue(widget);
+        const float normalized = normalizedSliderValue(widget,
+            designerCanvas.previewNumericValue(widget, getNumericProperty(widget, "value", 50.0f)));
         const float trackY = std::floor(bounds.y + bounds.height * 0.5f - 3.0f);
         const float trackLeft = bounds.x + 8.0f;
         const float trackWidth = std::max(0.0f, bounds.width - 16.0f);
@@ -2073,7 +2103,7 @@ void drawWidget(visage::Canvas& canvas,
         const float pageSize = std::max(1.0f, getNumericProperty(widget, "pageSize", 10.0f));
         const float minimum = getNumericProperty(widget, "min", 0.0f);
         const float maximum = std::max(minimum + 1.0f, getNumericProperty(widget, "max", 100.0f));
-        const float value = std::clamp(getNumericProperty(widget, "value", minimum), minimum, maximum);
+        const float value = std::clamp(designerCanvas.previewNumericValue(widget, getNumericProperty(widget, "value", minimum)), minimum, maximum);
         const float normalized = std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
         const float thumbFactor = std::clamp(pageSize / (maximum - minimum + pageSize), 0.18f, 0.55f);
         const float arrowSize = vertical ? std::min(bounds.width, 20.0f) : std::min(bounds.height, 20.0f);
@@ -2219,7 +2249,7 @@ void drawWidget(visage::Canvas& canvas,
     if (showEditorDecorations && document.isPrimarySelected(widget.id)) {
         drawSelectionOutline(canvas, bounds);
         if (showsDirectResizeAffordance(widget)) {
-            drawSelectionHandles(canvas, bounds);
+            drawSelectionHandles(canvas, bounds, hasAssignedCallbacks(widget));
         }
     }
     else if (showEditorDecorations && document.isSecondarySelected(widget.id)) {
@@ -2294,7 +2324,69 @@ bool DesignerCanvas::beginPreviewInteraction(const model::ProjectDocument& docum
     previewPressedWidgetId_ = nextId;
     previewFocusedWidgetId_ = nextId;
     previewHoveredWidgetId_ = nextId;
+    previewDraggingValueWidgetId_.clear();
+    if (widget != nullptr
+        && (widget->type == model::WidgetType::Slider || widget->type == model::WidgetType::ScrollBar)) {
+        previewDraggingValueWidgetId_ = widget->id;
+        (void)updatePreviewInteraction(document, x, y);
+    }
     return changed;
+}
+
+bool DesignerCanvas::updatePreviewInteraction(const model::ProjectDocument& document, float x, float y)
+{
+    if (mode_ != Mode::Preview || previewDraggingValueWidgetId_.empty()) {
+        return false;
+    }
+
+    const model::WidgetNode* widget = document.findWidgetById(previewDraggingValueWidgetId_);
+    if (widget == nullptr || !widgetIsEnabled(*widget)) {
+        previewDraggingValueWidgetId_.clear();
+        return true;
+    }
+
+    const auto bounds = widgetScreenBounds(document, widget->id);
+    if (!bounds.has_value()) {
+        return false;
+    }
+
+    const float minimum = getNumericProperty(*widget, "min", 0.0f);
+    const float maximum = std::max(minimum, getNumericProperty(*widget, "max", 100.0f));
+    const float span = maximum - minimum;
+    if (span <= 0.0f) {
+        return false;
+    }
+
+    float normalized = 0.0f;
+    if (widget->type == model::WidgetType::ScrollBar
+        && getStringProperty(*widget, "orientation", "Horizontal") == "Vertical") {
+        const float arrowSize = std::min(bounds->width, 20.0f);
+        const float trackTop = bounds->y + arrowSize;
+        const float trackHeight = std::max(1.0f, bounds->height - arrowSize * 2.0f);
+        normalized = std::clamp((y - trackTop) / trackHeight, 0.0f, 1.0f);
+    }
+    else {
+        const float trackLeft = widget->type == model::WidgetType::ScrollBar
+            ? bounds->x + std::min(bounds->height, 20.0f)
+            : bounds->x + 8.0f;
+        const float trackWidth = widget->type == model::WidgetType::ScrollBar
+            ? std::max(1.0f, bounds->width - std::min(bounds->height, 20.0f) * 2.0f)
+            : std::max(1.0f, bounds->width - 16.0f);
+        normalized = std::clamp((x - trackLeft) / trackWidth, 0.0f, 1.0f);
+    }
+
+    const float rawValue = minimum + span * normalized;
+    const float step = std::max(0.0f, getNumericProperty(*widget, "step", 1.0f));
+    const float steppedValue = step > 0.0f
+        ? minimum + std::round((rawValue - minimum) / step) * step
+        : rawValue;
+    const float nextValue = std::clamp(steppedValue, minimum, maximum);
+    const auto current = previewNumericValues_.find(widget->id);
+    if (current != previewNumericValues_.end() && std::abs(current->second - nextValue) < 0.001f) {
+        return false;
+    }
+    previewNumericValues_[widget->id] = nextValue;
+    return true;
 }
 
 bool DesignerCanvas::endPreviewInteraction(const model::ProjectDocument& document, float x, float y)
@@ -2305,6 +2397,7 @@ bool DesignerCanvas::endPreviewInteraction(const model::ProjectDocument& documen
 
     const std::string pressedId = previewPressedWidgetId_;
     previewPressedWidgetId_.clear();
+    previewDraggingValueWidgetId_.clear();
     const auto hit = hitTestWidgetId(document, x, y);
     if (pressedId.empty() || !hit.has_value() || *hit != pressedId) {
         return !pressedId.empty();
@@ -2351,12 +2444,47 @@ bool DesignerCanvas::endPreviewInteraction(const model::ProjectDocument& documen
         }
         break;
     case model::WidgetType::ComboBox:
+        return false;
     case model::WidgetType::ListBox: {
         const auto items = model::splitItems(widget->getStringProperty("items", {}));
         if (!items.empty()) {
-            const int current = previewSelectedIndex(*widget,
-                model::sanitizeSelectedIndex(items, widget->getIntProperty("selectedIndex", 0)));
-            previewSelectedIndex_[widget->id] = (current + 1) % static_cast<int>(items.size());
+            const auto bounds = widgetScreenBounds(document, widget->id);
+            if (widget->type == model::WidgetType::ListBox && bounds.has_value()) {
+                const float fontSize = resolvedFontSize(*widget, resolveWidgetStyle(document, *widget));
+                const float rowHeight = std::max(18.0f, fontSize * 1.5f);
+                const int row = static_cast<int>(std::floor((y - (bounds->y + 4.0f)) / rowHeight));
+                if (row >= 0 && row < static_cast<int>(items.size())) {
+                    previewSelectedIndex_[widget->id] = row;
+                }
+            }
+            else {
+                const int current = previewSelectedIndex(*widget,
+                    model::sanitizeSelectedIndex(items, widget->getIntProperty("selectedIndex", 0)));
+                previewSelectedIndex_[widget->id] = (current + 1) % static_cast<int>(items.size());
+            }
+        }
+        break;
+    }
+    case model::WidgetType::TableGrid: {
+        const auto columns = model::splitTableColumns(widget->getStringProperty("columns", {}));
+        const auto rows = model::splitTableRows(widget->getStringProperty("rows", {}));
+        const auto bounds = widgetScreenBounds(document, widget->id);
+        if (!columns.empty() && !rows.empty() && bounds.has_value()) {
+            const bool showHeader = getBoolProperty(*widget, "showHeader", true);
+            const float headerHeight = showHeader ? std::max(18.0f, getNumericProperty(*widget, "headerHeight", 30.0f)) : 0.0f;
+            const float rowHeight = std::max(16.0f, getNumericProperty(*widget, "rowHeight", 28.0f));
+            const float contentX = bounds->x + 4.0f;
+            const float contentY = bounds->y + 4.0f;
+            const float contentWidth = std::max(0.0f, bounds->width - 8.0f);
+            const float columnWidth = contentWidth / static_cast<float>(std::max<std::size_t>(1, columns.size()));
+            const float rowOffset = y - (contentY + headerHeight);
+            if (x >= contentX && x <= contentX + contentWidth && rowOffset >= 0.0f && columnWidth > 0.0f) {
+                const int column = std::clamp(static_cast<int>((x - contentX) / columnWidth), 0, static_cast<int>(columns.size()) - 1);
+                const int row = static_cast<int>(std::floor(rowOffset / rowHeight));
+                if (row >= 0 && row < static_cast<int>(rows.size())) {
+                    previewTableGridSelections_[widget->id] = model::clampSelectedCell(columns, rows, row, column);
+                }
+            }
         }
         break;
     }
@@ -2365,6 +2493,131 @@ bool DesignerCanvas::endPreviewInteraction(const model::ProjectDocument& documen
     }
 
     return true;
+}
+
+bool DesignerCanvas::focusNextPreviewWidget(const model::ProjectDocument& document, bool reverse)
+{
+    if (mode_ != Mode::Preview) {
+        return false;
+    }
+
+    std::vector<std::string> focusableIds;
+    const auto collectFocusable = [&](const auto& self, const model::WidgetNode& node) -> void {
+        if (!document.isRootWidgetId(node.id) && widgetIsEnabled(node)) {
+            switch (node.type) {
+            case model::WidgetType::Button:
+            case model::WidgetType::TextBox:
+            case model::WidgetType::CheckBox:
+            case model::WidgetType::RadioButton:
+            case model::WidgetType::ComboBox:
+            case model::WidgetType::ListBox:
+            case model::WidgetType::Slider:
+            case model::WidgetType::ScrollBar:
+            case model::WidgetType::TabControl:
+            case model::WidgetType::TableGrid:
+                focusableIds.push_back(node.id);
+                break;
+            default:
+                break;
+            }
+        }
+        for (const auto& child : node.children) {
+            if (isChildVisibleInParent(node, child)) {
+                self(self, child);
+            }
+        }
+    };
+    collectFocusable(collectFocusable, document.root);
+
+    if (focusableIds.empty()) {
+        previewFocusedWidgetId_.clear();
+        return false;
+    }
+
+    auto iterator = std::find(focusableIds.begin(), focusableIds.end(), previewFocusedWidgetId_);
+    if (iterator == focusableIds.end()) {
+        previewFocusedWidgetId_ = reverse ? focusableIds.back() : focusableIds.front();
+        return true;
+    }
+
+    if (reverse) {
+        previewFocusedWidgetId_ = iterator == focusableIds.begin() ? focusableIds.back() : *std::prev(iterator);
+    }
+    else {
+        ++iterator;
+        previewFocusedWidgetId_ = iterator == focusableIds.end() ? focusableIds.front() : *iterator;
+    }
+    return true;
+}
+
+bool DesignerCanvas::activateFocusedPreviewWidget(const model::ProjectDocument& document)
+{
+    if (mode_ != Mode::Preview || previewFocusedWidgetId_.empty()) {
+        return false;
+    }
+
+    const model::WidgetNode* widget = document.findWidgetById(previewFocusedWidgetId_);
+    if (widget == nullptr || !widgetIsEnabled(*widget)) {
+        previewFocusedWidgetId_.clear();
+        return true;
+    }
+
+    switch (widget->type) {
+    case model::WidgetType::Button:
+        previewPressedWidgetId_.clear();
+        return true;
+    case model::WidgetType::CheckBox: {
+        const bool current = previewChecked_.contains(widget->id)
+            ? previewChecked_.at(widget->id)
+            : widget->getBoolProperty("checked", false);
+        previewChecked_[widget->id] = !current;
+        return true;
+    }
+    case model::WidgetType::RadioButton: {
+        const std::string group = widget->getStringProperty("group", "default");
+        const auto selectGroup = [&](const auto& self, const model::WidgetNode& node) -> void {
+            if (node.type == model::WidgetType::RadioButton
+                && node.getStringProperty("group", "default") == group) {
+                previewSelected_[node.id] = node.id == widget->id;
+            }
+            for (const auto& child : node.children) {
+                self(self, child);
+            }
+        };
+        selectGroup(selectGroup, document.root);
+        return true;
+    }
+    case model::WidgetType::ComboBox:
+        return false;
+    case model::WidgetType::ListBox: {
+        const auto items = model::splitItems(widget->getStringProperty("items", {}));
+        if (items.empty()) {
+            return true;
+        }
+        const int current = previewSelectedIndex(*widget,
+            model::sanitizeSelectedIndex(items, widget->getIntProperty("selectedIndex", 0)));
+        previewSelectedIndex_[widget->id] = (current + 1) % static_cast<int>(items.size());
+        return true;
+    }
+    case model::WidgetType::TabControl: {
+        const std::vector<std::string> labels = tabLabels(*widget);
+        if (labels.empty()) {
+            return true;
+        }
+        const int current = previewSelectedTab(*widget, selectedTabIndex(*widget));
+        previewSelectedTab_[widget->id] = (current + 1) % static_cast<int>(labels.size());
+        return true;
+    }
+    case model::WidgetType::TableGrid:
+        return true;
+    default:
+        return false;
+    }
+}
+
+const std::string& DesignerCanvas::previewFocusedWidgetId() const
+{
+    return previewFocusedWidgetId_;
 }
 
 void DesignerCanvas::clearPreviewInteraction()
@@ -2376,6 +2629,11 @@ void DesignerCanvas::clearPreviewInteraction()
     previewSelected_.clear();
     previewSelectedIndex_.clear();
     previewSelectedTab_.clear();
+    previewTableGridSelections_.clear();
+    previewNumericValues_.clear();
+    previewTextValues_.clear();
+    previewDraggingValueWidgetId_.clear();
+    previewTextOverlayWidgetId_.clear();
 }
 
 visual_style::State DesignerCanvas::resolvedVisualState(const model::WidgetNode& widget) const
@@ -2410,6 +2668,51 @@ int DesignerCanvas::previewSelectedTab(const model::WidgetNode& widget, int fall
 {
     const auto found = previewSelectedTab_.find(widget.id);
     return mode_ == Mode::Preview && found != previewSelectedTab_.end() ? found->second : fallback;
+}
+
+model::TableGridSelection DesignerCanvas::previewTableGridSelection(const model::WidgetNode& widget,
+    model::TableGridSelection fallback) const
+{
+    const auto found = previewTableGridSelections_.find(widget.id);
+    return mode_ == Mode::Preview && found != previewTableGridSelections_.end() ? found->second : fallback;
+}
+
+float DesignerCanvas::previewNumericValue(const model::WidgetNode& widget, float fallback) const
+{
+    const auto found = previewNumericValues_.find(widget.id);
+    return mode_ == Mode::Preview && found != previewNumericValues_.end() ? found->second : fallback;
+}
+
+std::string DesignerCanvas::previewText(const model::WidgetNode& widget, std::string fallback) const
+{
+    const auto found = previewTextValues_.find(widget.id);
+    return mode_ == Mode::Preview && found != previewTextValues_.end() ? found->second : std::move(fallback);
+}
+
+bool DesignerCanvas::isPreviewTextOverlayWidget(const std::string& widgetId) const
+{
+    return mode_ == Mode::Preview && !widgetId.empty() && previewTextOverlayWidgetId_ == widgetId;
+}
+
+void DesignerCanvas::setPreviewSelectedIndex(const std::string& widgetId, int selectedIndex)
+{
+    if (mode_ != Mode::Preview || widgetId.empty()) {
+        return;
+    }
+    previewSelectedIndex_[widgetId] = selectedIndex;
+}
+
+void DesignerCanvas::setPreviewText(const std::string& widgetId, std::string text)
+{
+    if (mode_ != Mode::Preview || widgetId.empty()) {
+        return;
+    }
+    previewTextValues_[widgetId] = std::move(text);
+}
+
+void DesignerCanvas::setPreviewTextOverlayWidgetId(std::string widgetId)
+{
+    previewTextOverlayWidgetId_ = mode_ == Mode::Preview ? std::move(widgetId) : std::string{};
 }
 
 void DesignerCanvas::setShowGrid(bool showGrid)
@@ -2651,6 +2954,33 @@ std::optional<int> DesignerCanvas::hitTestTabHeader(const model::ProjectDocument
     const float tabWidth = headerBounds.width / static_cast<float>(std::max<std::size_t>(1, labels.size()));
     const int index = std::clamp(static_cast<int>((x - headerBounds.x) / std::max(1.0f, tabWidth)), 0, static_cast<int>(labels.size()) - 1);
     return index;
+}
+
+std::optional<DesignerCanvas::SelectionRect> DesignerCanvas::widgetScreenBounds(const model::ProjectDocument& document,
+    const std::string& widgetId) const
+{
+    if (widgetId.empty() || !containsViewport(x_, y_) || !document.root.bounds.isValid()) {
+        return std::nullopt;
+    }
+
+    const PreviewLayout previewLayout = calculatePreviewLayout(
+        x_, y_, width_, height_, document, mode_ == Mode::Preview, zoom_, panX_, panY_);
+    if (!previewLayout.form.isValid()) {
+        return std::nullopt;
+    }
+
+    const auto widgetInfo = findWidgetScreenInfo(document.root, widgetId, previewLayout.form.x, previewLayout.form.y,
+        -document.root.bounds.x, -document.root.bounds.y, previewLayout.scale);
+    if (!widgetInfo.has_value()) {
+        return std::nullopt;
+    }
+
+    return SelectionRect{
+        widgetInfo->bounds.x,
+        widgetInfo->bounds.y,
+        widgetInfo->bounds.width,
+        widgetInfo->bounds.height
+    };
 }
 
 std::optional<DesignerCanvas::InteractionHit> DesignerCanvas::hitTestInteraction(const model::ProjectDocument& document,

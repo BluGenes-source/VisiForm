@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/ProjectDocument.h"
+#include "model/WidgetItemUtils.h"
 #include "ui/VisualStyleBaseline.h"
 
 #include <visage/graphics.h>
@@ -70,11 +71,23 @@ public:
     void setMode(Mode mode);
     bool updatePreviewHover(const model::ProjectDocument& document, float x, float y);
     bool beginPreviewInteraction(const model::ProjectDocument& document, float x, float y);
+    bool updatePreviewInteraction(const model::ProjectDocument& document, float x, float y);
     bool endPreviewInteraction(const model::ProjectDocument& document, float x, float y);
+    bool focusNextPreviewWidget(const model::ProjectDocument& document, bool reverse);
+    bool activateFocusedPreviewWidget(const model::ProjectDocument& document);
+    [[nodiscard]] const std::string& previewFocusedWidgetId() const;
     void clearPreviewInteraction();
     [[nodiscard]] visual_style::State resolvedVisualState(const model::WidgetNode& widget) const;
     [[nodiscard]] int previewSelectedIndex(const model::WidgetNode& widget, int fallback) const;
     [[nodiscard]] int previewSelectedTab(const model::WidgetNode& widget, int fallback) const;
+    [[nodiscard]] model::TableGridSelection previewTableGridSelection(const model::WidgetNode& widget,
+        model::TableGridSelection fallback) const;
+    [[nodiscard]] float previewNumericValue(const model::WidgetNode& widget, float fallback) const;
+    [[nodiscard]] std::string previewText(const model::WidgetNode& widget, std::string fallback) const;
+    [[nodiscard]] bool isPreviewTextOverlayWidget(const std::string& widgetId) const;
+    void setPreviewSelectedIndex(const std::string& widgetId, int selectedIndex);
+    void setPreviewText(const std::string& widgetId, std::string text);
+    void setPreviewTextOverlayWidgetId(std::string widgetId);
     void setShowGrid(bool showGrid);
     void setSnapToGrid(bool snapToGrid);
     void setGridSize(int gridSize);
@@ -99,6 +112,7 @@ public:
     void panBy(float deltaX, float deltaY);
     [[nodiscard]] std::optional<std::string> hitTestWidgetId(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] std::optional<int> hitTestTabHeader(const model::ProjectDocument& document, const std::string& widgetId, float x, float y) const;
+    [[nodiscard]] std::optional<SelectionRect> widgetScreenBounds(const model::ProjectDocument& document, const std::string& widgetId) const;
     [[nodiscard]] std::optional<InteractionHit> hitTestInteraction(const model::ProjectDocument& document, float x, float y, const std::string& selectedWidgetId) const;
     [[nodiscard]] std::optional<FormPoint> toFormPoint(const model::ProjectDocument& document, float x, float y) const;
     [[nodiscard]] model::Rect moveBounds(const model::Rect& originalBounds, const FormPoint& dragStart, const FormPoint& currentPoint) const;
@@ -144,6 +158,11 @@ private:
     std::unordered_map<std::string, bool> previewSelected_{};
     std::unordered_map<std::string, int> previewSelectedIndex_{};
     std::unordered_map<std::string, int> previewSelectedTab_{};
+    std::unordered_map<std::string, model::TableGridSelection> previewTableGridSelections_{};
+    std::unordered_map<std::string, float> previewNumericValues_{};
+    std::unordered_map<std::string, std::string> previewTextValues_{};
+    std::string previewDraggingValueWidgetId_{};
+    std::string previewTextOverlayWidgetId_{};
 };
 
 } // namespace visiform::ui

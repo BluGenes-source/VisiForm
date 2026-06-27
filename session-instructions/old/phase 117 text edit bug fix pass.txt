@@ -1,0 +1,207 @@
+Continue VisiForm Phase 117. Do not create a new phase and do not change version 1.0.23.
+
+Preview Mode Text Box editing still does not work after the shared input-routing pass.
+
+Treat this as a focused Text Box keyboard-input and focus-ownership bug.
+
+## Rules
+
+* Do not use subagents.
+* Read only:
+
+  * the active Phase 117 plan
+  * Preview Mode focus handling
+  * Designer Canvas mouse, keyboard, and text-input handlers
+  * the existing working Design Mode text editor
+  * Preview Text Box temporary state
+* Do not audit unrelated widgets in this pass.
+* Do not refactor the complete Preview dispatcher.
+* Build once after the focused fix.
+* Do not commit or push.
+
+## Primary suspicion
+
+Clicking a Preview Text Box may assign an internal focused-widget ID without giving the canvas or editor real keyboard focus.
+
+Also verify whether printable characters arrive through a separate text-input callback rather than the key-down callback.
+
+Do not assume keyboard routing works merely because the Text Box draws a focus or caret state.
+
+## Goal 1: Trace one complete input event
+
+Trace this exact sequence:
+
+1. Enter Preview Mode.
+2. Click inside a Text Box.
+3. Confirm hit testing returns the correct Text Box ID.
+4. Confirm Preview focus is assigned.
+5. Confirm the canvas or input owner requests native/framework keyboard focus.
+6. Press a printable character.
+7. Confirm the application receives the event.
+8. Confirm the event reaches the Preview Text Box editing path.
+9. Confirm temporary Preview text changes.
+10. Confirm repaint occurs.
+
+Record the first step where the chain fails.
+
+Add temporary focused diagnostics if needed, then remove noisy output before completion.
+
+## Goal 2: Acquire actual keyboard focus
+
+When a Preview Text Box is clicked:
+
+* assign Preview focus to that widget
+* request keyboard focus for the correct canvas/editor component using the existing Visage focus API
+* preserve focus until another Preview widget is clicked, Preview Mode exits, or the widget is removed
+* do not transfer focus to the Property Inspector or main canvas command handler
+* show the caret only after focus acquisition succeeds
+
+Use the same focus mechanism as the working Design Mode text editor where possible.
+
+Do not create a second platform-specific focus system.
+
+## Goal 3: Route text input correctly
+
+Inspect how printable text is delivered by the existing framework.
+
+Possible paths include:
+
+* key-down event
+* character/text-input event
+* IME/text composition callback
+* focused editor callback
+
+Requirements:
+
+* printable characters must use the established text-input path
+* navigation and editing keys may use key-down
+* do not derive printable characters only from virtual key codes
+* avoid inserting text twice if both key-down and text-input callbacks fire
+* preserve Shift and keyboard-layout behavior
+* reuse the existing Design Mode text insertion logic where practical
+
+## Goal 4: Reuse the existing text editing engine
+
+Do not maintain separate editing rules for Design Mode and Preview Mode.
+
+Reuse the existing Text Box editing operations for:
+
+* insertion
+* Backspace
+* Delete
+* caret movement
+* selection
+* Enter/newline
+* clipboard operations
+* wrapping
+* scrolling
+
+The difference must be the backing text target:
+
+* Design Mode edits the project/model through the existing command path
+* Preview Mode edits only temporary Preview text
+
+Prefer a small text-buffer adapter or commit policy over copied editing code.
+
+## Goal 5: Temporary Text Box state
+
+For each Preview Text Box, retain temporary:
+
+* text
+* caret index
+* selection anchor and extent
+* preferred horizontal caret position
+* horizontal and vertical scroll offsets
+
+Initialize the temporary text from the model when Preview Mode begins or the widget first receives Preview focus.
+
+Do not reinitialize temporary text on every repaint or click.
+
+This is important: if the temporary buffer is rebuilt from `WidgetNode::text` during refresh, typed characters will appear to be rejected immediately.
+
+Check specifically for this reset bug.
+
+## Goal 6: Mouse placement and caret
+
+Clicking inside the Text Box must:
+
+* focus it
+* place the caret using the shared text-layout hit test
+* clear or extend selection according to existing behavior
+* use widget-local coordinates
+* account for zoom, pan, padding, border, and scrolling
+
+A click must not fall through to canvas selection logic in Preview Mode.
+
+## Goal 7: Keyboard command priority
+
+When a Preview Text Box owns focus:
+
+* printable input edits temporary text
+* Backspace and Delete edit text
+* arrow keys move the caret
+* Home and End work
+* Ctrl+A, Ctrl+C, Ctrl+X, and Ctrl+V work
+* Enter inserts a newline only when Multiline is true
+* Escape first ends a text-specific transient action if applicable, otherwise exits Preview Mode
+
+Canvas Delete, shortcuts, and editing commands must not run while the Preview Text Box consumes the event.
+
+## Goal 8: Verify state is not reset
+
+Inspect every Preview repaint, focus update, and temporary-state synchronization path.
+
+Ensure temporary Text Box text is not overwritten from the model during:
+
+* repaint
+* caret movement
+* mouse movement
+* focus refresh
+* status updates
+* Preview widget state resolution
+
+Model-to-preview synchronization should occur only when:
+
+* entering Preview Mode
+* first initializing that widget’s temporary state
+* explicitly resetting the Preview session
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Enter Preview Mode.
+4. Click a single-line Text Box.
+5. Confirm a caret appears.
+6. Type several printable characters.
+7. Confirm they remain visible after repaint.
+8. Test Backspace and Delete.
+9. Test arrow keys, Home, End, and Ctrl+A.
+10. Test copy, cut, and paste.
+11. Test clicking to reposition the caret.
+12. Test a Multiline Text Box with Enter and navigation.
+13. Click another widget, then return to the Text Box.
+14. Confirm temporary text remains during the same Preview session.
+15. Exit Preview Mode.
+16. Confirm model text and dirty state are unchanged.
+17. Re-enter Preview Mode.
+18. Confirm text initializes again from the stored model value.
+19. Confirm Design Mode text editing still works.
+
+Update the existing Phase 117 plan with:
+
+* exact failure point
+* keyboard-focus fix
+* text-input callback used
+* shared editor logic reused
+* whether temporary state was being reset from the model
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Do not create Phase 118.
+Do not change version 1.0.23.
+Do not commit or push.

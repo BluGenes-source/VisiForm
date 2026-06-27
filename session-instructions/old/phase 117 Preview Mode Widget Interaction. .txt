@@ -1,0 +1,309 @@
+Implement VisiForm Phase 117: Preview Mode Widget Interaction.
+
+Phase 116 is complete and pushed.
+
+Use:
+
+* Phase: 117
+* Version: 1.0.23
+* Subagents: none
+
+Keep token use minimal.
+
+## Startup
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 116 plan
+* files directly related to:
+
+  * Preview Mode
+  * widget input handling
+  * temporary preview state
+  * Text Box editing
+  * Button, Check Box, Radio Button, Combo Box, List Box, Slider, Scroll Bar, and Tab Control interaction
+  * version declarations
+
+Inspect:
+
+`git status --short --branch`
+
+Create:
+
+`docs/agent_plans/phase_117_preview_mode_widget_interaction_plan.md`
+
+Before implementation:
+
+* update authoritative versions to `1.0.23`
+* record the previous and new versions
+* update `docs/project_status.md`
+
+Do not use subagents.
+Do not perform a repository-wide audit.
+Search before opening large files.
+Do not execute generated event handlers.
+Build once after implementation unless fixing a build failure requires another pass.
+
+## Goal
+
+Allow supported widgets to behave like runtime controls in Preview Mode without modifying the project model.
+
+Use this rule:
+
+`stored project value → temporary Preview value → discard when Preview Mode ends`
+
+Preview interaction must not:
+
+* mark the project dirty
+* create undo entries
+* trigger autosave
+* change `.vfb.json`
+* modify generated event handlers
+* persist after Preview Mode ends
+
+## Preview state layer
+
+Add or extend one editor-only Preview state store.
+
+It should support temporary values such as:
+
+* focused widget
+* hovered widget
+* pressed widget
+* Text Box text, caret, selection, and scroll offsets
+* Check Box checked state
+* Radio Button selection
+* Combo Box selected item
+* List Box selected item
+* Slider value
+* Scroll Bar value
+* active tab
+
+Initialize temporary state from the stored model when Preview Mode begins.
+
+Clear all temporary state when Preview Mode ends, the project changes, or a referenced widget is deleted.
+
+Do not copy temporary state into `WidgetNode`.
+
+## Text Box interaction
+
+In Preview Mode, Text Box should support:
+
+* focus by clicking
+* caret
+* selection
+* typing
+* Backspace and Delete
+* Enter in multiline mode
+* arrow keys
+* Home and End
+* Ctrl+Home and Ctrl+End
+* Ctrl+A
+* copy, cut, and paste
+* word wrapping
+* vertical scrolling
+* horizontal scrolling when wrapping is disabled
+
+Requirements:
+
+* use the Phase 115–116 text layout and editing paths
+* temporary edits remain Preview-only
+* leaving Preview Mode restores the stored Text value
+* switching focus preserves temporary Preview text during the same Preview session
+* disabled or read-only Text Boxes must not accept edits
+* single-line behavior remains single-line
+
+## Button
+
+Support:
+
+* hover
+* press
+* release
+* focus where already supported
+
+Do not run event handlers.
+
+Releasing a Button may show its normal visual state only.
+
+## Check Box and Radio Button
+
+Support temporary checked state.
+
+Requirements:
+
+* clicking toggles a Check Box
+* Radio Buttons behave exclusively within their existing group or direct parent where grouping is already defined
+* stored model values remain unchanged
+* state resets when Preview Mode ends
+
+## Combo Box and List Box
+
+Support temporary selection using existing item data.
+
+Requirements:
+
+* opening and selecting items works where the current UI supports it
+* selection is Preview-only
+* keyboard navigation may use existing behavior
+* no model mutation
+
+Do not build a new popup framework.
+
+## Slider and Scroll Bar
+
+Support temporary value changes.
+
+Requirements:
+
+* dragging updates the temporary value
+* visual thumb position updates
+* stored value remains unchanged
+* existing minimum, maximum, and step rules are respected
+
+## Tab Control
+
+Allow temporary tab switching.
+
+Requirements:
+
+* clicking a tab changes the active Preview page
+* stored active-tab property remains unchanged
+* leaving Preview Mode restores the saved tab selection
+
+## Focus and keyboard routing
+
+Preview Mode needs one focused Preview widget.
+
+Requirements:
+
+* clicking a focusable widget moves focus
+* keyboard input goes only to the focused widget
+* Tab and Shift+Tab move through focusable widgets using existing tab order
+* Escape exits Preview Mode when no widget-specific operation has higher priority
+* focus clears safely when a widget is removed or the project changes
+
+Do not allow canvas editing commands while Preview Mode is active.
+
+## Mouse routing
+
+In Preview Mode:
+
+* do not select widgets for editing
+* do not drag or resize widgets
+* do not create widgets
+* do not show editor handles
+* route input to runtime-style widget interaction
+* preserve zoom and pan behavior
+
+If panning uses Space or middle mouse, keep it working without sending accidental widget input.
+
+## Disabled and read-only behavior
+
+Respect existing properties:
+
+* disabled widgets do not interact
+* read-only Text Boxes allow selection and copy but not editing
+* hidden widgets do not receive input
+* unsupported widgets remain non-interactive but render normally
+
+## Preview Mode entry and exit
+
+On entry:
+
+* cancel active design editing
+* initialize temporary Preview state from model values
+* clear design selection overlays
+* set no Preview focus initially unless existing behavior chooses one safely
+
+On exit:
+
+* discard all temporary values
+* clear Preview focus, hover, pressed, caret, selection, and scroll state
+* restore Design Mode selection
+* leave the model, undo history, and dirty state unchanged
+
+## Scope boundaries
+
+Do not add:
+
+* event-handler execution
+* script simulation
+* validation dialogs
+* data binding
+* modal-dialog execution
+* file operations from controls
+* persistent Preview state
+* animations
+* accessibility overhaul
+* new widget types
+
+Record these as future work only.
+
+## Validation
+
+Perform focused validation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.23`.
+4. Enter Preview Mode.
+5. Type in a single-line Text Box.
+6. Type multiple lines in a multiline Text Box.
+7. Test caret, selection, clipboard, wrapping, and scrolling.
+8. Confirm the project dirty flag does not change.
+9. Exit Preview Mode and confirm stored text is restored.
+10. Toggle Check Box and Radio Button states.
+11. Change Combo Box and List Box selections.
+12. Drag Slider and Scroll Bar values.
+13. Switch Tab Control pages.
+14. Test Button hover and press states.
+15. Test disabled and read-only controls.
+16. Test Tab and Shift+Tab focus navigation.
+17. Confirm editor selection, resize, delete, and creation are blocked.
+18. Confirm zoom and pan still work.
+19. Re-enter Preview Mode and confirm temporary values start from stored model values.
+20. Confirm save, reload, autosave, and recovery contain no Preview-only state.
+
+Do not claim runtime validation unless actually performed.
+
+## Documentation
+
+Update the Phase 117 plan with:
+
+* previous and new version
+* Preview state ownership
+* supported widgets
+* Text Box interaction behavior
+* focus and keyboard routing
+* entry/exit cleanup
+* model-integrity safeguards
+* files changed
+* build result
+* manual validation performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+Update the README only if it already has a current-progress section.
+
+## Completion report
+
+Report:
+
+* Phase 117 plan path
+* version change to `1.0.23`
+* temporary Preview-state design
+* widgets made interactive
+* Text Box editing behavior
+* focus and keyboard behavior
+* confirmation that Preview does not dirty or modify the project
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not commit or push unless explicitly requested.

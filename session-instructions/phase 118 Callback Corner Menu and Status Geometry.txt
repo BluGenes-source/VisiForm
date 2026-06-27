@@ -1,0 +1,378 @@
+Implement VisiForm Phase 118: Callback Corner Menu and Status Geometry.
+
+Phase 116 is complete and pushed.
+
+Phase 117 remains tabled because Preview Mode widget interaction is incomplete. Do not modify Preview Mode in this phase.
+
+Use:
+
+* Phase: 118
+* Version: 1.0.24
+* Subagents: none
+
+Keep token use and repository reading low.
+
+## Startup
+
+Inspect:
+
+`git status --short --branch`
+
+Read only:
+
+* `AGENTS.md`
+* `docs/project_status.md`
+* the Phase 117 plan
+* files directly related to:
+
+  * Designer Canvas selection handles
+  * resize hit testing
+  * widget event/callback metadata
+  * Property Inspector Events tab
+  * popup menus
+  * status bar
+  * version declarations
+
+Search before opening large files.
+
+Do not:
+
+* perform a repository-wide audit
+* modify Preview Mode
+* redesign the event system
+* execute callbacks
+* commit or push
+
+Create:
+
+`docs/agent_plans/phase_118_callback_corner_menu_plan.md`
+
+Update authoritative versions from `1.0.23` to `1.0.24`.
+
+Update `docs/project_status.md` and record that Phase 117 remains tabled.
+
+## Goal
+
+Add two related Design Mode improvements:
+
+1. Show selected-widget geometry in a dedicated status-bar section.
+2. Make the selected widget’s upper-right corner handle open a popup listing its assigned callbacks.
+
+The upper-right handle must retain resize support.
+
+## Part 1: Status-bar geometry
+
+When exactly one visual widget is selected, show:
+
+`X: 310  Y: 230  W: 260  H: 56`
+
+Use current model-space values.
+
+Update immediately during:
+
+* dragging
+* resizing
+* Property Inspector geometry edits
+* undo and redo
+* alignment commands
+* docking or layout changes
+
+Hide or clear the section when:
+
+* nothing is selected
+* multiple widgets are selected
+* a nonvisual item is selected
+* Preview Mode is active
+
+Requirements:
+
+* use a dedicated status-bar segment where practical
+* preserve the existing hint and selected-widget sections
+* do not overwrite temporary hint messages
+* do not mark the project dirty
+* do not serialize status information
+
+Do not create a floating geometry badge.
+
+## Part 2: Callback corner affordance
+
+Use the selected widget’s upper-right selection handle as a callback-menu affordance.
+
+Interaction rules:
+
+* a click opens the callback popup
+* a drag beyond the existing drag threshold performs normal upper-right resizing
+* clicking must not start a resize
+* dragging must not open the popup
+* other resize handles remain unchanged
+
+Use the existing mouse drag threshold or centralize one if needed.
+
+Do not remove upper-right resize functionality.
+
+## Corner appearance
+
+When the selected widget has one or more assigned callbacks:
+
+* give the upper-right handle a subtle callback indicator
+* keep it consistent with existing selection-handle styling
+* make it visually distinguishable without becoming distracting
+
+Possible treatments:
+
+* small dot
+* compact event glyph
+* accent outline
+* small corner marker
+
+When no callbacks are assigned:
+
+* either retain the normal resize-handle appearance and allow a click to show an empty-state popup
+* or show a subdued callback affordance
+
+Prefer behavior that helps discoverability.
+
+Do not redesign all selection handles.
+
+## Assigned callback discovery
+
+Use existing widget event metadata and assignments.
+
+The popup must list callbacks that currently have assigned handlers.
+
+Examples:
+
+* `onClick`
+* `onChange`
+* `onTextChanged`
+* `onSelectionChanged`
+
+Use the event names already defined by VisiForm.
+
+Do not hardcode callback names by widget type if existing metadata can provide them.
+
+Do not show unassigned callbacks in the main assigned list.
+
+## Popup menu
+
+Clicking the upper-right handle opens a popup near that corner.
+
+Popup requirements:
+
+* remain inside the visible Designer Canvas or application window
+* appear above canvas content
+* close when clicking outside
+* close with Escape
+* close when selection changes
+* close when the project changes
+* close when entering Preview Mode
+* contain no stale widget pointers
+
+Use stable widget IDs where retained state is needed.
+
+### Assigned callbacks
+
+Display each assigned callback with its handler name where practical.
+
+Example:
+
+`onClick → handleSubmit`
+
+### Empty state
+
+When the widget has no assigned callbacks, show:
+
+`No callbacks assigned`
+
+Optionally include:
+
+`Open Events Inspector`
+
+Do not add a full callback editor inside the popup.
+
+## Callback action
+
+For this phase, clicking an assigned callback should:
+
+1. keep the widget selected
+2. switch the Property Inspector to the Events tab
+3. reveal or select that callback row
+4. focus or highlight its assigned-handler field where existing APIs allow
+5. close the popup
+
+Do not:
+
+* execute the callback
+* run generated code
+* launch an external editor
+* create a new handler automatically
+* modify the callback assignment
+
+If focusing the exact field requires a broad Property Inspector redesign, switch to the Events tab and scroll/highlight the callback row only.
+
+## Optional popup command
+
+The popup may include:
+
+`Open Events Inspector`
+
+This command should:
+
+* switch to the Events tab
+* show the selected widget’s event list
+* make no project changes
+
+Keep the popup small.
+
+## Mouse handling
+
+Preserve correct behavior for the upper-right handle.
+
+### Click
+
+Treat the gesture as a click when:
+
+* pointer is pressed and released on the handle
+* movement remains below the drag threshold
+* the selected widget remains valid
+
+Then open the callback popup.
+
+### Drag
+
+Treat the gesture as resize when:
+
+* movement exceeds the drag threshold
+
+Then:
+
+* begin normal upper-right resize
+* close any open callback popup
+* preserve snapping and constraints
+* create the normal resize undo operation
+
+Do not create an undo entry for clicking the callback menu.
+
+## Selection behavior
+
+Show the corner callback affordance only when:
+
+* exactly one visual widget is selected
+* Design Mode is active
+
+Hide it for:
+
+* multi-selection
+* project or form root selection
+* nonvisual nodes
+* Preview Mode
+
+Changing selection must close the popup.
+
+## Preserve existing behavior
+
+Do not regress:
+
+* all eight-direction resize behavior
+* resize corner arcs
+* dragging
+* snapping
+* guides
+* grid
+* multi-selection
+* zoom and pan
+* Property Inspector Properties tab
+* Events tab editing
+* undo and redo
+* save/load
+* export
+
+The callback popup is editor-only and must not appear in generated projects.
+
+## Scope boundaries
+
+Do not add:
+
+* callback execution
+* callback simulation
+* automatic handler generation
+* source-code navigation
+* external IDE launching
+* event debugging
+* breakpoint support
+* a new event-assignment system
+* Preview Mode interaction changes
+
+Record possible callback actions as future work.
+
+## Validation
+
+Perform the approved Windows Debug build and manual launch workflow.
+
+Validate:
+
+1. Application shows version `1.0.24`.
+2. Select one widget.
+3. Confirm geometry appears in the status bar.
+4. Drag the widget and confirm X/Y update.
+5. Resize it and confirm W/H update.
+6. Edit geometry through the Property Inspector.
+7. Test undo and redo.
+8. Select a widget with an assigned callback.
+9. Click the upper-right handle without dragging.
+10. Confirm the callback popup opens.
+11. Confirm assigned callbacks and handler names are correct.
+12. Click a callback.
+13. Confirm the Events tab opens and reveals the correct callback.
+14. Drag the same upper-right handle.
+15. Confirm normal upper-right resizing occurs and no popup opens.
+16. Test a widget with no assigned callbacks.
+17. Test popup dismissal by outside click and Escape.
+18. Change selection and confirm the popup closes.
+19. Test zoom and pan.
+20. Confirm multi-selection does not show the callback affordance.
+21. Enter Preview Mode and confirm the affordance and geometry section hide.
+22. Confirm popup use does not mark the project dirty.
+23. Confirm callback assignments remain unchanged.
+
+Do not claim validation that was not actually performed.
+
+## Documentation
+
+Update the Phase 118 plan with:
+
+* version change
+* files inspected
+* files changed
+* status-bar geometry design
+* callback discovery source
+* click-versus-drag behavior
+* popup ownership and cleanup
+* Events-tab navigation behavior
+* build result
+* manual validation actually performed
+* remaining issues
+
+Update `docs/project_status.md`.
+
+## Completion report
+
+Report:
+
+* Phase 118 plan path
+* version change to `1.0.24`
+* files changed
+* status geometry result
+* callback indicator result
+* popup contents
+* callback navigation behavior
+* click-versus-resize result
+* dirty-state result
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not create another phase.
+Do not modify Phase 117 Preview interaction code.
+Do not commit or push.

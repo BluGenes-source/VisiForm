@@ -97,6 +97,9 @@ public:
     [[nodiscard]] bool consumeScrollInteraction();
     void setActiveEventControl(const std::string& key, EventAction action);
     void clearActiveEventControl();
+    void showEventsTab();
+    [[nodiscard]] InspectorTab activeTab() const;
+    bool revealEventRow(const model::ProjectDocument& document, const utils::AppSettings& settings, const std::string& eventKey);
     void clearEditing();
     void cancelEditing();
     [[nodiscard]] bool isEditing() const;

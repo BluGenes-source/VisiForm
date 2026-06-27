@@ -30,11 +30,21 @@ public:
         Cancel
     };
 
+    struct State {
+        std::string text{};
+        std::size_t cursorIndex = 0;
+        std::size_t selectionStart = 0;
+        std::size_t selectionEnd = 0;
+        float scrollX = 0.0f;
+        float scrollY = 0.0f;
+        float preferredCursorX = -1.0f;
+    };
+
     void setBounds(float x, float y, float width, float height);
     [[nodiscard]] const Bounds& bounds() const;
     [[nodiscard]] bool contains(float x, float y) const;
 
-    void begin(std::string text, bool selectAll = true, bool multiline = false, bool wordWrap = false);
+    void begin(std::string text, bool selectAll = true, bool multiline = false, bool wordWrap = false, bool readOnly = false);
     void clear();
     [[nodiscard]] bool isActive() const;
     [[nodiscard]] bool isFocused() const;
@@ -42,6 +52,8 @@ public:
 
     void setText(std::string text);
     [[nodiscard]] const std::string& text() const;
+    [[nodiscard]] State state() const;
+    void restoreState(const State& state);
     void selectAll();
 
     [[nodiscard]] bool mouseDown(float x, float y);
@@ -95,6 +107,7 @@ private:
     bool editing_ = false;
     bool multiline_ = false;
     bool wordWrap_ = false;
+    bool readOnly_ = false;
     bool draggingSelection_ = false;
     bool caretVisible_ = false;
     float scrollX_ = 0.0f;

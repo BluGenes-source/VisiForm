@@ -72,6 +72,7 @@ constexpr float kPadding = 12.0f;
 constexpr float kToolbarButtonMinWidth = 42.0f;
 constexpr float kToolbarButtonHeight = 26.0f;
 constexpr float kToolbarButtonSpacing = 6.0f;
+constexpr std::string_view kPreviewComboBoxDropdownPrefix = "preview_combo:";
 constexpr float kMenuBarButtonSpacing = 4.0f;
 constexpr float kMenuBarDropdownMinWidth = 220.0f;
 constexpr float kMenuBarItemHeight = 28.0f;
@@ -92,6 +93,9 @@ constexpr float kTabPageChildStartY = 20.0f;
 constexpr float kTabPageChildOffsetStep = 16.0f;
 constexpr float kMarqueeDragThreshold = 4.0f;
 constexpr float kSmartGuideSnapThreshold = 6.0f;
+constexpr float kCallbackPopupWidth = 260.0f;
+constexpr float kCallbackPopupRowHeight = 28.0f;
+constexpr float kCallbackPopupPadding = 8.0f;
 constexpr float kEditorModalPreferredWidth = 560.0f;
 constexpr float kEditorModalPreferredHeight = 320.0f;
 constexpr float kEditorModalMaxWidth = 720.0f;
@@ -2420,6 +2424,7 @@ bool MainWindow::removeSelectedResourceFromManager()
 
 bool MainWindow::applyUndoableDocumentChange(const std::string& description, const std::function<bool()>& applyChange)
 {
+    closeCallbackPopup();
     model::ProjectDocument beforeDocument = document_;
     if (!applyChange()) {
         return false;
@@ -3494,6 +3499,7 @@ void MainWindow::resized()
     updateLayout();
     updatePropertyEditorBounds();
     updateEditorModalEditorBounds();
+    updatePreviewTextBoxEditBounds();
     redraw();
 }
 
@@ -3502,6 +3508,7 @@ void MainWindow::dpiChanged()
     updateTextEditMetricsFont();
     updatePropertyEditorBounds();
     updateEditorModalEditorBounds();
+    updatePreviewTextBoxEditBounds();
 }
 
 void MainWindow::draw(visage::Canvas& canvas)
@@ -3547,12 +3554,14 @@ void MainWindow::draw(visage::Canvas& canvas)
         projectTreeCanvasSplitter_.draw(canvas, splitterStyle);
     }
     drawStatusBar(canvas);
+    drawCallbackPopup(canvas);
     if (openMenuIndex_ >= 0) {
         drawMenuBar(canvas);
     }
     if (isEditorModalVisible()) {
         drawEditorModalDialog(canvas);
     }
+    updatePreviewTextBoxEditBounds();
     textEditControl_.draw(canvas, labelFont_, canDrawText());
     dropdownControl_.draw(canvas, labelFont_, canDrawText());
 }
@@ -3580,6 +3589,13 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
         return;
     }
 
+    if (callbackPopup_.open) {
+        if (handleCallbackPopupMouseDown(e.position.x, e.position.y)) {
+            redraw();
+            return;
+        }
+    }
+
     if (dropdownControl_.isOpen()) {
         const bool handledDropdownClick = dropdownControl_.mouseDown(e.position.x, e.position.y);
         handleDropdownSelection();
@@ -3594,9 +3610,13 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (textEditControl_.isActive()) {
         if (textEditControl_.mouseDown(e.position.x, e.position.y)) {
+            syncPreviewTextBoxEdit();
             updateTextEditCaretTimer();
             redraw();
             return;
+        }
+        if (!previewTextEditWidgetId_.empty()) {
+            clearPreviewTextBoxEdit();
         }
         if (!commitInspectorEdit()) {
             return;
@@ -3640,6 +3660,10 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
     if (isPreviewMode()) {
         (void)designerCanvas_.beginPreviewInteraction(document_, e.position.x, e.position.y);
+        const bool comboBoxDropdownOpened = beginPreviewComboBoxDropdown(e.position.x, e.position.y);
+        if (comboBoxDropdownOpened || !beginPreviewTextBoxEdit(e.position.x, e.position.y)) {
+            clearPreviewTextBoxEdit();
+        }
         setOperationStatus("Preview interaction is temporary and will not modify the project.");
         redraw();
         return;
@@ -3771,21 +3795,28 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 canvasInteraction_.dropTargetWidgetId = canvasInteraction_.originalParentId;
                 canvasInteraction_.selectionBounds.clear();
                 canvasInteraction_.changed = false;
-                canvasInteraction_.mode = CanvasInteractionState::Mode::Resize;
-                if (isDirectSizerChild(document_, selectedInteractionHit->widgetId)) {
-                    const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
-                    canvasInteraction_.sizerItemResizeBeforeDocument = document_;
-                    canvasInteraction_.originalSizerItemPreferredWidth = sizerItemLayout.preferredWidth;
-                    canvasInteraction_.originalSizerItemPreferredHeight = sizerItemLayout.preferredHeight;
-                    setOperationStatus("Drag to resize sizer item preferred size.");
-                }
-                else {
-                    canvasInteraction_.layoutResizeBeforeDocument = document_;
-                    if (widget->type == model::WidgetType::Sizer) {
-                        setOperationStatus("Drag to resize Sizer and relayout its children.");
+                canvasInteraction_.mode = selectedInteractionHit->region == DesignerCanvas::HitRegion::TopRightHandle
+                    ? CanvasInteractionState::Mode::PendingCallbackMenu
+                    : CanvasInteractionState::Mode::Resize;
+                if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize) {
+                    if (isDirectSizerChild(document_, selectedInteractionHit->widgetId)) {
+                        const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
+                        canvasInteraction_.sizerItemResizeBeforeDocument = document_;
+                        canvasInteraction_.originalSizerItemPreferredWidth = sizerItemLayout.preferredWidth;
+                        canvasInteraction_.originalSizerItemPreferredHeight = sizerItemLayout.preferredHeight;
+                        setOperationStatus("Drag to resize sizer item preferred size.");
+                    }
+                    else {
+                        canvasInteraction_.layoutResizeBeforeDocument = document_;
+                        if (widget->type == model::WidgetType::Sizer) {
+                            setOperationStatus("Drag to resize Sizer and relayout its children.");
+                        }
                     }
                 }
-                logCanvasHitDiagnostic(document_, *dragStart, widget, true, "Drag start: selected resize handle");
+                closeCallbackPopup();
+                logCanvasHitDiagnostic(document_, *dragStart, widget, true, canvasInteraction_.mode == CanvasInteractionState::Mode::PendingCallbackMenu
+                        ? "Click pending: callback handle"
+                        : "Drag start: selected resize handle");
                 return;
             }
         }
@@ -3879,7 +3910,9 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
                 canvasInteraction_.changed = false;
                 canvasInteraction_.mode = interactionHit->region == DesignerCanvas::HitRegion::Body
                     ? CanvasInteractionState::Mode::Move
-                    : CanvasInteractionState::Mode::Resize;
+                    : (interactionHit->region == DesignerCanvas::HitRegion::TopRightHandle
+                            ? CanvasInteractionState::Mode::PendingCallbackMenu
+                            : CanvasInteractionState::Mode::Resize);
                 if (canvasInteraction_.mode == CanvasInteractionState::Mode::Resize && isDirectSizerChild(document_, *widgetId)) {
                     const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
                     canvasInteraction_.sizerItemResizeBeforeDocument = document_;
@@ -3907,7 +3940,8 @@ void MainWindow::mouseDown(const visage::MouseEvent& e)
 
                 const std::string interactionDetail = interactionHit->region == DesignerCanvas::HitRegion::Body
                     ? "Drag start: move"
-                    : "Drag start: resize";
+                    : (canvasInteraction_.mode == CanvasInteractionState::Mode::PendingCallbackMenu ? "Click pending: callback handle" : "Drag start: resize");
+                closeCallbackPopup();
                 logCanvasHitDiagnostic(document_, *dragStart, widget, true, interactionDetail);
             }
             else {
@@ -3992,6 +4026,7 @@ void MainWindow::mouseMove(const visage::MouseEvent& e)
 void MainWindow::mouseDrag(const visage::MouseEvent& e)
 {
     if (textEditControl_.mouseDrag(e.position.x, e.position.y)) {
+        syncPreviewTextBoxEdit();
         updateTextEditCaretTimer();
         redraw();
         return;
@@ -4015,6 +4050,7 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         designerCanvas_.panBy(e.position.x - canvasPan_.lastX, e.position.y - canvasPan_.lastY);
         canvasPan_.lastX = e.position.x;
         canvasPan_.lastY = e.position.y;
+        updatePreviewTextBoxEditBounds();
         visage::setCursorStyle(visage::MouseCursor::Dragging);
         redraw();
         return;
@@ -4029,6 +4065,7 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         (void)projectTreeCanvasSplitter_.mouseDrag(e.position.x, e.position.y);
         settings_.projectTreeWidth = std::max(1, static_cast<int>(std::lround(projectTreeCanvasSplitter_.firstPaneSize())));
         applyLayout(layout_);
+        updatePreviewTextBoxEditBounds();
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
         redraw();
         return;
@@ -4038,13 +4075,16 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
         (void)canvasInspectorSplitter_.mouseDrag(e.position.x, e.position.y);
         settings_.propertyInspectorWidth = std::max(1, static_cast<int>(std::lround(canvasInspectorSplitter_.secondPaneSize())));
         applyLayout(layout_);
+        updatePreviewTextBoxEditBounds();
         visage::setCursorStyle(visage::MouseCursor::HorizontalResize);
         redraw();
         return;
     }
 
     if (isPreviewMode()) {
-        if (designerCanvas_.updatePreviewHover(document_, e.position.x, e.position.y)) {
+        const bool valueChanged = designerCanvas_.updatePreviewInteraction(document_, e.position.x, e.position.y);
+        const bool hoverChanged = designerCanvas_.updatePreviewHover(document_, e.position.x, e.position.y);
+        if (valueChanged || hoverChanged) {
             redraw();
         }
         return;
@@ -4068,6 +4108,34 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 
     auto* widget = document_.findWidgetById(canvasInteraction_.widgetId);
     const auto currentPoint = designerCanvas_.toFormPoint(document_, e.position.x, e.position.y);
+    if (canvasInteraction_.mode == CanvasInteractionState::Mode::PendingCallbackMenu) {
+        if (widget == nullptr || currentPoint == std::nullopt) {
+            return;
+        }
+
+        const float deltaX = (currentPoint->x - canvasInteraction_.dragStart.x) * designerCanvas_.zoom();
+        const float deltaY = (currentPoint->y - canvasInteraction_.dragStart.y) * designerCanvas_.zoom();
+        if (std::hypot(deltaX, deltaY) < kMarqueeDragThreshold) {
+            return;
+        }
+
+        callbackPopup_ = {};
+        canvasInteraction_.mode = CanvasInteractionState::Mode::Resize;
+        if (isDirectSizerChild(document_, widget->id)) {
+            const model::SizerItemLayout sizerItemLayout = model::sizerItemLayoutFor(*widget);
+            canvasInteraction_.sizerItemResizeBeforeDocument = document_;
+            canvasInteraction_.originalSizerItemPreferredWidth = sizerItemLayout.preferredWidth;
+            canvasInteraction_.originalSizerItemPreferredHeight = sizerItemLayout.preferredHeight;
+            setOperationStatus("Drag to resize sizer item preferred size.");
+        }
+        else {
+            canvasInteraction_.layoutResizeBeforeDocument = document_;
+            if (widget->type == model::WidgetType::Sizer) {
+                setOperationStatus("Drag to resize Sizer and relayout its children.");
+            }
+        }
+    }
+
     if (canvasInteraction_.mode == CanvasInteractionState::Mode::MarqueeSelect) {
         if (currentPoint == std::nullopt) {
             return;
@@ -4218,6 +4286,7 @@ void MainWindow::mouseDrag(const visage::MouseEvent& e)
 void MainWindow::mouseUp(const visage::MouseEvent& e)
 {
     if (textEditControl_.mouseUp()) {
+        syncPreviewTextBoxEdit();
         redraw();
         return;
     }
@@ -4294,6 +4363,24 @@ void MainWindow::mouseUp(const visage::MouseEvent& e)
     }
 
     if (!e.isLeftButton() || canvasInteraction_.mode == CanvasInteractionState::Mode::None) {
+        return;
+    }
+
+    if (canvasInteraction_.mode == CanvasInteractionState::Mode::PendingCallbackMenu) {
+        const std::string pendingWidgetId = canvasInteraction_.widgetId;
+        const auto releaseHit = designerCanvas_.hitTestInteraction(document_, e.position.x, e.position.y, pendingWidgetId);
+        const bool stillSelectedOnHandle = !pendingWidgetId.empty()
+            && pendingWidgetId == document_.selectedWidgetId
+            && document_.selectedWidgetIds().size() == 1
+            && document_.findWidgetById(pendingWidgetId) != nullptr
+            && releaseHit.has_value()
+            && releaseHit->widgetId == pendingWidgetId
+            && releaseHit->region == DesignerCanvas::HitRegion::TopRightHandle;
+        clearCanvasInteraction();
+        if (stillSelectedOnHandle) {
+            (void)openCallbackPopupForSelectedWidget();
+        }
+        redraw();
         return;
     }
 
@@ -4518,6 +4605,7 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
     }
 
     if (textEditControl_.mouseWheel(deltaY, e.position.x, e.position.y)) {
+        syncPreviewTextBoxEdit();
         updateTextEditCaretTimer();
         redraw();
         return true;
@@ -4583,6 +4671,12 @@ bool MainWindow::mouseWheel(const visage::MouseEvent& e)
 bool MainWindow::keyPress(const visage::KeyEvent& e)
 {
     using KeyCode = visage::KeyCode;
+    if (callbackPopup_.open && e.keyCode() == KeyCode::Escape) {
+        closeCallbackPopup();
+        redraw();
+        return true;
+    }
+
     if (dropdownControl_.isOpen() && dropdownControl_.keyPress(e)) {
         handleDropdownSelection();
         if (!dropdownControl_.isOpen()) {
@@ -4593,7 +4687,16 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     }
 
     if (textEditControl_.isActive() && textEditControl_.keyPress(e)) {
-        handleTextEditPendingAction();
+        if (previewTextEditWidgetId_.empty()) {
+            handleTextEditPendingAction();
+        }
+        else {
+            syncPreviewTextBoxEdit();
+            if (const auto action = textEditControl_.consumePendingAction();
+                action.has_value() && *action == editors::TextEditControl::PendingAction::Cancel) {
+                clearPreviewTextBoxEdit();
+            }
+        }
         updateTextEditCaretTimer();
         redraw();
         return true;
@@ -4630,6 +4733,29 @@ bool MainWindow::keyPress(const visage::KeyEvent& e)
     if (isPreviewMode() && e.keyCode() == KeyCode::Escape) {
         setDesignerCanvasMode(DesignerCanvas::Mode::Design);
         return true;
+    }
+
+    if (isPreviewMode() && e.keyCode() == KeyCode::Tab) {
+        clearPreviewTextBoxEdit();
+        if (designerCanvas_.focusNextPreviewWidget(document_, e.isShiftDown())) {
+            (void)bindPreviewTextBoxEdit(designerCanvas_.previewFocusedWidgetId());
+            setOperationStatus("Preview focus moved.");
+            redraw();
+        }
+        return true;
+    }
+
+    if (isPreviewMode() && (e.keyCode() == KeyCode::Space || e.keyCode() == KeyCode::Return)) {
+        if (openFocusedPreviewComboBoxDropdown()) {
+            setOperationStatus("Preview Combo Box opened.");
+            redraw();
+            return true;
+        }
+        if (designerCanvas_.activateFocusedPreviewWidget(document_)) {
+            setOperationStatus("Preview interaction is temporary and will not modify the project.");
+            redraw();
+            return true;
+        }
     }
 
     if (propertyInspector_.isEditing()) {
@@ -4732,6 +4858,7 @@ bool MainWindow::receivesTextInput()
 void MainWindow::textInput(const std::string& text)
 {
     if (textEditControl_.textInput(text)) {
+        syncPreviewTextBoxEdit();
         updateTextEditCaretTimer();
         redraw();
     }
@@ -4759,7 +4886,9 @@ void MainWindow::togglePreviewMode()
 
 void MainWindow::zoomCanvasAround(float zoom, float viewX, float viewY)
 {
+    closeCallbackPopup();
     designerCanvas_.setZoomAround(document_, zoom, viewX, viewY);
+    updatePreviewTextBoxEditBounds();
     setOperationStatus("Canvas zoom: " + std::to_string(designerCanvas_.zoomPercent()) + "%");
     redraw();
 }
@@ -4792,14 +4921,18 @@ void MainWindow::zoomCanvasOut()
 
 void MainWindow::resetCanvasZoom()
 {
+    closeCallbackPopup();
     designerCanvas_.resetView(document_);
+    updatePreviewTextBoxEditBounds();
     setOperationStatus("Canvas zoom: 100%");
     redraw();
 }
 
 void MainWindow::fitFormToCanvas()
 {
+    closeCallbackPopup();
     designerCanvas_.fitFormToCanvas(document_);
+    updatePreviewTextBoxEditBounds();
     setOperationStatus("Fit form to canvas: " + std::to_string(designerCanvas_.zoomPercent()) + "%");
     redraw();
 }
@@ -4807,6 +4940,7 @@ void MainWindow::fitFormToCanvas()
 void MainWindow::beginCanvasPan(const visage::MouseEvent& e)
 {
     clearCanvasInteraction();
+    closeCallbackPopup();
     canvasPan_.active = true;
     canvasPan_.startedWithMiddleButton = e.isMiddleButton();
     canvasPan_.lastX = e.position.x;
@@ -4838,6 +4972,9 @@ void MainWindow::setDesignerCanvasMode(DesignerCanvas::Mode mode)
     cancelInspectorEdit();
     cancelEditorModalFieldEdit();
     cancelPopupEditors();
+    closeCallbackPopup();
+    clearPreviewTextBoxEdit();
+    previewTextEditStates_.clear();
     clearCanvasInteraction();
     hoverHint_.clear();
     projectTree_.clearHover();
@@ -4856,6 +4993,237 @@ void MainWindow::setDesignerCanvasMode(DesignerCanvas::Mode mode)
 bool MainWindow::isPreviewMode() const
 {
     return designerCanvas_.mode() == DesignerCanvas::Mode::Preview;
+}
+
+bool MainWindow::beginPreviewTextBoxEdit(float x, float y)
+{
+    if (!isPreviewMode()) {
+        return false;
+    }
+
+    const auto hitWidgetId = designerCanvas_.hitTestWidgetId(document_, x, y);
+    if (!hitWidgetId.has_value()) {
+        return false;
+    }
+
+    return bindPreviewTextBoxEdit(*hitWidgetId, DesignerCanvas::ViewPoint{ x, y });
+}
+
+bool MainWindow::bindPreviewTextBoxEdit(const std::string& widgetId, std::optional<DesignerCanvas::ViewPoint> caretPoint)
+{
+    if (!isPreviewMode()) {
+        return false;
+    }
+
+    const model::WidgetNode* widget = document_.findWidgetById(widgetId);
+    if (widget == nullptr
+        || widget->type != model::WidgetType::TextBox
+        || document_.isRootWidgetId(widget->id)
+        || !widget->getBoolProperty("enabled", true)
+        || widget->getBoolProperty("disabled", false)) {
+        return false;
+    }
+
+    const std::string text = designerCanvas_.previewText(*widget, widget->getStringProperty("text", {}));
+    designerCanvas_.setPreviewText(widget->id, text);
+    previewTextEditWidgetId_ = widget->id;
+    designerCanvas_.setPreviewTextOverlayWidgetId(widget->id);
+    updateTextEditMetricsFont();
+    if (!updatePreviewTextBoxEditBounds()) {
+        return false;
+    }
+
+    const model::ResolvedLookAndFeelStyle style =
+        model::LookAndFeelRegistry::instance().resolve(document_, *widget);
+    textEditControl_.begin(text, false, style.multiline, style.wordWrap, widget->getBoolProperty("readOnly", false));
+    if (const auto existingState = previewTextEditStates_.find(widget->id); existingState != previewTextEditStates_.end()) {
+        textEditControl_.restoreState(existingState->second);
+    }
+    if (caretPoint.has_value()) {
+        (void)textEditControl_.mouseDown(caretPoint->x, caretPoint->y);
+    }
+    else {
+        textEditControl_.showCaret();
+    }
+    syncPreviewTextBoxEdit();
+    updateTextEditCaretTimer();
+    requestKeyboardFocus();
+    return true;
+}
+
+bool MainWindow::updatePreviewTextBoxEditBounds()
+{
+    if (previewTextEditWidgetId_.empty()) {
+        return false;
+    }
+
+    if (!isPreviewMode()) {
+        textEditControl_.clear();
+        previewTextEditWidgetId_.clear();
+        designerCanvas_.setPreviewTextOverlayWidgetId({});
+        return false;
+    }
+
+    const model::WidgetNode* widget = document_.findWidgetById(previewTextEditWidgetId_);
+    if (widget == nullptr
+        || widget->type != model::WidgetType::TextBox
+        || document_.isRootWidgetId(widget->id)
+        || !widget->getBoolProperty("enabled", true)
+        || widget->getBoolProperty("disabled", false)) {
+        textEditControl_.clear();
+        previewTextEditWidgetId_.clear();
+        designerCanvas_.setPreviewTextOverlayWidgetId({});
+        return false;
+    }
+
+    const auto bounds = designerCanvas_.widgetScreenBounds(document_, widget->id);
+    if (!bounds.has_value() || bounds->width <= 0.0f || bounds->height <= 0.0f) {
+        textEditControl_.clear();
+        previewTextEditWidgetId_.clear();
+        designerCanvas_.setPreviewTextOverlayWidgetId({});
+        return false;
+    }
+
+    const model::ResolvedLookAndFeelStyle style =
+        model::LookAndFeelRegistry::instance().resolve(document_, *widget);
+    const float padding = std::clamp(style.textPadding, 0.0f, bounds->width * 0.45f);
+    const float editX = bounds->x + padding;
+    const float editY = bounds->y + 4.0f;
+    const float editWidth = std::max(0.0f, bounds->width - padding * 2.0f);
+    const float editHeight = std::max(0.0f, bounds->height - 8.0f);
+    updateTextEditMetricsFont();
+    textEditControl_.setBounds(editX, editY, editWidth, editHeight);
+    return true;
+}
+
+bool MainWindow::beginPreviewComboBoxDropdown(float x, float y)
+{
+    if (!isPreviewMode()) {
+        return false;
+    }
+
+    const auto hitWidgetId = designerCanvas_.hitTestWidgetId(document_, x, y);
+    return hitWidgetId.has_value() && openPreviewComboBoxDropdown(*hitWidgetId);
+}
+
+bool MainWindow::openFocusedPreviewComboBoxDropdown()
+{
+    if (!isPreviewMode()) {
+        return false;
+    }
+
+    return openPreviewComboBoxDropdown(designerCanvas_.previewFocusedWidgetId());
+}
+
+bool MainWindow::openPreviewComboBoxDropdown(const std::string& widgetId)
+{
+    const model::WidgetNode* widget = widgetId.empty() ? nullptr : document_.findWidgetById(widgetId);
+    if (widget == nullptr
+        || widget->type != model::WidgetType::ComboBox
+        || document_.isRootWidgetId(widget->id)
+        || !widget->getBoolProperty("enabled", true)
+        || widget->getBoolProperty("disabled", false)) {
+        return false;
+    }
+
+    const auto items = model::splitItems(widget->getStringProperty("items", {}));
+    if (items.empty()) {
+        dropdownControl_.close();
+        return true;
+    }
+
+    const auto bounds = designerCanvas_.widgetScreenBounds(document_, widget->id);
+    if (!bounds.has_value()) {
+        return false;
+    }
+
+    std::vector<editors::DropdownControl::Item> dropdownItems;
+    dropdownItems.reserve(items.size());
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        const std::string indexText = std::to_string(index);
+        dropdownItems.push_back({ indexText, items[index], {} });
+    }
+
+    const int selectedIndex = designerCanvas_.previewSelectedIndex(*widget,
+        model::sanitizeSelectedIndex(items, widget->getIntProperty("selectedIndex", items.empty() ? -1 : 0)));
+    const editors::DropdownControl::Bounds viewport{
+        layout_.designerCanvas.x,
+        layout_.designerCanvas.y,
+        layout_.designerCanvas.width,
+        layout_.designerCanvas.height
+    };
+    dropdownControl_.open(std::string{ kPreviewComboBoxDropdownPrefix.data(), kPreviewComboBoxDropdownPrefix.size() } + widget->id,
+        { bounds->x, bounds->y, bounds->width, bounds->height },
+        viewport,
+        std::move(dropdownItems),
+        selectedIndex >= 0 ? std::to_string(selectedIndex) : std::string{});
+    return true;
+}
+
+bool MainWindow::applyPreviewComboBoxDropdownSelection(const std::string& key,
+    const std::string& value,
+    const std::string& label)
+{
+    const bool previewComboBoxSelection =
+        key.compare(0,
+            kPreviewComboBoxDropdownPrefix.size(),
+            kPreviewComboBoxDropdownPrefix.data(),
+            kPreviewComboBoxDropdownPrefix.size())
+        == 0;
+    if (!previewComboBoxSelection) {
+        return false;
+    }
+    if (!isPreviewMode()) {
+        dropdownControl_.close();
+        return true;
+    }
+
+    const std::string widgetId = key.substr(kPreviewComboBoxDropdownPrefix.size());
+    const model::WidgetNode* widget = document_.findWidgetById(widgetId);
+    if (widget == nullptr
+        || widget->type != model::WidgetType::ComboBox
+        || !widget->getBoolProperty("enabled", true)
+        || widget->getBoolProperty("disabled", false)) {
+        dropdownControl_.close();
+        return true;
+    }
+
+    try {
+        const int selectedIndex = std::stoi(value);
+        const auto items = model::splitItems(widget->getStringProperty("items", {}));
+        if (selectedIndex >= 0 && selectedIndex < static_cast<int>(items.size())) {
+            designerCanvas_.setPreviewSelectedIndex(widget->id, selectedIndex);
+        }
+    }
+    catch (...) {
+    }
+
+    dropdownControl_.close();
+    setOperationStatus("Preview Combo Box: " + label);
+    redraw();
+    return true;
+}
+
+void MainWindow::syncPreviewTextBoxEdit()
+{
+    if (previewTextEditWidgetId_.empty() || !isPreviewMode() || !textEditControl_.isActive()) {
+        return;
+    }
+
+    designerCanvas_.setPreviewText(previewTextEditWidgetId_, textEditControl_.text());
+    previewTextEditStates_[previewTextEditWidgetId_] = textEditControl_.state();
+}
+
+void MainWindow::clearPreviewTextBoxEdit()
+{
+    if (previewTextEditWidgetId_.empty()) {
+        return;
+    }
+
+    syncPreviewTextBoxEdit();
+    previewTextEditWidgetId_.clear();
+    designerCanvas_.setPreviewTextOverlayWidgetId({});
+    textEditControl_.clear();
 }
 
 bool MainWindow::hasSelectedNonRootWidgets(std::size_t minimumCount) const
@@ -4916,6 +5284,7 @@ void MainWindow::handleWidgetClicked(const std::string& widgetId, bool additiveS
     }
 
     clearCanvasInteraction();
+    closeCallbackPopup();
     propertyInspector_.clearEditing();
     textEditControl_.clear();
     stopTextEditCaretTimer();
@@ -5125,6 +5494,7 @@ void MainWindow::undo()
 
     const std::string description = undoRedo_.undoDescription();
     propertyInspector_.clearAppearancePreview();
+    closeCallbackPopup();
     undoRedo_.undo();
     document_.markDirty();
     projectTree_.revealWidget(document_, document_.selectedWidgetId);
@@ -5143,6 +5513,7 @@ void MainWindow::redo()
 
     const std::string description = undoRedo_.redoDescription();
     propertyInspector_.clearAppearancePreview();
+    closeCallbackPopup();
     undoRedo_.redo();
     document_.markDirty();
     projectTree_.revealWidget(document_, document_.selectedWidgetId);
@@ -8319,15 +8690,18 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
     }
 
     canvas.setColor(0xfff2f4f8);
-    // Split status bar into fields: main status, selection info, progress
+    // Split status bar into fields: main status, selection info, geometry, progress
     const float totalWidth = layout_.statusBar.width - kPadding * 2.0f;
     const float rightWidth = 220.0f; // reserved for progress/status details
+    const float geometryWidth = 260.0f;
     const float middleWidth = 160.0f;
-    const float leftWidth = std::max(0.0f, totalWidth - rightWidth - middleWidth);
+    const float geometryFieldWidth = selectedWidgetGeometryText().empty() ? 0.0f : geometryWidth;
+    const float leftWidth = std::max(0.0f, totalWidth - rightWidth - middleWidth - geometryFieldWidth);
 
     const float leftX = layout_.statusBar.x + kPadding;
     const float middleX = leftX + leftWidth + 8.0f;
-    const float rightX = middleX + middleWidth + 8.0f;
+    const float geometryX = middleX + middleWidth + 8.0f;
+    const float rightX = geometryX + geometryFieldWidth + 8.0f;
 
     // Left: main status text
     canvas.text(statusText(), labelFont_, visage::Font::kTopLeft,
@@ -8346,6 +8720,13 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
     }
     canvas.text(middleText, labelFont_, visage::Font::kTopLeft,
         middleX, layout_.statusBar.y + 4.0f, middleWidth, layout_.statusBar.height - 6.0f);
+
+    const std::string geometryText = selectedWidgetGeometryText();
+    if (!geometryText.empty()) {
+        canvas.setColor(0xffcfd7e4);
+        canvas.text(geometryText, labelFont_, visage::Font::kTopLeft,
+            geometryX, layout_.statusBar.y + 4.0f, geometryFieldWidth, layout_.statusBar.height - 6.0f);
+    }
 
     // Right: export progress
     if (exportInProgress_ || exportProgressPercent_ > 0) {
@@ -8380,10 +8761,242 @@ void MainWindow::drawStatusBar(visage::Canvas& canvas) const
     }
 }
 
+std::vector<MainWindow::CallbackPopupItem> MainWindow::assignedCallbackItems(const model::WidgetNode& widget) const
+{
+    std::vector<CallbackPopupItem> items;
+    const auto* definition = model::WidgetRegistry::instance().find(widget.type);
+    if (definition == nullptr) {
+        return items;
+    }
+
+    for (const auto& event : definition->events) {
+        const std::string handlerName = widget.getStringProperty(event.key, {});
+        if (handlerName.empty()) {
+            continue;
+        }
+
+        items.push_back(CallbackPopupItem{
+            event.key,
+            event.key,
+            handlerName,
+            {}
+        });
+    }
+    return items;
+}
+
+std::string MainWindow::selectedWidgetGeometryText() const
+{
+    if (isPreviewMode() || document_.selectedWidgetIds().size() != 1) {
+        return {};
+    }
+
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr
+        || selectedWidget->id == document_.root.id
+        || selectedWidget->type == model::WidgetType::FormWindow) {
+        return {};
+    }
+
+    const auto rounded = [](float value) {
+        return static_cast<int>(std::lround(value));
+    };
+    const auto& bounds = selectedWidget->bounds;
+    return "X: " + std::to_string(rounded(bounds.x))
+        + "  Y: " + std::to_string(rounded(bounds.y))
+        + "  W: " + std::to_string(rounded(bounds.width))
+        + "  H: " + std::to_string(rounded(bounds.height));
+}
+
+MainWindow::PanelBounds MainWindow::callbackPopupBoundsForCorner(const DesignerCanvas::SelectionRect& cornerRect, std::size_t itemCount) const
+{
+    const float rowCount = static_cast<float>(std::max<std::size_t>(1, itemCount) + 1);
+    const float popupHeight = kCallbackPopupPadding * 2.0f + rowCount * kCallbackPopupRowHeight;
+    const float popupWidth = std::min(kCallbackPopupWidth, std::max(120.0f, layout_.designerCanvas.width - kCallbackPopupPadding * 2.0f));
+    const float minX = layout_.designerCanvas.x + kCallbackPopupPadding;
+    const float maxX = std::max(minX, layout_.designerCanvas.x + layout_.designerCanvas.width - popupWidth - kCallbackPopupPadding);
+    const float minY = layout_.designerCanvas.y + kCallbackPopupPadding;
+    const float maxY = std::max(minY, layout_.designerCanvas.y + layout_.designerCanvas.height - popupHeight - kCallbackPopupPadding);
+    return {
+        std::clamp(cornerRect.x + cornerRect.width - popupWidth, minX, maxX),
+        std::clamp(cornerRect.y + 12.0f, minY, maxY),
+        popupWidth,
+        popupHeight
+    };
+}
+
+bool MainWindow::openCallbackPopupForSelectedWidget()
+{
+    callbackPopup_ = {};
+    if (isPreviewMode() || document_.selectedWidgetIds().size() != 1) {
+        return false;
+    }
+
+    const auto* selectedWidget = document_.selectedWidget();
+    if (selectedWidget == nullptr
+        || selectedWidget->id == document_.root.id
+        || selectedWidget->type == model::WidgetType::FormWindow) {
+        return false;
+    }
+
+    const auto screenBounds = designerCanvas_.widgetScreenBounds(document_, selectedWidget->id);
+    if (!screenBounds.has_value()) {
+        return false;
+    }
+
+    callbackPopup_.open = true;
+    callbackPopup_.widgetId = selectedWidget->id;
+    callbackPopup_.items = assignedCallbackItems(*selectedWidget);
+    callbackPopup_.bounds = callbackPopupBoundsForCorner(*screenBounds, callbackPopup_.items.size());
+
+    float rowTop = callbackPopup_.bounds.y + kCallbackPopupPadding;
+    for (auto& item : callbackPopup_.items) {
+        item.bounds = {
+            callbackPopup_.bounds.x + kCallbackPopupPadding,
+            rowTop,
+            std::max(0.0f, callbackPopup_.bounds.width - kCallbackPopupPadding * 2.0f),
+            kCallbackPopupRowHeight
+        };
+        rowTop += kCallbackPopupRowHeight;
+    }
+
+    if (callbackPopup_.items.empty()) {
+        rowTop += kCallbackPopupRowHeight;
+    }
+    callbackPopup_.openEventsBounds = {
+        callbackPopup_.bounds.x + kCallbackPopupPadding,
+        rowTop,
+        std::max(0.0f, callbackPopup_.bounds.width - kCallbackPopupPadding * 2.0f),
+        kCallbackPopupRowHeight
+    };
+    setOperationStatus("Callback menu opened for " + widgetDisplayName(*selectedWidget) + ".");
+    return true;
+}
+
+void MainWindow::closeCallbackPopup()
+{
+    callbackPopup_ = {};
+}
+
+bool MainWindow::handleCallbackPopupMouseDown(float x, float y)
+{
+    if (!callbackPopup_.open) {
+        return false;
+    }
+
+    const bool insidePopup = pointInBounds(x, y,
+        callbackPopup_.bounds.x,
+        callbackPopup_.bounds.y,
+        callbackPopup_.bounds.width,
+        callbackPopup_.bounds.height);
+    if (!insidePopup) {
+        closeCallbackPopup();
+        return true;
+    }
+
+    for (const auto& item : callbackPopup_.items) {
+        if (pointInBounds(x, y, item.bounds.x, item.bounds.y, item.bounds.width, item.bounds.height)) {
+            return activateCallbackPopupEvent(item.eventKey);
+        }
+    }
+
+    if (pointInBounds(x, y,
+            callbackPopup_.openEventsBounds.x,
+            callbackPopup_.openEventsBounds.y,
+            callbackPopup_.openEventsBounds.width,
+            callbackPopup_.openEventsBounds.height)) {
+        propertyInspector_.showEventsTab();
+        propertyInspector_.clearActiveEventControl();
+        closeCallbackPopup();
+        updatePropertyEditorBounds();
+        setOperationStatus("Events Inspector opened.");
+        return true;
+    }
+
+    return true;
+}
+
+bool MainWindow::activateCallbackPopupEvent(const std::string& eventKey)
+{
+    const std::string widgetId = callbackPopup_.widgetId;
+    closeCallbackPopup();
+    if (widgetId.empty()
+        || widgetId != document_.selectedWidgetId
+        || document_.selectedWidgetIds().size() != 1
+        || document_.findWidgetById(widgetId) == nullptr) {
+        return true;
+    }
+
+    if (propertyInspector_.revealEventRow(document_, settings_, eventKey)) {
+        updatePropertyEditorBounds();
+        setOperationStatus("Showing callback assignment: " + eventKey + ".");
+    }
+    else {
+        propertyInspector_.showEventsTab();
+        updatePropertyEditorBounds();
+        setOperationStatus("Events Inspector opened.");
+    }
+    return true;
+}
+
+void MainWindow::drawCallbackPopup(visage::Canvas& canvas) const
+{
+    if (!callbackPopup_.open || !canDrawText()) {
+        return;
+    }
+
+    const auto* widget = document_.findWidgetById(callbackPopup_.widgetId);
+    if (widget == nullptr || isPreviewMode()) {
+        return;
+    }
+
+    canvas.setColor(0xff151922);
+    canvas.fill(callbackPopup_.bounds.x, callbackPopup_.bounds.y, callbackPopup_.bounds.width, callbackPopup_.bounds.height);
+    canvas.setColor(0xff5e6d82);
+    canvas.fill(callbackPopup_.bounds.x, callbackPopup_.bounds.y, callbackPopup_.bounds.width, 1.0f);
+    canvas.fill(callbackPopup_.bounds.x, callbackPopup_.bounds.y + callbackPopup_.bounds.height - 1.0f, callbackPopup_.bounds.width, 1.0f);
+    canvas.fill(callbackPopup_.bounds.x, callbackPopup_.bounds.y, 1.0f, callbackPopup_.bounds.height);
+    canvas.fill(callbackPopup_.bounds.x + callbackPopup_.bounds.width - 1.0f, callbackPopup_.bounds.y, 1.0f, callbackPopup_.bounds.height);
+
+    if (callbackPopup_.items.empty()) {
+        canvas.setColor(0xffc4ccd8);
+        canvas.text("No callbacks assigned", labelFont_, visage::Font::kTopLeft,
+            callbackPopup_.bounds.x + kCallbackPopupPadding,
+            callbackPopup_.bounds.y + kCallbackPopupPadding + 5.0f,
+            callbackPopup_.bounds.width - kCallbackPopupPadding * 2.0f,
+            kCallbackPopupRowHeight - 6.0f);
+    }
+    else {
+        for (const auto& item : callbackPopup_.items) {
+            canvas.setColor(0xff202938);
+            canvas.fill(item.bounds.x, item.bounds.y + 2.0f, item.bounds.width, item.bounds.height - 4.0f);
+            canvas.setColor(0xfff2f4f8);
+            canvas.text(item.eventLabel + " -> " + item.handlerName, labelFont_, visage::Font::kTopLeft,
+                item.bounds.x + 8.0f,
+                item.bounds.y + 5.0f,
+                item.bounds.width - 16.0f,
+                item.bounds.height - 8.0f);
+        }
+    }
+
+    canvas.setColor(0xff2d7ff9);
+    canvas.fill(callbackPopup_.openEventsBounds.x,
+        callbackPopup_.openEventsBounds.y + 3.0f,
+        callbackPopup_.openEventsBounds.width,
+        callbackPopup_.openEventsBounds.height - 6.0f);
+    canvas.setColor(0xffffffff);
+    canvas.text("Open Events Inspector", labelFont_, visage::Font::kCenter,
+        callbackPopup_.openEventsBounds.x,
+        callbackPopup_.openEventsBounds.y,
+        callbackPopup_.openEventsBounds.width,
+        callbackPopup_.openEventsBounds.height);
+}
+
 void MainWindow::selectWidget(const std::string& widgetId)
 {
     hoverHint_.clear();
     cancelInspectorEdit();
+    closeCallbackPopup();
     document_.selectWidget(widgetId);
     projectTree_.revealWidget(document_, widgetId);
     updatePropertyEditorBounds();
@@ -8586,6 +9199,7 @@ bool MainWindow::handleMenuMouseDown(const visage::MouseEvent& e)
 
 bool MainWindow::executeCommand(CommandId command)
 {
+    closeCallbackPopup();
     switch (command) {
     case CommandId::NewProject:
         return newProject();
@@ -10102,6 +10716,10 @@ void MainWindow::handleDropdownSelection()
 {
     const auto selection = dropdownControl_.consumeSelection();
     if (!selection.has_value()) {
+        return;
+    }
+
+    if (applyPreviewComboBoxDropdownSelection(selection->key, selection->value, selection->label)) {
         return;
     }
 

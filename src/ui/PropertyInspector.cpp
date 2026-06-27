@@ -2189,6 +2189,45 @@ void PropertyInspector::clearActiveEventControl()
     activeEventAction_.reset();
 }
 
+void PropertyInspector::showEventsTab()
+{
+    activeTab_ = InspectorTab::Events;
+    clearEditing();
+}
+
+PropertyInspector::InspectorTab PropertyInspector::activeTab() const
+{
+    return activeTab_;
+}
+
+bool PropertyInspector::revealEventRow(const model::ProjectDocument& document, const utils::AppSettings& settings, const std::string& eventKey)
+{
+    showEventsTab();
+    const auto rows = rowsForActiveTab(document, settings);
+    updateScrollMetrics(rows);
+    const auto layouts = buildRowLayouts(contentBounds().y, rows);
+    const auto bounds = contentBounds();
+
+    for (const auto& layout : layouts) {
+        if (layout.row.key != eventKey || !layout.row.isEvent) {
+            continue;
+        }
+
+        const float rowTop = rowYWithScroll(layout.top);
+        if (rowTop < bounds.y) {
+            setScrollOffsetY(layout.top - bounds.y);
+        }
+        else if (rowTop + layout.height > bounds.y + bounds.height) {
+            setScrollOffsetY(layout.top + layout.height - bounds.y - bounds.height);
+        }
+
+        setActiveEventControl(eventKey, EventAction::Existing);
+        return true;
+    }
+
+    return false;
+}
+
 std::optional<PropertyInspector::ValueCellBounds> PropertyInspector::activeEditorBounds(const model::ProjectDocument& document, const utils::AppSettings& settings)
 {
     const auto active = activeRow(document, settings);

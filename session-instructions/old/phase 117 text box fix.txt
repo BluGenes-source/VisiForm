@@ -1,0 +1,223 @@
+Continue VisiForm Phase 117. Do not create a new phase and do not change version 1.0.23.
+
+Preview Mode Text Box input still does not work after the routing and focus fixes.
+
+Stop adding speculative event-routing patches. Confirm whether the Preview Text Box is only canvas-drawn and therefore cannot receive the framework’s text-input events directly.
+
+Implement a focused solution using the existing working text-edit component.
+
+## Rules
+
+* Do not use subagents.
+* Read only:
+
+  * the active Phase 117 plan
+  * the existing working `TextEditControl`
+  * Design Mode inline text-edit setup and teardown
+  * Preview Mode entry, input routing, and temporary state
+  * Text Box rendering and geometry
+* Do not audit unrelated widgets.
+* Do not redesign the whole Preview dispatcher.
+* Build once after the focused implementation.
+* Do not commit or push.
+
+## Required investigation
+
+First confirm:
+
+* whether Preview Text Boxes are real child controls or canvas-painted representations
+* whether the canvas receives printable text/IME events
+* whether `TextEditControl` already owns the reliable focus, caret, selection, clipboard, timer, and text-input paths
+* why the prior Preview focus ID did not result in actual text delivery
+
+Record the confirmed architectural cause in the Phase 117 plan.
+
+## Preferred implementation
+
+When a Text Box is activated in Preview Mode, create or show one reusable `TextEditControl` overlay positioned over that Text Box.
+
+Do not create one editor instance for every Text Box.
+
+The overlay must:
+
+* use the selected Text Box’s exact view-space bounds
+* account for canvas zoom and pan
+* account for border and content padding
+* receive real framework keyboard and text-input focus
+* initialize from temporary Preview text
+* use the resolved widget typography and appearance
+* support single-line or multiline mode
+* support Word Wrap
+* remain editor-only and temporary
+
+Use the existing working text editor rather than duplicating text-input logic in `DesignerCanvas`.
+
+## Temporary data policy
+
+The overlay edits only Preview state.
+
+Required flow:
+
+1. Enter Preview Mode.
+2. Initialize temporary Text Box state from the model.
+3. Click a Text Box.
+4. Bind the reusable overlay editor to that widget’s temporary text.
+5. Edit normally.
+6. When focus changes, copy the overlay value back to temporary Preview state only.
+7. When returning to that Text Box during the same Preview session, restore its temporary text.
+8. On leaving Preview Mode, destroy or hide the overlay and discard all temporary values.
+
+Never commit Preview text to `WidgetNode`.
+
+Preview editing must not:
+
+* mark the project dirty
+* create project undo entries
+* trigger autosave
+* alter serialized data
+
+## Overlay ownership and lifetime
+
+Use one clearly owned Preview Text Box editor.
+
+Show it only while a Preview Text Box is active.
+
+Hide or detach it when:
+
+* another Preview widget receives focus
+* the active Text Box is deleted
+* the project is replaced
+* Preview Mode exits
+* the canvas or form becomes invalid
+
+Do not retain raw widget pointers across hierarchy rebuilds. Use stable IDs and resolve them safely.
+
+## Focus
+
+When the Preview Text Box is clicked:
+
+* activate the overlay
+* request real keyboard focus through the same API used by Design Mode editing
+* place the caret at the clicked character boundary
+* prevent the click from falling through to canvas commands
+
+Do not display a caret unless the overlay actually owns keyboard focus.
+
+## Geometry synchronization
+
+Update overlay bounds when:
+
+* canvas zoom changes
+* canvas pan changes
+* the application window resizes
+* Project Tree or Property Inspector splitters move
+* the Text Box geometry changes
+* its parent/container layout changes
+
+Hide the overlay if its widget becomes fully clipped or hidden.
+
+Use the existing model-to-view transform exactly once.
+
+## Editing behavior
+
+Reuse `TextEditControl` support for:
+
+* printable text
+* caret blinking
+* mouse caret placement
+* selection
+* Backspace and Delete
+* arrows, Home, and End
+* Ctrl+A, copy, cut, and paste
+* Enter when Multiline is true
+* multiline navigation
+* Word Wrap
+* scrolling
+
+Configure it from the Text Box properties rather than implementing these again.
+
+For read-only Text Boxes:
+
+* permit selection and copying
+* prevent text mutation
+
+For disabled Text Boxes:
+
+* do not activate the overlay
+
+## Rendering
+
+While the overlay is active:
+
+* avoid drawing duplicate text underneath it
+* keep the Text Box border and runtime styling consistent
+* ensure the overlay visually matches the underlying widget
+* do not show Design Mode selection or resize decorations
+
+When the overlay is inactive, render the temporary Preview text through the normal Preview renderer.
+
+## Preview focus navigation
+
+When Tab or Shift+Tab moves focus to another Text Box:
+
+* commit the outgoing overlay value to temporary state
+* rebind the overlay to the incoming Text Box
+* transfer real keyboard focus
+* preserve all changes only within the current Preview session
+
+For non-text widgets, hide the overlay before routing focus to them.
+
+## Do not use fake success criteria
+
+Do not consider the bug fixed merely because:
+
+* the Preview focus ID changes
+* a caret is painted manually
+* a key-down handler runs
+* a repaint occurs
+
+The required result is that typed printable characters visibly alter the temporary Text Box content.
+
+## Focused validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Enter Preview Mode.
+4. Click a single-line Text Box.
+5. Confirm the real editor overlay receives focus.
+6. Type printable text and confirm it remains visible.
+7. Reposition the caret with the mouse.
+8. Test Backspace, Delete, selection, copy, cut, and paste.
+9. Activate another widget, then return to the Text Box.
+10. Confirm temporary text remains during that Preview session.
+11. Test a multiline Text Box.
+12. Confirm Enter, wrapping, navigation, and scrolling work.
+13. Test zoom and pan while the editor is active.
+14. Move the main splitters and confirm overlay alignment.
+15. Test read-only and disabled Text Boxes.
+16. Exit Preview Mode.
+17. Confirm the stored model text is restored.
+18. Confirm the dirty flag and undo history are unchanged.
+19. Re-enter Preview Mode and confirm initialization starts from stored model text.
+20. Confirm Design Mode text editing still works.
+
+## Documentation
+
+Update the existing Phase 117 plan with:
+
+* confirmed reason canvas-only input failed
+* reusable overlay editor design
+* focus ownership
+* temporary text synchronization
+* overlay positioning and cleanup
+* model-integrity result
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+Do not create Phase 118.
+Do not change version 1.0.23.
+Do not commit or push.

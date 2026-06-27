@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <visage_utils/string_utils.h>
+#include <visage_windowing/windowing.h>
 
 namespace visiform::ui::editors {
 namespace {
@@ -33,6 +34,28 @@ bool isPrintableInput(const std::string& text)
 bool isUtf8ContinuationByte(unsigned char character)
 {
     return (character & 0xc0) == 0x80;
+}
+
+std::string normalizePastedText(std::string text, bool multiline)
+{
+    std::string result;
+    result.reserve(text.size());
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        const char character = text[index];
+        if (character == '\r') {
+            if (index + 1 < text.size() && text[index + 1] == '\n') {
+                ++index;
+            }
+            result.push_back(multiline ? '\n' : ' ');
+            continue;
+        }
+        if (character == '\n') {
+            result.push_back(multiline ? '\n' : ' ');
+            continue;
+        }
+        result.push_back(character);
+    }
+    return result;
 }
 
 std::size_t previousTextBoundary(std::string_view text, std::size_t index)
@@ -81,7 +104,7 @@ bool TextEditControl::contains(float x, float y) const
     return editing_ && bounds_.contains(x, y);
 }
 
-void TextEditControl::begin(std::string text, bool selectAllText, bool multiline, bool wordWrap)
+void TextEditControl::begin(std::string text, bool selectAllText, bool multiline, bool wordWrap, bool readOnly)
 {
     originalText_ = text;
     text_ = std::move(text);
@@ -89,6 +112,7 @@ void TextEditControl::begin(std::string text, bool selectAllText, bool multiline
     focused_ = true;
     multiline_ = multiline;
     wordWrap_ = multiline && wordWrap;
+    readOnly_ = readOnly;
     draggingSelection_ = false;
     caretVisible_ = true;
     pendingAction_ = PendingAction::None;
@@ -120,6 +144,7 @@ void TextEditControl::clear()
     scrollY_ = 0.0f;
     multiline_ = false;
     wordWrap_ = false;
+    readOnly_ = false;
     draggingSelection_ = false;
     caretVisible_ = false;
     preferredCursorX_ = -1.0f;
@@ -152,6 +177,31 @@ void TextEditControl::setText(std::string text)
 const std::string& TextEditControl::text() const
 {
     return text_;
+}
+
+TextEditControl::State TextEditControl::state() const
+{
+    return {
+        text_,
+        cursorIndex_,
+        selectionStart_,
+        selectionEnd_,
+        scrollX_,
+        scrollY_,
+        preferredCursorX_
+    };
+}
+
+void TextEditControl::restoreState(const State& state)
+{
+    text_ = state.text;
+    cursorIndex_ = std::min(state.cursorIndex, text_.size());
+    selectionStart_ = std::min(state.selectionStart, text_.size());
+    selectionEnd_ = std::min(state.selectionEnd, text_.size());
+    scrollX_ = std::max(0.0f, state.scrollX);
+    scrollY_ = std::max(0.0f, state.scrollY);
+    preferredCursorX_ = state.preferredCursorX;
+    ensureCursorVisible();
 }
 
 void TextEditControl::selectAll()
@@ -235,6 +285,9 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
     const bool control = event.isCtrlDown() || event.isCmdDown() || event.isMetaDown();
     switch (event.keyCode()) {
     case KeyCode::Backspace:
+        if (readOnly_) {
+            return true;
+        }
         if (hasSelection()) {
             deleteSelection();
         }
@@ -249,6 +302,9 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
         noteEditingInteraction();
         return true;
     case KeyCode::Delete:
+        if (readOnly_) {
+            return true;
+        }
         if (hasSelection()) {
             deleteSelection();
         }
@@ -261,6 +317,38 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
     case KeyCode::A:
         if (control) {
             selectAll();
+            noteEditingInteraction();
+            return true;
+        }
+        return false;
+    case KeyCode::C:
+        if (control) {
+            if (hasSelection()) {
+                visage::setClipboardText(text_.substr(selectionMin(), selectionMax() - selectionMin()));
+            }
+            noteEditingInteraction();
+            return true;
+        }
+        return false;
+    case KeyCode::X:
+        if (control) {
+            if (!readOnly_ && hasSelection()) {
+                visage::setClipboardText(text_.substr(selectionMin(), selectionMax() - selectionMin()));
+                deleteSelection();
+                ensureCursorVisible();
+            }
+            noteEditingInteraction();
+            return true;
+        }
+        return false;
+    case KeyCode::V:
+        if (control) {
+            if (!readOnly_) {
+                const std::string clipboardText = normalizePastedText(visage::readClipboardText(), multiline_);
+                if (!clipboardText.empty()) {
+                    insertText(clipboardText);
+                }
+            }
             noteEditingInteraction();
             return true;
         }
@@ -292,6 +380,9 @@ bool TextEditControl::keyPress(const visage::KeyEvent& event)
         moveCursor(control ? text_.size() : (multiline_ ? lineEndForIndex(cursorIndex_) : text_.size()), extending);
         return true;
     case KeyCode::Return:
+        if (readOnly_) {
+            return true;
+        }
         if (multiline_) {
             insertText("\n");
         }
@@ -341,6 +432,9 @@ bool TextEditControl::textInput(const std::string& text)
 {
     if (!editing_ || !focused_ || !isPrintableInput(text)) {
         return false;
+    }
+    if (readOnly_) {
+        return true;
     }
 
     insertText(text);

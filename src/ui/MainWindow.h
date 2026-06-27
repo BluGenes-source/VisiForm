@@ -24,6 +24,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <visage/app.h>
@@ -164,6 +165,7 @@ private:
     struct CanvasInteractionState {
         enum class Mode {
             None,
+            PendingCallbackMenu,
             Move,
             Resize,
             MarqueeSelect
@@ -191,6 +193,21 @@ private:
         std::vector<DesignerCanvas::SmartGuide> smartGuides{};
         bool smartGuideSnapUsed = false;
         bool changed = false;
+    };
+
+    struct CallbackPopupItem {
+        std::string eventKey{};
+        std::string eventLabel{};
+        std::string handlerName{};
+        PanelBounds bounds{};
+    };
+
+    struct CallbackPopupState {
+        bool open = false;
+        std::string widgetId{};
+        PanelBounds bounds{};
+        std::vector<CallbackPopupItem> items{};
+        PanelBounds openEventsBounds{};
     };
 
     struct CanvasPanState {
@@ -445,6 +462,7 @@ private:
     void drawMenuBar(visage::Canvas& canvas) const;
     void drawToolbar(visage::Canvas& canvas) const;
     void drawStatusBar(visage::Canvas& canvas) const;
+    void drawCallbackPopup(visage::Canvas& canvas) const;
     [[nodiscard]] std::vector<Menu> menus() const;
     [[nodiscard]] std::vector<MenuBarButton> menuBarButtons() const;
     [[nodiscard]] std::optional<int> menuIndexAt(float x, float y) const;
@@ -487,6 +505,22 @@ private:
     void endCanvasPan();
     void setDesignerCanvasMode(DesignerCanvas::Mode mode);
     [[nodiscard]] bool isPreviewMode() const;
+    [[nodiscard]] std::vector<CallbackPopupItem> assignedCallbackItems(const model::WidgetNode& widget) const;
+    [[nodiscard]] std::string selectedWidgetGeometryText() const;
+    [[nodiscard]] PanelBounds callbackPopupBoundsForCorner(const DesignerCanvas::SelectionRect& cornerRect, std::size_t itemCount) const;
+    bool openCallbackPopupForSelectedWidget();
+    void closeCallbackPopup();
+    bool handleCallbackPopupMouseDown(float x, float y);
+    bool activateCallbackPopupEvent(const std::string& eventKey);
+    bool beginPreviewTextBoxEdit(float x, float y);
+    bool bindPreviewTextBoxEdit(const std::string& widgetId, std::optional<DesignerCanvas::ViewPoint> caretPoint = std::nullopt);
+    bool updatePreviewTextBoxEditBounds();
+    bool beginPreviewComboBoxDropdown(float x, float y);
+    bool openFocusedPreviewComboBoxDropdown();
+    bool openPreviewComboBoxDropdown(const std::string& widgetId);
+    bool applyPreviewComboBoxDropdownSelection(const std::string& key, const std::string& value, const std::string& label);
+    void syncPreviewTextBoxEdit();
+    void clearPreviewTextBoxEdit();
     [[nodiscard]] bool isMultiSelectModeEnabled() const;
     void handleWidgetClicked(const std::string& widgetId, bool additiveSelection);
     void alignSelectedLeft();
@@ -676,6 +710,8 @@ private:
     std::filesystem::path currentProjectPath_{};
     std::string statusMessage_{};
     std::string hoverHint_{};
+    std::string previewTextEditWidgetId_{};
+    std::unordered_map<std::string, editors::TextEditControl::State> previewTextEditStates_{};
     CanvasInteractionState canvasInteraction_{};
     CanvasPanState canvasPan_{};
     commands::UndoRedoStack undoRedo_{};
@@ -687,6 +723,7 @@ private:
     Splitter canvasInspectorSplitter_{};
     DesignerCanvas designerCanvas_{};
     PropertyInspector propertyInspector_{};
+    CallbackPopupState callbackPopup_{};
     std::optional<model::ProjectDocument> appearanceSliderBeforeDocument_{};
     bool appearanceSliderChanged_ = false;
     std::string appearanceSliderWidgetId_{};

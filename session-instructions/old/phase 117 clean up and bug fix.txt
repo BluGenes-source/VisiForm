@@ -1,0 +1,317 @@
+Continue VisiForm Phase 117. Do not create a new phase and do not change version 1.0.23.
+
+Preview Mode renders widgets, but runtime-style interaction is not working correctly.
+
+Observed problems:
+
+* Text Box cannot receive or edit text.
+* Combo Box dropdown does not display all items.
+* Table/Grid does not allow row or column selection.
+* Other widgets may also be non-interactive.
+
+Treat this first as a shared Preview Mode input-routing failure, not as unrelated widget-specific defects.
+
+Keep this pass focused and token-efficient.
+
+## Rules
+
+* Do not use subagents.
+* Read only:
+
+  * the active Phase 117 plan
+  * Preview Mode mouse and keyboard routing
+  * canvas hit testing
+  * preview focus ownership
+  * temporary Preview state
+  * directly related Text Box, Combo Box, Table/Grid, Button, Check Box, Slider, and Tab Control interaction paths
+* Search before opening large files.
+* Do not perform a repository-wide audit.
+* Do not execute generated event handlers.
+* Build once after the focused fixes.
+* Do not commit or push.
+
+## Goal 1: Trace shared Preview input routing
+
+Trace one complete mouse and keyboard interaction in Preview Mode.
+
+Confirm:
+
+1. pointer coordinates reach `DesignerCanvas`
+2. view coordinates convert to model coordinates correctly
+3. the topmost eligible widget is hit
+4. Preview Mode routes the event to that widget
+5. the widget receives focus or pointer capture
+6. keyboard events go to the focused Preview widget
+7. temporary Preview state is updated
+8. repaint occurs
+
+Determine where this chain currently stops.
+
+Likely causes include:
+
+* Preview Mode returns early before widget dispatch
+* Design Mode editing is disabled, but no Preview dispatch replaces it
+* canvas consumes mouse events
+* hit testing still targets selection handles or editor overlays
+* focused Preview widget is never assigned
+* keyboard input remains routed to the canvas or Property Inspector
+* pointer capture is not established
+* coordinates are transformed twice or not transformed
+* Preview widget state exists but is never connected to input handlers
+
+Record the confirmed root cause in the Phase 117 plan.
+
+## Goal 2: Establish one Preview interaction dispatcher
+
+Use one shared Preview Mode input path.
+
+It should resolve:
+
+* hovered widget
+* pressed widget
+* captured widget
+* focused widget
+* active popup or dropdown
+* pointer position in widget-local coordinates
+* keyboard target
+
+Do not add unrelated independent input handling inside every renderer.
+
+Conceptual routing:
+
+`canvas event → Preview hit test → widget-local event → temporary Preview state → repaint`
+
+Design Mode behavior must remain unchanged.
+
+## Goal 3: Correct Preview hit testing
+
+Preview hit testing must:
+
+* use model-space geometry
+* account for zoom and pan exactly once
+* use the actual widget hierarchy
+* prefer the topmost eligible widget
+* respect clipping by parent containers
+* ignore hidden widgets
+* ignore editor-only handles, labels, guides, and overlays
+* reject disabled widgets for interaction where appropriate
+* return coordinates local to the target widget
+
+Verify nested widgets and container children.
+
+Do not infer targets only from visual overlap.
+
+## Goal 4: Text Box input
+
+Once a Preview Text Box is clicked:
+
+* it receives Preview focus
+* the caret appears
+* typing edits temporary Preview text
+* Backspace and Delete work
+* selection works
+* clipboard shortcuts work
+* Enter works when Multiline is true
+* wrapping and scrolling use the Phase 115–116 paths
+* read-only Text Boxes allow selection and copy but not mutation
+* disabled Text Boxes do not interact
+
+Keyboard events must not go to the Designer Canvas while the Text Box owns Preview focus.
+
+Temporary text must never update `WidgetNode`.
+
+## Goal 5: Combo Box popup and items
+
+Fix Combo Box Preview behavior using the existing popup/list infrastructure.
+
+Requirements:
+
+* clicking the arrow or field opens the dropdown
+* every configured item is available
+* popup height uses item count and available viewport space
+* vertical scrolling is available when all items cannot fit
+* items are not clipped by the Combo Box’s own widget bounds
+* popup is layered above neighboring canvas widgets
+* clicking an item updates only temporary Preview selection
+* clicking outside closes the popup
+* Escape closes the popup before exiting Preview Mode
+* leaving Preview Mode closes and destroys popup state safely
+
+Check whether the current popup is incorrectly clipped to:
+
+* the Combo Box rectangle
+* its parent widget
+* the Designer Canvas content clip
+* a fixed item count
+
+Reuse existing popup behavior rather than building a second dropdown system.
+
+## Goal 6: Table/Grid interaction
+
+The existing Table/Grid widget must support its current runtime selection model in Preview Mode.
+
+At minimum:
+
+* clicking a cell identifies its row and column
+* selected cell, row, or column renders visibly according to existing widget behavior
+* selection remains temporary
+* keyboard movement may use existing support
+* disabled/read-only rules remain respected
+* scrolling works if already supported
+
+Use the actual configured selection mode:
+
+* cell
+* row
+* column
+
+Do not invent a new selection model.
+
+If the Table/Grid widget has not yet implemented runtime selection outside Preview Mode, document that separately, but ensure Preview dispatch reaches its existing interaction path.
+
+## Goal 7: Verify representative widgets
+
+After fixing shared routing, verify:
+
+* Button hover, press, and release
+* Check Box temporary toggle
+* Radio Button temporary exclusive selection
+* Combo Box selection
+* List Box selection
+* Text Box editing
+* Slider dragging
+* Scroll Bar dragging
+* Tab Control switching
+* Table/Grid selection
+
+Fix widget-specific issues only after the shared dispatcher is confirmed working.
+
+## Goal 8: Focus, capture, and popup ownership
+
+Maintain explicit Preview ownership for:
+
+* keyboard focus
+* pointer capture during drag or press
+* active popup
+
+Requirements:
+
+* only one focused widget at a time
+* only one captured widget at a time
+* release clears capture safely
+* changing project clears all ownership
+* deleting a referenced widget clears ownership
+* leaving Preview Mode clears focus, capture, hover, pressed state, and popups
+* no stale pointers or IDs survive a tree rebuild
+
+Prefer stable widget IDs over raw pointers for retained Preview state.
+
+## Goal 9: Status diagnostics
+
+Add concise temporary debug logging or status reporting while diagnosing:
+
+* Preview target widget ID/type
+* focus assignment
+* pointer capture
+* keyboard target
+* popup open/close
+
+Remove temporary noisy logging before completion unless it follows existing debug logging conventions.
+
+Do not report interaction success merely because a repaint occurred.
+
+## Preserve model integrity
+
+Preview interaction must not:
+
+* mark the project dirty
+* create undo entries
+* trigger autosave
+* change serialized properties
+* execute event handlers
+* persist temporary selections, values, text, or active tabs
+
+On exit, the form must return to stored model values.
+
+## Preserve Design Mode
+
+Do not regress:
+
+* widget selection
+* dragging and resizing
+* resize handles and arcs
+* palette creation
+* zoom and pan
+* Property Inspector
+* undo/redo
+* alignment and layout commands
+
+## Validation
+
+After implementation:
+
+1. Build the normal Windows Debug configuration.
+2. Launch VisiForm manually.
+3. Confirm version `1.0.23`.
+4. Enter Preview Mode.
+5. Click a Text Box and confirm it receives focus.
+6. Type, select, delete, copy, cut, and paste text.
+7. Test multiline input and scrolling.
+8. Open a Combo Box.
+9. Confirm all configured items can be reached.
+10. Select an item and confirm the change is temporary.
+11. Click Table/Grid cells.
+12. Confirm configured cell, row, or column selection works.
+13. Test Button, Check Box, Radio Button, List Box, Slider, Scroll Bar, and Tab Control.
+14. Confirm drag controls retain pointer capture until release.
+15. Confirm Tab and Shift+Tab move Preview focus.
+16. Confirm popup Escape behavior.
+17. Exit Preview Mode.
+18. Confirm all temporary values are discarded.
+19. Confirm the dirty asterisk is unchanged.
+20. Confirm undo history is unchanged.
+21. Re-enter Preview Mode and confirm state initializes from the model.
+22. Confirm zoom and pan remain functional.
+23. Confirm Design Mode interaction remains unchanged.
+
+Do not claim runtime validation unless actually performed.
+
+## Documentation
+
+Update the existing Phase 117 plan with:
+
+* shared input-routing root cause
+* Preview dispatcher design
+* hit-testing and coordinate policy
+* focus, capture, and popup ownership
+* Text Box result
+* Combo Box popup/clipping result
+* Table/Grid selection result
+* representative widgets verified
+* model-integrity verification
+* files changed
+* build result
+* manual validation actually performed
+* remaining issues
+
+## Completion report
+
+Report:
+
+* exact shared failure found
+* Preview dispatch path added or corrected
+* focus and pointer-capture behavior
+* Text Box interaction result
+* Combo Box item/popup result
+* Table/Grid selection result
+* other widgets verified
+* confirmation that Preview state remains temporary
+* files changed
+* build result
+* manual validation actually performed
+* remaining TODOs
+* final Git status
+
+Do not create Phase 118.
+Do not change version 1.0.23.
+Do not commit or push.
